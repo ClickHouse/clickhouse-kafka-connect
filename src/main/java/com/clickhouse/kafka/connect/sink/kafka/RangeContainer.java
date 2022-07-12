@@ -20,6 +20,7 @@ public class RangeContainer extends TopicPartitionContanier {
 
     /**
      * This method will set min/max values for offsets
+     *
      * @param offset
      */
     public void defineInRange(long offset) {
@@ -43,15 +44,18 @@ public class RangeContainer extends TopicPartitionContanier {
 
     public RangeState getOverLappingState(RangeContainer rangeContainer) {
         // SAME State [0,10] Actual [0,10]
-        if ( maxOffset == rangeContainer.getMaxOffset() && minOffset == rangeContainer.getMinOffset() )
+        if (maxOffset == rangeContainer.getMaxOffset() && minOffset == rangeContainer.getMinOffset())
             return RangeState.SAME;
-        // SAME State [0,10] Actual [11,20]
-        if ( maxOffset < rangeContainer.minOffset )
+        // NEW State [0,10] Actual [11,20]
+        if (maxOffset < rangeContainer.minOffset)
             return RangeState.NEW;
-        if ( minOffset < rangeContainer.getMinOffset())
+        // CONTAINS [0,10] Actual [1, 10]
+        if (maxOffset >= rangeContainer.getMaxOffset() && minOffset <= rangeContainer.getMinOffset())
+            return RangeState.CONTAINS;
+        // ERROR [10,20] Actual [8, X]
+        if (minOffset > rangeContainer.getMinOffset())
             return RangeState.ERROR;
-        //if ( minOffset > )
-        //if ( minOffset == rangeContainer.getMinOffset() )
+        // OVER_LAPPING
         return RangeState.OVER_LAPPING;
     }
 
