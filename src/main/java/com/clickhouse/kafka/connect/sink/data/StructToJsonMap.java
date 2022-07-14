@@ -1,6 +1,9 @@
 package com.clickhouse.kafka.connect.sink.data;
 
+import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import org.apache.kafka.connect.data.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -8,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 
 public class StructToJsonMap {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(StructToJsonMap.class);
     public static Map<String, Object> toJsonMap(Struct struct) {
         if (struct == null) {
             return null;

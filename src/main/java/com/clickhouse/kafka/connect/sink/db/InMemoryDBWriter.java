@@ -18,8 +18,8 @@ public class InMemoryDBWriter implements DBWriter {
         this.recordMap = new HashMap<>();
     }
     @Override
-    public void start() {
-
+    public boolean start(Map<String, String> props) {
+        return true;
     }
 
     @Override
