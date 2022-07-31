@@ -6,6 +6,8 @@ import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.apache.kafka.connect.sink.SinkTaskContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,9 +17,18 @@ public class Processing {
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
 
+    private SinkTaskContext context;
+
     public Processing(StateProvider stateProvider, DBWriter dbWriter) {
         this.stateProvider = stateProvider;
         this.dbWriter = dbWriter;
+        this.context = null;
+    }
+
+    public Processing(StateProvider stateProvider, DBWriter dbWriter, SinkTaskContext context) {
+        this.stateProvider = stateProvider;
+        this.dbWriter = dbWriter;
+        this.context = context;
     }
     /**
      * the logic is only for topic partition scoop
@@ -55,7 +66,11 @@ public class Processing {
                         .values()
         );
     }
-
+    private void sendTODlq(SinkRecord record, RuntimeException exception) {
+        if (context != null && context.errantRecordReporter() != null) {
+            context.errantRecordReporter().report(record, exception);
+        }
+    }
 
     public void doLogic(List<Record> records) {
 
@@ -92,6 +107,7 @@ public class Processing {
                         break;
                     case CONTAINS: // The state contains the given records
                         // Do nothing - write to dead letter queue
+                        records.forEach( r -> sendTODlq(record.getSinkRecord(), new RuntimeException()));
                         break;
                     case OVER_LAPPING:
                         // spit it to 2 inserts

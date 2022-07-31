@@ -69,6 +69,7 @@ dependencies {
     implementation("org.apache.kafka:connect-api:2.6.0")
     implementation("com.clickhouse:clickhouse-client:0.3.2-patch10")
     implementation("com.clickhouse:clickhouse-http-client:0.3.2-patch10")
+    implementation("io.lettuce:lettuce-core:6.2.0.RELEASE")
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:1.7.36")
@@ -82,6 +83,26 @@ dependencies {
     testImplementation("org.hamcrest:hamcrest:${project.extra["hamcrestVersion"]}")
     testImplementation("org.mockito:mockito-junit-jupiter:${project.extra["mockitoVersion"]}")
 
+    // IntegrationTests
+    testImplementation("org.testcontainers:clickhouse:1.17.3")
+    //testImplementation("com.clickhouse:clickhouse-jdbc:0.3.2-patch10")
+    testImplementation("ru.yandex.clickhouse:clickhouse-jdbc:0.3.2")
+
+}
+
+sourceSets.create("integrationTest") {
+    java.srcDir("src/integrationTest/java")
+    compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
+    runtimeClasspath += output + compileClasspath + sourceSets["test"].runtimeClasspath
+}
+
+tasks.create("integrationTest", Test::class.java) {
+    description = "Runs the integration tests"
+    group = "verification"
+    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
+    classpath = sourceSets["integrationTest"].runtimeClasspath
+    outputs.upToDateWhen { false }
+    mustRunAfter("test")
 }
 
 tasks.withType<Test> {

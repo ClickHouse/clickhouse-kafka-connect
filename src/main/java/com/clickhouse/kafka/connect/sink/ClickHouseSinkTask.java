@@ -51,7 +51,7 @@ public class ClickHouseSinkTask extends SinkTask {
         boolean isStarted = dbWriter.start(props);
         if (!isStarted)
             throw new RuntimeException("Connection to ClickHouse is not active.");
-        processing = new Processing(stateProvider,dbWriter);
+        processing = new Processing(stateProvider, dbWriter, context);
     }
 
 

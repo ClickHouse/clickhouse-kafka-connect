@@ -26,7 +26,7 @@ public class ProcessingTest {
         // create records
         List<Record> records = new ArrayList<>(1000);
         LongStream.range(0, 1000).forEachOrdered(n -> {
-            Record record = Record.newRecord(topic, partition, n, null, Collections.singletonMap("off", n));
+            Record record = Record.newRecord(topic, partition, n, null, Collections.singletonMap("off", n), null);
             records.add(record);
         });
         return records;

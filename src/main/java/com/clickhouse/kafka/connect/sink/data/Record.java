@@ -17,12 +17,15 @@ public class Record {
     private Map<String, Object> jsonMap = null;
     private List<Field> fields = null;
 
+    private SinkRecord sinkRecord = null;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(Record.class);
 
-    public Record(OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Object> jsonMap) {
+    public Record(OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Object> jsonMap, SinkRecord sinkRecord) {
         this.recordOffsetContainer = recordOffsetContainer;
         this.fields = fields;
         this.jsonMap = jsonMap;
+        this.sinkRecord = sinkRecord;
     }
 
     public String getTopicAndPartition() {
@@ -41,16 +44,20 @@ public class Record {
         return fields;
     }
 
+    public SinkRecord getSinkRecord() {
+        return sinkRecord;
+    }
+
     public static Record convert(SinkRecord sinkRecord) {
         String topic = sinkRecord.topic();
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         Struct struct = (Struct) sinkRecord.value();
         Map<String, Object> data = StructToJsonMap.toJsonMap((Struct) sinkRecord.value());
-        return new Record(new OffsetContainer(topic, partition, offset), struct.schema().fields(), data);
+        return new Record(new OffsetContainer(topic, partition, offset), struct.schema().fields(), data, sinkRecord);
     }
 
-    public static Record newRecord(String topic, int partition, long offset, List<Field> fields, Map<String, Object> jsonMap) {
-        return new Record(new OffsetContainer(topic, partition, offset), fields, jsonMap);
+    public static Record newRecord(String topic, int partition, long offset, List<Field> fields, Map<String, Object> jsonMap, SinkRecord sinkRecord) {
+        return new Record(new OffsetContainer(topic, partition, offset), fields, jsonMap, sinkRecord);
     }
 }
