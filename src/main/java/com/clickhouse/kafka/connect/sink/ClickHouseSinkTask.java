@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
+import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
 import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.State;
@@ -17,6 +18,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.sink.ErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 
@@ -51,7 +53,7 @@ public class ClickHouseSinkTask extends SinkTask {
         boolean isStarted = dbWriter.start(props);
         if (!isStarted)
             throw new RuntimeException("Connection to ClickHouse is not active.");
-        processing = new Processing(stateProvider, dbWriter, context);
+        processing = new Processing(stateProvider, dbWriter, createErrorReporter());
     }
 
 
@@ -85,4 +87,29 @@ public class ClickHouseSinkTask extends SinkTask {
     public void stop() {
 
     }
+
+
+    private ErrorReporter createErrorReporter() {
+        ErrorReporter result = devNullErrorReporter();
+        if (context != null) {
+            try {
+                ErrantRecordReporter errantRecordReporter = context.errantRecordReporter();
+                if (errantRecordReporter != null) {
+                    result = errantRecordReporter::report;
+                } else {
+                    LOGGER.info("Errant record reporter not configured.");
+                }
+            } catch (NoClassDefFoundError | NoSuchMethodError e) {
+                // Will occur in Connect runtimes earlier than 2.6
+                LOGGER.info("Kafka versions prior to 2.6 do not support the errant record reporter.");
+            }
+        }
+        return result;
+    }
+
+    static ErrorReporter devNullErrorReporter() {
+        return (record, e) -> {
+        };
+    }
+
 }

@@ -2,6 +2,8 @@ package com.clickhouse.kafka.connect.sink.processing;
 
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
+import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
+import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
@@ -17,18 +19,18 @@ public class Processing {
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
 
-    private SinkTaskContext context;
+    private ErrorReporter errorReporter = null;
 
     public Processing(StateProvider stateProvider, DBWriter dbWriter) {
         this.stateProvider = stateProvider;
         this.dbWriter = dbWriter;
-        this.context = null;
+        this.errorReporter = null;
     }
 
-    public Processing(StateProvider stateProvider, DBWriter dbWriter, SinkTaskContext context) {
+    public Processing(StateProvider stateProvider, DBWriter dbWriter, ErrorReporter errorReporter) {
         this.stateProvider = stateProvider;
         this.dbWriter = dbWriter;
-        this.context = context;
+        this.errorReporter = errorReporter;
     }
     /**
      * the logic is only for topic partition scoop
@@ -66,9 +68,9 @@ public class Processing {
                         .values()
         );
     }
-    private void sendTODlq(SinkRecord record, RuntimeException exception) {
-        if (context != null && context.errantRecordReporter() != null) {
-            context.errantRecordReporter().report(record, exception);
+    private void sendTODlq(Record record, Exception exception) {
+        if (errorReporter != null && record.getSinkRecord() != null) {
+            errorReporter.report(record.getSinkRecord(), exception);
         }
     }
 
@@ -107,7 +109,9 @@ public class Processing {
                         break;
                     case CONTAINS: // The state contains the given records
                         // Do nothing - write to dead letter queue
-                        records.forEach( r -> sendTODlq(record.getSinkRecord(), new RuntimeException()));
+                        records.forEach( r ->
+                                sendTODlq(record, new DuplicateException(String.format(record.getTopicAndPartition())))
+                        );
                         break;
                     case OVER_LAPPING:
                         // spit it to 2 inserts

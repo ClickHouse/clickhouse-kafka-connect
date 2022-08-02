@@ -7,10 +7,13 @@ import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
+import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
+import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
+import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +29,14 @@ public class ProcessingTest {
         // create records
         List<Record> records = new ArrayList<>(1000);
         LongStream.range(0, 1000).forEachOrdered(n -> {
-            Record record = Record.newRecord(topic, partition, n, null, Collections.singletonMap("off", n), null);
+            SinkRecord sr = new SinkRecord(topic,
+                    partition,
+                    null,
+                    null,
+                    null,
+                    null,
+                    0);
+            Record record = Record.newRecord(topic, partition, n, null, Collections.singletonMap("off", n), sr);
             records.add(record);
         });
         return records;
@@ -120,7 +130,6 @@ public class ProcessingTest {
         assertEquals(records.size(), dbWriter.recordsInserted());
         processing.doLogic(containsRecords);
         assertEquals(records.size(), dbWriter.recordsInserted());
-
     }
 
 
@@ -156,6 +165,25 @@ public class ProcessingTest {
         stateRecord.setState(State.BEFORE_PROCESSING);
         processing.doLogic(recordsTail);
         assertEquals(records.size(), dbWriter.recordsInserted());
+    }
+
+    @Test
+    @DisplayName("Processing with dlq test")
+    public void ProcessingWithDLQTest() {
+        InMemoryDLQ er = new InMemoryDLQ();
+        List<Record> records = createRecords("test", 1);
+        List<Record> containsRecords = records.subList(345,850);
+        StateProvider stateProvider = new InMemoryState();
+        DBWriter dbWriter = new InMemoryDBWriter();
+        Processing processing = new Processing(stateProvider, dbWriter, er);
+        processing.doLogic(records);
+        assertEquals(records.size(), dbWriter.recordsInserted());
+        StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
+        stateRecord.setState(State.BEFORE_PROCESSING);
+        processing.doLogic(containsRecords);
+        assertEquals(records.size(), dbWriter.recordsInserted());
+        // Check that we send the correct amount of records to DLQ
+        assertEquals(containsRecords.size(), er.size());
     }
 
 }
