@@ -49,6 +49,7 @@ repositories {
 
 extra.apply {
 
+    set("clickHouseDriverVersion", "0.3.2-patch10")
     set("kafkaVersion", "2.6.0")
     set("avroVersion", "1.9.2")
 
@@ -65,14 +66,22 @@ extra.apply {
     set("connectUtilsVersion", "0.4+")
 }
 
-dependencies {
-    implementation("org.apache.kafka:connect-api:2.6.0")
-    implementation("com.clickhouse:clickhouse-client:0.3.2-patch10")
-    implementation("com.clickhouse:clickhouse-http-client:0.3.2-patch10")
-    implementation("io.lettuce:lettuce-core:6.2.0.RELEASE")
+val clickhouseDependencies: Configuration by configurations.creating
 
+dependencies {
+    implementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
+    implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
+    implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
+    implementation("io.lettuce:lettuce-core:6.2.0.RELEASE")
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:1.7.36")
+
+    /*
+        Will in side the Confluent Archive
+     */
+    clickhouseDependencies("io.lettuce:lettuce-core:6.2.0.RELEASE")
+    clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
+    clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
 
 
     // Unit Tests
@@ -89,6 +98,8 @@ dependencies {
     testImplementation("ru.yandex.clickhouse:clickhouse-jdbc:0.3.2")
 
 }
+
+
 
 sourceSets.create("integrationTest") {
     java.srcDir("src/integrationTest/java")
@@ -149,3 +160,59 @@ tasks.withType<Test> {
         }
     })
 }
+
+/*
+ * ShadowJar
+ */
+tasks.register<ShadowJar>("confluentJar") {
+    archiveClassifier.set("confluent")
+    from(clickhouseDependencies, sourceSets.main.get().output)
+}
+
+/*
+tasks.register<ShadowJar>("allJar") {
+    archiveClassifier.set("all")
+    from(clickhouseDependencies, sourceSets.main.get().output)
+}
+*/
+
+// Confluent Archive
+val releaseDate by extra(DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDateTime.now()))
+val archiveFilename = "clickhouse-kafka-connect"
+tasks.register<Copy>("prepareConfluentArchive") {
+    group = "Confluent"
+    description = "Prepares the Confluent Archive ready for the hub"
+    dependsOn("confluentJar")
+
+    val baseDir = "$archiveFilename-${project.version}"
+    from("config/archive/manifest.json") {
+        expand(project.properties)
+        destinationDir = file("$buildDir/confluentArchive/$baseDir")
+    }
+
+    from("config/archive/assets") {
+        into("assets")
+    }
+
+    from("$buildDir/libs") {
+        include(listOf("${project.name}-${project.version}-confluent.jar"))
+        into("lib")
+    }
+
+    from(".") {
+        include(listOf("README.md", "LICENSE.txt"))
+        into("doc")
+    }
+}
+
+tasks.register<Zip>("createConfluentArchive") {
+    group = "Confluent"
+    description = "Creates the Confluent Archive zipfile to be uploaded to the Confluent Hub"
+    dependsOn("prepareConfluentArchive")
+    from(files("$buildDir/confluentArchive"))
+    archiveBaseName.set("")
+    archiveAppendix.set(archiveFilename)
+    archiveVersion.set(project.version.toString())
+    destinationDirectory.set(file("$buildDir/confluent"))
+}
+
