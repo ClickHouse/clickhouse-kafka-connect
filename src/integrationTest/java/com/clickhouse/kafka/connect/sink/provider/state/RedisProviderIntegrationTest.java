@@ -1,4 +1,4 @@
-package com.clickhouse.kafka.connect.sink.provider;
+package com.clickhouse.kafka.connect.sink.provider.state;
 
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
