@@ -27,18 +27,25 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     private String password;
 
+    private String sslEnabled;
+
 
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
     public static final String USERNAME = "username";
     public static final String PASSWORD = "password";
+
+    public static final String SSL_ENABLED = "ssl";
     private static final ConfigDef CONFIG_DEF = new ConfigDef()
             .define(HOSTNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "hostname")
             .define(PORT, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "port")
             .define(DATABASE, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "database")
             .define(USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "username")
-            .define(PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "password");
+            .define(PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "password")
+            .define(SSL_ENABLED, ConfigDef.Type.BOOLEAN, ConfigDef.Importance.LOW, "ssl enabled")
+
+            ;
 
     private String convertWithStream(Map<String, String> map) {
         String mapAsString = map.keySet().stream()
@@ -55,7 +62,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
         database = props.get(DATABASE);
         username = props.get(USERNAME);
         password = props.get(PASSWORD);
-
+        sslEnabled = props.get(SSL_ENABLED);
         // topics contains the name of the topics
 
     }

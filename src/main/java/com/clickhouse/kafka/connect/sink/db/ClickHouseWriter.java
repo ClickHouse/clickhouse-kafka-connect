@@ -29,10 +29,15 @@ public class ClickHouseWriter implements DBWriter{
         String database = props.get(ClickHouseSinkConnector.DATABASE);
         String username = props.get(ClickHouseSinkConnector.USERNAME);
         String password = props.get(ClickHouseSinkConnector.PASSWORD);
+        String sslEnabled = props.get(ClickHouseSinkConnector.SSL_ENABLED);
 
         LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s]", hostname, port, database, username, password));
 
-        String url = String.format("https://%s:%d/%s", hostname, port, database);
+        String protocol = "http";
+        if (Boolean.getBoolean(sslEnabled) == true )
+            protocol += "s";
+
+        String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);
 
         LOGGER.info("url: " + url);
 
@@ -64,26 +69,48 @@ public class ClickHouseWriter implements DBWriter{
     }
 
 
+    // TODO: we need to refactor that
+    private String convertHelper(Object v) {
+        if (v instanceof List) {
+            String value = ((List<?>) v).stream().map( vv -> vv.toString()).collect(Collectors.joining(",","[","]"));
+            return value;
+
+        } else {
+            return v.toString();
+        }
+    }
     private String convertWithStream(List<Object> values, String prefixChar, String suffixChar, String delimiterChar, String trimChar) {
-        return values.stream().map(v -> trimChar + v.toString() + trimChar).collect(Collectors.joining(delimiterChar, prefixChar, suffixChar));
+        return values
+                .stream().map (
+                    v ->
+                            trimChar + convertHelper(v) + trimChar
+                )
+                .collect(Collectors.joining(delimiterChar, prefixChar, suffixChar));
     }
 
     private String extractFields(List<Field> fields, String prefixChar, String suffixChar, String delimiterChar, String trimChar) {
         return fields.stream().map(v -> trimChar + v.name() + trimChar).collect(Collectors.joining(delimiterChar, prefixChar, suffixChar));
     }
 
+    public ClickHouseNode getServer() {
+        return server;
+    }
+
     @Override
     public void doInsert(List<Record> records) {
+        // TODO: here we will need to make refactor (not to use query & string , but we can make this optimization later )
         long s1 = System.currentTimeMillis();
 
         if ( records.isEmpty() )
             return;
         int batchSize = records.size();
-        LOGGER.info(String.format("Number of records to insert %d", batchSize));
+
         Record first = records.get(0);
+        String topic = first.getTopic();
+        LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
         // Build the insert SQL
         StringBuffer sb = new StringBuffer();
-        sb.append("INSERT INTO stock_v1 ");
+        sb.append(String.format("INSERT INTO %s ", topic));
         sb.append(extractFields(first.getFields(), "(", ")", ",", ""));
         sb.append(" VALUES ");
         LOGGER.info("sb {}", sb);

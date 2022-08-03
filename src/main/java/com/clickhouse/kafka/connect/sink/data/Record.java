@@ -48,6 +48,10 @@ public class Record {
         return sinkRecord;
     }
 
+    public String getTopic() {
+        return recordOffsetContainer.getTopic();
+    }
+
     public static Record convert(SinkRecord sinkRecord) {
         String topic = sinkRecord.topic();
         int partition = sinkRecord.kafkaPartition().intValue();
@@ -60,4 +64,5 @@ public class Record {
     public static Record newRecord(String topic, int partition, long offset, List<Field> fields, Map<String, Object> jsonMap, SinkRecord sinkRecord) {
         return new Record(new OffsetContainer(topic, partition, offset), fields, jsonMap, sinkRecord);
     }
+
 }

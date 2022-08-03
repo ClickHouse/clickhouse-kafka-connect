@@ -94,8 +94,12 @@ dependencies {
 
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:1.17.3")
-    //testImplementation("com.clickhouse:clickhouse-jdbc:0.3.2-patch10")
-    testImplementation("ru.yandex.clickhouse:clickhouse-jdbc:0.3.2")
+    testImplementation("org.testcontainers:kafka:1.17.3")
+    testImplementation("org.testcontainers:kafka:1.17.3")
+    testImplementation("com.clickhouse:clickhouse-jdbc:0.3.2-patch10:all")
+    //testImplementation("ru.yandex.clickhouse:clickhouse-jdbc:0.3.2")
+
+
 
 }
 
