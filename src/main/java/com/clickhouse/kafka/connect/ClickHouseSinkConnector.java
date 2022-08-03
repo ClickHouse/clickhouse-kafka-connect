@@ -43,7 +43,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
             .define(DATABASE, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "database")
             .define(USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "username")
             .define(PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "password")
-            .define(SSL_ENABLED, ConfigDef.Type.BOOLEAN, ConfigDef.Importance.LOW, "ssl enabled")
+            .define(SSL_ENABLED, ConfigDef.Type.BOOLEAN, ConfigDef.Importance.LOW, "ssl enabled default is false")
 
             ;
 
@@ -62,7 +62,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
         database = props.get(DATABASE);
         username = props.get(USERNAME);
         password = props.get(PASSWORD);
-        sslEnabled = props.get(SSL_ENABLED);
+        sslEnabled = props.getOrDefault(SSL_ENABLED,"false");
         // topics contains the name of the topics
 
     }
