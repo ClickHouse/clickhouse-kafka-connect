@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.data.Record;
 import jdk.jfr.Description;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -109,6 +110,12 @@ public class ClickHouseDbWriterTest {
         db = new ClickHouseContainer("clickhouse/clickhouse-server:22.5");
         db.start();
 
+    }
+
+
+    @Test
+    @Description("write to table according topic name to local ClickHouse")
+    public void WriteTableLocalAccordingTopicNameTest() {
         chw = new ClickHouseWriter();
         Map<String, String> props = new HashMap<>();
         props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
@@ -118,12 +125,37 @@ public class ClickHouseDbWriterTest {
         props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         chw.start(props);
+
+        List<Record> records = createRecords("table_name_test", 1);
+        // Let's create a table;
+        createTable("table_name_test");
+        chw.doInsert(records);
+
+        // Let's check that we inserted all records
+        assertEquals(records.size(), countRows("table_name_test"));
     }
 
+    //@Test
+    @Description("write to table according topic name to Cloud ClickHouse")
+    public void WriteTableCloudAccordingTopicNameTest() {
 
-    @Test
-    @Description("write to table according topic name")
-    public void WriteTableAccordingTopicNameTest() {
+        String hostname = System.getenv("HOST");
+        String port = System.getenv("PORT");
+        String password = System.getenv("PASSWORD");
+        // TODO: we need to ignore the test if there is not ENV variables
+        if (hostname == null || port == null || password == null)
+            throw new RuntimeException("Can not continue missing env variables.");
+
+        chw = new ClickHouseWriter();
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, hostname);
+        props.put(ClickHouseSinkConnector.PORT, port);
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, "default");
+        props.put(ClickHouseSinkConnector.PASSWORD, password);
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
+        chw.start(props);
+
         List<Record> records = createRecords("table_name_test", 1);
         // Let's create a table;
         createTable("table_name_test");

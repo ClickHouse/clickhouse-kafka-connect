@@ -97,6 +97,9 @@ dependencies {
     testImplementation("org.testcontainers:kafka:1.17.3")
     testImplementation("org.testcontainers:kafka:1.17.3")
     testImplementation("com.clickhouse:clickhouse-jdbc:0.3.2-patch10:all")
+    testImplementation("com.squareup.okhttp3:okhttp:4.10.0")
+    testImplementation("org.json:json:20220320")
+
     //testImplementation("ru.yandex.clickhouse:clickhouse-jdbc:0.3.2")
 
 
@@ -117,6 +120,7 @@ tasks.create("integrationTest", Test::class.java) {
     testClassesDirs = sourceSets["integrationTest"].output.classesDirs
     classpath = sourceSets["integrationTest"].runtimeClasspath
     outputs.upToDateWhen { false }
+    dependsOn("prepareConfluentArchive")
     mustRunAfter("test")
 }
 

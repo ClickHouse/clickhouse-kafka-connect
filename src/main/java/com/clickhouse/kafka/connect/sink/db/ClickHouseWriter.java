@@ -20,7 +20,7 @@ public class ClickHouseWriter implements DBWriter{
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
     private ClickHouseNode server = null;
-    private int pingTimeOut = 100;
+    private int pingTimeOut = 30*1000;
 
     @Override
     public boolean start(Map<String, String> props) {
@@ -31,10 +31,10 @@ public class ClickHouseWriter implements DBWriter{
         String password = props.get(ClickHouseSinkConnector.PASSWORD);
         String sslEnabled = props.get(ClickHouseSinkConnector.SSL_ENABLED);
 
-        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s]", hostname, port, database, username, password));
+        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, password, sslEnabled, pingTimeOut));
 
         String protocol = "http";
-        if (Boolean.getBoolean(sslEnabled) == true )
+        if (Boolean.valueOf(sslEnabled) == true )
             protocol += "s";
 
         String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);

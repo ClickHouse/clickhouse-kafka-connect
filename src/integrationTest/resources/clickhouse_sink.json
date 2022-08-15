@@ -1,0 +1,14 @@
+{
+  "name": "ClickHouseSinkConnectorConnector_0",
+  "config": {
+    "name": "ClickHouseSinkConnectorConnector_0",
+    "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "topics": "stock_gen_topic",
+    "hostname": "%s",
+    "port": "%s",
+    "database": "default",
+    "username": "default",
+    "password": "%s",
+    "ssl": "true"
+  }
+}

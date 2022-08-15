@@ -61,7 +61,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
         port = props.get(PORT);
         database = props.get(DATABASE);
         username = props.get(USERNAME);
-        password = props.get(PASSWORD);
+        password = props.get(PASSWORD).trim(); // TODO: We need to check how we make some filed not mandatory
         sslEnabled = props.getOrDefault(SSL_ENABLED,"false");
         // topics contains the name of the topics
 
@@ -96,6 +96,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
             else
                 config.put(PASSWORD, "");
 
+            config.put(SSL_ENABLED, sslEnabled);
             configs.add(config);
         }
         return configs;
