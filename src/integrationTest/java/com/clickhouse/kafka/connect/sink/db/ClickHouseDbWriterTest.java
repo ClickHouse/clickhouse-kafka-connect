@@ -88,6 +88,23 @@ public class ClickHouseDbWriterTest {
 
     }
 
+    private void dropTable(String tableName) {
+        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.connect(chw.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+
+
+                     .query(dropTable)
+                     .executeAndWait()) {
+            ClickHouseResponseSummary summary = response.getSummary();
+
+        } catch (ClickHouseException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+
     private int countRows(String topic) {
         String queryCount = String.format("select count(*) from %s", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
@@ -128,6 +145,7 @@ public class ClickHouseDbWriterTest {
 
         List<Record> records = createRecords("table_name_test", 1);
         // Let's create a table;
+        dropTable("table_name_test");
         createTable("table_name_test");
         chw.doInsert(records);
 
@@ -135,7 +153,7 @@ public class ClickHouseDbWriterTest {
         assertEquals(records.size(), countRows("table_name_test"));
     }
 
-    //@Test
+    @Test
     @Description("write to table according topic name to Cloud ClickHouse")
     public void WriteTableCloudAccordingTopicNameTest() {
 
@@ -158,6 +176,7 @@ public class ClickHouseDbWriterTest {
 
         List<Record> records = createRecords("table_name_test", 1);
         // Let's create a table;
+        dropTable("table_name_test");
         createTable("table_name_test");
         chw.doInsert(records);
 
@@ -167,7 +186,6 @@ public class ClickHouseDbWriterTest {
 
     @AfterAll
     protected static void tearDown() {
-
         db.stop();
     }
 }
