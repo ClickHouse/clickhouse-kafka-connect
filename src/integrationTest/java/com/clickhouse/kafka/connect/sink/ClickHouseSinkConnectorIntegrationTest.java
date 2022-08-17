@@ -1,8 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.*;
-import com.clickhouse.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import jdk.jfr.Description;
 import org.junit.jupiter.api.AfterAll;

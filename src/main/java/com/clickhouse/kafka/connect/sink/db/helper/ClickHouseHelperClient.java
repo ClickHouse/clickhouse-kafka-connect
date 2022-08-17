@@ -1,7 +1,6 @@
-package com.clickhouse.helper;
+package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
-import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,13 +68,18 @@ public class ClickHouseHelperClient {
     }
 
     public ClickHouseResponse query(String query) {
+        return query(query, null);
+    }
+
+    public ClickHouseResponse query(String query, ClickHouseFormat clickHouseFormat) {
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
-
+                     .format(clickHouseFormat)
                      .query(query)
                      .executeAndWait()) {
+            response.getSummary();
             return response;
         } catch (ClickHouseException e) {
             e.printStackTrace();

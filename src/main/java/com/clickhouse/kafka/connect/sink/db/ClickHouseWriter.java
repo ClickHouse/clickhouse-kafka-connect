@@ -125,9 +125,9 @@ public class ClickHouseWriter implements DBWriter{
         }
         String insertStr = sb.deleteCharAt(sb.length() - 1).toString();
         long s2 = System.currentTimeMillis();
-
+        //ClickHouseClient.load(server, ClickHouseFormat.RowBinaryWithNamesAndTypes)
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
+             ClickHouseResponse response = client.connect(server)  // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(insertStr)
