@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect;
 
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
@@ -37,15 +38,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
     public static final String PASSWORD = "password";
 
     public static final String SSL_ENABLED = "ssl";
-    private static final ConfigDef CONFIG_DEF = new ConfigDef()
-            .define(HOSTNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "hostname")
-            .define(PORT, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "port")
-            .define(DATABASE, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "database")
-            .define(USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "username")
-            .define(PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.LOW, "password")
-            .define(SSL_ENABLED, ConfigDef.Type.BOOLEAN, ConfigDef.Importance.LOW, "ssl enabled default is false")
-
-            ;
+    private static final ConfigDef CONFIG_DEF = ClickHouseSinkConfig.CONFIG;
 
     private String convertWithStream(Map<String, String> map) {
         String mapAsString = map.keySet().stream()
