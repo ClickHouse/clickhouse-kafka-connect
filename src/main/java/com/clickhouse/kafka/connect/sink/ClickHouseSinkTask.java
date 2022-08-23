@@ -18,6 +18,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.ErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
@@ -46,11 +47,17 @@ public class ClickHouseSinkTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         LOGGER.info("start SinkTask: ");
+        ClickHouseSinkConfig clickHouseSinkConfig;
+        try {
+            clickHouseSinkConfig = new ClickHouseSinkConfig(props);
+        } catch (Exception e) {
+            throw new ConnectException("Failed to start new task" , e);
+        }
 
         stateProvider = new InMemoryState();
         dbWriter = new ClickHouseWriter();
         // Add dead letter queue
-        boolean isStarted = dbWriter.start(props);
+        boolean isStarted = dbWriter.start(clickHouseSinkConfig);
         if (!isStarted)
             throw new RuntimeException("Connection to ClickHouse is not active.");
         processing = new Processing(stateProvider, dbWriter, createErrorReporter());

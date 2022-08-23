@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import jdk.jfr.Description;
 import org.apache.kafka.connect.data.Field;
@@ -19,7 +20,6 @@ import java.util.stream.LongStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ClickHouseDbWriterTest {
-
 
     private static ClickHouseContainer db = null;
     private static ClickHouseWriter chw = null;
@@ -141,7 +141,9 @@ public class ClickHouseDbWriterTest {
         props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
         props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-        chw.start(props);
+
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
+        chw.start(csc);
 
         List<Record> records = createRecords("table_name_test", 1);
         // Let's create a table;
@@ -172,7 +174,9 @@ public class ClickHouseDbWriterTest {
         props.put(ClickHouseSinkConnector.USERNAME, "default");
         props.put(ClickHouseSinkConnector.PASSWORD, password);
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
-        chw.start(props);
+
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
+        chw.start(csc);
 
         List<Record> records = createRecords("table_name_test", 1);
         // Let's create a table;

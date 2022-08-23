@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect;
 
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
+import org.apache.kafka.common.config.Config;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.sink.SinkConnector;
@@ -30,6 +31,8 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     private String sslEnabled;
 
+    private int timeout;
+
 
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
@@ -39,6 +42,9 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     public static final String SSL_ENABLED = "ssl";
     private static final ConfigDef CONFIG_DEF = ClickHouseSinkConfig.CONFIG;
+
+
+    private Map<String, String> settings;
 
     private String convertWithStream(Map<String, String> map) {
         String mapAsString = map.keySet().stream()
@@ -50,6 +56,8 @@ public class ClickHouseSinkConnector extends SinkConnector {
     @Override
     public void start(Map<String, String> props) {
         LOGGER.info("start SinkConnect: ");
+        settings = props;
+
         hostname = props.get(HOSTNAME);
         port = props.get(PORT);
         database = props.get(DATABASE);
@@ -69,6 +77,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
     public List<Map<String, String>> taskConfigs(int maxTasks) {
         ArrayList<Map<String, String>> configs = new ArrayList<>();
         for (int i = 0; i < maxTasks; i++) {
+
             Map<String, String> config = new HashMap<>();
             if (hostname != null)
                 config.put(HOSTNAME, hostname);
@@ -91,6 +100,8 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
             config.put(SSL_ENABLED, sslEnabled);
             configs.add(config);
+
+            //configs.add(settings);
         }
         return configs;
     }
@@ -113,5 +124,19 @@ public class ClickHouseSinkConnector extends SinkConnector {
     @Override
     public String version() {
         return "0.0.1";
+    }
+
+    @Override
+    public Config validate(Map<String, String> connectorConfigs) {
+        Config config = super.validate(connectorConfigs);
+        ClickHouseSinkConfig sinkConfig;
+        try {
+            sinkConfig = new ClickHouseSinkConfig(connectorConfigs);
+        } catch (Exception e) {
+            return config;
+        }
+        // TODO: run validation here
+
+        return config;
     }
 }

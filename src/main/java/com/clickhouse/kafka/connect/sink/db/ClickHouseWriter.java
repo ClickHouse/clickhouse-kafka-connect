@@ -2,8 +2,10 @@ package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -19,42 +21,59 @@ public class ClickHouseWriter implements DBWriter{
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
-    private ClickHouseNode server = null;
+    //private ClickHouseNode server = null;
     private int pingTimeOut = 30*1000;
 
+    private ClickHouseHelperClient chc = null;
+
     @Override
-    public boolean start(Map<String, String> props) {
-        String hostname = props.get(ClickHouseSinkConnector.HOSTNAME);
-        int port = Integer.valueOf(props.get(ClickHouseSinkConnector.PORT)).intValue();
-        String database = props.get(ClickHouseSinkConnector.DATABASE);
-        String username = props.get(ClickHouseSinkConnector.USERNAME);
-        String password = props.get(ClickHouseSinkConnector.PASSWORD);
-        String sslEnabled = props.get(ClickHouseSinkConnector.SSL_ENABLED);
+    public boolean start(ClickHouseSinkConfig csc) {
+        String hostname = csc.getHostname();
+        int port = csc.getPort();
+        String database = csc.getDatabase();
+        String username = csc.getUsername();
+        String password = csc.getPassword();
+        boolean sslEnabled = csc.isSslEnabled();
+        int timeout = csc.getTimeout();
 
         LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, password, sslEnabled, pingTimeOut));
 
-        String protocol = "http";
-        if (Boolean.valueOf(sslEnabled) == true )
-            protocol += "s";
-
-        String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);
-
-        LOGGER.info("url: " + url);
-
-        if (username != null && password != null) {
-            LOGGER.info(String.format("Adding username [%s] password [%s]  ", username, password));
-            Map<String, String> options = new HashMap<>();
-            options.put("user", username);
-            options.put("password", password);
-            server = ClickHouseNode.of(url, options);
-        } else {
-            server = ClickHouseNode.of(url);
-        }
+        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port)
+                .setDatabase(database)
+                .setUsername(username)
+                .setPassword(password)
+                .sslEnable(sslEnabled)
+                .setTimeout(timeout)
+                .build();
 
 
-        ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+//        String protocol = "http";
+//        if (sslEnabled == true )
+//            protocol += "s";
+//
+//        String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);
+//
+//        LOGGER.info("url: " + url);
+//
+//        if (username != null && password != null) {
+//            LOGGER.info(String.format("Adding username [%s] password [%s]  ", username, password));
+//            Map<String, String> options = new HashMap<>();
+//            options.put("user", username);
+//            options.put("password", password);
+//            this.server = ClickHouseNode.of(url, options);
+//        } else {
+//            this.server = ClickHouseNode.of(url);
+//        }
+//
+//
+//        ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
 
-        if (clientPing.ping(server, pingTimeOut)) {
+//        if (clientPing.ping(server, pingTimeOut)) {
+//            LOGGER.info("Ping is successful.");
+//            return true;
+//        }
+
+        if (chc.ping()) {
             LOGGER.info("Ping is successful.");
             return true;
         }
@@ -93,7 +112,7 @@ public class ClickHouseWriter implements DBWriter{
     }
 
     public ClickHouseNode getServer() {
-        return server;
+        return chc.getServer();
     }
 
     @Override
@@ -127,7 +146,7 @@ public class ClickHouseWriter implements DBWriter{
         long s2 = System.currentTimeMillis();
         //ClickHouseClient.load(server, ClickHouseFormat.RowBinaryWithNamesAndTypes)
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(server)  // or client.connect(endpoints)
+             ClickHouseResponse response = client.connect(chc.getServer())  // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(insertStr)
