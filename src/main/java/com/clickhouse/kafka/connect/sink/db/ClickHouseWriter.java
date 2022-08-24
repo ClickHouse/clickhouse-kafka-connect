@@ -46,33 +46,6 @@ public class ClickHouseWriter implements DBWriter{
                 .setTimeout(timeout)
                 .build();
 
-
-//        String protocol = "http";
-//        if (sslEnabled == true )
-//            protocol += "s";
-//
-//        String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);
-//
-//        LOGGER.info("url: " + url);
-//
-//        if (username != null && password != null) {
-//            LOGGER.info(String.format("Adding username [%s] password [%s]  ", username, password));
-//            Map<String, String> options = new HashMap<>();
-//            options.put("user", username);
-//            options.put("password", password);
-//            this.server = ClickHouseNode.of(url, options);
-//        } else {
-//            this.server = ClickHouseNode.of(url);
-//        }
-//
-//
-//        ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-
-//        if (clientPing.ping(server, pingTimeOut)) {
-//            LOGGER.info("Ping is successful.");
-//            return true;
-//        }
-
         if (chc.ping()) {
             LOGGER.info("Ping is successful.");
             return true;

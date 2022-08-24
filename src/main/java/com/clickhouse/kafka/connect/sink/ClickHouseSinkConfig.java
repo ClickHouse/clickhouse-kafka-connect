@@ -17,7 +17,7 @@ public class ClickHouseSinkConfig {
     public static final String TIMEOUT = "timeout";
 
 
-
+    public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
     public static final Integer portDefault = Integer.valueOf(8443);
     public static final String usernameDefault = "default";
@@ -69,7 +69,7 @@ public class ClickHouseSinkConfig {
         username = props.getOrDefault(USERNAME, usernameDefault);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
         sslEnabled = Boolean.valueOf(props.getOrDefault(SSL_ENABLED,"false")).booleanValue();
-        timeout = Integer.valueOf(props.getOrDefault(TIMEOUT, "30")).intValue() * 1000; // multiple in 1000 milli
+        timeout = Integer.valueOf(props.getOrDefault(TIMEOUT, timeoutDefault.toString())).intValue() * MILLI_IN_A_SEC; // multiple in 1000 milli
     }
 
     public static final ConfigDef CONFIG = createConfigDef();
@@ -126,16 +126,16 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
-                "Clickhouse username password.");
+                "Password for authentication.");
         configDef.define(SSL_ENABLED,
                 ConfigDef.Type.BOOLEAN,
                 sslDefault,
                 ConfigDef.Importance.LOW,
-                "ssl enabled default is false",
+                "enabled SSL. default: false",
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
-                "if using ssl please use true.");
+                "enable SSL.");
         configDef.define(TIMEOUT,
                 ConfigDef.Type.INT,
                 timeoutDefault,

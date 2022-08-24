@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +18,7 @@ public class ClickHouseHelperClient {
     private String database = "default";
     private String password = "";
     private boolean sslEnabled = false;
-    private int timeout = 30*1000;
+    private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
 
     private ClickHouseNode server = null;
 
@@ -55,12 +56,12 @@ public class ClickHouseHelperClient {
 
     public boolean ping() {
         ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-        LOGGER.info(String.format("server [%s] , timeout [%d]", server, timeout));
+        LOGGER.debug(String.format("server [%s] , timeout [%d]", server, timeout));
         if (clientPing.ping(server, timeout)) {
             LOGGER.info("Ping is successful.");
             return true;
         }
-        LOGGER.info("unable to ping to clickhouse server. ");
+        LOGGER.warn("unable to ping to clickhouse server. ");
         return false;
     }
 
@@ -98,7 +99,7 @@ public class ClickHouseHelperClient {
         private String password = "";
         private boolean sslEnabled = false;
 
-        private int timeout = 30*1000;
+        private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
 
         public ClickHouseClientBuilder(String hostname, int port) {
             this.hostname = hostname;
