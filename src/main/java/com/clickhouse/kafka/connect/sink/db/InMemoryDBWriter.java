@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db;
 
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Record;
 
 import java.util.ArrayList;
@@ -18,7 +19,7 @@ public class InMemoryDBWriter implements DBWriter {
         this.recordMap = new HashMap<>();
     }
     @Override
-    public boolean start(Map<String, String> props) {
+    public boolean start(ClickHouseSinkConfig csc) {
         return true;
     }
 

@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,8 +18,7 @@ public class ClickHouseHelperClient {
     private String database = "default";
     private String password = "";
     private boolean sslEnabled = false;
-
-    private int pingTimeOut = 30*1000;
+    private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
 
     private ClickHouseNode server = null;
 
@@ -29,6 +29,7 @@ public class ClickHouseHelperClient {
         this.password = builder.password;
         this.database = builder.database;
         this.sslEnabled = builder.sslEnabled;
+        this.timeout = builder.timeout;
         this.server = create();
     }
 
@@ -55,11 +56,12 @@ public class ClickHouseHelperClient {
 
     public boolean ping() {
         ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-
-        if (clientPing.ping(server, pingTimeOut)) {
+        LOGGER.debug(String.format("server [%s] , timeout [%d]", server, timeout));
+        if (clientPing.ping(server, timeout)) {
             LOGGER.info("Ping is successful.");
             return true;
         }
+        LOGGER.warn("unable to ping to clickhouse server. ");
         return false;
     }
 
@@ -97,6 +99,8 @@ public class ClickHouseHelperClient {
         private String password = "";
         private boolean sslEnabled = false;
 
+        private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
+
         public ClickHouseClientBuilder(String hostname, int port) {
             this.hostname = hostname;
             this.port = port;
@@ -120,6 +124,11 @@ public class ClickHouseHelperClient {
 
         public ClickHouseClientBuilder sslEnable(boolean sslEnabled) {
             this.sslEnabled = sslEnabled;
+            return this;
+        }
+
+        public ClickHouseClientBuilder setTimeout(int timeout) {
+            this.timeout = timeout;
             return this;
         }
 
