@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
@@ -21,13 +22,12 @@ public class ClickHouseWriter implements DBWriter{
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
-    //private ClickHouseNode server = null;
-    private int pingTimeOut = 30*1000;
-
     private ClickHouseHelperClient chc = null;
+    private ClickHouseSinkConfig csc = null;
 
     @Override
     public boolean start(ClickHouseSinkConfig csc) {
+        this.csc = csc;
         String hostname = csc.getHostname();
         int port = csc.getPort();
         String database = csc.getDatabase();
@@ -36,7 +36,7 @@ public class ClickHouseWriter implements DBWriter{
         boolean sslEnabled = csc.isSslEnabled();
         int timeout = csc.getTimeout();
 
-        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, password, sslEnabled, pingTimeOut));
+        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, password, sslEnabled, timeout));
 
         chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port)
                 .setDatabase(database)
@@ -121,6 +121,8 @@ public class ClickHouseWriter implements DBWriter{
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(chc.getServer())  // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
+                     .option(ClickHouseClientOption.CONNECTION_TIMEOUT, csc.getTimeout())
+                     .option(ClickHouseClientOption.SOCKET_TIMEOUT, csc.getTimeout())
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(insertStr)
                      .executeAndWait()) {
@@ -129,8 +131,8 @@ public class ClickHouseWriter implements DBWriter{
             LOGGER.info("totalRows {}", totalRows);
 
         } catch (ClickHouseException e) {
-            LOGGER.error(insertStr);
-            LOGGER.error("INSERT ", e);
+            LOGGER.debug(insertStr);
+            LOGGER.error(String.format("INSERT ErrorCode %d ", e.getErrorCode()), e);
             throw new RuntimeException(e);
         }
         long s3 = System.currentTimeMillis();

@@ -14,6 +14,7 @@ import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.sink.state.provider.RedisStateProvider;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.data.Field;
@@ -32,12 +33,8 @@ import java.util.stream.Collectors;
 public class ClickHouseSinkTask extends SinkTask {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTask.class);
-    private Processing processing = null;
-    private StateProvider stateProvider = null;
-    private DBWriter dbWriter = null;
 
-
-    private boolean singleTopic = true;
+    private ProxySinkTask proxySinkTask;
 
     @Override
     public String version() {
@@ -54,34 +51,13 @@ public class ClickHouseSinkTask extends SinkTask {
             throw new ConnectException("Failed to start new task" , e);
         }
 
-        stateProvider = new InMemoryState();
-        dbWriter = new ClickHouseWriter();
-        // Add dead letter queue
-        boolean isStarted = dbWriter.start(clickHouseSinkConfig);
-        if (!isStarted)
-            throw new RuntimeException("Connection to ClickHouse is not active.");
-        processing = new Processing(stateProvider, dbWriter, createErrorReporter());
+        this.proxySinkTask = new ProxySinkTask(clickHouseSinkConfig, createErrorReporter());
     }
 
 
     @Override
     public void put(Collection<SinkRecord> records) {
-        if (records.isEmpty()) {
-            LOGGER.info("No records in put API");
-            return;
-        }
-        // Group by topic & partition
-        LOGGER.info(String.format("Got %d records from put API.", records.size()));
-        Map<String, List<Record>> dataRecords = records.stream()
-                .map(v -> Record.convert(v))
-                .collect(Collectors.groupingBy(Record::getTopicAndPartition));
-
-        // TODO - Multi process
-        for (String topicAndPartition : dataRecords.keySet()) {
-            // Running on etch topic & partition
-            List<Record> rec = dataRecords.get(topicAndPartition);
-            processing.doLogic(rec);
-        }
+        this.proxySinkTask.put(records);
     }
 
     // TODO: can be removed ss
@@ -92,7 +68,7 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void stop() {
-
+        this.proxySinkTask.stop();
     }
 
 
