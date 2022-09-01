@@ -19,9 +19,8 @@ public class ClickHouseHelperClient {
     private String password = "";
     private boolean sslEnabled = false;
     private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
-
     private ClickHouseNode server = null;
-
+    private int retry;
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
         this.port = builder.port;
@@ -30,6 +29,7 @@ public class ClickHouseHelperClient {
         this.database = builder.database;
         this.sslEnabled = builder.sslEnabled;
         this.timeout = builder.timeout;
+        this.retry = builder.retry;
         this.server = create();
     }
 
@@ -57,9 +57,15 @@ public class ClickHouseHelperClient {
     public boolean ping() {
         ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
         LOGGER.debug(String.format("server [%s] , timeout [%d]", server, timeout));
-        if (clientPing.ping(server, timeout)) {
-            LOGGER.info("Ping is successful.");
-            return true;
+        int retryCount = 0;
+
+        while (retryCount < retry) {
+            if (clientPing.ping(server, timeout)) {
+                LOGGER.info("Ping is successful.");
+                return true;
+            }
+            retryCount++;
+            LOGGER.warn(String.format("Ping retry %d out of %d", retryCount, retry));
         }
         LOGGER.warn("unable to ping to clickhouse server. ");
         return false;
@@ -74,20 +80,25 @@ public class ClickHouseHelperClient {
     }
 
     public ClickHouseResponse query(String query, ClickHouseFormat clickHouseFormat) {
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
+        int retryCount = 0;
+        ClickHouseException ce = null;
+        while (retryCount < retry) {
+            try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+                 ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
+                         // you'll have to parse response manually if using a different format
 
-                     .format(clickHouseFormat)
-                     .query(query)
-                     .executeAndWait()) {
-            response.getSummary();
-            return response;
-        } catch (ClickHouseException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
+                         .format(clickHouseFormat)
+                         .query(query)
+                         .executeAndWait()) {
+                response.getSummary();
+                return response;
+            } catch (ClickHouseException e) {
+                retryCount++;
+                LOGGER.warn(String.format("Query retry %d out of %d", retryCount, retry), e);
+                ce = e;
+            }
         }
-
+        throw new RuntimeException(ce);
     }
 
 
@@ -98,9 +109,8 @@ public class ClickHouseHelperClient {
         private String database = "default";
         private String password = "";
         private boolean sslEnabled = false;
-
         private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
-
+        private int retry = ClickHouseSinkConfig.retryDefault;
         public ClickHouseClientBuilder(String hostname, int port) {
             this.hostname = hostname;
             this.port = port;
@@ -129,6 +139,11 @@ public class ClickHouseHelperClient {
 
         public ClickHouseClientBuilder setTimeout(int timeout) {
             this.timeout = timeout;
+            return this;
+        }
+
+        public ClickHouseClientBuilder setRetry(int retry) {
+            this.retry = retry;
             return this;
         }
 
