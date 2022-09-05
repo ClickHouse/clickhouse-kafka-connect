@@ -121,7 +121,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
 
     private void dropTable(String tableName) {
-        String dropTable = String.format("DROP TABLE %s", tableName);
+        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
         chc.query(dropTable);
     }
     private void createTable(String tableName) {
