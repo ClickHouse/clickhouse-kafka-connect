@@ -14,8 +14,8 @@ public class ClickHouseSinkConfig {
     public static final String USERNAME = "username";
     public static final String PASSWORD = "password";
     public static final String SSL_ENABLED = "ssl";
-    public static final String TIMEOUT = "timeout";
-    public static final String RETRY = "retry";
+    public static final String TIMEOUT_SECONDS = "timeoutSeconds";
+    public static final String RETRY_COUNT = "retryCount";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -23,8 +23,8 @@ public class ClickHouseSinkConfig {
     public static final String usernameDefault = "default";
     public static final String passwordDefault = "";
     public static final Boolean sslDefault = Boolean.TRUE;
-    public static final Integer timeoutDefault = Integer.valueOf(30);
-    public static final Integer retryDefault = Integer.valueOf(3);
+    public static final Integer timeoutSecondsDefault = Integer.valueOf(30);
+    public static final Integer retryCountDefault = Integer.valueOf(3);
     public enum StateStores {
         NONE,
         IN_MEMORY,
@@ -72,8 +72,8 @@ public class ClickHouseSinkConfig {
         username = props.getOrDefault(USERNAME, usernameDefault);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
         sslEnabled = Boolean.valueOf(props.getOrDefault(SSL_ENABLED,"false")).booleanValue();
-        timeout = Integer.valueOf(props.getOrDefault(TIMEOUT, timeoutDefault.toString())).intValue() * MILLI_IN_A_SEC; // multiple in 1000 milli
-        retry = Integer.valueOf(props.getOrDefault(RETRY, retryDefault.toString())).intValue();
+        timeout = Integer.valueOf(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())).intValue() * MILLI_IN_A_SEC; // multiple in 1000 milli
+        retry = Integer.valueOf(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString())).intValue();
     }
 
     public static final ConfigDef CONFIG = createConfigDef();
@@ -140,9 +140,9 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable SSL.");
-        configDef.define(TIMEOUT,
+        configDef.define(TIMEOUT_SECONDS,
                 ConfigDef.Type.INT,
-                timeoutDefault,
+                timeoutSecondsDefault,
                 ConfigDef.Range.between(0, 60 * 10),
                 ConfigDef.Importance.LOW,
                 "clickhouse driver timeout in sec",
@@ -150,9 +150,9 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "ClickHouse driver timeout");
-        configDef.define(RETRY,
+        configDef.define(RETRY_COUNT,
                 ConfigDef.Type.INT,
-                retryDefault,
+                retryCountDefault,
                 ConfigDef.Range.between(3, 10),
                 ConfigDef.Importance.LOW,
                 "clickhouse driver retry ",

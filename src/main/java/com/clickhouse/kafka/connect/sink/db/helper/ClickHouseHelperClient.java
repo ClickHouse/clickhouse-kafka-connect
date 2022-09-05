@@ -18,7 +18,7 @@ public class ClickHouseHelperClient {
     private String database = "default";
     private String password = "";
     private boolean sslEnabled = false;
-    private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
+    private int timeout = ClickHouseSinkConfig.timeoutSecondsDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
     private ClickHouseNode server = null;
     private int retry;
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
@@ -109,8 +109,8 @@ public class ClickHouseHelperClient {
         private String database = "default";
         private String password = "";
         private boolean sslEnabled = false;
-        private int timeout = ClickHouseSinkConfig.timeoutDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
-        private int retry = ClickHouseSinkConfig.retryDefault;
+        private int timeout = ClickHouseSinkConfig.timeoutSecondsDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
+        private int retry = ClickHouseSinkConfig.retryCountDefault;
         public ClickHouseClientBuilder(String hostname, int port) {
             this.hostname = hostname;
             this.port = port;
