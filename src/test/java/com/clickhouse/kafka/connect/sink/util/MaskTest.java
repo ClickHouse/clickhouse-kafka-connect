@@ -25,7 +25,7 @@ public class MaskTest {
     }
 
     @Test
-    @DisplayName("MaskPasswordBiggerThan6")
+    @DisplayName("MaskPasswordSmallerThan6")
     public void MaskPasswordSmallerThan6() {
         String password = "DATBw";
         String maskedPassword = "*****";
