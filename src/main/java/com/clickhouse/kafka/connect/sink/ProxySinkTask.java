@@ -52,13 +52,13 @@ public class ProxySinkTask {
 
     public void put(final Collection<SinkRecord> records) {
         if (records.isEmpty()) {
-            LOGGER.info("No records in put API");
+            LOGGER.trace("No records send to SinkTask");
             return;
         }
         // Group by topic & partition
         Timer taskTime = Timer.start();
         statistics.receivedRecords(records.size());
-        LOGGER.info(String.format("Got %d records from put API.", records.size()));
+        LOGGER.trace(String.format("Got %d records from put API.", records.size()));
         Timer processingTime = Timer.start();
         Map<String, List<Record>> dataRecords = records.stream()
                 .map(v -> Record.convert(v))

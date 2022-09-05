@@ -7,6 +7,7 @@ import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.util.Mask;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -36,7 +37,7 @@ public class ClickHouseWriter implements DBWriter{
         boolean sslEnabled = csc.isSslEnabled();
         int timeout = csc.getTimeout();
 
-        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, password, sslEnabled, timeout));
+        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, Mask.passwordMask(password), sslEnabled, timeout));
 
         chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port)
                 .setDatabase(database)

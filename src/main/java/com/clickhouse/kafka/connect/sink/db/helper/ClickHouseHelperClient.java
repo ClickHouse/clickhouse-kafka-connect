@@ -67,7 +67,7 @@ public class ClickHouseHelperClient {
             retryCount++;
             LOGGER.warn(String.format("Ping retry %d out of %d", retryCount, retry));
         }
-        LOGGER.warn("unable to ping to clickhouse server. ");
+        LOGGER.error("unable to ping to clickhouse server. ");
         return false;
     }
 
