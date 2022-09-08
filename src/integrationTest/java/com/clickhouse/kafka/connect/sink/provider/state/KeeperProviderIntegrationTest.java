@@ -35,7 +35,7 @@ public class KeeperProviderIntegrationTest {
     @Description("Keeper set get test")
     public void setGetTest() {
 
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", "connect_state");
+        String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
         chc.query(dropTable);
         ksp = new KeeperStateProvider(chc);
 
@@ -57,7 +57,7 @@ public class KeeperProviderIntegrationTest {
     @Description("Keeper set update get test")
     public void setUpdateGetTest() {
 
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", "connect_state");
+        String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
         chc.query(dropTable);
         ksp = new KeeperStateProvider(chc);
 
