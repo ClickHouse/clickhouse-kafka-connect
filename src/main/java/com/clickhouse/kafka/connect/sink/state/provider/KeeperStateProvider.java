@@ -7,6 +7,7 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
+import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,7 +46,7 @@ public class KeeperStateProvider implements StateProvider {
         LOGGER.info("url: " + url);
 
         if (username != null && password != null) {
-            LOGGER.info(String.format("Adding username [%s] password [%s]  ", username, password));
+            LOGGER.info(String.format("Adding username [%s] password [%s]  ", username, Mask.passwordMask(password)));
             Map<String, String> options = new HashMap<>();
             options.put("user", username);
             options.put("password", password);
