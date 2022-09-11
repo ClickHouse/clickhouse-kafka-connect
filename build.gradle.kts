@@ -208,7 +208,7 @@ tasks.register<Copy>("prepareConfluentArchive") {
     }
 
     from(".") {
-        include(listOf("README.md", "LICENSE.txt"))
+        include(listOf("README.md", "LICENSE"))
         into("doc")
     }
 }
