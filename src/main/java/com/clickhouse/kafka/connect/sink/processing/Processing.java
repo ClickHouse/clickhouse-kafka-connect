@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.processing;
 
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
@@ -10,12 +11,15 @@ import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTaskContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class Processing {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Processing.class);
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
 
@@ -81,7 +85,7 @@ public class Processing {
         String topic = record.getRecordOffsetContainer().getTopic();
         int partition = record.getRecordOffsetContainer().getPartition();
         RangeContainer rangeContainer = extractRange(records, topic, partition);
-
+        LOGGER.info(String.format("doLogic Topic [%s] Partition [%d] offset [%d:%d]", topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset()));
         // State                  Actual
         // [10 , 19]              [10, 19] ==> same
         // [10 , 19]              [10, 30] ==> overlapping [10,19], [20, 30]
