@@ -17,17 +17,20 @@ import org.slf4j.LoggerFactory;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class ProxySinkTask {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProxySinkTask.class);
+    private static final AtomicInteger NEXT_ID = new AtomicInteger();
     private Processing processing = null;
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
 
 
     private final SinkTaskStatistics statistics;
+    private int id = NEXT_ID.getAndAdd(1);
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
         this.stateProvider = new InMemoryState();
@@ -43,7 +46,7 @@ public class ProxySinkTask {
     }
 
     private String getMBeanNAme() {
-        return "com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask";
+        return "com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask" + id;
     }
 
     public void stop() {
