@@ -157,13 +157,13 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
-    @Description("stockGenTest")
-    public void stockGenTest() throws IOException {
+    @Description("stockGenSingleTask")
+    public void stockGenSingleTaskTest() throws IOException {
 
         String topicName = "stock_gen_topic";
         String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
 
-        confluentPlatform.createTopic("stock_gen_topic");
+        confluentPlatform.createTopic("stock_gen_topic", 1);
         confluentPlatform.createConnect(payloadDataGen);
 
         // Now let's create the correct table & configure Sink to insert data to ClickHouse

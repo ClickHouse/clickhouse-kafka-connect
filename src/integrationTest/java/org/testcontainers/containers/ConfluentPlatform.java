@@ -253,12 +253,12 @@ public class ConfluentPlatform {
 
 //    A link for `rest proxy` http api
 //    https://docs.confluent.io/platform/current/kafka-rest/api.html
-    public boolean createTopic(String topicName) {
+    public boolean createTopic(String topicName, int partitions) {
         String restProxyEndpoint = getRestProxyEndpoint();
         OkHttpClient client = new OkHttpClient();
         String kafkaTopicEndpoint = String.format("%s/v3/clusters/%s/topics", restProxyEndpoint, clusterId);
         MediaType JSON = MediaType.get("application/json; charset=utf-8");
-        String json = String.format("{\"topic_name\":\"%s\",\"partitions_count\":1,\"configs\":[]}", topicName);
+        String json = String.format("{\"topic_name\":\"%s\",\"partitions_count\":%d,\"configs\":[]}", topicName, partitions);
         RequestBody body = RequestBody.create(json, JSON);
         Request request = new Request.Builder()
             .url(kafkaTopicEndpoint)
