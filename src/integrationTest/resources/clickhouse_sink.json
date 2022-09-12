@@ -3,7 +3,8 @@
   "config": {
     "name": "ClickHouseSinkConnectorConnector_0",
     "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
-    "topics": "stock_gen_topic",
+    "tasks.max": "%d",
+    "topics": "%s",
     "hostname": "%s",
     "port": "%s",
     "database": "default",

@@ -160,25 +160,26 @@ public class ClickHouseSinkConnectorIntegrationTest {
     @Description("stockGenSingleTask")
     public void stockGenSingleTaskTest() throws IOException {
 
-        String topicName = "stock_gen_topic";
+        String topicName = "stock_gen_topic_single_task";
+        int parCount = 1;
         String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
 
-        confluentPlatform.createTopic("stock_gen_topic", 1);
-        confluentPlatform.createConnect(payloadDataGen);
+        confluentPlatform.createTopic(topicName, 1);
+        confluentPlatform.createConnect(String.format(payloadDataGen, parCount, topicName));
 
         // Now let's create the correct table & configure Sink to insert data to ClickHouse
-        dropTable("stock_gen_topic");
-        createTable("stock_gen_topic");
+        dropTable(topicName);
+        createTable(topicName);
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
 
         sleep(5 * 1000);
 
-        confluentPlatform.createConnect(String.format(payloadClickHouseSink, hostname, port, password));
+        confluentPlatform.createConnect(String.format(payloadClickHouseSink, parCount, topicName, hostname, port, password));
 
         long count = 0;
         while (count < 10000) {
             sleep(5*1000);
-            long endOffset = confluentPlatform.getOffset("stock_gen_topic", 0 );
+            long endOffset = confluentPlatform.getOffset(topicName, 0 );
             if (endOffset % 100 == 0)
                 System.out.println(endOffset);
             if (endOffset == 10000) {
@@ -190,16 +191,16 @@ public class ClickHouseSinkConnectorIntegrationTest {
         sleep(30 * 1000);
 
 
-        count = countRows("stock_gen_topic");
+        count = countRows(topicName);
         System.out.println(count);
         while (count < 10000) {
-            long tmpCount = countRows("stock_gen_topic");
+            long tmpCount = countRows(topicName);
             System.out.println(tmpCount);
             sleep(2 * 1000);
             if (tmpCount > count)
                 count = tmpCount;
         }
-        assertEquals(10000, countRows("stock_gen_topic"));
+        assertEquals(10000, countRows(topicName));
 
     }
 
