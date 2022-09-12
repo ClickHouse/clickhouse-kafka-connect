@@ -165,7 +165,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
 
         confluentPlatform.createTopic(topicName, 1);
-        confluentPlatform.createConnect(String.format(payloadDataGen, parCount, topicName));
+        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Single", "DatagenConnectorConnector_Single", parCount, topicName));
 
         // Now let's create the correct table & configure Sink to insert data to ClickHouse
         dropTable(topicName);
@@ -174,7 +174,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
         sleep(5 * 1000);
 
-        confluentPlatform.createConnect(String.format(payloadClickHouseSink, parCount, topicName, hostname, port, password));
+        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Single", "ClickHouseSinkConnectorConnector_Single", parCount, topicName, hostname, port, password));
 
         long count = 0;
         while (count < 10000) {
@@ -201,6 +201,40 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 count = tmpCount;
         }
         assertEquals(10000, countRows(topicName));
+
+    }
+
+    @Test
+    @Description("stockMultiTask")
+    public void stockGenMultiTaskTest() throws IOException {
+
+        String topicName = "stock_gen_topic_multi_task";
+        int parCount = 3;
+        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
+
+        confluentPlatform.createTopic(topicName, parCount);
+        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Multi", "DatagenConnectorConnector_Multi", parCount, topicName));
+
+        // Now let's create the correct table & configure Sink to insert data to ClickHouse
+        dropTable(topicName);
+        createTable(topicName);
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
+
+        sleep(5 * 1000);
+
+        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Multi", "ClickHouseSinkConnectorConnector_Multi", parCount, topicName, hostname, port, password));
+
+        long count = 0;
+        count = countRows(topicName);
+        System.out.println(count);
+        while (count < 10000 * parCount) {
+            long tmpCount = countRows(topicName);
+            System.out.println(tmpCount);
+            sleep(2 * 1000);
+            if (tmpCount > count)
+                count = tmpCount;
+        }
+        assertEquals(10000 * parCount, countRows(topicName));
 
     }
 

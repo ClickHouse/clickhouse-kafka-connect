@@ -1,7 +1,7 @@
 {
-  "name": "DatagenConnectorConnector_0",
+  "name": "%s",
   "config": {
-    "name": "DatagenConnectorConnector_0",
+    "name": "%s",
     "connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
     "tasks.max": "%d",
     "kafka.topic": "%s",
