@@ -238,6 +238,60 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     }
 
+    @Test
+    @Description("stockMultiTaskTopic")
+    public void stockGenMultiTaskTopicTest() throws IOException {
+
+        String topicName01 = "stock_gen_topic_multi_task_01";
+        String topicName02 = "stock_gen_topic_multi_task_02";
+        int parCount = 3;
+        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
+
+        confluentPlatform.createTopic(topicName01, parCount);
+        confluentPlatform.createTopic(topicName02, parCount);
+
+        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Multi_01", "DatagenConnectorConnector_Multi_01", parCount, topicName01));
+        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Multi_02", "DatagenConnectorConnector_Multi_02", parCount, topicName02));
+
+        // Now let's create the correct table & configure Sink to insert data to ClickHouse
+        dropTable(topicName01);
+        dropTable(topicName02);
+        createTable(topicName01);
+        createTable(topicName02);
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
+
+        sleep(5 * 1000);
+
+        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Multi_01", "ClickHouseSinkConnectorConnector_Multi_01", parCount, topicName01, hostname, port, password));
+        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Multi_02", "ClickHouseSinkConnectorConnector_Multi_02", parCount, topicName02, hostname, port, password));
+
+        long count01 = 0;
+        long count02 = 0;
+        count01 = countRows(topicName01);
+        System.out.println(count01);
+        while (count01 < 10000 * parCount) {
+            long tmpCount = countRows(topicName01);
+            System.out.println(tmpCount);
+            sleep(2 * 1000);
+            if (tmpCount > count01)
+                count01 = tmpCount;
+        }
+
+        count02 = countRows(topicName01);
+        System.out.println(count02);
+        while (count02 < 10000 * parCount) {
+            long tmpCount = countRows(topicName01);
+            System.out.println(tmpCount);
+            sleep(2 * 1000);
+            if (tmpCount > count02)
+                count02 = tmpCount;
+        }
+
+        assertEquals(10000 * parCount, countRows(topicName01));
+        assertEquals(10000 * parCount, countRows(topicName02));
+
+    }
+
     @AfterAll
     protected static void tearDown() {
         db.stop();
