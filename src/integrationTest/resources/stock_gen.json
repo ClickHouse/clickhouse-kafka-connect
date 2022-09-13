@@ -1,10 +1,10 @@
 {
-  "name": "DatagenConnectorConnector_0",
+  "name": "%s",
   "config": {
-    "name": "DatagenConnectorConnector_0",
+    "name": "%s",
     "connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
-    "tasks.max": "1",
-    "kafka.topic": "stock_gen_topic",
+    "tasks.max": "%d",
+    "kafka.topic": "%s",
     "max.interval": "100",
     "iterations": "10000",
     "quickstart": "Stock_Trades"

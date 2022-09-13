@@ -107,7 +107,6 @@ dependencies {
 }
 
 
-
 sourceSets.create("integrationTest") {
     java.srcDir("src/integrationTest/java")
     compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
@@ -224,3 +223,6 @@ tasks.register<Zip>("createConfluentArchive") {
     destinationDirectory.set(file("$buildDir/confluent"))
 }
 
+tasks.getByName("integrationTest") {
+    onlyIf{ System.getenv("HOST") != null &&  System.getenv("PORT") != null && System.getenv("PASSWORD") != null}
+}
