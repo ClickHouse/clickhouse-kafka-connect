@@ -125,7 +125,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         chc.query(dropTable);
     }
     private void createTable(String tableName) {
-        String createTable = String.format("CREATE TABLE %s ( `side` String, `quantity` Int8, `symbol` String, `price` Int8, `account` String, `userid` String )  Engine = MergeTree ORDER BY symbol", tableName);
+        String createTable = String.format("CREATE TABLE %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String )  Engine = MergeTree ORDER BY symbol", tableName);
         chc.query(createTable);
     }
 
