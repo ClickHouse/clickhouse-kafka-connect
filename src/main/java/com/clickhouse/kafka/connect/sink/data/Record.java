@@ -20,16 +20,17 @@ public class Record {
     private Object value;
     private Map<String, Data> jsonMap = null;
     private List<Field> fields = null;
-
+    private SchemaType schemaType;
     private SinkRecord sinkRecord = null;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Record.class);
 
-    public Record(OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Data> jsonMap, SinkRecord sinkRecord) {
+    public Record(SchemaType schemaType, OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Data> jsonMap, SinkRecord sinkRecord) {
         this.recordOffsetContainer = recordOffsetContainer;
         this.fields = fields;
         this.jsonMap = jsonMap;
         this.sinkRecord = sinkRecord;
+        this.schemaType = schemaType;
     }
 
     public String getTopicAndPartition() {
@@ -56,7 +57,9 @@ public class Record {
         return recordOffsetContainer.getTopic();
     }
 
-
+    public SchemaType getSchemaType() {
+        return this.schemaType;
+    }
 
     private static RecordConvertor schemaRecordConvertor = new SchemaRecordConvertor();
     private static RecordConvertor schemalessRecordConvertor = new SchemalessRecordConvertor();
@@ -75,8 +78,8 @@ public class Record {
         return recordConvertor.convert(sinkRecord);
     }
 
-    public static Record newRecord(String topic, int partition, long offset, List<Field> fields, Map<String, Data> jsonMap, SinkRecord sinkRecord) {
-        return new Record(new OffsetContainer(topic, partition, offset), fields, jsonMap, sinkRecord);
+    public static Record newRecord(SchemaType schemaType, String topic, int partition, long offset, List<Field> fields, Map<String, Data> jsonMap, SinkRecord sinkRecord) {
+        return new Record(schemaType, new OffsetContainer(topic, partition, offset), fields, jsonMap, sinkRecord);
     }
 
 }

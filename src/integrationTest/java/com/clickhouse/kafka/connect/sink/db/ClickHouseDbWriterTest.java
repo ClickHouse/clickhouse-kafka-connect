@@ -5,6 +5,7 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.util.Mask;
 import jdk.jfr.Description;
@@ -90,7 +91,7 @@ public class ClickHouseDbWriterTest {
 //                put("arr", new Data(Schema.Type.ARRAY, iList));
 //                put("bool", new Data(Schema.Type.BOOLEAN,true));
             }};
-            Record record = Record.newRecord(topic, partition, n, fList, dataMap, sr);
+            Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, fList, dataMap, sr);
             records.add(record);
         });
         return records;
@@ -205,7 +206,7 @@ public class ClickHouseDbWriterTest {
 
     @Test
     @Description("write to table according topic name to Cloud ClickHouse")
-    public void WriteTableCloudAccordingTopicNameTest() {
+    public void WriteTableCloudAccordingTopicNameTest() throws InterruptedException {
 
         String hostname = System.getenv("HOST");
         String port = System.getenv("PORT");
@@ -243,7 +244,7 @@ public class ClickHouseDbWriterTest {
         List<Record> records = createRecords("table_name_test", 1);
         // Let's create a table;
         chw.doInsert(records);
-
+        //Thread.sleep(5 * 1000);
         // Let's check that we inserted all records
         assertEquals(records.size(), countRows("table_name_test"));
     }

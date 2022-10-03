@@ -36,7 +36,7 @@ public class ClickHouseWriter implements DBWriter{
 
     private Map<String, Table> mapping = null;
 
-    private boolean isBinary = true;
+    private boolean isBinary = false;
 
     public ClickHouseWriter() {
         this.mapping = new HashMap<>();
@@ -121,10 +121,17 @@ public class ClickHouseWriter implements DBWriter{
 
     @Override
     public void doInsert(List<Record> records) {
-        if (isBinary)
-            doInsertRawBinary(records);
-        else
-            doInsertSimple(records);
+        if ( records.isEmpty() )
+            return;
+        Record first = records.get(0);
+        switch (first.getSchemaType()) {
+            case SCHEMA:
+                doInsertRawBinary(records);
+                break;
+            case SCHEMA_LESS:
+                doInsertSimple(records);
+                break;
+        }
     }
 
 
@@ -174,7 +181,9 @@ public class ClickHouseWriter implements DBWriter{
                     .table(table.getName())
                     .format(ClickHouseFormat.RowBinary)
                     // this is needed to get meaningful response summary
+                    .set("insert_quorum", 2)
                     .set("send_progress_in_http_headers", 1);
+
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -272,6 +281,9 @@ public class ClickHouseWriter implements DBWriter{
         String insertStr = sb.deleteCharAt(sb.length() - 1).toString();
         long s2 = System.currentTimeMillis();
         //ClickHouseClient.load(server, ClickHouseFormat.RowBinaryWithNamesAndTypes)
+        LOGGER.debug("*****************");
+        LOGGER.debug(insertStr);
+        LOGGER.debug("*****************");
         chc.query(insertStr, ClickHouseFormat.RowBinaryWithNamesAndTypes);
         /*
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);

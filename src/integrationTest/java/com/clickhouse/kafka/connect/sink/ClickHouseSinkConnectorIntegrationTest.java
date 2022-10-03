@@ -4,6 +4,7 @@ import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import jdk.jfr.Description;
+import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -91,7 +92,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static ClickHouseContainer db = null;
     private static ClickHouseWriter chw = null;
     private static ClickHouseHelperClient chc = null;
-
+    @Ignore
     @BeforeAll
     private static void setup() {
         hostname = System.getenv("HOST");
@@ -156,6 +157,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
     }
 
+    @Ignore
     @Test
     @Description("stockGenSingleTask")
     public void stockGenSingleTaskTest() throws IOException {
@@ -205,6 +207,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
+    @Ignore
     @Description("stockMultiTask")
     public void stockGenMultiTaskTest() throws IOException {
 
@@ -239,6 +242,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
+    @Ignore
     @Description("stockMultiTaskTopic")
     public void stockGenMultiTaskTopicTest() throws IOException {
 
@@ -291,7 +295,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         assertEquals(10000 * parCount, countRows(topicName02));
 
     }
-
+    @Ignore
     @AfterAll
     protected static void tearDown() {
         db.stop();

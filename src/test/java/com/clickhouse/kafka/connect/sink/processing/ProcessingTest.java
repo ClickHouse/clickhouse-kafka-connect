@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
@@ -38,7 +39,7 @@ public class ProcessingTest {
                     null,
                     null,
                     0);
-            Record record = Record.newRecord(topic, partition, n, null, Collections.singletonMap("off", new Data(Schema.Type.INT8, n)), sr);
+            Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, null, Collections.singletonMap("off", new Data(Schema.Type.INT8, n)), sr);
             records.add(record);
         });
         return records;
