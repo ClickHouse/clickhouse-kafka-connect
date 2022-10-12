@@ -72,9 +72,6 @@ public class KeeperStateProvider implements StateProvider {
     }
 
     private boolean init() {
-        // This is currently working with internal one
-        String createTableQuery = String.format("create table connect_state (`key` String,  minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;\n");
-        this.chc.query(createTableQuery);
         return true;
     }
 

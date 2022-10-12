@@ -21,22 +21,39 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class KeeperProviderIntegrationTest {
 
 
+    private static String hostname = null;
+    private static String port = null;
+    private static String password = null;
+
     public static KeeperStateProvider ksp = null;
     public static ClickHouseHelperClient chc = null;
     @BeforeAll
     private static void setup() {
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123)
+        hostname = System.getenv("HOST");
+        port = System.getenv("PORT");
+        password = System.getenv("PASSWORD");
+        // TODO: we need to ignore the test if there is not ENV variables
+        if (hostname == null || port == null || password == null)
+            throw new RuntimeException("Can not continue missing env variables.");
+
+        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, Integer.valueOf(port))
                 .setUsername("default")
+                .setDatabase("default")
+                .setPassword(password)
+                .sslEnable(true)
                 .build();
     }
 
 
-    //@Test
+    @Test
     @Description("Keeper set get test")
-    public void setGetTest() {
-
+    public void setGetTest() throws InterruptedException {
+        // Drop keepermap table
         String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
         chc.query(dropTable);
+        // Create KeeperMap table
+        String createTable = String.format("create table connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
+        chc.query(createTable);
         ksp = new KeeperStateProvider(chc);
 
         int partition = 11;
@@ -53,12 +70,16 @@ public class KeeperProviderIntegrationTest {
 
     }
 
-    //@Test
+    @Test
     @Description("Keeper set update get test")
     public void setUpdateGetTest() {
 
+        // Drop keepermap table
         String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
         chc.query(dropTable);
+        // Create KeeperMap table
+        String createTable = String.format("create table connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
+        chc.query(createTable);
         ksp = new KeeperStateProvider(chc);
 
         int partition = 12;
