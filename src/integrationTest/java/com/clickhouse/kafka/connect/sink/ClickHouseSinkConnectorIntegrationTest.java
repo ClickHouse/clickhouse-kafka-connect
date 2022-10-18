@@ -172,7 +172,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     public void stockGenSingleTaskTest() throws IOException {
         dropStateTable();
         // Create KeeperMap table
-        createStateTable();
+        //createStateTable();
 
         String topicName = "stock_gen_topic_single_task";
         int parCount = 1;
@@ -224,7 +224,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     public void stockGenMultiTaskTest() throws IOException {
         dropStateTable();
         // Create KeeperMap table
-        createStateTable();
+        //createStateTable();
 
         String topicName = "stock_gen_topic_multi_task";
         int parCount = 3;
@@ -262,7 +262,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     public void stockGenMultiTaskTopicTest() throws IOException {
         dropStateTable();
         // Create KeeperMap table
-        createStateTable();
+        //createStateTable();
 
         String topicName01 = "stock_gen_topic_multi_task_01";
         String topicName02 = "stock_gen_topic_multi_task_02";

@@ -65,6 +65,8 @@ public class KeeperStateProvider implements StateProvider {
     }
 
     private boolean init() {
+        String createTable = String.format("create table if not exists connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
+        chc.query(createTable);
         return true;
     }
 
