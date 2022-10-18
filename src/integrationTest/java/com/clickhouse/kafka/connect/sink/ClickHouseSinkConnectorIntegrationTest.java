@@ -121,6 +121,15 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
 
+    private void dropStateTable() {
+        String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
+        chc.query(dropTable);
+    }
+
+    private void createStateTable() {
+        String createTable = String.format("create table connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
+        chc.query(createTable);
+    }
     private void dropTable(String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
         chc.query(dropTable);
@@ -161,6 +170,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
     @Test
     @Description("stockGenSingleTask")
     public void stockGenSingleTaskTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        createStateTable();
 
         String topicName = "stock_gen_topic_single_task";
         int parCount = 1;
@@ -207,9 +219,12 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
-    @Ignore
+    //@Ignore
     @Description("stockMultiTask")
     public void stockGenMultiTaskTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        createStateTable();
 
         String topicName = "stock_gen_topic_multi_task";
         int parCount = 3;
@@ -242,9 +257,12 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
-    @Ignore
+    //@Ignore
     @Description("stockMultiTaskTopic")
     public void stockGenMultiTaskTopicTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        createStateTable();
 
         String topicName01 = "stock_gen_topic_multi_task_01";
         String topicName02 = "stock_gen_topic_multi_task_02";

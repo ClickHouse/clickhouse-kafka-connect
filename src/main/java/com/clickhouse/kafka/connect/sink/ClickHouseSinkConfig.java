@@ -1,13 +1,16 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
 import java.util.Map;
 
 public class ClickHouseSinkConfig {
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
@@ -16,6 +19,7 @@ public class ClickHouseSinkConfig {
     public static final String SSL_ENABLED = "ssl";
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
+    public static final String EXACTLY_ONCE = "exactlyOnce";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -25,6 +29,7 @@ public class ClickHouseSinkConfig {
     public static final Boolean sslDefault = Boolean.TRUE;
     public static final Integer timeoutSecondsDefault = Integer.valueOf(30);
     public static final Integer retryCountDefault = Integer.valueOf(3);
+    public static final Boolean exactlyOnceDefault = Boolean.FALSE;
     public enum StateStores {
         NONE,
         IN_MEMORY,
@@ -39,6 +44,7 @@ public class ClickHouseSinkConfig {
     private String username;
     private String password;
     private boolean sslEnabled;
+    private boolean exactlyOnce;
 
     private int timeout;
 
@@ -74,6 +80,9 @@ public class ClickHouseSinkConfig {
         sslEnabled = Boolean.valueOf(props.getOrDefault(SSL_ENABLED,"false")).booleanValue();
         timeout = Integer.valueOf(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())).intValue() * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.valueOf(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString())).intValue();
+        exactlyOnce = Boolean.valueOf(props.getOrDefault(EXACTLY_ONCE,"false")).booleanValue();
+        LOGGER.info("exactlyOnce: " + exactlyOnce);
+        LOGGER.info("props: " + props);
     }
 
     public static final ConfigDef CONFIG = createConfigDef();
@@ -160,6 +169,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "ClickHouse driver retry");
+        configDef.define(EXACTLY_ONCE,
+                ConfigDef.Type.BOOLEAN,
+                exactlyOnceDefault,
+                ConfigDef.Importance.LOW,
+                "enable exactly once semantics. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "enable exactly once semantics.");
+
         return configDef;
     }
 
@@ -191,4 +210,5 @@ public class ClickHouseSinkConfig {
         return timeout;
     }
     public int getRetry() { return retry; }
+    public boolean getExactlyOnce() { return exactlyOnce; }
 }

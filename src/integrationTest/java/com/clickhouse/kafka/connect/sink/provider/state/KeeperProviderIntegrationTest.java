@@ -43,8 +43,7 @@ public class KeeperProviderIntegrationTest {
                 .sslEnable(true)
                 .build();
     }
-
-
+    // TODO: check when there is no data for a key
     @Test
     @Description("Keeper set get test")
     public void setGetTest() throws InterruptedException {

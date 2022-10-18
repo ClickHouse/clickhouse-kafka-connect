@@ -7,6 +7,7 @@ import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
+import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.clickhouse.kafka.connect.util.jmx.Timer;
@@ -33,7 +34,12 @@ public class ProxySinkTask {
     private int id = NEXT_ID.getAndAdd(1);
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
-        this.stateProvider = new InMemoryState();
+        LOGGER.info(String.format("enable ExactlyOnce %s", Boolean.toString(clickHouseSinkConfig.getExactlyOnce())));
+        if ( clickHouseSinkConfig.getExactlyOnce() ) {
+            this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
+        } else {
+            this.stateProvider = new InMemoryState();
+        }
         this.dbWriter = new ClickHouseWriter();
 
         // Add dead letter queue

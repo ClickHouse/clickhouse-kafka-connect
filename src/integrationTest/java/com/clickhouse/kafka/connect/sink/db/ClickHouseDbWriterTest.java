@@ -97,6 +97,16 @@ public class ClickHouseDbWriterTest {
         return records;
     }
 
+    private void dropStateTable() {
+        String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
+        chc.query(dropTable);
+    }
+
+    private void createStateTable() {
+        String createTable = String.format("create table connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
+        chc.query(createTable);
+    }
+
     private void createTable(String topic) {
 //        String createTable = String.format("CREATE TABLE %s ( `off` Int8 , `str` String , `double` DOUBLE, `arr` Array(Int8),  `bool` BOOLEAN)  Engine = MergeTree ORDER BY off", topic);
         String createTable = String.format("CREATE TABLE %s ( `off8` Int8, `off16` Int16, `off32` Int32, `off64` Int64, `offf32` Float32, `offf64` Float64, `bool` BOOLEAN, `str` String)  Engine = MergeTree ORDER BY off8", topic);
@@ -223,6 +233,7 @@ public class ClickHouseDbWriterTest {
         props.put(ClickHouseSinkConnector.USERNAME, "default");
         props.put(ClickHouseSinkConnector.PASSWORD, password);
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
+        props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
 
         chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort())
@@ -235,6 +246,8 @@ public class ClickHouseDbWriterTest {
                 .build();
 
 
+        dropStateTable();
+        createStateTable();
 
         dropTable("table_name_test");
         createTable("table_name_test");

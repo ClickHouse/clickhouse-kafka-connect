@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink.state.provider;
 
 import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.state.State;
@@ -27,41 +28,33 @@ public class KeeperStateProvider implements StateProvider {
     /*
     create table connect_state (`key` String,  minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect', 'localhost:9181') PRIMARY KEY `key`;
      */
-    public KeeperStateProvider(Map<String, String> props) {
-        String hostname = props.get(ClickHouseSinkConnector.HOSTNAME);
-        int port = Integer.valueOf(props.get(ClickHouseSinkConnector.PORT)).intValue();
-        String database = props.get(ClickHouseSinkConnector.DATABASE);
-        String username = props.get(ClickHouseSinkConnector.USERNAME);
-        String password = props.get(ClickHouseSinkConnector.PASSWORD);
-        String sslEnabled = props.get(ClickHouseSinkConnector.SSL_ENABLED);
+    public KeeperStateProvider(ClickHouseSinkConfig csc) {
 
-        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s]", hostname, port, database, username, password));
+        String hostname = csc.getHostname();
+        int port = csc.getPort();
+        String database = csc.getDatabase();
+        String username = csc.getUsername();
+        String password = csc.getPassword();
+        boolean sslEnabled = csc.isSslEnabled();
+        int timeout = csc.getTimeout();
 
-        String protocol = "http";
-        if (Boolean.getBoolean(sslEnabled) == true )
-            protocol += "s";
+        LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, Mask.passwordMask(password), sslEnabled, timeout));
 
-        String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);
+        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port)
+                .setDatabase(database)
+                .setUsername(username)
+                .setPassword(password)
+                .sslEnable(sslEnabled)
+                .setTimeout(timeout)
+                .setRetry(csc.getRetry())
+                .build();
 
-        LOGGER.info("url: " + url);
-
-        if (username != null && password != null) {
-            LOGGER.info(String.format("Adding username [%s] password [%s]  ", username, Mask.passwordMask(password)));
-            Map<String, String> options = new HashMap<>();
-            options.put("user", username);
-            options.put("password", password);
-            server = ClickHouseNode.of(url, options);
-        } else {
-            server = ClickHouseNode.of(url);
+        if (!chc.ping()) {
+            LOGGER.error("Unable to ping Clickhouse server.");
+            // TODO: exit
         }
-
-        ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-
-        if (clientPing.ping(server, pingTimeOut)) {
-            LOGGER.info("Ping is successful.");
-        }
-
-
+        LOGGER.info("Ping is successful.");
+        init();
     }
 
     public KeeperStateProvider(ClickHouseHelperClient chc) {
@@ -85,10 +78,16 @@ public class KeeperStateProvider implements StateProvider {
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(selectStr)
                      .executeAndWait()) {
+            LOGGER.debug("return size: " + response.getSummary().getReadRows());
+            if ( response.getSummary().getReadRows() == 0) {
+                LOGGER.info(String.format("read state record: topic %s partition %s with NONE state", topic, partition));
+                return new StateRecord(topic, partition, 0, 0, State.NONE);
+            }
             ClickHouseRecord r = response.firstRecord();
             long minOffset = r.getValue(1).asLong();
             long maxOffset = r.getValue(2).asLong();
             State state = State.valueOf(r.getValue(3).asString());
+            LOGGER.debug(String.format("read state record: topic %s partition %s with %s state max %d min %d", topic, partition, state, maxOffset, minOffset));
             return new StateRecord(topic, partition, maxOffset, minOffset, state);
         } catch (ClickHouseException e) {
             e.printStackTrace();
@@ -104,6 +103,7 @@ public class KeeperStateProvider implements StateProvider {
         String state = stateRecord.getState().toString();
         String insertStr = String.format("INSERT INTO connect_state values ('%s', %d, %d, '%s');", key, minOffset, maxOffset, state);
         ClickHouseResponse response = this.chc.query(insertStr);
+        LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
         LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
     }
 }
