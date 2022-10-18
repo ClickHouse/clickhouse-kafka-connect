@@ -103,7 +103,10 @@ public class Processing {
                 stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                 break;
             case BEFORE_PROCESSING:
+                int bpBeforeDrop = records.size();
                 records = dropRecords(stateRecord.getMinOffset(), records);
+                int bpAfterDrop = records.size();
+                LOGGER.debug(String.format("before drop %d after drop %d state %s",  bpBeforeDrop, bpAfterDrop, stateRecord.getOverLappingState(rangeContainer)));
                 // Here there are several options
                 switch (stateRecord.getOverLappingState(rangeContainer)) {
                     case SAME: // Dedupe in clickhouse will fix it
@@ -130,9 +133,15 @@ public class Processing {
                         doInsert(rightRecords);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                         break;
+                    case ERROR:
+                        LOGGER.error(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
+                        throw new RuntimeException(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
                 }
             case AFTER_PROCESSING:
+                int apBeforeDrop = records.size();
                 records = dropRecords(stateRecord.getMinOffset(), records);
+                int apAfterDrop = records.size();
+                LOGGER.debug(String.format("before drop %d after drop %d state %s",  apBeforeDrop, apAfterDrop, stateRecord.getOverLappingState(rangeContainer)));
                 switch (stateRecord.getOverLappingState(rangeContainer)) {
                     case SAME:
                     case CONTAINS:
@@ -151,6 +160,9 @@ public class Processing {
                         doInsert(rightRecords);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                         break;
+                    case ERROR:
+                        LOGGER.error(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
+                        throw new RuntimeException(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
                 }
         }
     }
