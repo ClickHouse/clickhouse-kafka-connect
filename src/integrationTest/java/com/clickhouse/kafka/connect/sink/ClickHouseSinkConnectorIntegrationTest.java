@@ -4,6 +4,7 @@ import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import jdk.jfr.Description;
+import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -91,7 +92,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static ClickHouseContainer db = null;
     private static ClickHouseWriter chw = null;
     private static ClickHouseHelperClient chc = null;
-
+    @Ignore
     @BeforeAll
     private static void setup() {
         hostname = System.getenv("HOST");
@@ -120,12 +121,21 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
 
+    private void dropStateTable() {
+        String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
+        chc.query(dropTable);
+    }
+
+    private void createStateTable() {
+        String createTable = String.format("create table connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
+        chc.query(createTable);
+    }
     private void dropTable(String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
         chc.query(dropTable);
     }
     private void createTable(String tableName) {
-        String createTable = String.format("CREATE TABLE %s ( `side` String, `quantity` Int8, `symbol` String, `price` Int8, `account` String, `userid` String )  Engine = MergeTree ORDER BY symbol", tableName);
+        String createTable = String.format("CREATE TABLE %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String )  Engine = MergeTree ORDER BY symbol", tableName);
         chc.query(createTable);
     }
 
@@ -156,9 +166,13 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
     }
 
+    @Ignore
     @Test
     @Description("stockGenSingleTask")
     public void stockGenSingleTaskTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        //createStateTable();
 
         String topicName = "stock_gen_topic_single_task";
         int parCount = 1;
@@ -205,8 +219,12 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
+    //@Ignore
     @Description("stockMultiTask")
     public void stockGenMultiTaskTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        //createStateTable();
 
         String topicName = "stock_gen_topic_multi_task";
         int parCount = 3;
@@ -239,8 +257,12 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
+    //@Ignore
     @Description("stockMultiTaskTopic")
     public void stockGenMultiTaskTopicTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        //createStateTable();
 
         String topicName01 = "stock_gen_topic_multi_task_01";
         String topicName02 = "stock_gen_topic_multi_task_02";
@@ -291,7 +313,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         assertEquals(10000 * parCount, countRows(topicName02));
 
     }
-
+    @Ignore
     @AfterAll
     protected static void tearDown() {
         db.stop();

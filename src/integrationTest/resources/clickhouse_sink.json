@@ -10,6 +10,7 @@
     "database": "default",
     "username": "default",
     "password": "%s",
-    "ssl": "true"
+    "ssl": "true",
+    "exactlyOnce" : "true"
   }
 }

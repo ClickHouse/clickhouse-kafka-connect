@@ -57,15 +57,6 @@ public class ClickHouseSinkConnector extends SinkConnector {
     public void start(Map<String, String> props) {
         LOGGER.info("start SinkConnect: ");
         settings = props;
-
-        hostname = props.get(HOSTNAME);
-        port = props.get(PORT);
-        database = props.get(DATABASE);
-        username = props.get(USERNAME);
-        password = props.get(PASSWORD).trim(); // TODO: We need to check how we make some filed not mandatory
-        sslEnabled = props.getOrDefault(SSL_ENABLED,"false");
-        // topics contains the name of the topics
-
     }
 
     @Override
@@ -75,33 +66,10 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
+        // TODO: we need to use the properties
         ArrayList<Map<String, String>> configs = new ArrayList<>();
         for (int i = 0; i < maxTasks; i++) {
-
-            Map<String, String> config = new HashMap<>();
-            if (hostname != null)
-                config.put(HOSTNAME, hostname);
-            if (port != null )
-                config.put(PORT, port);
-            else
-                config.put(PORT, "8433");
-            if (database != null)
-                config.put(DATABASE, database);
-            else
-                config.put(DATABASE, "default");
-            if (username != null)
-                config.put(USERNAME, username);
-            else
-                config.put(USERNAME, "default");
-            if (password != null)
-                config.put(PASSWORD, password);
-            else
-                config.put(PASSWORD, "");
-
-            config.put(SSL_ENABLED, sslEnabled);
-            configs.add(config);
-
-            //configs.add(settings);
+            configs.add(settings);
         }
         return configs;
     }

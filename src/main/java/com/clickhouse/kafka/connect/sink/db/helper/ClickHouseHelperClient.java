@@ -2,11 +2,15 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
+import com.clickhouse.kafka.connect.sink.db.mapping.Column;
+import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ClickHouseHelperClient {
@@ -91,7 +95,6 @@ public class ClickHouseHelperClient {
                          .format(clickHouseFormat)
                          .query(query)
                          .executeAndWait()) {
-                response.getSummary();
                 return response;
             } catch (ClickHouseException e) {
                 retryCount++;
@@ -102,6 +105,56 @@ public class ClickHouseHelperClient {
         throw new RuntimeException(ce);
     }
 
+
+    public List<String> showTables() {
+        List<String> tablesNames = new ArrayList<>();
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+
+                     .query("SHOW TABLES")
+                     .executeAndWait()) {
+            for (ClickHouseRecord r : response.records()) {
+                ClickHouseValue v = r.getValue(0);
+                String tableName = v.asString();
+                tablesNames.add(tableName);
+            }
+
+        } catch (ClickHouseException e) {
+
+        }
+        return tablesNames;
+    }
+
+    public Table describeTable(String tableName) {
+        String describeQuery = String.format("DESCRIBE TABLE %s.%s", this.database, tableName);
+
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
+                     .query(describeQuery)
+                     .executeAndWait()) {
+            Table table = new Table(tableName);
+            for (ClickHouseRecord r : response.records()) {
+                ClickHouseValue v = r.getValue(0);
+                String value = v.asString();
+                String[] cols = value.split("\t");
+                String name = cols[0];
+                String type = cols[1];
+                table.addColumn(Column.extractColumn(name, type, false));
+            }
+            return table;
+        } catch (ClickHouseException e) {
+            return null;
+        }
+
+    }
+    public List<Table> extractTablesMapping() {
+        List<Table> tableList =  new ArrayList<>();
+        for (String tableName : showTables() ) {
+            tableList.add(describeTable(tableName));
+        }
+        return tableList;
+    }
 
     public static class ClickHouseClientBuilder{
         private String hostname = null;

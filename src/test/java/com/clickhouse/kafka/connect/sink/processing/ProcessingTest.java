@@ -4,7 +4,9 @@ package com.clickhouse.kafka.connect.sink.processing;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
+import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
@@ -13,6 +15,7 @@ import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
+import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,7 +39,7 @@ public class ProcessingTest {
                     null,
                     null,
                     0);
-            Record record = Record.newRecord(topic, partition, n, null, Collections.singletonMap("off", n), sr);
+            Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, null, Collections.singletonMap("off", new Data(Schema.Type.INT8, n)), sr);
             records.add(record);
         });
         return records;

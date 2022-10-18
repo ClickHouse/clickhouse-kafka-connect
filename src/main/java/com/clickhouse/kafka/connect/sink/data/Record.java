@@ -1,31 +1,36 @@
 package com.clickhouse.kafka.connect.sink.data;
 
+import com.clickhouse.kafka.connect.sink.data.convert.RecordConvertor;
+import com.clickhouse.kafka.connect.sink.data.convert.SchemalessRecordConvertor;
+import com.clickhouse.kafka.connect.sink.data.convert.SchemaRecordConvertor;
 import com.clickhouse.kafka.connect.sink.kafka.OffsetContainer;
 import org.apache.kafka.connect.data.Field;
+import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class Record {
     private OffsetContainer recordOffsetContainer = null;
     private Object value;
-    private Map<String, Object> jsonMap = null;
+    private Map<String, Data> jsonMap = null;
     private List<Field> fields = null;
-
+    private SchemaType schemaType;
     private SinkRecord sinkRecord = null;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Record.class);
 
-    public Record(OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Object> jsonMap, SinkRecord sinkRecord) {
+    public Record(SchemaType schemaType, OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Data> jsonMap, SinkRecord sinkRecord) {
         this.recordOffsetContainer = recordOffsetContainer;
         this.fields = fields;
         this.jsonMap = jsonMap;
         this.sinkRecord = sinkRecord;
+        this.schemaType = schemaType;
     }
 
     public String getTopicAndPartition() {
@@ -36,7 +41,7 @@ public class Record {
         return recordOffsetContainer;
     }
 
-    public Map<String, Object> getJsonMap() {
+    public Map<String, Data> getJsonMap() {
         return jsonMap;
     }
 
@@ -52,17 +57,29 @@ public class Record {
         return recordOffsetContainer.getTopic();
     }
 
-    public static Record convert(SinkRecord sinkRecord) {
-        String topic = sinkRecord.topic();
-        int partition = sinkRecord.kafkaPartition().intValue();
-        long offset = sinkRecord.kafkaOffset();
-        Struct struct = (Struct) sinkRecord.value();
-        Map<String, Object> data = StructToJsonMap.toJsonMap((Struct) sinkRecord.value());
-        return new Record(new OffsetContainer(topic, partition, offset), struct.schema().fields(), data, sinkRecord);
+    public SchemaType getSchemaType() {
+        return this.schemaType;
     }
 
-    public static Record newRecord(String topic, int partition, long offset, List<Field> fields, Map<String, Object> jsonMap, SinkRecord sinkRecord) {
-        return new Record(new OffsetContainer(topic, partition, offset), fields, jsonMap, sinkRecord);
+    private static RecordConvertor schemaRecordConvertor = new SchemaRecordConvertor();
+    private static RecordConvertor schemalessRecordConvertor = new SchemalessRecordConvertor();
+    private static RecordConvertor getConvertor(Schema schema, Object data) {
+        if (schema != null && data instanceof Struct) {
+            return schemaRecordConvertor;
+        }
+        if (data instanceof Map) {
+            return schemalessRecordConvertor;
+        }
+        throw new DataException(String.format("No converter was found due to unexpected object type %s", data.getClass().getName()));
+    }
+
+    public static Record convert(SinkRecord sinkRecord) {
+        RecordConvertor recordConvertor = getConvertor(sinkRecord.valueSchema(), sinkRecord.value());
+        return recordConvertor.convert(sinkRecord);
+    }
+
+    public static Record newRecord(SchemaType schemaType, String topic, int partition, long offset, List<Field> fields, Map<String, Data> jsonMap, SinkRecord sinkRecord) {
+        return new Record(schemaType, new OffsetContainer(topic, partition, offset), fields, jsonMap, sinkRecord);
     }
 
 }
