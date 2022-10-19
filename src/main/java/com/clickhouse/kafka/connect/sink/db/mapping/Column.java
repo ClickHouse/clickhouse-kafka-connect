@@ -3,12 +3,12 @@ package com.clickhouse.kafka.connect.sink.db.mapping;
 public class Column {
     private String name;
     private Type type;
-    private boolean isNull;
+    private boolean isNullable;
 
-    private Column(String name, Type type, boolean isNull) {
+    private Column(String name, Type type, boolean isNullable) {
         this.name = name;
         this.type = type;
-        this.isNull = isNull;
+        this.isNullable = isNullable;
     }
 
     public String getName() {
@@ -19,8 +19,8 @@ public class Column {
         return type;
     }
 
-    public boolean isNull() {
-        return isNull;
+    public boolean isNullable() {
+        return isNullable;
     }
 
     public static Column extractColumn(String name, String typeValue, boolean isNull) {
@@ -57,11 +57,13 @@ public class Column {
                 type = Type.BOOLEAN;
                 break;
             default:
-                if (typeValue.startsWith("Array"))
+                if (typeValue.startsWith("Array")) {
                     type = Type.NONE;
-
+                }
+                if (typeValue.startsWith("Nullable")) {
+                    return extractColumn(name, typeValue.substring("Nullable".length() + 1, typeValue.length() - 1), true);
+                }
                 break;
-
         }
 
         return new Column(name, type, isNull);
