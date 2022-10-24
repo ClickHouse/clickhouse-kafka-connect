@@ -6,7 +6,7 @@ clickhouse-kafka-connect is the official Kafka Connect sink connector for [Click
 - Shipped with out of the box exactly-once semantics. This is powered by a new ClickHouse core feature named KeeperMap (used a state store by the connector) and allows to keep the architecture minimalistic.
 - Support for 3rd party statestores: Currently defaults to In-memory but can use KeeperMap (Redis to be added soon).
 - Core integration: Built, maintained and supported by ClickHouse
-- Tested continuously against ClickHouse Cloud
+- Tested continuously against [ClickHouse Cloud](https://clickhouse.com/cloud)
 - Handling of Schema & Schemaless out of the box
 - Support for most major datatypes of ClickHouse (more to be added soon)
 
