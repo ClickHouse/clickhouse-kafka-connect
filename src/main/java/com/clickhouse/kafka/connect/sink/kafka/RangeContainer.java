@@ -1,6 +1,6 @@
 package com.clickhouse.kafka.connect.sink.kafka;
 
-public class RangeContainer extends TopicPartitionContanier {
+public class RangeContainer extends TopicPartitionContainer {
 
     private long maxOffset;
     private long minOffset;

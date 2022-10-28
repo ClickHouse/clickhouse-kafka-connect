@@ -1,6 +1,6 @@
 package com.clickhouse.kafka.connect.sink.kafka;
 
-public class OffsetContainer extends TopicPartitionContanier {
+public class OffsetContainer extends TopicPartitionContainer {
     private long offset;
 
 
