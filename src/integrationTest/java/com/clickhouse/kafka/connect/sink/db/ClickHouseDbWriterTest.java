@@ -31,33 +31,16 @@ public class ClickHouseDbWriterTest {
 
     private static ClickHouseHelperClient chc = null;
 
-    private static int count = 3;
+    private static int count = 99;
 
     private List<Record> createRecords(String topic, int partition) {
         // create records
         List<Record> records = new ArrayList<>(count);
-        Field fieldOff8 = new Field("off8", 0, null);
-        Field fieldOff16 = new Field("off16", 0, null);
-        Field fieldOff32 = new Field("off32", 0, null);
-        Field fieldOff64 = new Field("off64", 0, null);
-        Field fieldOfff32 = new Field("offf32", 0, null);
-        Field fieldOfff64 = new Field("offf64", 0, null);
-        Field fieldBool = new Field("bool", 0, null);
-        Field fieldString = new Field("str", 0, null);
 //        Field fieldDouble = new Field("double", 0, null);
 //        Field fieldArray = new Field("arr", 0, null);
 //        Field fieldBool = new Field("bool", 0, null);
 
 
-        List<Field> fList = new ArrayList<>();
-        fList.add(fieldOff8);
-        fList.add(fieldOff16);
-        fList.add(fieldOff32);
-        fList.add(fieldOff64);
-        fList.add(fieldOfff32);
-        fList.add(fieldOfff64);
-        fList.add(fieldBool);
-        fList.add(fieldString);
 //        fList.add(fieldDouble);
 //        fList.add(fieldArray);
 //        fList.add(fieldBool);
@@ -71,12 +54,27 @@ public class ClickHouseDbWriterTest {
                     null,
                     0);
 
-            List<Integer> iList = new ArrayList<>();
 
-            iList.add(Integer.valueOf((int)n));
-            iList.add(Integer.valueOf((int)n+1));
-            iList.add(Integer.valueOf((int)n+2));
-            iList.add(Integer.valueOf((int)n+3));
+            List<Field> fList = new ArrayList<>();
+
+            Field fieldOff8 = new Field("off8", 0, null);
+            Field fieldOff16 = new Field("off16", 0, null);
+            Field fieldOff32 = new Field("off32", 0, null);
+            Field fieldOff64 = new Field("off64", 0, null);
+            Field fieldOfff32 = new Field("offf32", 0, null);
+            Field fieldOfff64 = new Field("offf64", 0, null);
+            Field fieldBool = new Field("bool", 0, null);
+            Field fieldString = new Field("str", 0, null);
+
+            fList.add(fieldOff8);
+            fList.add(fieldOff16);
+            fList.add(fieldOff32);
+            fList.add(fieldOff64);
+            fList.add(fieldOfff32);
+            fList.add(fieldOfff64);
+            fList.add(fieldBool);
+            fList.add(fieldString);
+
 
             Map<String, Data> dataMap  = new HashMap<String, Data>() {{
                 put("off8", new Data(Schema.Type.INT8, (byte)n));
@@ -87,10 +85,21 @@ public class ClickHouseDbWriterTest {
                 put("offf64", new Data(Schema.Type.FLOAT64, (n*1.1)));
                 put("bool", new Data(Schema.Type.BOOLEAN, true));
                 put("str", new Data(Schema.Type.STRING, "" + n));
-//                put("double", new Data(Schema.Type.FLOAT64,n * 1.1));
-//                put("arr", new Data(Schema.Type.ARRAY, iList));
-//                put("bool", new Data(Schema.Type.BOOLEAN,true));
             }};
+
+            if (n % 3 == 3) {
+                Field nullable_off8 = new Field("nullable_off8", 0, null);
+                fList.add(nullable_off8);
+                dataMap.put("nullable_off8", new Data(Schema.Type.INT8, (byte)n));
+            }
+
+//            List<Integer> iList = new ArrayList<>();
+//
+//            iList.add(Integer.valueOf((int)n));
+//            iList.add(Integer.valueOf((int)n+1));
+//            iList.add(Integer.valueOf((int)n+2));
+//            iList.add(Integer.valueOf((int)n+3));
+
             Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, fList, dataMap, sr);
             records.add(record);
         });
@@ -109,7 +118,8 @@ public class ClickHouseDbWriterTest {
 
     private void createTable(String topic) {
 //        String createTable = String.format("CREATE TABLE %s ( `off` Int8 , `str` String , `double` DOUBLE, `arr` Array(Int8),  `bool` BOOLEAN)  Engine = MergeTree ORDER BY off", topic);
-        String createTable = String.format("CREATE TABLE %s ( `off8` Int8, `off16` Int16, `off32` Int32, `off64` Int64, `offf32` Float32, `offf64` Float64, `bool` BOOLEAN, `str` String)  Engine = MergeTree ORDER BY off8", topic);
+        String createTable = String.format("CREATE TABLE %s ( `off8` Int8, `off16` Int16, `off32` Int32, `off64` Int64, `offf32` Float32, `offf64` Float64, `bool` BOOLEAN, `str` String, `nullable_off8` Nullable(Int8))  Engine = MergeTree ORDER BY off8", topic);
+//        String createTable = String.format("CREATE TABLE %s ( `off8` Int8, `off16` Int16)  Engine = MergeTree ORDER BY off8", topic);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)

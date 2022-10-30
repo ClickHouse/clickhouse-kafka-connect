@@ -140,16 +140,19 @@ public class ClickHouseWriter implements DBWriter{
         for (Column col : table.getColumns() ) {
             String colName = col.getName();
             Type type = col.getType();
-            Data obj =  record.getJsonMap().get(colName);
-            if (obj == null) {
-                validSchema = false;
-                LOGGER.error(String.format("Table column name [%s] is not found in data record.", colName));
-            }
-            String colTypeName = type.name();
-            String dataTypeName = obj.getFieldType().getName().toUpperCase();
-            if (!colTypeName.equals(dataTypeName)) {
-                validSchema = false;
-                LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName,dataTypeName));
+            boolean isNullable = col.isNullable();
+            if (!isNullable) {
+                Data obj = record.getJsonMap().get(colName);
+                if (obj == null) {
+                    validSchema = false;
+                    LOGGER.error(String.format("Table column name [%s] is not found in data record.", colName));
+                }
+                String colTypeName = type.name();
+                String dataTypeName = obj.getFieldType().getName().toUpperCase();
+                if (!colTypeName.equals(dataTypeName)) {
+                    validSchema = false;
+                    LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                }
             }
         }
         return validSchema;
@@ -196,33 +199,47 @@ public class ClickHouseWriter implements DBWriter{
                     for (Column col : table.getColumns() ) {
                         String name = col.getName();
                         Type colType = col.getType();
-                        Data value = record.getJsonMap().get(name);
-                        // TODO: the mapping need to be more efficient
-                        switch (colType) {
-                            case INT8:
-                                BinaryStreamUtils.writeInt8(stream,((Byte)value.getObject()).byteValue());
-                                break;
-                            case INT16:
-                                BinaryStreamUtils.writeInt16(stream,((Short)value.getObject()).shortValue());
-                                break;
-                            case INT32:
-                                BinaryStreamUtils.writeInt32(stream,((Integer)value.getObject()).intValue());
-                                break;
-                            case INT64:
-                                BinaryStreamUtils.writeInt64(stream,((Long)value.getObject()).longValue());
-                                break;
-                            case FLOAT32:
-                                BinaryStreamUtils.writeFloat32(stream,((Float)value.getObject()).floatValue());
-                                break;
-                            case FLOAT64:
-                                BinaryStreamUtils.writeFloat64(stream,((Double)value.getObject()).doubleValue());
-                                break;
-                            case BOOLEAN:
-                                BinaryStreamUtils.writeBoolean(stream, ((Boolean)value.getObject()).booleanValue());
-                                break;
-                            case STRING:
-                                BinaryStreamUtils.writeString(stream, ((String)value.getObject()).getBytes());
-                                break;
+                        boolean filedExists = record.getJsonMap().containsKey(name);
+                        if (filedExists) {
+                            Data value = record.getJsonMap().get(name);
+                            // TODO: the mapping need to be more efficient
+                            if (col.isNullable())
+                                BinaryStreamUtils.writeNonNull(stream);
+                            switch (colType) {
+                                case INT8:
+                                    BinaryStreamUtils.writeInt8(stream, ((Byte) value.getObject()).byteValue());
+                                    break;
+                                case INT16:
+                                    BinaryStreamUtils.writeInt16(stream, ((Short) value.getObject()).shortValue());
+                                    break;
+                                case INT32:
+                                    BinaryStreamUtils.writeInt32(stream, ((Integer) value.getObject()).intValue());
+                                    break;
+                                case INT64:
+                                    BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
+                                    break;
+                                case FLOAT32:
+                                    BinaryStreamUtils.writeFloat32(stream, ((Float) value.getObject()).floatValue());
+                                    break;
+                                case FLOAT64:
+                                    BinaryStreamUtils.writeFloat64(stream, ((Double) value.getObject()).doubleValue());
+                                    break;
+                                case BOOLEAN:
+                                    BinaryStreamUtils.writeBoolean(stream, ((Boolean) value.getObject()).booleanValue());
+                                    break;
+                                case STRING:
+                                    BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes());
+                                    break;
+                            }
+                        } else {
+                            if ( col.isNullable() ) {
+                                // set null since there is no value
+                                BinaryStreamUtils.writeNull(stream);
+                            } else {
+                                // no filed and not nullable
+                                LOGGER.error(String.format("Record is missing field %s", name));
+                                throw new RuntimeException();
+                            }
                         }
                     }
 
@@ -235,6 +252,7 @@ public class ClickHouseWriter implements DBWriter{
                     long rows = summary.getWrittenRows();
 
                 } catch (Exception e) {
+                    e.printStackTrace();
                     LOGGER.error(String.format("Try to insert %d rows", records.size()), e);
                     throw new RuntimeException();
                 }
