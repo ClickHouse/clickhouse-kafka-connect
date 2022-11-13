@@ -150,6 +150,7 @@ public class ClickHouseWriter implements DBWriter{
                 }
                 String colTypeName = type.name();
                 String dataTypeName = obj.getFieldType().getName().toUpperCase();
+                // TODO: make extra validation for Map/Array type 
                 if (!colTypeName.equals(dataTypeName)) {
                     validSchema = false;
                     LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
@@ -159,6 +160,34 @@ public class ClickHouseWriter implements DBWriter{
         return validSchema;
     }
 
+    private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
+        switch (type) {
+            case INT8:
+                BinaryStreamUtils.writeInt8(stream, ((Byte) value).byteValue());
+                break;
+            case INT16:
+                BinaryStreamUtils.writeInt16(stream, ((Short) value).shortValue());
+                break;
+            case INT32:
+                BinaryStreamUtils.writeInt32(stream, ((Integer) value).intValue());
+                break;
+            case INT64:
+                BinaryStreamUtils.writeInt64(stream, ((Long) value).longValue());
+                break;
+            case FLOAT32:
+                BinaryStreamUtils.writeFloat32(stream, ((Float) value).floatValue());
+                break;
+            case FLOAT64:
+                BinaryStreamUtils.writeFloat64(stream, ((Double) value).doubleValue());
+                break;
+            case BOOLEAN:
+                BinaryStreamUtils.writeBoolean(stream, ((Boolean) value).booleanValue());
+                break;
+            case STRING:
+                BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                break;
+        }
+    }
 
     private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream) throws IOException {
 
@@ -194,6 +223,20 @@ public class ClickHouseWriter implements DBWriter{
                         break;
                     case STRING:
                         BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes());
+                        break;
+                    case MAP:
+                        Map<?,?> mapTmp = (Map<?,?>)value.getObject();
+                        int mapSize = mapTmp.size();
+                        BinaryStreamUtils.writeVarInt(stream, mapSize);
+                        mapTmp.entrySet().forEach( v-> {
+                            try {
+                                doWritePrimitive(col.getMapKeyType(), stream, v.getKey());
+                                doWritePrimitive(col.getMapValueType(), stream, v.getValue());
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+
+                        });
                         break;
                     case ARRAY:
                         switch (col.getSubType().getType()) {

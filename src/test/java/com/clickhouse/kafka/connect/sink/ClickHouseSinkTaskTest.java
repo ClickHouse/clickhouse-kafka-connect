@@ -9,10 +9,12 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
+import org.testcontainers.shaded.com.google.common.collect.Maps;
 
 import java.util.*;
 import java.util.stream.LongStream;
@@ -175,6 +177,64 @@ public class ClickHouseSinkTaskTest {
         Collection<SinkRecord> collection = array;
         return collection;
     }
+    public Collection<SinkRecord> createMapType(String topic, int partition) {
+
+        Schema MAP_SCHEMA_STRING_STRING = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA);
+        Schema MAP_SCHEMA_STRING_INT64 = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.INT64_SCHEMA);
+        Schema MAP_SCHEMA_INT64_STRING = SchemaBuilder.map(Schema.INT64_SCHEMA, Schema.STRING_SCHEMA);
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("map_string_string", MAP_SCHEMA_STRING_STRING)
+                .field("map_string_int64", MAP_SCHEMA_STRING_INT64)
+                .field("map_int64_string", MAP_SCHEMA_INT64_STRING)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+
+            Map<String,String> mapStringString = Map.of(
+                    "k1", "v1",
+                    "k2", "v1"
+            );
+
+            Map<String,Long> mapStringLong = Map.of(
+                    "k1", (long)1,
+                    "k2", (long)2
+            );
+
+            Map<Long,String> mapLongString = Map.of(
+                    (long)1, "v1",
+                    (long)2, "v2"
+            );
+
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("map_string_string", mapStringString)
+                    .put("map_string_int64", mapStringLong)
+                    .put("map_int64_string", mapLongString)
+                    ;
+
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        Collection<SinkRecord> collection = array;
+        return collection;
+    }
+
     @Test
     public void arrayTypesTest() {
         Map<String, String> props = new HashMap<>();
@@ -192,6 +252,32 @@ public class ClickHouseSinkTaskTest {
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createArrayType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+    @Test
+    public void mapTypesTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "map_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = createMapType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
