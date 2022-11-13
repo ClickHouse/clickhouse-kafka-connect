@@ -222,7 +222,7 @@ tasks.register<Zip>("createConfluentArchive") {
     archiveVersion.set(project.version.toString())
     destinationDirectory.set(file("$buildDir/confluent"))
 }
-
+/*
 tasks.getByName("integrationTest") {
     onlyIf{ System.getenv("HOST") != null &&  System.getenv("PORT") != null && System.getenv("PASSWORD") != null}
-}
+}*/

@@ -12,5 +12,5 @@ public enum Type {
     FLOAT32,
     FLOAT64,
     BOOLEAN,
-
+    ARRAY,
 }
