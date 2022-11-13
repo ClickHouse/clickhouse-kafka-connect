@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -157,6 +158,163 @@ public class ClickHouseWriter implements DBWriter{
         }
         return validSchema;
     }
+
+
+    private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream) throws IOException {
+
+            String name = col.getName();
+            Type colType = col.getType();
+            boolean filedExists = record.getJsonMap().containsKey(name);
+            if (filedExists) {
+                Data value = record.getJsonMap().get(name);
+                // TODO: the mapping need to be more efficient
+                if (col.isNullable())
+                    BinaryStreamUtils.writeNonNull(stream);
+                switch (colType) {
+                    case INT8:
+                        BinaryStreamUtils.writeInt8(stream, ((Byte) value.getObject()).byteValue());
+                        break;
+                    case INT16:
+                        BinaryStreamUtils.writeInt16(stream, ((Short) value.getObject()).shortValue());
+                        break;
+                    case INT32:
+                        BinaryStreamUtils.writeInt32(stream, ((Integer) value.getObject()).intValue());
+                        break;
+                    case INT64:
+                        BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
+                        break;
+                    case FLOAT32:
+                        BinaryStreamUtils.writeFloat32(stream, ((Float) value.getObject()).floatValue());
+                        break;
+                    case FLOAT64:
+                        BinaryStreamUtils.writeFloat64(stream, ((Double) value.getObject()).doubleValue());
+                        break;
+                    case BOOLEAN:
+                        BinaryStreamUtils.writeBoolean(stream, ((Boolean) value.getObject()).booleanValue());
+                        break;
+                    case STRING:
+                        BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes());
+                        break;
+                    case ARRAY:
+                        switch (col.getSubType().getType()) {
+                            case STRING:
+                                List<String> arrString = (List<String>)value.getObject();
+                                int sizeArrString = arrString.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrString);
+                                arrString.forEach( v -> {
+                                    try {
+                                        BinaryStreamUtils.writeString(stream, v.getBytes());
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                });
+                                break;
+                            case INT8:
+                                List<Byte> arrInt8 = (List<Byte>)value.getObject();
+                                int sizeArrInt8 = arrInt8.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt8);
+                                arrInt8.forEach( v -> {
+                                            try {
+                                                BinaryStreamUtils.writeInt8(stream, v);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        }
+                                );
+                                break;
+                            case INT16:
+                                List<Short> arrInt16 = (List<Short>)value.getObject();
+                                int sizeArrInt16 = arrInt16.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt16);
+                                arrInt16.forEach( v -> {
+                                            try {
+                                                BinaryStreamUtils.writeInt16(stream, v);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        }
+                                );
+                                break;
+                            case INT32:
+                                List<Integer> arrInt32 = (List<Integer>)value.getObject();
+                                int sizeArrInt32 = arrInt32.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt32);
+                                arrInt32.forEach( v -> {
+                                            try {
+                                                BinaryStreamUtils.writeInt32(stream, v);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        }
+                                );
+                                break;
+                            case INT64:
+                                List<Long> arrInt64 = (List<Long>)value.getObject();
+                                int sizeArrInt64 = arrInt64.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt64);
+                                arrInt64.forEach( v -> {
+                                            try {
+                                                BinaryStreamUtils.writeInt64(stream, v);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        }
+                                );
+                                break;
+                            case FLOAT32:
+                                List<Float> arrFloat32 = (List<Float>)value.getObject();
+                                int sizeArrFloat32 = arrFloat32.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrFloat32);
+                                arrFloat32.forEach( v -> {
+                                            try {
+                                                BinaryStreamUtils.writeFloat32(stream, v);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        }
+                                );
+                                break;
+                            case FLOAT64:
+                                List<Double> arrFloat64 = (List<Double>)value.getObject();
+                                int sizeArrFloat64 = arrFloat64.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrFloat64);
+                                arrFloat64.forEach( v -> {
+                                            try {
+                                                BinaryStreamUtils.writeFloat64(stream, v);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        }
+                                );
+                                break;
+                            case BOOLEAN:
+                                List<Boolean> arrBool = (List<Boolean>)value.getObject();
+                                int sizeArrBool = arrBool.size();
+                                BinaryStreamUtils.writeVarInt(stream, sizeArrBool);
+                                arrBool.forEach( v -> {
+                                            try {
+                                                BinaryStreamUtils.writeBoolean(stream, v);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        }
+                                );
+                                break;
+                        }
+                        break;
+                }
+            } else {
+                if ( col.isNullable() ) {
+                    // set null since there is no value
+                    BinaryStreamUtils.writeNull(stream);
+                } else {
+                    // no filed and not nullable
+                    LOGGER.error(String.format("Record is missing field %s", name));
+                    throw new RuntimeException();
+                }
+            }
+
+    }
     public void doInsertRawBinary(List<Record> records) {
         long s1 = System.currentTimeMillis();
 
@@ -196,53 +354,8 @@ public class ClickHouseWriter implements DBWriter{
                 future = request.data(stream.getInputStream()).send();
                 // write bytes into the piped stream
                 for (Record record: records ) {
-                    for (Column col : table.getColumns() ) {
-                        String name = col.getName();
-                        Type colType = col.getType();
-                        boolean filedExists = record.getJsonMap().containsKey(name);
-                        if (filedExists) {
-                            Data value = record.getJsonMap().get(name);
-                            // TODO: the mapping need to be more efficient
-                            if (col.isNullable())
-                                BinaryStreamUtils.writeNonNull(stream);
-                            switch (colType) {
-                                case INT8:
-                                    BinaryStreamUtils.writeInt8(stream, ((Byte) value.getObject()).byteValue());
-                                    break;
-                                case INT16:
-                                    BinaryStreamUtils.writeInt16(stream, ((Short) value.getObject()).shortValue());
-                                    break;
-                                case INT32:
-                                    BinaryStreamUtils.writeInt32(stream, ((Integer) value.getObject()).intValue());
-                                    break;
-                                case INT64:
-                                    BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
-                                    break;
-                                case FLOAT32:
-                                    BinaryStreamUtils.writeFloat32(stream, ((Float) value.getObject()).floatValue());
-                                    break;
-                                case FLOAT64:
-                                    BinaryStreamUtils.writeFloat64(stream, ((Double) value.getObject()).doubleValue());
-                                    break;
-                                case BOOLEAN:
-                                    BinaryStreamUtils.writeBoolean(stream, ((Boolean) value.getObject()).booleanValue());
-                                    break;
-                                case STRING:
-                                    BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes());
-                                    break;
-                            }
-                        } else {
-                            if ( col.isNullable() ) {
-                                // set null since there is no value
-                                BinaryStreamUtils.writeNull(stream);
-                            } else {
-                                // no filed and not nullable
-                                LOGGER.error(String.format("Record is missing field %s", name));
-                                throw new RuntimeException();
-                            }
-                        }
-                    }
-
+                    for (Column col : table.getColumns() )
+                        doWriteCol(record, col, stream);
                 }
                 // We need to close the stream before getting a response
                 stream.close();

@@ -13,7 +13,7 @@ clickhouse-kafka-connect is the official Kafka Connect sink connector for [Click
 
 ## Setup
 - Download the latest release or run `./gradlew` createConfluentArchive to create your own archive
-- Copy & Unzip the Archive Of ClickHouse Sink to Connect Plugin directory (Can be found at `/usr/share/java,/usr/share/confluent-hub-components`) (`clickhouse-kafka-connect-1.8.0-SNAPSHOT.zip`)
+- Copy & Unzip the Archive Of ClickHouse Sink to Connect Plugin directory (Can be found at `/usr/share/java,/usr/share/confluent-hub-components`) (`clickhouse-kafka-connect-0.0.1.zip`)
 - Restart connect worker to load ClickHouse Sink
 - Open Control Center
 - Add ClickHouseSink & Configure

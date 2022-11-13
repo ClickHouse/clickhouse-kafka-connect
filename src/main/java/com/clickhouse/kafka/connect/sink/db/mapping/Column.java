@@ -4,12 +4,22 @@ public class Column {
     private String name;
     private Type type;
     private boolean isNullable;
+    private Column subType = null;
 
     private Column(String name, Type type, boolean isNullable) {
         this.name = name;
         this.type = type;
         this.isNullable = isNullable;
+        this.subType = null;
     }
+
+    private Column(String name, Type type, boolean isNullable, Column subType) {
+        this.name = name;
+        this.type = type;
+        this.isNullable = isNullable;
+        this.subType = subType;
+    }
+
 
     public String getName() {
         return name;
@@ -19,13 +29,16 @@ public class Column {
         return type;
     }
 
+    public Column getSubType() {
+        return subType;
+    }
     public boolean isNullable() {
         return isNullable;
     }
 
-    public static Column extractColumn(String name, String typeValue, boolean isNull) {
+    public static Column extractColumn(String name, String valueType, boolean isNull) {
         Type type = Type.NONE;
-        switch (typeValue ){
+        switch (valueType ){
             case "Int8" :
                 type = Type.INT8;
                 break;
@@ -57,11 +70,13 @@ public class Column {
                 type = Type.BOOLEAN;
                 break;
             default:
-                if (typeValue.startsWith("Array")) {
-                    type = Type.NONE;
+                if (valueType.startsWith("Array")) {
+                    type = Type.ARRAY;
+                    Column subType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false);
+                    return new Column(name, type, false, subType);
                 }
-                if (typeValue.startsWith("Nullable")) {
-                    return extractColumn(name, typeValue.substring("Nullable".length() + 1, typeValue.length() - 1), true);
+                if (valueType.startsWith("Nullable")) {
+                    return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true);
                 }
                 break;
         }
