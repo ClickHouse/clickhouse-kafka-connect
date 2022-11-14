@@ -69,6 +69,9 @@ public class StructToJsonMap {
                 case STRUCT:
                     jsonMap.put(fieldName, new Data(fieldType, toJsonMap(struct.getStruct(fieldName))));
                     break;
+                case MAP:
+                    jsonMap.put(fieldName, new Data(fieldType, struct.getMap(fieldName)));
+                    break;
                 default:
                     jsonMap.put(fieldName, new Data(fieldType, struct.get(fieldName)));
                     break;

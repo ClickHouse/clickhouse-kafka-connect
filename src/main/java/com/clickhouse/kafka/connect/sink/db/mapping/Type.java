@@ -13,4 +13,5 @@ public enum Type {
     FLOAT64,
     BOOLEAN,
     ARRAY,
+    MAP,
 }

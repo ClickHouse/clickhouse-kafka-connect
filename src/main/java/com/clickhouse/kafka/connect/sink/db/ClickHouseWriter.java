@@ -150,6 +150,7 @@ public class ClickHouseWriter implements DBWriter{
                 }
                 String colTypeName = type.name();
                 String dataTypeName = obj.getFieldType().getName().toUpperCase();
+                // TODO: make extra validation for Map/Array type 
                 if (!colTypeName.equals(dataTypeName)) {
                     validSchema = false;
                     LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
@@ -159,6 +160,34 @@ public class ClickHouseWriter implements DBWriter{
         return validSchema;
     }
 
+    private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
+        switch (type) {
+            case INT8:
+                BinaryStreamUtils.writeInt8(stream, ((Byte) value).byteValue());
+                break;
+            case INT16:
+                BinaryStreamUtils.writeInt16(stream, ((Short) value).shortValue());
+                break;
+            case INT32:
+                BinaryStreamUtils.writeInt32(stream, ((Integer) value).intValue());
+                break;
+            case INT64:
+                BinaryStreamUtils.writeInt64(stream, ((Long) value).longValue());
+                break;
+            case FLOAT32:
+                BinaryStreamUtils.writeFloat32(stream, ((Float) value).floatValue());
+                break;
+            case FLOAT64:
+                BinaryStreamUtils.writeFloat64(stream, ((Double) value).doubleValue());
+                break;
+            case BOOLEAN:
+                BinaryStreamUtils.writeBoolean(stream, ((Boolean) value).booleanValue());
+                break;
+            case STRING:
+                BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                break;
+        }
+    }
 
     private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream) throws IOException {
 
@@ -172,135 +201,145 @@ public class ClickHouseWriter implements DBWriter{
                     BinaryStreamUtils.writeNonNull(stream);
                 switch (colType) {
                     case INT8:
-                        BinaryStreamUtils.writeInt8(stream, ((Byte) value.getObject()).byteValue());
-                        break;
                     case INT16:
-                        BinaryStreamUtils.writeInt16(stream, ((Short) value.getObject()).shortValue());
-                        break;
                     case INT32:
-                        BinaryStreamUtils.writeInt32(stream, ((Integer) value.getObject()).intValue());
-                        break;
                     case INT64:
-                        BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
-                        break;
                     case FLOAT32:
-                        BinaryStreamUtils.writeFloat32(stream, ((Float) value.getObject()).floatValue());
-                        break;
                     case FLOAT64:
-                        BinaryStreamUtils.writeFloat64(stream, ((Double) value.getObject()).doubleValue());
-                        break;
                     case BOOLEAN:
-                        BinaryStreamUtils.writeBoolean(stream, ((Boolean) value.getObject()).booleanValue());
-                        break;
                     case STRING:
-                        BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes());
+                        doWritePrimitive(colType, stream, value.getObject());
+                        break;
+                    case MAP:
+                        Map<?,?> mapTmp = (Map<?,?>)value.getObject();
+                        int mapSize = mapTmp.size();
+                        BinaryStreamUtils.writeVarInt(stream, mapSize);
+                        mapTmp.entrySet().forEach( v-> {
+                            try {
+                                doWritePrimitive(col.getMapKeyType(), stream, v.getKey());
+                                doWritePrimitive(col.getMapValueType(), stream, v.getValue());
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+
+                        });
                         break;
                     case ARRAY:
-                        switch (col.getSubType().getType()) {
-                            case STRING:
-                                List<String> arrString = (List<String>)value.getObject();
-                                int sizeArrString = arrString.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrString);
-                                arrString.forEach( v -> {
-                                    try {
-                                        BinaryStreamUtils.writeString(stream, v.getBytes());
-                                    } catch (IOException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                });
-                                break;
-                            case INT8:
-                                List<Byte> arrInt8 = (List<Byte>)value.getObject();
-                                int sizeArrInt8 = arrInt8.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt8);
-                                arrInt8.forEach( v -> {
-                                            try {
-                                                BinaryStreamUtils.writeInt8(stream, v);
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-                                );
-                                break;
-                            case INT16:
-                                List<Short> arrInt16 = (List<Short>)value.getObject();
-                                int sizeArrInt16 = arrInt16.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt16);
-                                arrInt16.forEach( v -> {
-                                            try {
-                                                BinaryStreamUtils.writeInt16(stream, v);
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-                                );
-                                break;
-                            case INT32:
-                                List<Integer> arrInt32 = (List<Integer>)value.getObject();
-                                int sizeArrInt32 = arrInt32.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt32);
-                                arrInt32.forEach( v -> {
-                                            try {
-                                                BinaryStreamUtils.writeInt32(stream, v);
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-                                );
-                                break;
-                            case INT64:
-                                List<Long> arrInt64 = (List<Long>)value.getObject();
-                                int sizeArrInt64 = arrInt64.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt64);
-                                arrInt64.forEach( v -> {
-                                            try {
-                                                BinaryStreamUtils.writeInt64(stream, v);
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-                                );
-                                break;
-                            case FLOAT32:
-                                List<Float> arrFloat32 = (List<Float>)value.getObject();
-                                int sizeArrFloat32 = arrFloat32.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrFloat32);
-                                arrFloat32.forEach( v -> {
-                                            try {
-                                                BinaryStreamUtils.writeFloat32(stream, v);
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-                                );
-                                break;
-                            case FLOAT64:
-                                List<Double> arrFloat64 = (List<Double>)value.getObject();
-                                int sizeArrFloat64 = arrFloat64.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrFloat64);
-                                arrFloat64.forEach( v -> {
-                                            try {
-                                                BinaryStreamUtils.writeFloat64(stream, v);
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-                                );
-                                break;
-                            case BOOLEAN:
-                                List<Boolean> arrBool = (List<Boolean>)value.getObject();
-                                int sizeArrBool = arrBool.size();
-                                BinaryStreamUtils.writeVarInt(stream, sizeArrBool);
-                                arrBool.forEach( v -> {
-                                            try {
-                                                BinaryStreamUtils.writeBoolean(stream, v);
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-                                );
-                                break;
-                        }
+                        List<?> arrObject = (List<?>)value.getObject();
+                        int sizeArrObject = arrObject.size();
+                        BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
+                        arrObject.forEach( v -> {
+                            try {
+                                doWritePrimitive(col.getSubType().getType(), stream, v);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+//                        switch (col.getSubType().getType()) {
+//                            case STRING:
+//                                List<String> arrString = (List<String>)value.getObject();
+//                                int sizeArrString = arrString.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrString);
+//                                arrString.forEach( v -> {
+//                                    try {
+//                                        BinaryStreamUtils.writeString(stream, v.getBytes());
+//                                    } catch (IOException e) {
+//                                        throw new RuntimeException(e);
+//                                    }
+//                                });
+//                                break;
+//                            case INT8:
+//                                List<Byte> arrInt8 = (List<Byte>)value.getObject();
+//                                int sizeArrInt8 = arrInt8.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt8);
+//                                arrInt8.forEach( v -> {
+//                                            try {
+//                                                BinaryStreamUtils.writeInt8(stream, v);
+//                                            } catch (IOException e) {
+//                                                throw new RuntimeException(e);
+//                                            }
+//                                        }
+//                                );
+//                                break;
+//                            case INT16:
+//                                List<Short> arrInt16 = (List<Short>)value.getObject();
+//                                int sizeArrInt16 = arrInt16.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt16);
+//                                arrInt16.forEach( v -> {
+//                                            try {
+//                                                BinaryStreamUtils.writeInt16(stream, v);
+//                                            } catch (IOException e) {
+//                                                throw new RuntimeException(e);
+//                                            }
+//                                        }
+//                                );
+//                                break;
+//                            case INT32:
+//                                List<Integer> arrInt32 = (List<Integer>)value.getObject();
+//                                int sizeArrInt32 = arrInt32.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt32);
+//                                arrInt32.forEach( v -> {
+//                                            try {
+//                                                BinaryStreamUtils.writeInt32(stream, v);
+//                                            } catch (IOException e) {
+//                                                throw new RuntimeException(e);
+//                                            }
+//                                        }
+//                                );
+//                                break;
+//                            case INT64:
+//                                List<Long> arrInt64 = (List<Long>)value.getObject();
+//                                int sizeArrInt64 = arrInt64.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrInt64);
+//                                arrInt64.forEach( v -> {
+//                                            try {
+//                                                BinaryStreamUtils.writeInt64(stream, v);
+//                                            } catch (IOException e) {
+//                                                throw new RuntimeException(e);
+//                                            }
+//                                        }
+//                                );
+//                                break;
+//                            case FLOAT32:
+//                                List<Float> arrFloat32 = (List<Float>)value.getObject();
+//                                int sizeArrFloat32 = arrFloat32.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrFloat32);
+//                                arrFloat32.forEach( v -> {
+//                                            try {
+//                                                BinaryStreamUtils.writeFloat32(stream, v);
+//                                            } catch (IOException e) {
+//                                                throw new RuntimeException(e);
+//                                            }
+//                                        }
+//                                );
+//                                break;
+//                            case FLOAT64:
+//                                List<Double> arrFloat64 = (List<Double>)value.getObject();
+//                                int sizeArrFloat64 = arrFloat64.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrFloat64);
+//                                arrFloat64.forEach( v -> {
+//                                            try {
+//                                                BinaryStreamUtils.writeFloat64(stream, v);
+//                                            } catch (IOException e) {
+//                                                throw new RuntimeException(e);
+//                                            }
+//                                        }
+//                                );
+//                                break;
+//                            case BOOLEAN:
+//                                List<Boolean> arrBool = (List<Boolean>)value.getObject();
+//                                int sizeArrBool = arrBool.size();
+//                                BinaryStreamUtils.writeVarInt(stream, sizeArrBool);
+//                                arrBool.forEach( v -> {
+//                                            try {
+//                                                BinaryStreamUtils.writeBoolean(stream, v);
+//                                            } catch (IOException e) {
+//                                                throw new RuntimeException(e);
+//                                            }
+//                                        }
+//                                );
+//                                break;
+//                        }
                         break;
                 }
             } else {
