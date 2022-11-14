@@ -1,11 +1,11 @@
 package com.clickhouse.kafka.connect.sink.kafka;
 
-public class TopicPartitionContanier {
+public class TopicPartitionContainer {
 
     protected String topic;
     protected int partition;
 
-    public TopicPartitionContanier(String topic, int partition) {
+    public TopicPartitionContainer(String topic, int partition) {
         this.topic = topic;
         this.partition = partition;
     }
