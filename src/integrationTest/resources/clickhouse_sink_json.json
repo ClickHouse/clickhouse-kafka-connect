@@ -1,0 +1,18 @@
+{
+  "name": "%s",
+  "config": {
+    "value.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "name": "%s",
+    "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "tasks.max": "%d",
+    "topics": "%s",
+    "hostname": "%s",
+    "port": "%s",
+    "database": "default",
+    "username": "default",
+    "password": "%s",
+    "ssl": "true",
+    "exactlyOnce" : "true"
+  }
+}

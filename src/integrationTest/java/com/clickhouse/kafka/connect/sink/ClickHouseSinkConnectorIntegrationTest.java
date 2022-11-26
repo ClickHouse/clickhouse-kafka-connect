@@ -18,6 +18,7 @@ import java.nio.file.Paths;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClickHouseSinkConnectorIntegrationTest {
 
@@ -134,8 +135,19 @@ public class ClickHouseSinkConnectorIntegrationTest {
         String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
         chc.query(dropTable);
     }
+
+    private void dropFlatTable(String tableName) {
+        String dropTable = String.format("DROP TABLE IF EXISTS %s_flat", tableName);
+        chc.query(dropTable);
+    }
     private void createTable(String tableName) {
         String createTable = String.format("CREATE TABLE %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String )  Engine = MergeTree ORDER BY symbol", tableName);
+        chc.query(createTable);
+    }
+
+    private void createFlatTable(String tableName) {
+        String createTable = String.format("CREATE TABLE %s_flat ( `SIDE` String, `SYMBOL` String )  Engine = MergeTree ORDER BY SYMBOL", tableName);
+        System.out.println(createTable);
         chc.query(createTable);
     }
 
@@ -164,6 +176,69 @@ public class ClickHouseSinkConnectorIntegrationTest {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
+    }
+
+
+    @Test
+    @Description("stockGenSingleTaskSchemalessTest")
+    public void stockGenSingleTaskSchemalessTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        //createStateTable();
+
+        String topicName = "stock_gen_topic_single_schemaless_task";
+        String flatTableName = String.format("%s_flat", topicName);
+        int parCount = 1;
+        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
+
+        confluentPlatform.createTopic(topicName, 1);
+        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Single_Schemaless", "DatagenConnectorConnector_Single_Schemaless", parCount, topicName));
+        sleep(5 * 1000);
+        String ksqlCreateStreamPayload = String.format("{\"ksql\": \"CREATE STREAM tmp_%s (side STRING, symbol STRING, userid STRING) WITH (KAFKA_TOPIC='%s', VALUE_FORMAT = 'AVRO');\"}", topicName, topicName);
+        System.out.println(ksqlCreateStreamPayload);
+        confluentPlatform.runKsql(ksqlCreateStreamPayload);
+        sleep(5 * 1000);
+        String ksqlCreateStreamJSONPayload = String.format("{\"ksql\": \"CREATE STREAM %s_flat WITH (KAFKA_TOPIC='%s_flat', VALUE_FORMAT = 'JSON') AS SELECT side, symbol FROM tmp_%s EMIT CHANGES;\"}", topicName, topicName, topicName);
+        System.out.println(ksqlCreateStreamJSONPayload);
+        confluentPlatform.runKsql(ksqlCreateStreamJSONPayload);
+        sleep(5 * 1000);
+
+
+        // Now let's create the correct table & configure Sink to insert data to ClickHouse
+        dropFlatTable(topicName);
+        createFlatTable(topicName);
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_json.json")));
+
+        sleep(5 * 1000);
+
+         confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Single_Schemaless", "ClickHouseSinkConnectorConnector_Single_Schemaless", parCount, flatTableName, hostname, port, password));
+
+        long count = 0;
+        while (count < 10000) {
+            sleep(2*1000);
+            long endOffset = confluentPlatform.getOffset(topicName, 0 );
+            if (endOffset % 100 == 0)
+                System.out.println(endOffset);
+            if (endOffset >= 10000 / 4) {
+                break;
+            }
+            count+=1;
+        }
+        // TODO : see the progress of the offset currently it is 1 min
+        sleep(2 * 1000);
+
+
+        count = countRows(flatTableName);
+        System.out.println(count);
+        while (count < 10000 / 10) {
+            long tmpCount = countRows(flatTableName);
+            System.out.println(tmpCount);
+            sleep(2 * 1000);
+            if (tmpCount > count)
+                count = tmpCount;
+        }
+        assertTrue(countRows(flatTableName) >= 1000);
+        //assertEquals(10000, countRows(flatTableName));
     }
 
     @Ignore
@@ -219,7 +294,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
-    //@Ignore
+    @Ignore
     @Description("stockMultiTask")
     public void stockGenMultiTaskTest() throws IOException {
         dropStateTable();
@@ -257,7 +332,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @Test
-    //@Ignore
+    @Ignore
     @Description("stockMultiTaskTopic")
     public void stockGenMultiTaskTopicTest() throws IOException {
         dropStateTable();
@@ -313,7 +388,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
         assertEquals(10000 * parCount, countRows(topicName02));
 
     }
-    @Ignore
     @AfterAll
     protected static void tearDown() {
         db.stop();

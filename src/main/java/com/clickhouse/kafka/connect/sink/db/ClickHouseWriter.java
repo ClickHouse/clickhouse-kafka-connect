@@ -138,7 +138,7 @@ public class ClickHouseWriter implements DBWriter{
     }
 
 
-    private boolean validateDataSchema(Table table, Record record) {
+    private boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
         boolean validSchema = true;
         for (Column col : table.getColumns() ) {
             String colName = col.getName();
@@ -150,12 +150,14 @@ public class ClickHouseWriter implements DBWriter{
                     validSchema = false;
                     LOGGER.error(String.format("Table column name [%s] is not found in data record.", colName));
                 }
-                String colTypeName = type.name();
-                String dataTypeName = obj.getFieldType().getName().toUpperCase();
-                // TODO: make extra validation for Map/Array type 
-                if (!colTypeName.equals(dataTypeName)) {
-                    validSchema = false;
-                    LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                if (onlyFieldsName != true) {
+                    String colTypeName = type.name();
+                    String dataTypeName = obj.getFieldType().getName().toUpperCase();
+                    // TODO: make extra validation for Map/Array type
+                    if (!colTypeName.equals(dataTypeName)) {
+                        validSchema = false;
+                        LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                    }
                 }
             }
         }
@@ -266,7 +268,7 @@ public class ClickHouseWriter implements DBWriter{
             //TODO to pick the correct exception here
             throw new RuntimeException(String.format("Table %s does not exists", topic));
         }
-        if ( !validateDataSchema(table, first) )
+        if ( !validateDataSchema(table, first, false) )
             throw new RuntimeException();
         // Let's test first record
         // Do we have all elements from the table inside the record
@@ -334,6 +336,18 @@ public class ClickHouseWriter implements DBWriter{
 
         Record first = records.get(0);
         String topic = first.getTopic();
+        LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
+        Table table = this.mapping.get(topic);
+        if (table == null) {
+            //TODO to pick the correct exception here
+            throw new RuntimeException(String.format("Table %s does not exists", topic));
+        }
+
+        if ( !validateDataSchema(table, first, true) )
+            throw new RuntimeException();
+
+
+
 
 
 
@@ -361,6 +375,11 @@ public class ClickHouseWriter implements DBWriter{
                     Map<String, Object> data = (Map<String, Object>)record.getSinkRecord().value();
                     java.lang.reflect.Type gsonType = new TypeToken<HashMap>(){}.getType();
                     String gsonString = gson.toJson(data,gsonType);
+                    LOGGER.info(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
+                            record.getTopic(),
+                            record.getRecordOffsetContainer().getPartition(),
+                            record.getRecordOffsetContainer().getOffset(),
+                            gsonString));
                     BinaryStreamUtils.writeBytes(stream, gsonString.getBytes());
                 }
 
@@ -371,19 +390,22 @@ public class ClickHouseWriter implements DBWriter{
                     summary = response.getSummary();
 
                     long rows = summary.getWrittenRows();
-//                    System.out.println(rows);
+                    LOGGER.info(String.format("insert num of rows %d", rows));
                 } catch (Exception e) {
                     e.printStackTrace();
-                    throw new RuntimeException();
+                    LOGGER.error("Insert error", e);
+                    throw new RuntimeException(e);
                 }
             } catch (Exception ce) {
                 ce.printStackTrace();
-                throw new RuntimeException();
+                LOGGER.error("stream error", ce);
+                throw new RuntimeException(ce);
             }
 
         } catch (Exception e) {
             e.printStackTrace();
-            throw new RuntimeException();
+            LOGGER.error("Create req", e);
+            throw new RuntimeException(e);
         }
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);

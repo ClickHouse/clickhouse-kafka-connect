@@ -3,25 +3,22 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import org.apache.kafka.common.protocol.types.Field;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
-import org.testcontainers.shaded.com.google.common.collect.Maps;
 
 import java.util.*;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class ClickHouseSinkTaskTest {
+public class ClickHouseSinkTaskWithSchemaTest {
 
     private static ClickHouseContainer db = null;
 
