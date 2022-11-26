@@ -38,7 +38,7 @@ plugins {
 }
 
 group = "com.clickhouse.kafka"
-version = "0.0.2"
+version = "0.0.3"
 description = "The official ClickHouse Apache Kafka Connect Connector."
 
 repositories {
@@ -73,6 +73,8 @@ dependencies {
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.2.0.RELEASE")
+    implementation("com.google.code.gson:gson:2.10")
+
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:1.7.36")
 

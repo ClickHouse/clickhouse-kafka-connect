@@ -14,6 +14,8 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.util.Mask;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -130,13 +132,13 @@ public class ClickHouseWriter implements DBWriter{
                 doInsertRawBinary(records);
                 break;
             case SCHEMA_LESS:
-                doInsertSimple(records);
+                doInsertJson(records);
                 break;
         }
     }
 
 
-    private boolean validateDataSchema(Table table, Record record) {
+    private boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
         boolean validSchema = true;
         for (Column col : table.getColumns() ) {
             String colName = col.getName();
@@ -148,12 +150,14 @@ public class ClickHouseWriter implements DBWriter{
                     validSchema = false;
                     LOGGER.error(String.format("Table column name [%s] is not found in data record.", colName));
                 }
-                String colTypeName = type.name();
-                String dataTypeName = obj.getFieldType().getName().toUpperCase();
-                // TODO: make extra validation for Map/Array type 
-                if (!colTypeName.equals(dataTypeName)) {
-                    validSchema = false;
-                    LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                if (onlyFieldsName != true) {
+                    String colTypeName = type.name();
+                    String dataTypeName = obj.getFieldType().getName().toUpperCase();
+                    // TODO: make extra validation for Map/Array type
+                    if (!colTypeName.equals(dataTypeName)) {
+                        validSchema = false;
+                        LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                    }
                 }
             }
         }
@@ -264,7 +268,7 @@ public class ClickHouseWriter implements DBWriter{
             //TODO to pick the correct exception here
             throw new RuntimeException(String.format("Table %s does not exists", topic));
         }
-        if ( !validateDataSchema(table, first) )
+        if ( !validateDataSchema(table, first, false) )
             throw new RuntimeException();
         // Let's test first record
         // Do we have all elements from the table inside the record
@@ -317,6 +321,95 @@ public class ClickHouseWriter implements DBWriter{
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
 
     }
+
+
+    public void doInsertJson(List<Record> records) {
+        //https://devqa.io/how-to-convert-java-map-to-json/
+        Gson gson = new Gson();
+        long s1 = System.currentTimeMillis();
+        long s2 = 0;
+        long s3 = 0;
+
+        if ( records.isEmpty() )
+            return;
+        int batchSize = records.size();
+
+        Record first = records.get(0);
+        String topic = first.getTopic();
+        LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
+        Table table = this.mapping.get(topic);
+        if (table == null) {
+            //TODO to pick the correct exception here
+            throw new RuntimeException(String.format("Table %s does not exists", topic));
+        }
+
+        if ( !validateDataSchema(table, first, true) )
+            throw new RuntimeException();
+
+
+
+
+
+
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
+            ClickHouseRequest.Mutation request = client.connect(chc.getServer())
+                    .write()
+                    .table(topic)
+                    .format(ClickHouseFormat.JSONEachRow)
+                    // this is needed to get meaningful response summary
+                    .set("insert_quorum", 2)
+                    .set("send_progress_in_http_headers", 1);
+
+
+            ClickHouseConfig config = request.getConfig();
+            request.option(ClickHouseClientOption.WRITE_BUFFER_SIZE, 8192);
+
+            CompletableFuture<ClickHouseResponse> future;
+
+            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance()
+                    .createPipedOutputStream(config, null)) {
+                // start the worker thread which transfer data from the input into ClickHouse
+                future = request.data(stream.getInputStream()).send();
+                // write bytes into the piped stream
+                for (Record record: records ) {
+                    Map<String, Object> data = (Map<String, Object>)record.getSinkRecord().value();
+                    java.lang.reflect.Type gsonType = new TypeToken<HashMap>(){}.getType();
+                    String gsonString = gson.toJson(data,gsonType);
+                    LOGGER.debug(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
+                            record.getTopic(),
+                            record.getRecordOffsetContainer().getPartition(),
+                            record.getRecordOffsetContainer().getOffset(),
+                            gsonString));
+                    BinaryStreamUtils.writeBytes(stream, gsonString.getBytes());
+                }
+
+                stream.close();
+                ClickHouseResponseSummary summary;
+                s2 = System.currentTimeMillis();
+                try (ClickHouseResponse response = future.get()) {
+                    summary = response.getSummary();
+                    long rows = summary.getWrittenRows();
+                    LOGGER.trace(String.format("insert num of rows %d", rows));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    LOGGER.error("Insert error", e);
+                    throw new RuntimeException(e);
+                }
+            } catch (Exception ce) {
+                ce.printStackTrace();
+                LOGGER.error("stream error", ce);
+                throw new RuntimeException(ce);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            LOGGER.error("Create req", e);
+            throw new RuntimeException(e);
+        }
+        s3 = System.currentTimeMillis();
+        LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
+    }
+
     public void doInsertSimple(List<Record> records) {
         // TODO: here we will need to make refactor (not to use query & string , but we can make this optimization later )
         long s1 = System.currentTimeMillis();

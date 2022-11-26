@@ -50,15 +50,13 @@ public class ConfluentPlatform {
 
     private static int CONTROL_CENTER_INTERNAL_PORT = 9021;
     private static int REST_PROXY_INTERNAL_PORT = 8082;
-
     private static int CONNECT_INTERNAL_PORT = 8083;
-
+    private static int KSQL_INTERNAL_PORT = 8088;
     private String clusterId = null;
-
     private String controlCenterEndpoint = null;
     private String restProxyEndpoint = null;
-
     private String connectRestEndPoint = null;
+    private String ksqlRestEndPoint = null;
 
     public ConfluentPlatform() {
         this(null);
@@ -203,10 +201,12 @@ public class ConfluentPlatform {
         this.controlCenterEndpoint = extractControlCenterURL(cp_control_center);
         this.restProxyEndpoint = extractRestProxyURL(rest_proxy);
         this.connectRestEndPoint = extractConnectURL(cp_data_gen);
+        this.ksqlRestEndPoint = extractKsqlURL(cp_ksqldb_server);
 
 //        System.out.println(getControlCenterEndpoint());
 //        System.out.println(getRestProxyEndpoint());
 //        System.out.println(getConnectRestEndPoint());
+        System.out.println(getKsqlRestEndPoint());
         this.clusterId = extractClusterId();
 //        System.out.println("clusterId: " + clusterId);
     }
@@ -223,6 +223,7 @@ public class ConfluentPlatform {
     public String getConnectRestEndPoint() {
         return connectRestEndPoint;
     }
+    public String getKsqlRestEndPoint() { return ksqlRestEndPoint; }
     private String extractControlCenterURL(GenericContainer<?> cp_control_center) {
         return String.format("http://%s:%d", cp_control_center.getHost(), cp_control_center.getMappedPort(CONTROL_CENTER_INTERNAL_PORT));
     }
@@ -232,6 +233,10 @@ public class ConfluentPlatform {
 
     private String extractConnectURL(GenericContainer<?> connect) {
         return String.format("http://%s:%d", connect.getHost(), connect.getMappedPort(CONNECT_INTERNAL_PORT));
+    }
+
+    private String extractKsqlURL(GenericContainer<?> ksql) {
+        return String.format("http://%s:%d", ksql.getHost(), ksql.getMappedPort(KSQL_INTERNAL_PORT));
     }
     private String extractClusterId() {
         String restProxyURL = getRestProxyEndpoint();
@@ -335,6 +340,27 @@ public class ConfluentPlatform {
             return false;
         }
         return false;
+    }
+
+    public boolean runKsql(String payload) {
+        String ksqlRestEndPoint = getKsqlRestEndPoint();
+        OkHttpClient client = new OkHttpClient();
+        String ksqlEndpoint = String.format("%s/ksql", ksqlRestEndPoint);
+        MediaType JSON = MediaType.get("application/json");
+        RequestBody body = RequestBody.create(payload, JSON);
+        Request request = new Request.Builder()
+                .url(ksqlEndpoint)
+                .addHeader("Content-Type","application/json")
+                .post(body)
+                .build();
+        try (Response response = client.newCall(request).execute()) {
+            if (response.code() == 200)
+                return true;
+        } catch (IOException ioe) {
+            return false;
+        }
+        return false;
+
     }
 
     public long getOffset(String topicName, int partitionId) {
