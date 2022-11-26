@@ -375,7 +375,7 @@ public class ClickHouseWriter implements DBWriter{
                     Map<String, Object> data = (Map<String, Object>)record.getSinkRecord().value();
                     java.lang.reflect.Type gsonType = new TypeToken<HashMap>(){}.getType();
                     String gsonString = gson.toJson(data,gsonType);
-                    LOGGER.info(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
+                    LOGGER.debug(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
                             record.getTopic(),
                             record.getRecordOffsetContainer().getPartition(),
                             record.getRecordOffsetContainer().getOffset(),
@@ -388,9 +388,8 @@ public class ClickHouseWriter implements DBWriter{
                 s2 = System.currentTimeMillis();
                 try (ClickHouseResponse response = future.get()) {
                     summary = response.getSummary();
-
                     long rows = summary.getWrittenRows();
-                    LOGGER.info(String.format("insert num of rows %d", rows));
+                    LOGGER.trace(String.format("insert num of rows %d", rows));
                 } catch (Exception e) {
                     e.printStackTrace();
                     LOGGER.error("Insert error", e);
