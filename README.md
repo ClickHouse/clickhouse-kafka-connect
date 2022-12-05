@@ -19,7 +19,7 @@ The [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.htm
 ## Version compatibility matrix
 | ClickHouse Kafka Connect version | ClickHouse version | Kafka Connect |
 | ------------- | ------------- | ------------- |
-| 0.0.1  | 22.5 or later | 3.0 or later |
+| 0.0.1-0.0.3   | 22.5 or later | 3.0 or later  |
 
 ## Main Features
 - Shipped with out-of-box exactly-once semantics. It's powered by a new ClickHouse core feature named KeeperMap (used as a state store by the connector) and allows for minimalistic architecture.
@@ -69,7 +69,7 @@ Sink, use [Kafka Connect Transformations](https://docs.confluent.io/platform/cur
 
 
 ## Supported Data types
-
+With a schema declared:
 | Kafka Connect Type | ClickHouse Type          | Supported | Primitive |
 | ------------------ | ------------------------ | --------- | --------- |
 | STRING             | String                   | ✅        | Yes       |
@@ -82,8 +82,11 @@ Sink, use [Kafka Connect Transformations](https://docs.confluent.io/platform/cur
 | BOOLEAN            | Boolean                  | ✅        | Yes       |
 | ARRAY              | Array(Primitive)         | ✅        | No        |
 | MAP                | Map(Primitive, Primitive)| ✅        | No        |
-| STRUCT             | JSON                     | ✅        | No        |
+| STRUCT             | N/A                      | ❌        | No        |
 | BYTES              | N/A                      | ❌        | No        |
+
+Without a schema declared:
+A Map without a schema declared, will be converted to a JSON object and inserted in ClickHouse as [JSON Data Type](https://clickhouse.com/docs/en/sql-reference/data-types/json).
 
 ## Logging
 Logging is automatically provided by Kafka Connect Platform.
