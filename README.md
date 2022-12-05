@@ -1,5 +1,5 @@
 # ClickHouse Kafka Connect Sink
-**The connector is available in alpha stage for early adopters. Please do not use it in production.**
+**The connector is available in beta stage for early adopters. If you notice a problem, please [file an issue.](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/new)**
 
 clickhouse-kafka-connect is the official Kafka Connect sink connector for [ClickHouse](https://clickhouse.com/).
 
@@ -113,4 +113,4 @@ ClickHouse Kafka Connect reports the following metrics:
 ## Limitations
 - Deletes aren’t supported.
 - Batch size is inherited from the Kafka Consumer properties.
-- When using KeeperMap for exactly-once and the offset is changed or rewinded, please delete the content from KeeperMap for that specific topic.
+- When using KeeperMap for exactly-once and the offset is changed or rewinded, you need to delete the content from KeeperMap for that specific topic.
