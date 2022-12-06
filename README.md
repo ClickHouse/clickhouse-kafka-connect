@@ -86,7 +86,8 @@ With a schema declared:
 | BYTES              | N/A                      | ❌        | No        |
 
 Without a schema declared:
-A Map without a schema declared, will be converted to a JSON object and inserted in ClickHouse as [JSON Data Type](https://clickhouse.com/docs/en/sql-reference/data-types/json).
+A record is converted into JSON and sent to ClickHouse as a value in [JSONEachRow](https://clickhouse.com/docs/en/sql-reference/formats/#jsoneachrow) format.
+
 
 ## Logging
 Logging is automatically provided by Kafka Connect Platform.
