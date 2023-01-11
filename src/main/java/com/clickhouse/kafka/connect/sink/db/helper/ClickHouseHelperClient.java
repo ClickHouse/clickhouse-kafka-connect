@@ -127,6 +127,8 @@ public class ClickHouseHelperClient {
     }
 
     public Table describeTable(String tableName) {
+        if (tableName.startsWith(".inner"))
+            return null;
         String describeQuery = String.format("DESCRIBE TABLE %s.%s", this.database, tableName);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
@@ -144,6 +146,7 @@ public class ClickHouseHelperClient {
             }
             return table;
         } catch (ClickHouseException e) {
+            LOGGER.error(String.format("Got exception when running %s", describeQuery), e);
             return null;
         }
 
@@ -151,7 +154,9 @@ public class ClickHouseHelperClient {
     public List<Table> extractTablesMapping() {
         List<Table> tableList =  new ArrayList<>();
         for (String tableName : showTables() ) {
-            tableList.add(describeTable(tableName));
+            Table table = describeTable(tableName);
+            if (table != null )
+                tableList.add(table);
         }
         return tableList;
     }
