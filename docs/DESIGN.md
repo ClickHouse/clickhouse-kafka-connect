@@ -4,7 +4,7 @@ This document details the current design and implementation for ClickHouse-kafka
 
 # Requirements
 
-For the reasons behind the development of this connector, see [here]().
+For the reasons behind the development of this connector, see [here](https://clickhouse.com/blog/kafka-connect-connector-clickhouse-with-exactly-once).
 
 The connector aims to be:
 
