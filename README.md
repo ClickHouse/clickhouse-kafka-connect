@@ -119,4 +119,4 @@ ClickHouse Kafka Connect reports the following metrics:
 
 ## Design
 
-A full overview of the design and how exactly-once delivery semantics are achieved, see the [design document](./docs/DESIGN.md).
+For a full overview of the design and how exactly-once delivery semantics are achieved, see the [design document](./docs/DESIGN.md).
