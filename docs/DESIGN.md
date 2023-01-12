@@ -10,7 +10,7 @@ The connector aims to be:
 
 * **Independent of ClickHouse** - The connector should run independently of ClickHouse as an architecturally independent component.
 * **Push-based** - Data should be pushed to ClickHouse from Kafka. ClickHouse should have no awareness or need to connect to Kafka. This connector should thus work in environments where ClickHouse is cloud-hosted, and Kafka is self-managed.
-* **Support for all ClickHouse types** - including complex types, e.g., Map.
+* **Support for all ClickHouse types** - including complex types, e.g., Map. Note currently this effort is underway with support for the Tuple and JSON types pending.
 * **Exactly-once delivery** - every Kafka message will always be delivered only one time to ClickHouse. A message cannot be dropped or duplicated.
 
 The Kafka Connect framework addresses the first two of these requirements. Support for all ClickHouse types largely relies on using the official [ClickHouse-supported Java client.](https://github.com/ClickHouse/clickhouse-jdbc) This issue focuses on how we propose achieving exactly-once delivery semantics.
