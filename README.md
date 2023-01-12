@@ -111,7 +111,12 @@ ClickHouse Kafka Connect reports the following metrics:
 | receivedRecords      | long | The total number of records received. |
 | recordProcessingTime | long | Total time in nanoseconds spent grouping and converting records to a unified structure. |
 | taskProcessingTime   | long | Total time in nanoseconds spent processing and inserting data into ClickHouse. |
+
 ## Limitations
 - Deletes aren’t supported.
 - Batch size is inherited from the Kafka Consumer properties.
 - When using KeeperMap for exactly-once and the offset is changed or rewinded, you need to delete the content from KeeperMap for that specific topic.
+
+## Design
+
+For a full overview of the design and how exactly-once delivery semantics are achieved, see the [design document](./docs/DESIGN.md).
