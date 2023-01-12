@@ -1,6 +1,6 @@
 # Introduction
 
-This issue details the current design and implementation for ClickHouse-kafka-connect and how it aims to achieve exactly-once delivery semantics.
+This document details the current design and implementation for ClickHouse-kafka-connect and how it aims to achieve exactly-once delivery semantics.
 
 # Requirements
 
