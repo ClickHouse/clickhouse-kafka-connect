@@ -8,3 +8,6 @@ The Kafka connector delivers data from a Kafka topic to a ClickHouse table.
 ## Documentation
 
 See the [ClickHouse website](https://clickhouse.com/docs/en/integrations/kafka/clickhouse-kafka-connect-sink) for the full documentation entry.
+
+## Design
+For a full overview of the design and how exactly-once delivery semantics are achieved, see the [design document](./docs/DESIGN.md).
