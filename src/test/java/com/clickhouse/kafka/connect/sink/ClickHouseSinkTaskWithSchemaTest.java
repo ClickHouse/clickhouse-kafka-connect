@@ -313,7 +313,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
-    public void specialCharTest() {
+    public void specialCharTableNameTest() {
         Map<String, String> props = new HashMap<>();
         props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
         props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
