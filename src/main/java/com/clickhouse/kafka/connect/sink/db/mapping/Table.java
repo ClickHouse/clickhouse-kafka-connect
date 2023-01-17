@@ -17,7 +17,7 @@ public class Table {
     }
 
     public String getName() {
-        return name;
+        return String.format("`%s`", name);
     }
 
     public void addColumn(Column column) {

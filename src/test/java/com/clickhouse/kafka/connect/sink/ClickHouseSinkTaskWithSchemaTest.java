@@ -56,7 +56,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
 
     private void dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
+        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
@@ -91,7 +91,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     }
 
     private int countRows(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from %s", topic);
+        String queryCount = String.format("select count(*) from `%s`", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
@@ -302,6 +302,33 @@ public class ClickHouseSinkTaskWithSchemaTest {
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         createTable(chc, topic + "mate", "CREATE MATERIALIZED VIEW %s ( `off16` Int16 ) Engine = MergeTree ORDER BY `off16` POPULATE AS SELECT off16 FROM m_array_string_table_test ");
         Collection<SinkRecord> sr = createArrayType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+    @Test
+    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
+    public void specialCharTableNameTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "special-char-table-test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = createMapType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
