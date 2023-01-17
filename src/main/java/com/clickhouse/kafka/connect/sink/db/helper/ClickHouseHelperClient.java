@@ -129,7 +129,7 @@ public class ClickHouseHelperClient {
     public Table describeTable(String tableName) {
         if (tableName.startsWith(".inner"))
             return null;
-        String describeQuery = String.format("DESCRIBE TABLE %s.%s", this.database, tableName);
+        String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
