@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
+import com.clickhouse.kafka.connect.util.Utils;
 import jdk.jfr.Description;
 import org.junit.jupiter.api.*;
 import org.testcontainers.containers.ClickHouseContainer;
@@ -43,7 +44,6 @@ public class ClickHouseHelperClientTest {
         assertEquals(1, tables.size());
         assertEquals(name, tables.get(0));
     }
-
     @Test
     @Order(2)
     @Description("DescTableTest")
@@ -52,7 +52,7 @@ public class ClickHouseHelperClientTest {
         String createTable = String.format("CREATE TABLE %s ( `off` Int8 , `str` String , `double` DOUBLE, `arr` Array(Int8),  `bool` BOOLEAN)  Engine = MergeTree ORDER BY off", name);
         chc.query(createTable);
         Table table = chc.describeTable(name);
-        assertEquals(name, table.getName());
+        assertEquals(Utils.escapeTopicName(name), table.getName());
         assertEquals(Type.INT8, table.getColumnByName("off").getType());
         assertEquals(Type.STRING, table.getColumnByName("str").getType());
         assertEquals(Type.FLOAT64, table.getColumnByName("double").getType());
