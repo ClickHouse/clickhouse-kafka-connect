@@ -7,6 +7,7 @@ import jdk.jfr.Description;
 import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
 import org.testcontainers.containers.ConfluentPlatform;
@@ -178,8 +179,61 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
     }
 
+    @Test
+    @Order(1)
+    @Description("stockGenSingleTask")
+    public void stockGenSingleTaskTest() throws IOException {
+        dropStateTable();
+        // Create KeeperMap table
+        //createStateTable();
+
+        String topicName = "stock_gen_topic_single_task";
+        int parCount = 1;
+        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
+
+        confluentPlatform.createTopic(topicName, 1);
+        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Single", "DatagenConnectorConnector_Single", parCount, topicName));
+
+        // Now let's create the correct table & configure Sink to insert data to ClickHouse
+        dropTable(topicName);
+        createTable(topicName);
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
+
+        sleep(5 * 1000);
+
+        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Single", "ClickHouseSinkConnectorConnector_Single", parCount, topicName, hostname, port, password));
+
+        long count = 0;
+        while (count < 10000) {
+            sleep(5*1000);
+            long endOffset = confluentPlatform.getOffset(topicName, 0 );
+            if (endOffset % 100 == 0)
+                System.out.println(endOffset);
+            if (endOffset == 10000) {
+                break;
+            }
+            count+=1;
+        }
+        // TODO : see the progress of the offset currently it is 1 min
+        sleep(30 * 1000);
+
+
+        count = countRows(topicName);
+        System.out.println(count);
+        while (count < 10000) {
+            long tmpCount = countRows(topicName);
+            System.out.println(tmpCount);
+            sleep(2 * 1000);
+            if (tmpCount > count)
+                count = tmpCount;
+        }
+        assertEquals(10000, countRows(topicName));
+
+    }
+
 
     @Test
+    @Order(2)
     @Description("stockGenSingleTaskSchemalessTest")
     public void stockGenSingleTaskSchemalessTest() throws IOException {
         dropStateTable();
@@ -240,61 +294,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
         assertTrue(countRows(flatTableName) >= 1000);
         //assertEquals(10000, countRows(flatTableName));
     }
-
-    @Ignore
-    @Test
-    @Description("stockGenSingleTask")
-    public void stockGenSingleTaskTest() throws IOException {
-        dropStateTable();
-        // Create KeeperMap table
-        //createStateTable();
-
-        String topicName = "stock_gen_topic_single_task";
-        int parCount = 1;
-        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
-
-        confluentPlatform.createTopic(topicName, 1);
-        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Single", "DatagenConnectorConnector_Single", parCount, topicName));
-
-        // Now let's create the correct table & configure Sink to insert data to ClickHouse
-        dropTable(topicName);
-        createTable(topicName);
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-
-        sleep(5 * 1000);
-
-        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Single", "ClickHouseSinkConnectorConnector_Single", parCount, topicName, hostname, port, password));
-
-        long count = 0;
-        while (count < 10000) {
-            sleep(5*1000);
-            long endOffset = confluentPlatform.getOffset(topicName, 0 );
-            if (endOffset % 100 == 0)
-                System.out.println(endOffset);
-            if (endOffset == 10000) {
-                break;
-            }
-            count+=1;
-        }
-        // TODO : see the progress of the offset currently it is 1 min
-        sleep(30 * 1000);
-
-
-        count = countRows(topicName);
-        System.out.println(count);
-        while (count < 10000) {
-            long tmpCount = countRows(topicName);
-            System.out.println(tmpCount);
-            sleep(2 * 1000);
-            if (tmpCount > count)
-                count = tmpCount;
-        }
-        assertEquals(10000, countRows(topicName));
-
-    }
-
-    @Test
-    @Ignore
     @Description("stockMultiTask")
     public void stockGenMultiTaskTest() throws IOException {
         dropStateTable();
@@ -331,8 +330,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     }
 
-    @Test
-    @Ignore
+//    @Test
+//    @Ignore
     @Description("stockMultiTaskTopic")
     public void stockGenMultiTaskTopicTest() throws IOException {
         dropStateTable();
