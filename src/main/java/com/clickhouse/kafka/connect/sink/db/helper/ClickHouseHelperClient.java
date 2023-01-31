@@ -140,6 +140,11 @@ public class ClickHouseHelperClient {
                 ClickHouseValue v = r.getValue(0);
                 String value = v.asString();
                 String[] cols = value.split("\t");
+                String defaultKind = cols[2];
+                if ("ALIAS".equals(defaultKind) || "MATERIALIZED".equals(defaultKind)) {
+                    // Only insert into "real" columns
+                    continue;
+                }
                 String name = cols[0];
                 String type = cols[1];
                 table.addColumn(Column.extractColumn(name, type, false));

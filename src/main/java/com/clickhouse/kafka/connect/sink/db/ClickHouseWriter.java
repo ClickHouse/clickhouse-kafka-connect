@@ -3,9 +3,7 @@ package com.clickhouse.kafka.connect.sink.db;
 import com.clickhouse.client.*;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.data.BinaryStreamUtils;
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
-import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -18,18 +16,16 @@ import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+
 public class ClickHouseWriter implements DBWriter{
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
@@ -137,7 +133,6 @@ public class ClickHouseWriter implements DBWriter{
         }
     }
 
-
     private boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
         boolean validSchema = true;
         for (Column col : table.getColumns() ) {
@@ -150,7 +145,7 @@ public class ClickHouseWriter implements DBWriter{
                     validSchema = false;
                     LOGGER.error(String.format("Table column name [%s] is not found in data record.", colName));
                 }
-                if (onlyFieldsName != true) {
+                if (!onlyFieldsName) {
                     String colTypeName = type.name();
                     String dataTypeName = obj.getFieldType().getName().toUpperCase();
                     // TODO: make extra validation for Map/Array type
@@ -343,8 +338,8 @@ public class ClickHouseWriter implements DBWriter{
             throw new RuntimeException(String.format("Table %s does not exists", topic));
         }
 
-        if ( !validateDataSchema(table, first, true) )
-            throw new RuntimeException();
+        // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
+        // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
             ClickHouseRequest.Mutation request = client.connect(chc.getServer())
@@ -353,6 +348,7 @@ public class ClickHouseWriter implements DBWriter{
                     .format(ClickHouseFormat.JSONEachRow)
                     // this is needed to get meaningful response summary
                     .set("insert_quorum", 2)
+                    .set("input_format_skip_unknown_fields", 1)
                     .set("send_progress_in_http_headers", 1);
 
 
