@@ -95,9 +95,6 @@ public class ClickHouseWriter implements DBWriter{
         isBinary = binary;
     }
 
-//    private String escapeTopicName(String topic) {
-//        return String.format("`%s`", topic);
-//    }
     // TODO: we need to refactor that
     private String convertHelper(Object v) {
         if (v instanceof List) {
