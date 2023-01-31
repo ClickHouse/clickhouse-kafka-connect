@@ -29,7 +29,6 @@
 
     "features" : {
       "confluent_control_center_integration" : true,
-      "supported_encodings" : [ "any" ],
       "delivery_guarantee": ["exactly_once"],
       "single_message_transforms" : true,
       "kafka_connect_api" : true
