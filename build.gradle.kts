@@ -38,7 +38,7 @@ plugins {
 }
 
 group = "com.clickhouse.kafka"
-version = "0.0.4"
+version = "0.0.5"
 description = "The official ClickHouse Apache Kafka Connect Connector."
 
 repositories {
@@ -84,7 +84,7 @@ dependencies {
     clickhouseDependencies("io.lettuce:lettuce-core:6.2.0.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
-
+    clickhouseDependencies("com.google.code.gson:gson:2.10")
 
     // Unit Tests
     testImplementation(platform("org.junit:junit-bom:${project.extra["junitJupiterVersion"]}"))

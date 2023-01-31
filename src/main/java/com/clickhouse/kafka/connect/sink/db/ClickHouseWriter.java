@@ -12,6 +12,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.util.Mask;
 
+import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
@@ -90,9 +91,6 @@ public class ClickHouseWriter implements DBWriter{
         isBinary = binary;
     }
 
-    private String escapeTopicName(String topic) {
-        return String.format("`%s`", topic);
-    }
     // TODO: we need to refactor that
     private String convertHelper(Object v) {
         if (v instanceof List) {
@@ -260,7 +258,7 @@ public class ClickHouseWriter implements DBWriter{
         Record first = records.get(0);
         String topic = first.getTopic();
         LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
-        Table table = this.mapping.get(escapeTopicName(topic));
+        Table table = this.mapping.get(Utils.escapeTopicName(topic));
         if (table == null) {
             //TODO to pick the correct exception here
             throw new RuntimeException(String.format("Table %s does not exists", topic));
@@ -334,7 +332,7 @@ public class ClickHouseWriter implements DBWriter{
         Record first = records.get(0);
         String topic = first.getTopic();
         LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
-        Table table = this.mapping.get(escapeTopicName(topic));
+        Table table = this.mapping.get(Utils.escapeTopicName(topic));
         if (table == null) {
             //TODO to pick the correct exception here
             throw new RuntimeException(String.format("Table %s does not exists", topic));
@@ -416,7 +414,7 @@ public class ClickHouseWriter implements DBWriter{
         LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
         // Build the insert SQL
         StringBuffer sb = new StringBuffer();
-        sb.append(String.format("INSERT INTO %s ", escapeTopicName(topic)));
+        sb.append(String.format("INSERT INTO %s ", Utils.escapeTopicName(topic)));
         sb.append(extractFields(first.getFields(), "(", ")", ",", ""));
         sb.append(" VALUES ");
         LOGGER.debug("sb {}", sb);

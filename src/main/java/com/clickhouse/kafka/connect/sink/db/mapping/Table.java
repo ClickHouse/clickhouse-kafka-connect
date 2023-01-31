@@ -1,5 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import com.clickhouse.kafka.connect.util.Utils;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
@@ -17,7 +19,7 @@ public class Table {
     }
 
     public String getName() {
-        return String.format("`%s`", name);
+        return Utils.escapeTopicName(name);
     }
 
     public void addColumn(Column column) {
