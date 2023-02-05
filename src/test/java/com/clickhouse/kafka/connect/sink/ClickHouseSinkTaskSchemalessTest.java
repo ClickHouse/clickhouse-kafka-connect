@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
 
+import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.stream.LongStream;
 
@@ -87,6 +88,23 @@ public class ClickHouseSinkTaskSchemalessTest {
 
     }
 
+
+    private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
+        String queryCount = "select count(*) from emojis_table_test where str LIKE '%😀%'"; //String.format("select count(*) from `%s` where str LIKE '%\uD83D\uDE00%'", topic);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+
+
+                     .query(queryCount)
+                     .executeAndWait()) {
+            ClickHouseResponseSummary summary = response.getSummary();
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
     private int countRows(ClickHouseHelperClient chc, String topic) {
         String queryCount = String.format("select count(*) from `%s`", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
@@ -136,6 +154,29 @@ public class ClickHouseSinkTaskSchemalessTest {
             value_struct.put("p_float64", (double)n*1.111111);
             value_struct.put("p_bool", (boolean)true);
 
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public Collection<SinkRecord> createDataWithEmojis(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("off16", (short)n);
+            if ( n % 2 == 0) value_struct.put("str", "num \uD83D\uDE00 :" + n);
+            else value_struct.put("str", "num \uD83D\uDE02 :" + n);
             SinkRecord sr = new SinkRecord(
                     topic,
                     partition,
@@ -335,6 +376,31 @@ public class ClickHouseSinkTaskSchemalessTest {
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+    @Test
+    public void emojisCharsDataTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "emojis_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createDataWithEmojis(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size() / 2, countRowsWithEmojis(chc, topic));
+
     }
 
     @AfterAll
