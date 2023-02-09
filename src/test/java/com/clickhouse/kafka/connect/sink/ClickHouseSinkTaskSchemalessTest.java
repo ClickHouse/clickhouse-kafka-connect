@@ -197,7 +197,7 @@ public class ClickHouseSinkTaskSchemalessTest {
         LongStream.range(0, 1000).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("str", "num" + n);
-            value_struct.put("null_str", null);
+            value_struct.put("null_str", null);  // the column that should be inserted as it is.
             value_struct.put("off16", (short)n);
             value_struct.put("p_int8", (byte)n);
             value_struct.put("p_int16", (short)n);

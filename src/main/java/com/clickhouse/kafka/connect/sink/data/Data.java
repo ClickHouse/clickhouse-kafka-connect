@@ -25,6 +25,5 @@ public class Data {
             return null;
         }
         return object.toString();
-
     }
 }
