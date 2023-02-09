@@ -151,6 +151,24 @@ public class ClickHouseSinkConnectorIntegrationTest {
         System.out.println(createTable);
         chc.query(createTable);
     }
+    //
+
+    private int countRowsWithEmojis() {
+        String queryCount = "select count(*) from stock_gen_topic_single_schemaless_task_flat where SYMBOL LIKE '%😀%';";
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+
+
+                     .query(queryCount)
+                     .executeAndWait()) {
+            ClickHouseResponseSummary summary = response.getSummary();
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
 
     private int countRows(String topic) {
         String queryCount = String.format("select count(*) from %s", topic);
@@ -252,7 +270,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         System.out.println(ksqlCreateStreamPayload);
         confluentPlatform.runKsql(ksqlCreateStreamPayload);
         sleep(5 * 1000);
-        String ksqlCreateStreamJSONPayload = String.format("{\"ksql\": \"CREATE STREAM %s_flat WITH (KAFKA_TOPIC='%s_flat', VALUE_FORMAT = 'JSON') AS SELECT side, symbol FROM tmp_%s EMIT CHANGES;\"}", topicName, topicName, topicName);
+        String ksqlCreateStreamJSONPayload = String.format("{\"ksql\": \"CREATE STREAM %s_flat WITH (KAFKA_TOPIC='%s_flat', VALUE_FORMAT = 'JSON') AS SELECT side, symbol + '\uD83D\uDE00' as symbol FROM tmp_%s EMIT CHANGES;\"}", topicName, topicName, topicName);
         System.out.println(ksqlCreateStreamJSONPayload);
         confluentPlatform.runKsql(ksqlCreateStreamJSONPayload);
         sleep(5 * 1000);
@@ -292,6 +310,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 count = tmpCount;
         }
         assertTrue(countRows(flatTableName) >= 1000);
+        assertTrue(countRowsWithEmojis() >= 1000);
         //assertEquals(10000, countRows(flatTableName));
     }
     @Description("stockMultiTask")
@@ -299,7 +318,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
         dropStateTable();
         // Create KeeperMap table
         //createStateTable();
-
         String topicName = "stock_gen_topic_multi_task";
         int parCount = 3;
         String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));

@@ -371,7 +371,7 @@ public class ClickHouseWriter implements DBWriter{
                             record.getRecordOffsetContainer().getPartition(),
                             record.getRecordOffsetContainer().getOffset(),
                             gsonString));
-                    BinaryStreamUtils.writeBytes(stream, gsonString.getBytes());
+                    BinaryStreamUtils.writeBytes(stream, gsonString.getBytes("UTF-8"));
                 }
 
                 stream.close();
