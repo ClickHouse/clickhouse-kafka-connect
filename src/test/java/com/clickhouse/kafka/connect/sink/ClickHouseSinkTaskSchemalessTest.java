@@ -9,8 +9,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
-
-import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.stream.LongStream;
 
@@ -90,7 +88,8 @@ public class ClickHouseSinkTaskSchemalessTest {
 
 
     private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
-        String queryCount = "select count(*) from emojis_table_test where str LIKE '%😀%'"; //String.format("select count(*) from `%s` where str LIKE '%\uD83D\uDE00%'", topic);
+        String queryCount = "select count(*) from emojis_table_test where str LIKE '%\uD83D\uDE00%'";
+
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
@@ -400,7 +399,6 @@ public class ClickHouseSinkTaskSchemalessTest {
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size() / 2, countRowsWithEmojis(chc, topic));
-
     }
 
     @AfterAll

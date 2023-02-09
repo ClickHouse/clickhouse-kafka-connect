@@ -127,6 +127,7 @@ tasks.create("integrationTest", Test::class.java) {
 
 tasks.withType<Test> {
     tasks.getByName("check").dependsOn(this)
+    systemProperty("file.encoding", "windows-1252") // run tests with different encoding
     useJUnitPlatform()
     testLogging {
         events("passed", "skipped", "failed")
