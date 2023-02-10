@@ -192,6 +192,37 @@ public class ClickHouseSinkTaskSchemalessTest {
         return array;
     }
 
+    public Collection<SinkRecord> createPrimitiveTypesWithNulls(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("str", "num" + n);
+            value_struct.put("null_str", null);  // the column that should be inserted as it is.
+            value_struct.put("off16", (short)n);
+            value_struct.put("p_int8", (byte)n);
+            value_struct.put("p_int16", (short)n);
+            value_struct.put("p_int32", (int)n);
+            value_struct.put("p_int64", (long)n);
+            value_struct.put("p_float32", (float)n*1.1);
+            value_struct.put("p_float64", (double)n*1.111111);
+            value_struct.put("p_bool", (boolean)true);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     public Collection<SinkRecord> createArrayType(String topic, int partition) {
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, 1000).forEachOrdered(n -> {
@@ -293,6 +324,30 @@ public class ClickHouseSinkTaskSchemalessTest {
         dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+    @Test
+    public void NullableValuesTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+        // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
+        String topic = "schemaless_nullable_values_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `null_str` Nullable(String), `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createPrimitiveTypesWithNulls(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);

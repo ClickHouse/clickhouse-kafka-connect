@@ -21,6 +21,9 @@ public class Data {
 
     @Override
     public String toString() {
+        if (object == null) {
+            return null;
+        }
         return object.toString();
     }
 }
