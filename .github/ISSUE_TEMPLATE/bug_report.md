@@ -25,6 +25,7 @@ assignees: ''
 * Kafka Connect configuration:
 * Kafka version:
 * Kafka environment:
+* OS:
 
 #### ClickHouse server
 * ClickHouse Server version:
