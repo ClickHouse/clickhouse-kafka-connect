@@ -228,6 +228,7 @@ public class ClickHouseSinkTaskSchemalessTest {
         LongStream.range(0, 1000).forEachOrdered(n -> {
 
             List<String> arrayTmp = Arrays.asList("1","2");
+            List<String> arrayEmpty = new ArrayList<>();
             List<Byte> arrayInt8Tmp = Arrays.asList((byte)1,(byte)2);
             List<Short> arrayInt16Tmp = Arrays.asList((short)1,(short)2);
             List<Integer> arrayInt32Tmp = Arrays.asList((int)1,(int)2);
@@ -239,6 +240,7 @@ public class ClickHouseSinkTaskSchemalessTest {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("arr", arrayTmp);
             value_struct.put("off16", (short)n);
+            value_struct.put("arr_empty", arrayEmpty);
             value_struct.put("arr_int8", arrayInt8Tmp);
             value_struct.put("arr_int16", arrayInt16Tmp);
             value_struct.put("arr_int32", arrayInt32Tmp);
@@ -370,7 +372,7 @@ public class ClickHouseSinkTaskSchemalessTest {
 
         String topic = "schemaless_array_string_table_test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createArrayType(topic, 1);
 

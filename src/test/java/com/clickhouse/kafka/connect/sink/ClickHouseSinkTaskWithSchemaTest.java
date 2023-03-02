@@ -122,6 +122,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
                 .field("arr", ARRAY_SCHEMA)
+                .field("arr_empty", ARRAY_SCHEMA)
                 .field("arr_int8", ARRAY_INT8_SCHEMA)
                 .field("arr_int16", ARRAY_INT16_SCHEMA)
                 .field("arr_int32", ARRAY_INT32_SCHEMA)
@@ -136,6 +137,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         LongStream.range(0, 1000).forEachOrdered(n -> {
 
             List<String> arrayTmp = Arrays.asList("1","2");
+            List<String> arrayEmpty = new ArrayList<>();
             List<Byte> arrayInt8Tmp = Arrays.asList((byte)1,(byte)2);
             List<Short> arrayInt16Tmp = Arrays.asList((short)1,(short)2);
             List<Integer> arrayInt32Tmp = Arrays.asList((int)1,(int)2);
@@ -148,6 +150,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("arr", arrayTmp)
+                    .put("arr_empty", arrayEmpty)
                     .put("arr_int8", arrayInt8Tmp)
                     .put("arr_int16", arrayInt16Tmp)
                     .put("arr_int32", arrayInt32Tmp)
@@ -246,7 +249,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "array_string_table_test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createArrayType(topic, 1);
 
@@ -299,7 +302,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "m_array_string_table_test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         createTable(chc, topic + "mate", "CREATE MATERIALIZED VIEW %s ( `off16` Int16 ) Engine = MergeTree ORDER BY `off16` POPULATE AS SELECT off16 FROM m_array_string_table_test ");
         Collection<SinkRecord> sr = createArrayType(topic, 1);
 
