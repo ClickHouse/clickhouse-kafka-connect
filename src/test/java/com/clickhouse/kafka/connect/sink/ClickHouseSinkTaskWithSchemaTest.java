@@ -15,6 +15,7 @@ import org.testcontainers.containers.ClickHouseContainer;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.LongStream;
 
@@ -254,11 +255,14 @@ public class ClickHouseSinkTaskWithSchemaTest {
             LocalDate localDate = LocalDate.now();
             int localDateInt = (int)localDate.toEpochDay();
 
+            LocalDateTime localDateTime = LocalDateTime.now();
+            long localDateTimeLong = localDateTime.toEpochSecond(ZoneOffset.UTC);
+
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("date_number", localDateInt)
                     .put("date32_number", localDateInt)
-                    .put("datetime_number", currentTime)
+                    .put("datetime_number", localDateTimeLong)
                     .put("datetime64_number", currentTime)
                     ;
 
@@ -401,7 +405,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         String topic = "support-dates-table-test";
         dropTable(chc, topic);
         // , date_number Date, date32_number Date32 , datetime_number DateTime
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createDateType(topic, 1);
 

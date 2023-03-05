@@ -184,23 +184,32 @@ public class ClickHouseWriter implements DBWriter{
             case Date:
                 if (value.getFieldType().equals(Schema.Type.INT32)) {
                     BinaryStreamUtils.writeUnsignedInt16(stream, ((Integer) value.getObject()).intValue());
+                } else {
+                    unsuported = true;
                 }
                 break;
             case Date32:
                 if (value.getFieldType().equals(Schema.Type.INT32)) {
                     BinaryStreamUtils.writeInt32(stream, ((Integer) value.getObject()).intValue());
+                } else {
+                    unsuported = true;
                 }
                 break;
             case DateTime:
-                unsuported = true;
+                if (value.getFieldType().equals(Schema.Type.INT64)) {
+                    BinaryStreamUtils.writeUnsignedInt32(stream, ((Long) value.getObject()).longValue());
+                } else {
+                    unsuported = true;
+                }
                 break;
             case DateTime64:
                 if (value.getFieldType().equals(Schema.Type.INT64)) {
                     BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
+                } else {
+                    unsuported = true;
                 }
                 break;
         }
-
         if (unsuported) {
             LOGGER.error("Not implemented conversion.");
             throw new RuntimeException("Not implemented conversion.");
