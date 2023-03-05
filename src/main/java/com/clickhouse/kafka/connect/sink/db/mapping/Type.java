@@ -14,4 +14,8 @@ public enum Type {
     BOOLEAN,
     ARRAY,
     MAP,
+    Date,
+    Date32,
+    DateTime,
+    DateTime64,
 }
