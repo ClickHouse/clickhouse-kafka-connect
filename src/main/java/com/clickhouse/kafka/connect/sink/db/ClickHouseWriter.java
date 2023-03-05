@@ -187,6 +187,10 @@ public class ClickHouseWriter implements DBWriter{
                 }
                 break;
             case Date32:
+                if (value.getFieldType().equals(Schema.Type.INT32)) {
+                    BinaryStreamUtils.writeInt32(stream, ((Integer) value.getObject()).intValue());
+                }
+                break;
             case DateTime:
                 unsuported = true;
                 break;

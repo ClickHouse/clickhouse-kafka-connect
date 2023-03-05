@@ -242,7 +242,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
                 .field("date_number", Schema.INT32_SCHEMA)
-//                .field("date32_number", Schema.INT32_SCHEMA)
+                .field("date32_number", Schema.INT32_SCHEMA)
                 .field("datetime_number", Schema.INT64_SCHEMA)
                 .field("datetime64_number", Schema.INT64_SCHEMA)
                 .build();
@@ -257,7 +257,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("date_number", localDateInt)
-//                    .put("date32_number", mapStringLong)
+                    .put("date32_number", localDateInt)
                     .put("datetime_number", currentTime)
                     .put("datetime64_number", currentTime)
                     ;
@@ -401,7 +401,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         String topic = "support-dates-table-test";
         dropTable(chc, topic);
         // , date_number Date, date32_number Date32 , datetime_number DateTime
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createDateType(topic, 1);
 
