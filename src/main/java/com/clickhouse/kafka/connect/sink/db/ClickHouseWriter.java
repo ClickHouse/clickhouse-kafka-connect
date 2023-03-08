@@ -18,6 +18,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -211,8 +212,9 @@ public class ClickHouseWriter implements DBWriter{
                 break;
         }
         if (unsupported) {
-            LOGGER.error("Not implemented conversion.");
-            throw new RuntimeException("Not implemented conversion.");
+            String msg = String.format("Not implemented conversion. from %s to %s", value.getFieldType(), type);
+            LOGGER.error(msg);
+            throw new DataException(msg);
         }
     }
     private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
@@ -364,11 +366,17 @@ public class ClickHouseWriter implements DBWriter{
                     LOGGER.error(String.format("Try to insert %d rows", records.size()), e);
                     throw new RuntimeException();
                 }
+            } catch (DataException de) {
+                de.printStackTrace();
+                throw de;
             } catch (Exception ce) {
                 ce.printStackTrace();
                 throw new RuntimeException();
             }
 
+        } catch (DataException de) {
+            de.printStackTrace();
+            throw de;
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException();
