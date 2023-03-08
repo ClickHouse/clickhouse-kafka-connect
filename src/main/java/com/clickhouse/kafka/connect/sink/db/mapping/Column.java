@@ -86,6 +86,23 @@ public class Column {
             case "Bool":
                 type = Type.BOOLEAN;
                 break;
+            case "Date":
+                type = Type.Date;
+                break;
+            case "Date32":
+                type = Type.Date32;
+                break;
+            case "DateTime":
+                type = Type.DateTime;
+                break;
+            default:
+                if (valueType.startsWith("DateTime64")) {
+                    // Need to understand why DateTime64(3)
+                    type = Type.DateTime64;
+                }
+
+
+                break;
 
         }
         return type;

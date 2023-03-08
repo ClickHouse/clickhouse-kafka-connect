@@ -6,6 +6,7 @@ import com.clickhouse.client.data.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
@@ -16,6 +17,8 @@ import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -149,16 +152,72 @@ public class ClickHouseWriter implements DBWriter{
                     String colTypeName = type.name();
                     String dataTypeName = obj.getFieldType().getName().toUpperCase();
                     // TODO: make extra validation for Map/Array type
-                    if (!colTypeName.equals(dataTypeName)) {
-                        validSchema = false;
-                        LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                    switch (colTypeName) {
+                        case "Date":
+                        case "Date32":
+                            if ( dataTypeName.equals(Type.INT32) || dataTypeName.equals(Type.STRING) ) {
+                                LOGGER.debug(String.format("Will try to convert from %s to %s", colTypeName, dataTypeName));
+                            }
+                            break;
+                        case "DateTime":
+                        case "DateTime64":
+                            if ( dataTypeName.equals(Type.INT64) || dataTypeName.equals(Type.STRING) ) {
+                                LOGGER.debug(String.format("Will try to convert from %s to %s", colTypeName, dataTypeName));
+                            }
+                            break;
+                        default:
+                            if (!colTypeName.equals(dataTypeName)) {
+                                validSchema = false;
+                                LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                            }
+
                     }
+
                 }
             }
         }
         return validSchema;
     }
 
+    private void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value) throws IOException {
+        // TODO: develop more specific tests to have better coverage
+        boolean unsupported = false;
+        switch (type) {
+            case Date:
+                if (value.getFieldType().equals(Schema.Type.INT32)) {
+                    BinaryStreamUtils.writeUnsignedInt16(stream, ((Integer) value.getObject()).intValue());
+                } else {
+                    unsupported = true;
+                }
+                break;
+            case Date32:
+                if (value.getFieldType().equals(Schema.Type.INT32)) {
+                    BinaryStreamUtils.writeInt32(stream, ((Integer) value.getObject()).intValue());
+                } else {
+                    unsupported = true;
+                }
+                break;
+            case DateTime:
+                if (value.getFieldType().equals(Schema.Type.INT64)) {
+                    BinaryStreamUtils.writeUnsignedInt32(stream, ((Long) value.getObject()).longValue());
+                } else {
+                    unsupported = true;
+                }
+                break;
+            case DateTime64:
+                if (value.getFieldType().equals(Schema.Type.INT64)) {
+                    BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
+                } else {
+                    unsupported = true;
+                }
+                break;
+        }
+        if (unsupported) {
+            String msg = String.format("Not implemented conversion. from %s to %s", value.getFieldType(), type);
+            LOGGER.error(msg);
+            throw new DataException(msg);
+        }
+    }
     private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
         switch (type) {
             case INT8:
@@ -213,6 +272,12 @@ public class ClickHouseWriter implements DBWriter{
                     case BOOLEAN:
                     case STRING:
                         doWritePrimitive(colType, stream, value.getObject());
+                        break;
+                    case Date:
+                    case Date32:
+                    case DateTime:
+                    case DateTime64:
+                        doWriteDates(colType, stream, value);
                         break;
                     case MAP:
                         Map<?,?> mapTmp = (Map<?,?>)value.getObject();
@@ -307,11 +372,17 @@ public class ClickHouseWriter implements DBWriter{
                     LOGGER.error(String.format("Try to insert %d rows", records.size()), e);
                     throw new RuntimeException();
                 }
+            } catch (DataException de) {
+                de.printStackTrace();
+                throw de;
             } catch (Exception ce) {
                 ce.printStackTrace();
                 throw new RuntimeException();
             }
 
+        } catch (DataException de) {
+            de.printStackTrace();
+            throw de;
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException();
