@@ -451,7 +451,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "support-dates-table-test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Date32, datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createDateType(topic, 1);
 
