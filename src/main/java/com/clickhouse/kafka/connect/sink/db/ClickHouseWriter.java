@@ -219,6 +219,10 @@ public class ClickHouseWriter implements DBWriter{
         }
     }
     private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
+        if (value == null) {
+            BinaryStreamUtils.writeNull(stream);
+            return;
+        }
         switch (type) {
             case INT8:
                 BinaryStreamUtils.writeInt8(stream, ((Byte) value).byteValue());
@@ -255,8 +259,14 @@ public class ClickHouseWriter implements DBWriter{
             if (filedExists) {
                 Data value = record.getJsonMap().get(name);
                 // TODO: the mapping need to be more efficient
-                if (col.isNullable())
+                // If column is nullable && the object is also null add the not null marker
+                if (col.isNullable() && value.getObject() != null) {
                     BinaryStreamUtils.writeNonNull(stream);
+                }
+                if (col.isNullable() == false && value.getObject() == null) {
+                    // this the situation when the col is not isNullable, but the data is null here we need to drop the records
+                    throw new RuntimeException(("col.isNullable() is false and value is empty"));
+                }
                 switch (colType) {
                     case INT8:
                     case INT16:

@@ -240,6 +240,45 @@ public class ClickHouseSinkTaskWithSchemaTest {
         return collection;
     }
 
+    public Collection<SinkRecord> createNullValueData(String topic, int partition) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("null_value_data", Schema.OPTIONAL_INT16_SCHEMA)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 2).forEachOrdered(n -> {
+
+            Short null_value_data = null;
+
+            if ( n % 2 == 0) {
+                null_value_data = Short.valueOf((short)n);
+            }
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("null_value_data", null_value_data)
+                    ;
+
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        Collection<SinkRecord> collection = array;
+        return collection;
+    }
+
     public Collection<SinkRecord> createDateType(String topic, int partition) {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
@@ -434,6 +473,34 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.stop();
 
         assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+    @Test
+    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
+    public void nullValueDataTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "null-value-table-test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, null_value_data Nullable(Int16) ) Engine = MergeTree ORDER BY off16");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = createNullValueData(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+
     }
 
     @Test
