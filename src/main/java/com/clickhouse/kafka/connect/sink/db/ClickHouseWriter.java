@@ -196,8 +196,13 @@ public class ClickHouseWriter implements DBWriter{
             if (filedExists) {
                 Data value = record.getJsonMap().get(name);
                 // TODO: the mapping need to be more efficient
-                if (col.isNullable())
+                if (col.isNullable() && value.getObject() != null) {
                     BinaryStreamUtils.writeNonNull(stream);
+                }
+                if (col.isNullable() == false && value.getObject() == null) {
+                    // this the situation when the col is not isNullable, but the data is null here we need to drop the records
+                    throw new RuntimeException(("col.isNullable() is false and value is empty"));
+                }
                 switch (colType) {
                     case INT8:
                     case INT16:
