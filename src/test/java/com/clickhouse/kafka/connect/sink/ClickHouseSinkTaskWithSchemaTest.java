@@ -475,7 +475,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         ClickHouseHelperClient chc = createClient(props);
 
-        String topic = "support-dates-table-test";
+        String topic = "support-unsupported-dates-table-test";
         dropTable(chc, topic);
         // , date_number Date, date32_number Date32 , datetime_number DateTime
         createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
