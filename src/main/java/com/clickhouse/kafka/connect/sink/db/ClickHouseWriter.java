@@ -219,6 +219,10 @@ public class ClickHouseWriter implements DBWriter{
         }
     }
     private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
+        if (value == null) {
+            BinaryStreamUtils.writeNull(stream);
+            return;
+        }
         switch (type) {
             case INT8:
                 BinaryStreamUtils.writeInt8(stream, ((Byte) value).byteValue());
