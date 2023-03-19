@@ -67,12 +67,14 @@ public class ClickHouseHelperClient {
         while (retryCount < retry) {
             if (clientPing.ping(server, timeout)) {
                 LOGGER.info("Ping is successful.");
+                clientPing.close();
                 return true;
             }
             retryCount++;
             LOGGER.warn(String.format("Ping retry %d out of %d", retryCount, retry));
         }
         LOGGER.error("unable to ping to clickhouse server. ");
+        clientPing.close();
         return false;
     }
 
