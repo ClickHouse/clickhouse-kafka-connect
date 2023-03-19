@@ -121,7 +121,7 @@ public class ClickHouseHelperClient {
             }
 
         } catch (ClickHouseException e) {
-
+            LOGGER.error("Failed in show tables", e);
         }
         return tablesNames;
     }
