@@ -66,7 +66,6 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
-        // TODO: we need to use the properties
         ArrayList<Map<String, String>> configs = new ArrayList<>();
         for (int i = 0; i < maxTasks; i++) {
             configs.add(settings);
@@ -103,8 +102,6 @@ public class ClickHouseSinkConnector extends SinkConnector {
         } catch (Exception e) {
             return config;
         }
-        // TODO: run validation here
-
         return config;
     }
 }

@@ -231,7 +231,6 @@ public class ClickHouseDbWriterTest {
         String hostname = System.getenv("HOST");
         String port = System.getenv("PORT");
         String password = System.getenv("PASSWORD");
-        // TODO: we need to ignore the test if there is not ENV variables
         if (hostname == null || port == null || password == null)
             throw new RuntimeException("Can not continue missing env variables.");
 
