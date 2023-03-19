@@ -23,8 +23,6 @@ public class Record {
     private SchemaType schemaType;
     private SinkRecord sinkRecord = null;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(Record.class);
-
     public Record(SchemaType schemaType, OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Data> jsonMap, SinkRecord sinkRecord) {
         this.recordOffsetContainer = recordOffsetContainer;
         this.fields = fields;
