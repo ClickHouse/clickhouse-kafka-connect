@@ -299,27 +299,6 @@ public class ConfluentPlatform {
         return false;
     }
 
-    // TODO: fix logic of topic delete
-    public boolean deleteTopic(String topicName) {
-        String restProxyEndpoint = getRestProxyEndpoint();
-        OkHttpClient client = new OkHttpClient();
-
-        String kafkaTopicEndpoint = String.format("%s/kafka/v3/clusters/%s/topics/%s", restProxyEndpoint, clusterId, topicName);
-        Request request = new Request.Builder()
-            .url(kafkaTopicEndpoint)
-            .delete()
-            .build();
-        try (Response response = client.newCall(request).execute()) {
-//            System.out.println(response.code());
-            if (response.code() == 200)
-                return true;
-        } catch (IOException ioe) {
-
-            return false;
-        }
-        return false;
-    }
-
     public boolean createConnect(String payload) {
         String connectRestEndpoint = getConnectRestEndPoint();
 //        System.out.println(connectRestEndpoint);
