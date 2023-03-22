@@ -17,8 +17,6 @@ import java.util.Map;
 
 public class SchemalessRecordConvertor implements RecordConvertor {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(SchemalessRecordConvertor.class);
-
     @Override
     public Record convert(SinkRecord sinkRecord) {
         String topic = sinkRecord.topic();

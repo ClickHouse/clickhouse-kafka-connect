@@ -14,8 +14,6 @@ import java.util.Map;
 
 public class SchemaRecordConvertor implements RecordConvertor{
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaRecordConvertor.class);
-
     @Override
     public Record convert(SinkRecord sinkRecord) {
         String topic = sinkRecord.topic();

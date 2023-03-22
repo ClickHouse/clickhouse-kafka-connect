@@ -32,7 +32,6 @@ public class KeeperProviderIntegrationTest {
         hostname = System.getenv("HOST");
         port = System.getenv("PORT");
         password = System.getenv("PASSWORD");
-        // TODO: we need to ignore the test if there is not ENV variables
         if (hostname == null || port == null || password == null)
             throw new RuntimeException("Can not continue missing env variables.");
 
@@ -43,7 +42,7 @@ public class KeeperProviderIntegrationTest {
                 .sslEnable(true)
                 .build();
     }
-    // TODO: check when there is no data for a key
+
     @Test
     @Description("Keeper set get test")
     public void setGetTest() throws InterruptedException {

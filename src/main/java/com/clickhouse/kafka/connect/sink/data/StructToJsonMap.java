@@ -23,6 +23,7 @@ public class StructToJsonMap {
             String fieldName = field.name();
             Schema.Type fieldType = field.schema().type();
             String schemaName = field.schema().name();
+            LOGGER.debug(String.format("fieldName [%s] fieldType [%s] schemaName [%s]" , fieldName, fieldType.name(), schemaName));
             switch (fieldType) {
                 case STRING:
                     jsonMap.put(fieldName, new Data(fieldType, struct.getString(fieldName)));
