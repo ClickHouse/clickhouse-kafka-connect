@@ -11,3 +11,6 @@ See the [ClickHouse website](https://clickhouse.com/docs/en/integrations/kafka/c
 
 ## Design
 For a full overview of the design and how exactly-once delivery semantics are achieved, see the [design document](./docs/DESIGN.md).
+
+## Help
+For additional help, please [file an issue in the repository](https://github.com/ClickHouse/clickhouse-kafka-connect/issues) or raise a question in [ClickHouse public Slack](https://clickhouse.com/slack).
