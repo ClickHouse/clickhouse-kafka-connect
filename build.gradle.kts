@@ -38,7 +38,7 @@ plugins {
 }
 
 group = "com.clickhouse.kafka"
-version = "v0.0.9-beta"
+version = "v0.0.10-beta"
 description = "The official ClickHouse Apache Kafka Connect Connector."
 
 repositories {
