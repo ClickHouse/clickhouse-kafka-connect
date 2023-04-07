@@ -181,6 +181,10 @@ public class ClickHouseWriter implements DBWriter{
 
     private void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value) throws IOException {
         // TODO: develop more specific tests to have better coverage
+        if (value.getObject() == null) {
+            BinaryStreamUtils.writeNull(stream);
+            return;
+        }
         boolean unsupported = false;
         switch (type) {
             case Date:

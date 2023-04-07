@@ -1,3 +1,6 @@
+## 0.0.10, ???
+* Nullable date columns fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/60)
+
 ## 0.0.9, 2023-03-08
 ### Bug Fixes
 * Implicit date conversion [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57). [#63](https://github.com/ClickHouse/clickhouse-kafka-connect/pull/63)

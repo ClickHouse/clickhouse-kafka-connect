@@ -244,17 +244,17 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
-                .field("null_value_data", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("null_value_data", Schema.OPTIONAL_INT64_SCHEMA)
                 .build();
 
 
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, 2).forEachOrdered(n -> {
 
-            Short null_value_data = null;
+            Long null_value_data = null;
 
             if ( n % 2 == 0) {
-                null_value_data = Short.valueOf((short)n);
+                null_value_data = Long.valueOf((short)n);
             }
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
@@ -283,8 +283,8 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
-                .field("date_number", Schema.INT32_SCHEMA)
-                .field("date32_number", Schema.INT32_SCHEMA)
+                .field("date_number", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("date32_number", Schema.OPTIONAL_INT32_SCHEMA)
                 .field("datetime_number", Schema.INT64_SCHEMA)
                 .field("datetime64_number", Schema.INT64_SCHEMA)
                 .build();
@@ -294,7 +294,10 @@ public class ClickHouseSinkTaskWithSchemaTest {
         LongStream.range(0, 1000).forEachOrdered(n -> {
             long currentTime = System.currentTimeMillis();
             LocalDate localDate = LocalDate.now();
-            int localDateInt = (int)localDate.toEpochDay();
+            Integer localDateInt = (int)localDate.toEpochDay();
+            if(n%3 == 0) {
+                localDateInt = null;
+            }
 
             LocalDateTime localDateTime = LocalDateTime.now();
             long localDateTimeLong = localDateTime.toEpochSecond(ZoneOffset.UTC);
@@ -490,7 +493,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "null-value-table-test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, null_value_data Nullable(Int16) ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, null_value_data Nullable(DateTime64(6, 'UTC')) ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createNullValueData(topic, 1);
 
@@ -518,7 +521,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "support-dates-table-test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Date32, datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createDateType(topic, 1);
 
