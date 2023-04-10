@@ -1,4 +1,4 @@
-## 0.0.10, ???
+## 0.0.10, 2023-04-10
 * Nullable date columns fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/60)
 
 ## 0.0.9, 2023-03-08
