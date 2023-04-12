@@ -30,3 +30,6 @@ build
 
 # Ignore IntelliJ
 .idea
+
+# Mac Folder Details
+.DS_Store
