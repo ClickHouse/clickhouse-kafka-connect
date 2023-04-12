@@ -139,6 +139,9 @@ public class ClickHouseWriter implements DBWriter{
                     doInsertJson(records);
                     break;
             }
+        } catch (DataException | NullPointerException dataException) {
+            LOGGER.debug("Exception in doInsert", dataException);
+            throw dataException;
         } catch (Exception e) {
             LOGGER.debug("Exception in doInsert", e);
             throw new RetriableException(e);
