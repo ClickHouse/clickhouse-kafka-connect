@@ -19,14 +19,17 @@ import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.errors.RetriableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class ClickHouseWriter implements DBWriter{
@@ -125,14 +128,20 @@ public class ClickHouseWriter implements DBWriter{
     public void doInsert(List<Record> records) {
         if ( records.isEmpty() )
             return;
-        Record first = records.get(0);
-        switch (first.getSchemaType()) {
-            case SCHEMA:
-                doInsertRawBinary(records);
-                break;
-            case SCHEMA_LESS:
-                doInsertJson(records);
-                break;
+
+        try {
+            Record first = records.get(0);
+            switch (first.getSchemaType()) {
+                case SCHEMA:
+                    doInsertRawBinary(records);
+                    break;
+                case SCHEMA_LESS:
+                    doInsertJson(records);
+                    break;
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Exception in doInsert", e);
+            throw new RetriableException(e);
         }
     }
 
@@ -327,7 +336,7 @@ public class ClickHouseWriter implements DBWriter{
             }
 
     }
-    public void doInsertRawBinary(List<Record> records) {
+    public void doInsertRawBinary(List<Record> records) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
 
         if ( records.isEmpty() )
@@ -377,24 +386,16 @@ public class ClickHouseWriter implements DBWriter{
                     long rows = summary.getWrittenRows();
 
                 } catch (Exception e) {
-                    e.printStackTrace();
-                    LOGGER.error(String.format("Try to insert %d rows", records.size()), e);
-                    throw new RuntimeException();
+                    LOGGER.debug(String.format("Try to insert %d rows", records.size()), e);
+                    throw e;
                 }
-            } catch (DataException de) {
-                de.printStackTrace();
-                throw de;
-            } catch (Exception ce) {
-                ce.printStackTrace();
-                throw new RuntimeException();
+            } catch (Exception e) {
+                LOGGER.trace("Exception", e);
+                throw e;
             }
-
-        } catch (DataException de) {
-            de.printStackTrace();
-            throw de;
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException();
+            LOGGER.trace("Exception", e);
+            throw e;
         }
 
         long s3 = System.currentTimeMillis();
@@ -403,7 +404,7 @@ public class ClickHouseWriter implements DBWriter{
     }
 
 
-    public void doInsertJson(List<Record> records) {
+    public void doInsertJson(List<Record> records) throws IOException, ExecutionException, InterruptedException {
         //https://devqa.io/how-to-convert-java-map-to-json/
         Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
@@ -456,7 +457,7 @@ public class ClickHouseWriter implements DBWriter{
                             record.getRecordOffsetContainer().getPartition(),
                             record.getRecordOffsetContainer().getOffset(),
                             gsonString));
-                    BinaryStreamUtils.writeBytes(stream, gsonString.getBytes("UTF-8"));
+                    BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
                 }
 
                 stream.close();
@@ -466,21 +467,17 @@ public class ClickHouseWriter implements DBWriter{
                     summary = response.getSummary();
                     long rows = summary.getWrittenRows();
                     LOGGER.trace(String.format("insert num of rows %d", rows));
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    LOGGER.error("Insert error", e);
-                    throw new RuntimeException(e);
+                } catch (Exception e) {//This is mostly for auto-closing
+                    LOGGER.trace("Exception", e);
+                    throw e;
                 }
-            } catch (Exception ce) {
-                ce.printStackTrace();
-                LOGGER.error("stream error", ce);
-                throw new RuntimeException(ce);
+            } catch (Exception e) {//This is mostly for auto-closing
+                LOGGER.trace("Exception", e);
+                throw e;
             }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            LOGGER.error("Create req", e);
-            throw new RuntimeException(e);
+        } catch (Exception e) {//This is mostly for auto-closing
+            LOGGER.trace("Exception", e);
+            throw e;
         }
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
