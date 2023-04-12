@@ -23,12 +23,12 @@ public class ClickHouseSinkConfig {
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
-    public static final Integer portDefault = Integer.valueOf(8443);
+    public static final int portDefault = 8443;
     public static final String usernameDefault = "default";
     public static final String passwordDefault = "";
     public static final Boolean sslDefault = Boolean.TRUE;
-    public static final Integer timeoutSecondsDefault = Integer.valueOf(30);
-    public static final Integer retryCountDefault = Integer.valueOf(3);
+    public static final Integer timeoutSecondsDefault = 30;
+    public static final Integer retryCountDefault = 3;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
     public enum StateStores {
         NONE,
@@ -73,14 +73,14 @@ public class ClickHouseSinkConfig {
     public ClickHouseSinkConfig(Map<String, String> props) {
         // Extracting configuration
         hostname = props.get(HOSTNAME);
-        port = Integer.valueOf(props.get(PORT)).intValue();
+        port = Integer.parseInt(props.getOrDefault(PORT, String.valueOf(portDefault)));
         database = props.getOrDefault(DATABASE, databaseDefault);
         username = props.getOrDefault(USERNAME, usernameDefault);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
-        sslEnabled = Boolean.valueOf(props.getOrDefault(SSL_ENABLED,"false")).booleanValue();
-        timeout = Integer.valueOf(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())).intValue() * MILLI_IN_A_SEC; // multiple in 1000 milli
-        retry = Integer.valueOf(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString())).intValue();
-        exactlyOnce = Boolean.valueOf(props.getOrDefault(EXACTLY_ONCE,"false")).booleanValue();
+        sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
+        timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
+        retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
+        exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
         LOGGER.info("exactlyOnce: " + exactlyOnce);
         LOGGER.info("props: " + props);
     }
@@ -105,7 +105,7 @@ public class ClickHouseSinkConfig {
         configDef.define(PORT,
                 ConfigDef.Type.INT,
                 portDefault,
-                ConfigDef.Range.between(1024,Integer.MAX_VALUE),
+                ConfigDef.Range.between(1, 65535),
                 ConfigDef.Importance.HIGH,
                 "port",
                 group,
