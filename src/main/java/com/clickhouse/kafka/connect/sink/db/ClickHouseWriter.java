@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
@@ -139,12 +140,31 @@ public class ClickHouseWriter implements DBWriter{
                     doInsertJson(records);
                     break;
             }
-        } catch (DataException | NullPointerException dataException) {
-            LOGGER.debug("Exception in doInsert", dataException);
-            throw dataException;
         } catch (Exception e) {
             LOGGER.debug("Exception in doInsert", e);
-            throw new RetriableException(e);
+            //High-Level Exception Checking
+            if (e instanceof DataException) {
+                throw (DataException) e;
+            }
+
+            //Root-Cause Exception Checking
+            Exception rootCause = Utils.getRootCause(e);
+            if (rootCause instanceof SocketTimeoutException) {
+                throw new RetriableException(e);
+            } else if (rootCause instanceof ClickHouseException) {
+                ClickHouseException clickHouseException = (ClickHouseException) rootCause;
+                switch (clickHouseException.getErrorCode()) {
+                    case 159:
+                    case 164:
+                    case 203:
+                    case 425:
+                        throw new RetriableException(e);
+                    default:
+                        break;
+                }
+            }
+
+            throw new RuntimeException(e);
         }
     }
 
