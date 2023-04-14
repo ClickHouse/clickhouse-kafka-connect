@@ -1,9 +1,6 @@
 package com.clickhouse.kafka.connect.util;
 
 import com.clickhouse.client.ClickHouseException;
-import org.apache.kafka.connect.errors.RetriableException;
-
-import java.net.SocketTimeoutException;
 
 public class Utils {
 
@@ -12,11 +9,21 @@ public class Utils {
     }
 
     public static Exception getRootCause (Exception e) {
+        return getRootCause(e, false);
+    }
+
+    /**
+     * This will drill down to the first ClickHouseException in the exception chain
+     * @param e Exception to drill down
+     * @return ClickHouseException or null if none found
+     */
+    public static Exception getRootCause (Exception e, Boolean prioritizeClickHouseException) {
         if (e == null)
             return null;
 
-        Throwable runningException = e;
-        while (runningException.getCause() != null) {
+        Throwable runningException = e;//We have to use Throwable because of the getCause() signature
+        while (runningException.getCause() != null &&
+                (!prioritizeClickHouseException || !(runningException instanceof ClickHouseException))) {
             runningException = runningException.getCause();
         }
 

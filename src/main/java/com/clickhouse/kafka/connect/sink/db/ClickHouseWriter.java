@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
@@ -142,26 +143,36 @@ public class ClickHouseWriter implements DBWriter{
             }
         } catch (Exception e) {
             LOGGER.debug("Exception in doInsert", e);
-            //High-Level Exception Checking
+            //High-Level Explicit Exception Checking
             if (e instanceof DataException) {
                 throw (DataException) e;
             }
 
-            //Root-Cause Exception Checking
-            Exception rootCause = Utils.getRootCause(e);
-            if (rootCause instanceof SocketTimeoutException) {
-                throw new RetriableException(e);
-            } else if (rootCause instanceof ClickHouseException) {
+            //Let's check if we have a ClickHouseException to reference the error code
+            Exception rootCause = Utils.getRootCause(e, true);
+            if (rootCause instanceof ClickHouseException) {
                 ClickHouseException clickHouseException = (ClickHouseException) rootCause;
+                LOGGER.debug("ClickHouseException: {}", clickHouseException.getErrorCode());
                 switch (clickHouseException.getErrorCode()) {
                     case 159:
                     case 164:
                     case 203:
+                    case 209:
+                    case 210:
                     case 425:
                         throw new RetriableException(e);
                     default:
+                        LOGGER.debug("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());
                         break;
                 }
+            }
+
+            //Otherwise use Root-Cause Exception Checking
+
+            if (rootCause instanceof SocketTimeoutException) {
+                throw new RetriableException(e);
+            } else if (rootCause instanceof UnknownHostException) {
+                throw new RetriableException(e);
             }
 
             throw new RuntimeException(e);
@@ -409,7 +420,7 @@ public class ClickHouseWriter implements DBWriter{
                     long rows = summary.getWrittenRows();
 
                 } catch (Exception e) {
-                    LOGGER.debug(String.format("Try to insert %d rows", records.size()), e);
+                    LOGGER.debug("Reading results after closing stream to ensure insert happened failed.", e);
                     throw e;
                 }
             } catch (Exception e) {
