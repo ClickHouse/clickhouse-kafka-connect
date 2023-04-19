@@ -65,6 +65,7 @@ public class Utils {
                 case 203:
                 // SOCKET_TIMEOUT
                 case 209:
+                // NETWORK_ERROR
                 case 210:
                 case 425:
                     throw new RetriableException(e);
