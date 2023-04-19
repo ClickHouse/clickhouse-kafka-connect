@@ -59,6 +59,7 @@ public class Utils {
             switch (clickHouseException.getErrorCode()) {
                 case 159:
                 case 164:
+                // NO_FREE_CONNECTION
                 case 203:
                 case 209:
                 case 210:
