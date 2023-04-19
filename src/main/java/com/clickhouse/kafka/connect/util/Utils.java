@@ -57,6 +57,7 @@ public class Utils {
             ClickHouseException clickHouseException = (ClickHouseException) rootCause;
             LOGGER.warn("ClickHouseException: {}", clickHouseException.getErrorCode());
             switch (clickHouseException.getErrorCode()) {
+                // TIMEOUT_EXCEEDED
                 case 159:
                 case 164:
                 // NO_FREE_CONNECTION
