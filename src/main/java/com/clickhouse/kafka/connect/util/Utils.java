@@ -59,6 +59,7 @@ public class Utils {
             switch (clickHouseException.getErrorCode()) {
                 // TIMEOUT_EXCEEDED
                 case 159:
+                // READONLY
                 case 164:
                 // NO_FREE_CONNECTION
                 case 203:
