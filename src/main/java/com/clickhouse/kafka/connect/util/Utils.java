@@ -61,6 +61,7 @@ public class Utils {
                 case 164:
                 // NO_FREE_CONNECTION
                 case 203:
+                // SOCKET_TIMEOUT
                 case 209:
                 case 210:
                 case 425:
