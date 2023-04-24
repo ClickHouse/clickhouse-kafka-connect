@@ -1,3 +1,6 @@
+## 0.0.11, 2023-04-20
+* Implemented retry mechanism to fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/74)
+
 ## 0.0.10, 2023-04-10
 * Nullable date columns fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/60)
 
