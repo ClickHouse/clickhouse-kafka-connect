@@ -79,7 +79,7 @@ public class Processing {
     }
 
     public void doLogic(List<Record> records) {
-
+        List<Record> trimmedRecords;
         Record record = records.get(0);
 
         String topic = record.getRecordOffsetContainer().getTopic();
@@ -104,8 +104,8 @@ public class Processing {
                 break;
             case BEFORE_PROCESSING:
                 int bpBeforeDrop = records.size();
-                records = dropRecords(stateRecord.getMinOffset(), records);
-                int bpAfterDrop = records.size();
+                trimmedRecords = dropRecords(stateRecord.getMinOffset(), records);
+                int bpAfterDrop = trimmedRecords.size();
                 LOGGER.debug(String.format("before drop %d after drop %d state %s",  bpBeforeDrop, bpAfterDrop, stateRecord.getOverLappingState(rangeContainer)));
                 // Here there are several options
                 switch (stateRecord.getOverLappingState(rangeContainer)) {
@@ -117,7 +117,7 @@ public class Processing {
                         break;
                     case SAME: // Dedupe in clickhouse will fix it
                     case NEW:
-                        doInsert(records);
+                        doInsert(trimmedRecords);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                         break;
                     case CONTAINS: // The state contains the given records
@@ -125,7 +125,7 @@ public class Processing {
                         break;
                     case OVER_LAPPING:
                         // spit it to 2 inserts
-                        List<List<Record>> rightAndLeft = splitRecordsByOffset(records, stateRecord.getMaxOffset(), stateRecord.getMinOffset());
+                        List<List<Record>> rightAndLeft = splitRecordsByOffset(trimmedRecords, stateRecord.getMaxOffset(), stateRecord.getMinOffset());
                         doInsert(rightAndLeft.get(0));
                         stateProvider.setStateRecord(new StateRecord(
                                 topic, partition, stateRecord.getRangeContainer().getMaxOffset(),
@@ -142,8 +142,8 @@ public class Processing {
                 }
             case AFTER_PROCESSING:
                 int apBeforeDrop = records.size();
-                records = dropRecords(stateRecord.getMinOffset(), records);
-                int apAfterDrop = records.size();
+                trimmedRecords = dropRecords(stateRecord.getMinOffset(), records);
+                int apAfterDrop = trimmedRecords.size();
                 LOGGER.debug(String.format("before drop %d after drop %d state %s",  apBeforeDrop, apAfterDrop, stateRecord.getOverLappingState(rangeContainer)));
                 switch (stateRecord.getOverLappingState(rangeContainer)) {
                     case SAME:
@@ -151,14 +151,18 @@ public class Processing {
                         break;
                     case ZERO:
                         LOGGER.warn(String.format("It seems you deleted the topic - resetting state for topic [%s] partition [%s].", topic, partition));
-                    case NEW:
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.BEFORE_PROCESSING));
                         doInsert(records);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                         break;
+                    case NEW:
+                        stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.BEFORE_PROCESSING));
+                        doInsert(trimmedRecords);
+                        stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.AFTER_PROCESSING));
+                        break;
                     case OVER_LAPPING:
                         // spit it to 2 inserts we will ignore one and insert the other
-                        List<List<Record>> rightAndLeft = splitRecordsByOffset(records, stateRecord.getMaxOffset(), stateRecord.getMinOffset());
+                        List<List<Record>> rightAndLeft = splitRecordsByOffset(trimmedRecords, stateRecord.getMaxOffset(), stateRecord.getMinOffset());
                         List<Record> rightRecords = rightAndLeft.get(1);
                         RangeContainer rightRangeContainer = extractRange(rightRecords, topic, partition);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.BEFORE_PROCESSING));

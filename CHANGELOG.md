@@ -1,3 +1,6 @@
+## 0.0.12, 2023-04-XX
+* Updated state handling so that warnings are posted, rather than errors + exceptions.
+
 ## 0.0.10, 2023-04-10
 * Nullable date columns fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/60)
 
