@@ -109,16 +109,19 @@ public class Processing {
                 LOGGER.debug(String.format("before drop %d after drop %d state %s",  bpBeforeDrop, bpAfterDrop, stateRecord.getOverLappingState(rangeContainer)));
                 // Here there are several options
                 switch (stateRecord.getOverLappingState(rangeContainer)) {
+                    case ZERO: // Reset if we're at a 0 state
+                        LOGGER.warn(String.format("It seems you deleted the topic - resetting state for topic [%s] partition [%s].", topic, partition));
+                        stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.BEFORE_PROCESSING));//RESET
+                        doInsert(records);
+                        stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.AFTER_PROCESSING));
+                        break;
                     case SAME: // Dedupe in clickhouse will fix it
                     case NEW:
                         doInsert(records);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                         break;
                     case CONTAINS: // The state contains the given records
-                        // Do nothing - write to dead letter queue
-                        records.forEach( r ->
-                                sendTODlq(record, new DuplicateException(String.format(record.getTopicAndPartition())))
-                        );
+                        LOGGER.warn(String.format("Records seemingly missing compared to prior batch for topic [%s] partition [%s].", topic, partition));
                         break;
                     case OVER_LAPPING:
                         // spit it to 2 inserts
@@ -134,8 +137,8 @@ public class Processing {
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                         break;
                     case ERROR:
-                        LOGGER.error(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
-                        throw new RuntimeException(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
+                        LOGGER.warn(String.format("State mismatch for topic [%s] partition [%s].", topic, partition));
+                        break;
                 }
             case AFTER_PROCESSING:
                 int apBeforeDrop = records.size();
@@ -146,6 +149,8 @@ public class Processing {
                     case SAME:
                     case CONTAINS:
                         break;
+                    case ZERO:
+                        LOGGER.warn(String.format("It seems you deleted the topic - resetting state for topic [%s] partition [%s].", topic, partition));
                     case NEW:
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.BEFORE_PROCESSING));
                         doInsert(records);
@@ -161,8 +166,7 @@ public class Processing {
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.AFTER_PROCESSING));
                         break;
                     case ERROR:
-                        LOGGER.error(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
-                        throw new RuntimeException(String.format("state is not synced for topic [%s] partition [%s]", topic, partition));
+                        LOGGER.warn(String.format("State mismatch for topic [%s] partition [%s]", topic, partition));
                 }
         }
     }

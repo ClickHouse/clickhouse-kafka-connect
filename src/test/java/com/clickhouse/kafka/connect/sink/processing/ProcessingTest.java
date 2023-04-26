@@ -170,23 +170,23 @@ public class ProcessingTest {
         assertEquals(records.size(), dbWriter.recordsInserted());
     }
 
-    @Test
-    @DisplayName("Processing with dlq test")
-    public void ProcessingWithDLQTest() {
-        InMemoryDLQ er = new InMemoryDLQ();
-        List<Record> records = createRecords("test", 1);
-        List<Record> containsRecords = records.subList(345,850);
-        StateProvider stateProvider = new InMemoryState();
-        DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter, er);
-        processing.doLogic(records);
-        assertEquals(records.size(), dbWriter.recordsInserted());
-        StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
-        stateRecord.setState(State.BEFORE_PROCESSING);
-        processing.doLogic(containsRecords);
-        assertEquals(records.size(), dbWriter.recordsInserted());
-        // Check that we send the correct amount of records to DLQ
-        assertEquals(containsRecords.size(), er.size());
-    }
+//    @Test
+//    @DisplayName("Processing with dlq test")
+//    public void ProcessingWithDLQTest() {
+//        InMemoryDLQ er = new InMemoryDLQ();
+//        List<Record> records = createRecords("test", 1);
+//        List<Record> containsRecords = records.subList(345,850);
+//        StateProvider stateProvider = new InMemoryState();
+//        DBWriter dbWriter = new InMemoryDBWriter();
+//        Processing processing = new Processing(stateProvider, dbWriter, er);
+//        processing.doLogic(records);
+//        assertEquals(records.size(), dbWriter.recordsInserted());
+//        StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
+//        stateRecord.setState(State.BEFORE_PROCESSING);
+//        processing.doLogic(containsRecords);
+//        assertEquals(records.size(), dbWriter.recordsInserted());
+//        // Check that we send the correct amount of records to DLQ
+//        assertEquals(containsRecords.size(), er.size());
+//    }
 
 }

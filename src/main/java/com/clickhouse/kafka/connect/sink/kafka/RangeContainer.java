@@ -42,18 +42,29 @@ public class RangeContainer extends TopicPartitionContainer {
         return false;
     }
 
+    /**
+     * This compares the stored state with the actual state
+     * @param rangeContainer A container with the actual state
+     * @return The state of the comparison
+     */
     public RangeState getOverLappingState(RangeContainer rangeContainer) {
+        long actualMinOffset = rangeContainer.getMinOffset();
+        long actualMaxOffset = rangeContainer.getMaxOffset();
+
         // SAME State [0,10] Actual [0,10]
-        if (maxOffset == rangeContainer.getMaxOffset() && minOffset == rangeContainer.getMinOffset())
+        if (maxOffset == actualMaxOffset && minOffset == actualMinOffset)
             return RangeState.SAME;
         // NEW State [0,10] Actual [11,20]
-        if (maxOffset < rangeContainer.minOffset)
+        if (actualMinOffset > maxOffset)
             return RangeState.NEW;
         // CONTAINS [0,10] Actual [1, 10]
-        if (maxOffset >= rangeContainer.getMaxOffset() && minOffset <= rangeContainer.getMinOffset())
+        if (actualMaxOffset <= maxOffset && actualMinOffset >= minOffset)
             return RangeState.CONTAINS;
+        // ZEROED [10, 20] Actual [0, 10]
+        if (actualMinOffset < minOffset && actualMinOffset == 0)
+            return RangeState.ZERO;
         // ERROR [10,20] Actual [8, X]
-        if (minOffset > rangeContainer.getMinOffset())
+        if (actualMinOffset < minOffset)
             return RangeState.ERROR;
         // OVER_LAPPING
         return RangeState.OVER_LAPPING;
