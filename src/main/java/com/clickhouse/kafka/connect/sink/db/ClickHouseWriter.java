@@ -279,6 +279,11 @@ public class ClickHouseWriter implements DBWriter{
                     // this the situation when the col is not isNullable, but the data is null here we need to drop the records
                     throw new RuntimeException(("col.isNullable() is false and value is empty"));
                 }
+                // If the column is nullable and the given record doesn't have the field, it's ok to ignore it.
+                if (col.isNullable() && value.getObject() == null) {
+                    BinaryStreamUtils.writeNull(stream);
+                    return;
+                }
                 switch (colType) {
                     case INT8:
                     case INT16:
