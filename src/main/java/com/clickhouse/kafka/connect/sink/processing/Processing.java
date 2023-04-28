@@ -122,6 +122,10 @@ public class Processing {
                         break;
                     case CONTAINS: // The state contains the given records
                         LOGGER.warn(String.format("Records seemingly missing compared to prior batch for topic [%s] partition [%s].", topic, partition));
+                        // Do nothing - write to dead letter queue
+                        records.forEach( r ->
+                                sendTODlq(record, new DuplicateException(String.format(record.getTopicAndPartition())))
+                        );
                         break;
                     case OVER_LAPPING:
                         // spit it to 2 inserts
