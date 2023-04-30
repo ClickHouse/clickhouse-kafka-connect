@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.data;
 
+import com.clickhouse.kafka.connect.sink.data.convert.EmptyRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.RecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemalessRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemaRecordConvertor;
@@ -61,7 +62,11 @@ public class Record {
 
     private static RecordConvertor schemaRecordConvertor = new SchemaRecordConvertor();
     private static RecordConvertor schemalessRecordConvertor = new SchemalessRecordConvertor();
+    private static RecordConvertor emptyRecordConvertor = new EmptyRecordConvertor();
     private static RecordConvertor getConvertor(Schema schema, Object data) {
+        if (data == null ) {
+            return emptyRecordConvertor;
+        }
         if (schema != null && data instanceof Struct) {
             return schemaRecordConvertor;
         }

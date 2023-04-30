@@ -448,15 +448,20 @@ public class ClickHouseWriter implements DBWriter{
                 future = request.data(stream.getInputStream()).send();
                 // write bytes into the piped stream
                 for (Record record: records ) {
-                    Map<String, Object> data = (Map<String, Object>)record.getSinkRecord().value();
-                    java.lang.reflect.Type gsonType = new TypeToken<HashMap>(){}.getType();
-                    String gsonString = gson.toJson(data,gsonType);
-                    LOGGER.debug(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
-                            record.getTopic(),
-                            record.getRecordOffsetContainer().getPartition(),
-                            record.getRecordOffsetContainer().getOffset(),
-                            gsonString));
-                    BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+                    if (record.getSinkRecord().value() != null ) {
+                        Map<String, Object> data = (Map<String, Object>) record.getSinkRecord().value();
+                        java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {
+                        }.getType();
+                        String gsonString = gson.toJson(data, gsonType);
+                        LOGGER.debug(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
+                                record.getTopic(),
+                                record.getRecordOffsetContainer().getPartition(),
+                                record.getRecordOffsetContainer().getOffset(),
+                                gsonString));
+                        BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+                    } else {
+                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
+                    }
                 }
 
                 stream.close();
