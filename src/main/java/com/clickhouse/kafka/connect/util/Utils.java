@@ -57,6 +57,8 @@ public class Utils {
             ClickHouseException clickHouseException = (ClickHouseException) rootCause;
             LOGGER.warn("ClickHouseException: {}", clickHouseException.getErrorCode());
             switch (clickHouseException.getErrorCode()) {
+                // UNEXPECTED_END_OF_FILE
+                case 3:
                 // TIMEOUT_EXCEEDED
                 case 159:
                 // READONLY
