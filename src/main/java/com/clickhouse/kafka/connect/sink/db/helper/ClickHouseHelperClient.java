@@ -142,16 +142,19 @@ public class ClickHouseHelperClient {
                 ClickHouseValue v = r.getValue(0);
                 String value = v.asString();
                 String[] cols = value.split("\t");
+                boolean hasDefault = false;
                 if (cols.length > 2) {
                     String defaultKind = cols[2];
                     if ("ALIAS".equals(defaultKind) || "MATERIALIZED".equals(defaultKind)) {
                         // Only insert into "real" columns
                         continue;
+                    } else if ("DEFAULT".equals(defaultKind)) {
+                        hasDefault = true;
                     }
                 }
                 String name = cols[0];
                 String type = cols[1];
-                table.addColumn(Column.extractColumn(name, type, false));
+                table.addColumn(Column.extractColumn(name, type, false, hasDefault));
             }
             return table;
         } catch (ClickHouseException e) {

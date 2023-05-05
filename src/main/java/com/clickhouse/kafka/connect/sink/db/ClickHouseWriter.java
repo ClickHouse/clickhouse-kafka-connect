@@ -153,10 +153,11 @@ public class ClickHouseWriter implements DBWriter{
             if (!isNullable) {
                 Data obj = record.getJsonMap().get(colName);
                 if (obj == null) {
-                    validSchema = false;
-                    LOGGER.error(String.format("Table column name [%s] is not found in data record.", colName));
-                }
-                if (!onlyFieldsName) {
+                    if (!col.hasDefault()) {
+                        validSchema = false;
+                        LOGGER.error(String.format("Table column name [%s] is not found in data record.", colName));
+                    }
+                } else if (!onlyFieldsName) {
                     String colTypeName = type.name();
                     String dataTypeName = obj.getFieldType().getName().toUpperCase();
                     // TODO: make extra validation for Map/Array type
@@ -326,6 +327,9 @@ public class ClickHouseWriter implements DBWriter{
             } else {
                 if ( col.isNullable() ) {
                     // set null since there is no value
+                    BinaryStreamUtils.writeNull(stream);
+                } else if (col.hasDefault()) {
+                    // DB::Exception: Attempt to read after eof: While executing BinaryRowInputFormat. (ATTEMPT_TO_READ_AFTER_EOF)
                     BinaryStreamUtils.writeNull(stream);
                 } else {
                     // no filed and not nullable

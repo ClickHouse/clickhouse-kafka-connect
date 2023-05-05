@@ -59,6 +59,18 @@ public class ClickHouseSinkTaskWithSchemaTest {
         return chc;
     }
 
+    private Map<String, String> testDBProps() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        return props;
+    }
+
 
     private void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
@@ -372,15 +384,35 @@ public class ClickHouseSinkTaskWithSchemaTest {
         Collection<SinkRecord> collection = array;
         return collection;
     }
+    public Collection<SinkRecord> createDefaultValues(String topic, int partition) {
+        Schema TEST_SCHEMA = SchemaBuilder.struct()
+                .field("nr1", Schema.INT16_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1).forEachOrdered(n -> {
+            Struct value_struct = new Struct(TEST_SCHEMA).put("nr1", (short)n);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, TEST_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+
+        Collection<SinkRecord> collection = array;
+        return collection;
+    }
     @Test
     public void arrayTypesTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = testDBProps();
 
         ClickHouseHelperClient chc = createClient(props);
 
@@ -400,13 +432,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
     @Test
     public void mapTypesTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = testDBProps();
 
         ClickHouseHelperClient chc = createClient(props);
 
@@ -427,13 +453,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
     public void materializedViewsBug() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = testDBProps();
 
         ClickHouseHelperClient chc = createClient(props);
 
@@ -454,13 +474,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = testDBProps();
 
         ClickHouseHelperClient chc = createClient(props);
 
@@ -481,13 +495,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
     public void nullValueDataTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = testDBProps();
 
         ClickHouseHelperClient chc = createClient(props);
 
@@ -509,13 +517,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
     public void supportDatesTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = testDBProps();
 
         ClickHouseHelperClient chc = createClient(props);
 
@@ -534,13 +536,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     }
     @Test
     public void detectUnsupportedDataConversions() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = testDBProps();
 
         ClickHouseHelperClient chc = createClient(props);
 
@@ -554,6 +550,28 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.start(props);
         assertThrows(DataException.class, () -> chst.put(sr), "Did not detect wrong date conversion ");
         chst.stop();
+    }
+
+    @Test
+    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/94
+    public void defaultValueTest() {
+        Map<String, String> props = testDBProps();
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "default-value-test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE `%s` (  `nr1` Int16,  `nr2` Int16 DEFAULT 1, `str` String DEFAULT 'default value' ) Engine = MergeTree ORDER BY nr1");
+
+        Collection<SinkRecord> sr = createDefaultValues(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+
     }
     @AfterAll
     protected static void tearDown() {
