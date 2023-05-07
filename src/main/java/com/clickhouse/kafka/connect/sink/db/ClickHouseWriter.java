@@ -374,8 +374,10 @@ public class ClickHouseWriter implements DBWriter{
                 future = request.data(stream.getInputStream()).send();
                 // write bytes into the piped stream
                 for (Record record: records ) {
-                    for (Column col : table.getColumns() )
-                        doWriteCol(record, col, stream);
+                    if (record.getSinkRecord().value() != null ) {
+                        for (Column col : table.getColumns())
+                            doWriteCol(record, col, stream);
+                    }
                 }
                 // We need to close the stream before getting a response
                 stream.close();
