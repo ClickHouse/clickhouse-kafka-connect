@@ -1,5 +1,7 @@
-## 0.0.11, 2023-04-20
+## 0.0.12, 2023-??-??
 * Fix null exception when getting empty record
+
+## 0.0.11, 2023-04-20
 * Implemented retry mechanism to fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/74)
 ** Some ClickHouse errors (159 - TIMEOUT_EXCEEDED; 164 - READONLY; 203 - NO_FREE_CONNECTION; 209 - SOCKET_TIMEOUT; 210 - NETWORK_ERROR; 425 - SYSTEM_ERROR) as well as SocketTimeoutException and UnknownHostException will result in the connector retrying the operation (based on configuration).
 This should help mitigate temporary (but unavoidable) hiccups in network operations, though this list will likely be tweaked over time as well.
