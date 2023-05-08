@@ -1,4 +1,4 @@
-## 0.0.12, 2023-??-??
+## 0.0.12, 2023-05-05
 * Fix null exception when getting empty record
 * Add UNEXPECTED_END_OF_FILE as RetriableException #98
 
