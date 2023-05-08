@@ -111,6 +111,50 @@ public class ClickHouseSinkTaskWithSchemaTest {
         }
     }
 
+    public Collection<SinkRecord> createWithEmptyDataRecords(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .build();
+
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("p_int64", n);
+
+            SinkRecord sr = null;
+            if (n % 2 == 0) {
+                sr = new SinkRecord(
+                        topic,
+                        partition,
+                        null,
+                        null, NESTED_SCHEMA,
+                        value_struct,
+                        n,
+                        System.currentTimeMillis(),
+                        TimestampType.CREATE_TIME
+                );
+            } else {
+                sr = new SinkRecord(
+                        topic,
+                        partition,
+                        null,
+                        null, NESTED_SCHEMA,
+                        null,
+                        n,
+                        System.currentTimeMillis(),
+                        TimestampType.CREATE_TIME
+                );
+            }
+            array.add(sr);
+        });
+        return array;
+    }
+
     public Collection<SinkRecord> createArrayType(String topic, int partition) {
 
         Schema ARRAY_SCHEMA = SchemaBuilder.array(Schema.STRING_SCHEMA).build();
@@ -554,6 +598,30 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.start(props);
         assertThrows(DataException.class, () -> chst.put(sr), "Did not detect wrong date conversion ");
         chst.stop();
+    }
+
+    @Test
+    public void withEmptyDataRecordsTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "schema_empty_records_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size() / 2, countRows(chc, topic));
     }
     @AfterAll
     protected static void tearDown() {
