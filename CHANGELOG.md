@@ -1,5 +1,6 @@
 ## 0.0.12, 2023-??-??
 * Fix null exception when getting empty record
+* Add UNEXPECTED_END_OF_FILE as RetriableException #98
 
 ## 0.0.11, 2023-04-20
 * Implemented retry mechanism to fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/74)
