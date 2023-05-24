@@ -123,7 +123,7 @@ public class Column {
             String mapValue = val[1].trim();
             return new Column(name, type, false, dispatchPrimitive(mapKey), dispatchPrimitive(mapValue));
         } else if (valueType.startsWith("LowCardinality")) {
-            return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), true);
+            return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull);
         } else if (valueType.startsWith("Nullable")) {
             return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true);
         }
