@@ -669,8 +669,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "schema_empty_records_lc_table_test";
         dropTable(chc, topic);
-        // createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64, lc_string LowCardinality(Nullable(String)), nullable_lc_string LowCardinality(Nullable(String))) Engine = MergeTree ORDER BY off16"); // test passes with relaxed 'lc_string' column
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64, lc_string LowCardinality(String), nullable_lc_string LowCardinality(Nullable(String))) Engine = MergeTree ORDER BY off16"); // Should succeed
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64, lc_string LowCardinality(String), nullable_lc_string LowCardinality(Nullable(String))) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createWithLowCardinality(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
