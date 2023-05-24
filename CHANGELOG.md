@@ -1,3 +1,6 @@
+## 0.0.14, 2023-05-24
+* Fix for LowCardinality(t) and LowCardinality(Nullable(t)) [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/105)
+
 ## 0.0.13, 2023-05-08
 * Fix null exception when getting empty record
 
