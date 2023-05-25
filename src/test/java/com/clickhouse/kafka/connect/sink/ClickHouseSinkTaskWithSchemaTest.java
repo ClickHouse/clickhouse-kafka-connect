@@ -155,6 +155,37 @@ public class ClickHouseSinkTaskWithSchemaTest {
         return array;
     }
 
+    public Collection<SinkRecord> createWithLowCardinality(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("lc_string", Schema.STRING_SCHEMA)
+                .field("nullable_lc_string", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        LongStream.range(0, 10).forEachOrdered(n -> {
+            Struct value_struct = new Struct(SCHEMA)
+                    .put("off16", (short)n)
+                    .put("p_int64", n)
+                    .put("lc_string", "abc")
+                    .put("nullable_lc_string", n % 2 == 0 ? "def" : null);
+
+            array.add(new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            ));
+        });
+        return array;
+    }
+
     public Collection<SinkRecord> createArrayType(String topic, int partition) {
 
         Schema ARRAY_SCHEMA = SchemaBuilder.array(Schema.STRING_SCHEMA).build();
@@ -622,6 +653,30 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size() / 2, countRows(chc, topic));
+    }
+
+    @Test
+    public void withLowCardinalityTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "schema_empty_records_lc_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64, lc_string LowCardinality(String), nullable_lc_string LowCardinality(Nullable(String))) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createWithLowCardinality(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), countRows(chc, topic));
     }
     @AfterAll
     protected static void tearDown() {
