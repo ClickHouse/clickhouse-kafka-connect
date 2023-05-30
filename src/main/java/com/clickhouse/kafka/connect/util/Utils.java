@@ -69,6 +69,8 @@ public class Utils {
                 case 209:
                 // NETWORK_ERROR
                 case 210:
+                //TOO_FEW_LIVE_REPLICAS
+                case 285:
                 // SYSTEM_ERROR
                 case 425:
                     throw new RetriableException(e);
