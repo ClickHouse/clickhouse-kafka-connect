@@ -55,7 +55,7 @@ public class Utils {
         Exception rootCause = Utils.getRootCause(e, true);
         if (rootCause instanceof ClickHouseException) {
             ClickHouseException clickHouseException = (ClickHouseException) rootCause;
-            LOGGER.warn("ClickHouseException: {}", clickHouseException.getErrorCode());
+            LOGGER.warn("ClickHouseException code: {}", clickHouseException.getErrorCode());
             switch (clickHouseException.getErrorCode()) {
                 // UNEXPECTED_END_OF_FILE
                 case 3:
@@ -71,6 +71,8 @@ public class Utils {
                 case 210:
                 // SYSTEM_ERROR
                 case 425:
+                // TOO_MANY_SIMULTANEOUS_QUERIES
+                case 202:
                     throw new RetriableException(e);
                 default:
                     LOGGER.error("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());
