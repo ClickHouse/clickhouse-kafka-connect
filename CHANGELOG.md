@@ -1,3 +1,5 @@
+* Adding 285 TOO_FEW_LIVE_REPLICAS to the retry list
+
 ## 0.0.14, 2023-05-24
 * Fix for LowCardinality(t) and LowCardinality(Nullable(t)) [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/105)
 
