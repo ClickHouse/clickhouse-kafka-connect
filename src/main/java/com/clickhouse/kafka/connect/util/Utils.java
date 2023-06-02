@@ -57,22 +57,15 @@ public class Utils {
             ClickHouseException clickHouseException = (ClickHouseException) rootCause;
             LOGGER.warn("ClickHouseException code: {}", clickHouseException.getErrorCode());
             switch (clickHouseException.getErrorCode()) {
-                // UNEXPECTED_END_OF_FILE
-                case 3:
-                // TIMEOUT_EXCEEDED
-                case 159:
-                // READONLY
-                case 164:
-                // NO_FREE_CONNECTION
-                case 203:
-                // SOCKET_TIMEOUT
-                case 209:
-                // NETWORK_ERROR
-                case 210:
-                // SYSTEM_ERROR
-                case 425:
-                // TOO_MANY_SIMULTANEOUS_QUERIES
-                case 202:
+                case 3: // UNEXPECTED_END_OF_FILE
+                case 159: // TIMEOUT_EXCEEDED
+                case 164: // READONLY
+                case 202: // TOO_MANY_SIMULTANEOUS_QUERIES
+                case 203: // NO_FREE_CONNECTION
+                case 209: // SOCKET_TIMEOUT
+                case 210: // NETWORK_ERROR
+                case 252: // TOO_MANY_PARTS
+                case 425: // SYSTEM_ERROR
                     throw new RetriableException(e);
                 default:
                     LOGGER.error("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());
