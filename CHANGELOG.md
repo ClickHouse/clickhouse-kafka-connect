@@ -1,5 +1,18 @@
-## 0.0.12, 2023-04-XX
+## 0.0.16 2023-06-XX
 * Updated state handling so that warnings are posted, rather than errors + exceptions.
+
+## 0.0.15 2023-05-30
+* Added 202 (TOO_MANY_SIMULTANEOUS_QUERIES) Code to retry list [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/109) 
+* Added 252 (TOO_MANY_PARTS) to the retry list
+
+## 0.0.14, 2023-05-24
+* Fix for LowCardinality(t) and LowCardinality(Nullable(t)) [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/105)
+
+## 0.0.13, 2023-05-08
+* Fix null exception when getting empty record
+
+## 0.0.12, 2023-05-05
+* Add UNEXPECTED_END_OF_FILE as RetriableException #98
 
 ## 0.0.11, 2023-04-20
 * Implemented retry mechanism to fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/74)
