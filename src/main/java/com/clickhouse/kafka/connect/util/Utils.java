@@ -65,6 +65,7 @@ public class Utils {
                 case 209: // SOCKET_TIMEOUT
                 case 210: // NETWORK_ERROR
                 case 252: // TOO_MANY_PARTS
+                case 285: // TOO_FEW_LIVE_REPLICAS
                 case 425: // SYSTEM_ERROR
                     throw new RetriableException(e);
                 default:
