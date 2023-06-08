@@ -170,6 +170,24 @@ public class ProcessingTest {
         assertEquals(records.size(), dbWriter.recordsInserted());
     }
 
+
+    @Test
+    @DisplayName("ProcessDeletedTopicBeforeProcessingTest")
+    public void ProcessDeletedTopicBeforeProcessingTest() {
+        List<Record> records = createRecords("test", 1);
+        List<Record> containsRecords = records.subList(0,150);
+        StateProvider stateProvider = new InMemoryState();
+        DBWriter dbWriter = new InMemoryDBWriter();
+        Processing processing = new Processing(stateProvider, dbWriter);
+        processing.doLogic(records);
+        assertEquals(records.size(), dbWriter.recordsInserted());
+        StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
+        stateRecord.setState(State.BEFORE_PROCESSING);
+        processing.doLogic(containsRecords);
+        assertEquals(records.size(), dbWriter.recordsInserted());
+
+    }
+
     @Test
     @DisplayName("Processing with dlq test")
     public void ProcessingWithDLQTest() {

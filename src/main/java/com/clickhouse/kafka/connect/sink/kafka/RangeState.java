@@ -1,6 +1,8 @@
 package com.clickhouse.kafka.connect.sink.kafka;
 
 public enum RangeState {
+
+    ZERO(0), //This is for when it seems like the topic has been deleted/recreated
     SAME(1),
     PREFIX(2),
     SUFFIX(3),
