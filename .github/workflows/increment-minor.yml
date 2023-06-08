@@ -1,0 +1,34 @@
+name: Increment Minor
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+    - name: Setup Node.js environment
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+    - name: Install dependencies
+      run: |
+        npm install semver
+        npm install fs
+    - name: Increment version
+      run: |
+        echo "Incrementing version..."
+        VERSION=$(cat VERSION)
+        NEW_VERSION=$(node -p "require('semver').inc('$VERSION', 'minor')")
+        echo $NEW_VERSION > VERSION
+        echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
+        echo "New version is $NEW_VERSION"
+    - name: Commit and push
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add VERSION
+        git commit -m "Increment version to ${{ env.NEW_VERSION }}"
+        git push

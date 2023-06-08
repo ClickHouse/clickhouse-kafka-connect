@@ -1,7 +1,10 @@
+name: Release
+
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   build_release:
@@ -10,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Set env
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        run: echo "RELEASE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
       - name: Test
         run: |
           echo $RELEASE_VERSION
@@ -25,13 +28,14 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: createConfluentArchive
+          gradle-version: '7.4.2'
       - name: release
         uses: actions/create-release@v1
         id: create_release
         with:
           draft: false
           prerelease: false
-          release_name: ${{ steps.version.outputs.version }}
+          release_name: ${{ env.RELEASE_VERSION }}
           tag_name: ${{ env.RELEASE_VERSION }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
