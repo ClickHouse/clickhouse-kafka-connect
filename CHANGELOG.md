@@ -1,6 +1,9 @@
-## 0.0.16 2023-06-XX
+## 0.0.16 2023-06-13
 * Updated state handling so that warnings are posted, rather than errors + exceptions.
 * Adding 285 TOO_FEW_LIVE_REPLICAS to the retry list
+* Tweaking the code to switch to JSON handling when default values are present. This should be more reliable (if the
+data structure is simple enough) while supporting defaults. This is a temporary solution until we can implement a
+longer-term fix in core code.
 
 ## 0.0.15 2023-05-30
 * Added 202 (TOO_MANY_SIMULTANEOUS_QUERIES) Code to retry list [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/109) 
