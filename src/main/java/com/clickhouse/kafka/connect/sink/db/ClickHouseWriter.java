@@ -461,17 +461,19 @@ public class ClickHouseWriter implements DBWriter{
                 for (Record record: records ) {
                     if (record.getSinkRecord().value() != null ) {
                         Map<String, Object> data;
-                        if (record.getSinkRecord().value() instanceof Map) {
-                            data = (Map<String, Object>) record.getSinkRecord().value();
-                        } else if (record.getSinkRecord().value() instanceof Struct) {
-                            data = new HashMap<>(16);
-                            Struct struct = (Struct) record.getSinkRecord().value();
-                            for (Field field : struct.schema().fields()) {
-                                data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
-                            }
-                        } else {
-                            throw new RuntimeException("Unsupported record type: " + record.getSinkRecord().value().getClass().getName());
+                        switch (record.getSchemaType()) {
+                            case SCHEMA:
+                                data = new HashMap<>(16);
+                                Struct struct = (Struct) record.getSinkRecord().value();
+                                for (Field field : struct.schema().fields()) {
+                                    data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
+                                }
+                                break;
+                            default:
+                                data = (Map<String, Object>) record.getSinkRecord().value();
+                                break;
                         }
+                        
                         java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
                         String gsonString = gson.toJson(data, gsonType);
                         LOGGER.debug(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
