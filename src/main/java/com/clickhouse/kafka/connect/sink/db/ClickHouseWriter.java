@@ -3,12 +3,9 @@ package com.clickhouse.kafka.connect.sink.db;
 import com.clickhouse.client.*;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.data.BinaryStreamUtils;
-import com.clickhouse.kafka.connect.exceptions.UnhandledDefaultValuesException;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
-import com.clickhouse.kafka.connect.sink.data.SchemaType;
-import com.clickhouse.kafka.connect.sink.data.StructToJsonMap;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
@@ -133,13 +130,16 @@ public class ClickHouseWriter implements DBWriter{
 
         try {
             Record first = records.get(0);
+            String topic = first.getTopic();
+            Table table = this.mapping.get(Utils.escapeTopicName(topic));
+
             switch (first.getSchemaType()) {
                 case SCHEMA:
-                    try {
-                        doInsertRawBinary(records);
-                    } catch (UnhandledDefaultValuesException udve) {
-                        LOGGER.debug("Unhandled default values exception. Trying to insert with JSON.", udve);
+                    if (table.hasDefaults()) {
+                        LOGGER.debug("Default value present, switching to JSON insert instead.");
                         doInsertJson(records);
+                    } else {
+                        doInsertRawBinary(records);
                     }
                     break;
                 case SCHEMA_LESS:
@@ -359,10 +359,6 @@ public class ClickHouseWriter implements DBWriter{
             throw new RuntimeException(String.format("Table %s does not exists", topic));
         }
 
-        if (table.hasDefaults()) {
-            throw new UnhandledDefaultValuesException(table.getName());
-        }
-
         if ( !validateDataSchema(table, first, false) )
             throw new RuntimeException();
         // Let's test first record
@@ -468,7 +464,7 @@ public class ClickHouseWriter implements DBWriter{
                         if (record.getSinkRecord().value() instanceof Map) {
                             data = (Map<String, Object>) record.getSinkRecord().value();
                         } else if (record.getSinkRecord().value() instanceof Struct) {
-                            data = new HashMap<>();
+                            data = new HashMap<>(16);
                             Struct struct = (Struct) record.getSinkRecord().value();
                             for (Field field : struct.schema().fields()) {
                                 data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
