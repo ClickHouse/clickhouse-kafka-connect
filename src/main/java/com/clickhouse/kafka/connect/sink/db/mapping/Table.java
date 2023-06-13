@@ -12,6 +12,8 @@ public class Table {
     private List<Column> columnsList = null;
     private Map<String, Column> columnsMap = null;
 
+    private boolean hasDefaults = false;
+
     public Table(String name) {
         this.name = name;
         this.columnsList = new ArrayList<>();
@@ -32,4 +34,12 @@ public class Table {
     }
 
     public List<Column> getColumns() { return columnsList; }
+
+    public boolean hasDefaults() {
+        return hasDefaults;
+    }
+
+    public void setHasDefaults(boolean hasDefaults) {
+        this.hasDefaults = hasDefaults;
+    }
 }
