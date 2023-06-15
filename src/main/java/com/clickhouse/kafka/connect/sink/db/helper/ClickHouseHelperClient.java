@@ -147,6 +147,8 @@ public class ClickHouseHelperClient {
                     if ("ALIAS".equals(defaultKind) || "MATERIALIZED".equals(defaultKind)) {
                         // Only insert into "real" columns
                         continue;
+                    } else if("DEFAULT".equals(defaultKind)) {
+                        table.setHasDefaults(true);
                     }
                 }
                 String name = cols[0];

@@ -6,7 +6,6 @@ import com.clickhouse.client.data.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
-import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
@@ -18,6 +17,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,9 +130,17 @@ public class ClickHouseWriter implements DBWriter{
 
         try {
             Record first = records.get(0);
+            String topic = first.getTopic();
+            Table table = this.mapping.get(Utils.escapeTopicName(topic));
+
             switch (first.getSchemaType()) {
                 case SCHEMA:
-                    doInsertRawBinary(records);
+                    if (table.hasDefaults()) {
+                        LOGGER.debug("Default value present, switching to JSON insert instead.");
+                        doInsertJson(records);
+                    } else {
+                        doInsertRawBinary(records);
+                    }
                     break;
                 case SCHEMA_LESS:
                     doInsertJson(records);
@@ -350,6 +358,7 @@ public class ClickHouseWriter implements DBWriter{
             //TODO to pick the correct exception here
             throw new RuntimeException(String.format("Table %s does not exists", topic));
         }
+
         if ( !validateDataSchema(table, first, false) )
             throw new RuntimeException();
         // Let's test first record
@@ -451,9 +460,21 @@ public class ClickHouseWriter implements DBWriter{
                 // write bytes into the piped stream
                 for (Record record: records ) {
                     if (record.getSinkRecord().value() != null ) {
-                        Map<String, Object> data = (Map<String, Object>) record.getSinkRecord().value();
-                        java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {
-                        }.getType();
+                        Map<String, Object> data;
+                        switch (record.getSchemaType()) {
+                            case SCHEMA:
+                                data = new HashMap<>(16);
+                                Struct struct = (Struct) record.getSinkRecord().value();
+                                for (Field field : struct.schema().fields()) {
+                                    data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
+                                }
+                                break;
+                            default:
+                                data = (Map<String, Object>) record.getSinkRecord().value();
+                                break;
+                        }
+                        
+                        java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
                         String gsonString = gson.toJson(data, gsonType);
                         LOGGER.debug(String.format("topic [%s] partition [%d] offset [%d] payload '%s'",
                                 record.getTopic(),
