@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -181,6 +182,11 @@ public class ClickHouseWriter implements DBWriter{
                                 LOGGER.debug(String.format("Will try to convert from %s to %s", colTypeName, dataTypeName));
                             }
                             break;
+                        case "UUID":
+                            if ( dataTypeName.equals(Type.UUID) || dataTypeName.equals(Type.STRING) ) {
+                                LOGGER.debug(String.format("Will try to convert from %s to %s", colTypeName, dataTypeName));
+                            }
+                            break;
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
                                 validSchema = false;
@@ -245,28 +251,43 @@ public class ClickHouseWriter implements DBWriter{
         }
         switch (type) {
             case INT8:
-                BinaryStreamUtils.writeInt8(stream, ((Byte) value).byteValue());
+                BinaryStreamUtils.writeInt8(stream, (Byte) value);
                 break;
             case INT16:
-                BinaryStreamUtils.writeInt16(stream, ((Short) value).shortValue());
+                BinaryStreamUtils.writeInt16(stream, (Short) value);
                 break;
             case INT32:
-                BinaryStreamUtils.writeInt32(stream, ((Integer) value).intValue());
+                BinaryStreamUtils.writeInt32(stream, (Integer) value);
                 break;
             case INT64:
-                BinaryStreamUtils.writeInt64(stream, ((Long) value).longValue());
+                BinaryStreamUtils.writeInt64(stream, (Long) value);
+                break;
+            case UINT8:
+                BinaryStreamUtils.writeUnsignedInt8(stream, (Byte) value);
+                break;
+            case UINT16:
+                BinaryStreamUtils.writeUnsignedInt16(stream, (Short) value);
+                break;
+            case UINT32:
+                BinaryStreamUtils.writeUnsignedInt32(stream, (Integer) value);
+                break;
+            case UINT64:
+                BinaryStreamUtils.writeUnsignedInt64(stream, (Long) value);
                 break;
             case FLOAT32:
-                BinaryStreamUtils.writeFloat32(stream, ((Float) value).floatValue());
+                BinaryStreamUtils.writeFloat32(stream, (Float) value);
                 break;
             case FLOAT64:
-                BinaryStreamUtils.writeFloat64(stream, ((Double) value).doubleValue());
+                BinaryStreamUtils.writeFloat64(stream, (Double) value);
                 break;
             case BOOLEAN:
-                BinaryStreamUtils.writeBoolean(stream, ((Boolean) value).booleanValue());
+                BinaryStreamUtils.writeBoolean(stream, (Boolean) value);
                 break;
             case STRING:
                 BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                break;
+            case UUID:
+                BinaryStreamUtils.writeUuid(stream, UUID.fromString((String) value));
                 break;
         }
     }
@@ -292,9 +313,14 @@ public class ClickHouseWriter implements DBWriter{
                     case INT16:
                     case INT32:
                     case INT64:
+                    case UINT8:
+                    case UINT16:
+                    case UINT32:
+                    case UINT64:
                     case FLOAT32:
                     case FLOAT64:
                     case BOOLEAN:
+                    case UUID:
                     case STRING:
                         doWritePrimitive(colType, stream, value.getObject());
                         break;
