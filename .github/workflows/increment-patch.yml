@@ -28,7 +28,7 @@ jobs:
         echo "Incrementing version..."
         VERSION=$(cat VERSION)
         NEW_VERSION=$(node -p "require('semver').inc('$VERSION', 'patch')")
-        echo $NEW_VERSION > VERSION
+        echo "v$NEW_VERSION" > VERSION
         echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
         echo "New version is $NEW_VERSION"
     - name: Commit and push
