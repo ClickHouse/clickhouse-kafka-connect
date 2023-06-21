@@ -1,8 +1,5 @@
 name: Increment Patch
 
-permissions:
-  contents: write
-
 on:
   workflow_run:
     workflows: ["Release"]
@@ -10,6 +7,9 @@ on:
       - completed
       
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
