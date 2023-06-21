@@ -74,6 +74,27 @@ public class Column {
             case "Int256":
                 type = Type.INT256;
                 break;
+            case "UInt8":
+                type = Type.UINT8;
+                break;
+            case "UInt16":
+                type = Type.UINT16;
+                break;
+            case "UInt32":
+                type = Type.UINT32;
+                break;
+            case "UInt64":
+                type = Type.UINT64;
+                break;
+            case "UInt128":
+                type = Type.UINT128;
+                break;
+            case "UInt256":
+                type = Type.UINT256;
+                break;
+            case "UUID":
+                type = Type.UUID;
+                break;
             case "String":
                 type = Type.STRING;
                 break;

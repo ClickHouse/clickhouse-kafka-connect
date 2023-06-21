@@ -18,4 +18,11 @@ public enum Type {
     Date32,
     DateTime,
     DateTime64,
+    UUID,
+    UINT8,
+    UINT16,
+    UINT32,
+    UINT64,
+    UINT128,
+    UINT256,
 }
