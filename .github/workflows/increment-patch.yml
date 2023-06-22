@@ -1,11 +1,6 @@
 name: Increment Patch
 
 on:
-  workflow_run:
-    workflows: ["Release"]
-    types:
-      - completed
-      
   workflow_dispatch:
 
 permissions:
