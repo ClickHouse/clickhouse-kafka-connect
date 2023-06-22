@@ -18,6 +18,12 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v3
+      with:
+          fetch-depth: 0 # this is required to see all branches
+    - name: Configure Git
+      run: |
+        git config --global user.email "actions@github.com"
+        git config --global user.name "GitHub Action"
     - name: Setup Node.js environment
       uses: actions/setup-node@v3
       with:
@@ -36,8 +42,8 @@ jobs:
         echo "New version is $NEW_VERSION"
     - name: Commit and push
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git checkout -b update-version-${{ env.NEW_VERSION }}
         git add VERSION
         git commit -m "Increment version to ${{ env.NEW_VERSION }}"
         git push
+        gh pr create --title "Automatic version increment ${{ env.NEW_VERSION }}" --body "This is an automated PR to increment the version."
