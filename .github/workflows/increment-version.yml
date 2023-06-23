@@ -2,6 +2,11 @@ name: Increment Patch
 
 on:
   workflow_dispatch:
+    inputs:
+        version:
+          description: 'Version - patch, minor, or major'     
+          required: true
+          default: 'patch'
 
 permissions:
   contents: write
@@ -9,7 +14,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
     - name: Check out code
       uses: actions/checkout@v3
@@ -31,7 +35,7 @@ jobs:
       run: |
         echo "Incrementing version..."
         VERSION=$(cat VERSION)
-        NEW_VERSION=$(node -p "require('semver').inc('$VERSION', 'patch')")
+        NEW_VERSION=$(node -p "require('semver').inc('$VERSION', '${{ github.event.inputs.version }}')")
         echo "v$NEW_VERSION" > VERSION
         echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
         echo "New version is $NEW_VERSION"
