@@ -1,4 +1,4 @@
-name: Increment Patch
+name: Increment Version
 
 on:
   workflow_dispatch:
