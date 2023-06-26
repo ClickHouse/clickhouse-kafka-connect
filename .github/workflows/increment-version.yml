@@ -48,5 +48,5 @@ jobs:
         git checkout -b update-version-${{ env.NEW_VERSION }}
         git add VERSION
         git commit -m "Increment version to ${{ env.NEW_VERSION }}"
-        git push
+        git push -u origin
         gh pr create --title "Automatic version increment ${{ env.NEW_VERSION }}" --body "This is an automated PR to increment the version."
