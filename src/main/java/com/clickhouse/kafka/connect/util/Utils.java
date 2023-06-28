@@ -67,6 +67,7 @@ public class Utils {
                 case 252: // TOO_MANY_PARTS
                 case 285: // TOO_FEW_LIVE_REPLICAS
                 case 425: // SYSTEM_ERROR
+                case 1002: // UNKNOWN_EXCEPTION
                     throw new RetriableException(e);
                 default:
                     LOGGER.error("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());
