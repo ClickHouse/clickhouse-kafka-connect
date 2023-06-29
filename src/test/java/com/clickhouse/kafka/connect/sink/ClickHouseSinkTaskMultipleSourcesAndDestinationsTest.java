@@ -9,9 +9,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -183,12 +181,11 @@ public class ClickHouseSinkTaskMultipleSourcesAndDestinationsTest {
 
     @Test
     public void SingleConnectorMultipleDestinationsTest() {
-        int num_endpoints = 3;
         Map<String, String> props = new HashMap<>();
         String topic = "single_topic_test";
         Collection<SinkRecord> sr = cstt.createPrimitiveTypes(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        for (int i = 0; i < num_endpoints; i++) {
+        for (int i = 0; i < num_dbs; i++) {
             props.put(ClickHouseSinkConnector.HOSTNAME, dbs[i].getHost());
             props.put(ClickHouseSinkConnector.PORT, dbs[i].getFirstMappedPort().toString());
             props.put(ClickHouseSinkConnector.DATABASE, "default");
@@ -238,5 +235,51 @@ public class ClickHouseSinkTaskMultipleSourcesAndDestinationsTest {
 //            System.out.println("Shard "+i+" count: " +countRows(chc, topic));
         }
         assertEquals(sr.size(),total_rows);
+    }
+
+    @Test
+    public void SingleConnectorMultipleTopicsShardMultipleDestinationsTest() {
+        int num_topics = 2;
+        List<String> topics = new ArrayList<>();
+        Map<String, String> props = new HashMap<>();
+        for (int j = 0; j < num_topics; j++) { topics.add("topic_"+j); }
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, dbs[0].getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, dbs[0].getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        for (int i = 0; i < num_dbs; i++) {
+            props.put(ClickHouseSinkConnector.HOSTNAME, dbs[i].getHost());
+            props.put(ClickHouseSinkConnector.PORT, dbs[i].getFirstMappedPort().toString());
+            ClickHouseHelperClient chc = createClient(props);
+            for (String topic : topics) {
+                dropTable(chc, topic);
+                createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+            }
+        }
+        String endpoints = "";
+        for (ClickHouseContainer db : dbs) {endpoints += String.format("%s:%s,",db.getHost(),db.getFirstMappedPort().toString());}
+        props.put(ClickHouseSinkConnector.ENDPOINTS, endpoints);
+//        System.out.println(props);
+        chst.start(props);
+        int sr_rows = 0;
+        for (String topic : topics) {
+            Collection<SinkRecord> sr = cstt.createPrimitiveTypes(topic, 1);
+            chst.put(sr);
+            sr_rows+=sr.size();
+        }
+        chst.stop();
+        int total_rows = 0;
+        for (String topic : topics) {
+            for (int i = 0; i < num_dbs; i++) {
+                props.put(ClickHouseSinkConnector.HOSTNAME, dbs[i].getHost());
+                props.put(ClickHouseSinkConnector.PORT, dbs[i].getFirstMappedPort().toString());
+                ClickHouseHelperClient chc = createClient(props);
+                total_rows += countRows(chc, topic);
+//            System.out.println(topic+": Shard "+i+" count: " +countRows(chc, topic));
+            }
+        }
+        assertEquals(sr_rows,total_rows);
     }
 }
