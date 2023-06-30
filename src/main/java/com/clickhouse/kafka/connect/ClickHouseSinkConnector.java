@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -20,7 +19,7 @@ import java.util.stream.Collectors;
 public class ClickHouseSinkConnector extends SinkConnector {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnector.class);
-
+    private String endpoints;
     private String hostname;
     private String port;
     private String database;
@@ -31,9 +30,11 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     private String sslEnabled;
 
+    private String hashFunctionName;
+
     private int timeout;
 
-
+    public static final String ENDPOINTS = "endpoints";
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
@@ -41,6 +42,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
     public static final String PASSWORD = "password";
 
     public static final String SSL_ENABLED = "ssl";
+    public static final String HASH_FUNCTION_NAME = "hashFunctionName";
     private static final ConfigDef CONFIG_DEF = ClickHouseSinkConfig.CONFIG;
 
 

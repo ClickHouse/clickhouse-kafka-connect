@@ -100,3 +100,9 @@ Finally, other cases are still possible. For example, suppose the maxOffset of o
 ### Scaling
 
 Our implementation of the `put` method for the SinkTask is single-threaded. By grouping records by topic and partition, before invoking the state machine, we ensure we track offsets in the same way as Kafka, i.e., by topic/partition. This allows us to easily exploit [the worker model](https://docs.confluent.io/platform/current/connect/concepts.html#distributed-workers) of the Kafka Connect framework. For each topic, a worker is assigned a set of partitions. This scales up to the number of workers equal to the number of partitions. Our use of ClickHouse keeper for our state store means work can easily be rebalanced and use this central record of our current position with strong consistency guarantees.
+
+### Sharding
+
+Our sharding implementation deterministically distributes messages given a set of endpoints under a single or a set of topics. These endpoints can be different shards of a database or different databases entirely. We rely on clickhouse to internally replicate to its replicas of shards. The distribution happends based on the hashes of the message and split to different endpoints assuming hashes are uniformely distributed in its hashspace. We can then supply the same hash function and endpoints to distributed table engine for querying. Each connection is done as a task, which means `max.tasks` needs to be greater or equal to the number of endpoints. We also added `endpoints` as a key in the connector config file to specify different endpoints. We assume the same username and passwords can access different shards or it will not be supported by distributed engine for querying.
+
+We allow specifying the hash function name for sharding. We introduce the config key `hashFunctionName` as an optional config keyword. This can be paired with hash function name used in distributed table engine when qurying from different shards.

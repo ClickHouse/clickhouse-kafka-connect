@@ -1,16 +1,18 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
+    public static final String ENDPOINTS = "endpoints";
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
@@ -20,9 +22,12 @@ public class ClickHouseSinkConfig {
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
+    public static final String HASH_FUNCTION_NAME = "hashFunctionName";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
+    public static final String endpointsDefault = "endpoints";
+    public static final String hostnameDefault = "hostname";
     public static final int portDefault = 8443;
     public static final String usernameDefault = "default";
     public static final String passwordDefault = "";
@@ -30,6 +35,7 @@ public class ClickHouseSinkConfig {
     public static final Integer timeoutSecondsDefault = 30;
     public static final Integer retryCountDefault = 3;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
+    public static final String hashFunctionNameDefault = "default";
     public enum StateStores {
         NONE,
         IN_MEMORY,
@@ -38,6 +44,7 @@ public class ClickHouseSinkConfig {
     }
 
     private Map<String, String> settings = null;
+    private String endpoints;
     private String hostname;
     private int port;
     private String database;
@@ -45,6 +52,7 @@ public class ClickHouseSinkConfig {
     private String password;
     private boolean sslEnabled;
     private boolean exactlyOnce;
+    private String hashFunctionName;
 
     private int timeout;
 
@@ -72,7 +80,15 @@ public class ClickHouseSinkConfig {
 
     public ClickHouseSinkConfig(Map<String, String> props) {
         // Extracting configuration
-        hostname = props.get(HOSTNAME);
+        endpoints = props.getOrDefault(ENDPOINTS, endpointsDefault);
+        if (!endpoints.equals(endpointsDefault)){ // endpoints takes precedence over hostname and ports.
+            hostname = props.getOrDefault(HOSTNAME, hostnameDefault);
+            LOGGER.info("using all endpoints: " + endpoints);
+            if (!hostname.equals(hostnameDefault)) {LOGGER.info("ignoring hostname: "+hostname);}
+        } else {
+            hostname = props.get(HOSTNAME);
+            LOGGER.info("using single host: " + hostname);
+        }
         port = Integer.parseInt(props.getOrDefault(PORT, String.valueOf(portDefault)));
         database = props.getOrDefault(DATABASE, databaseDefault);
         username = props.getOrDefault(USERNAME, usernameDefault);
@@ -81,6 +97,7 @@ public class ClickHouseSinkConfig {
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
+        hashFunctionName = props.getOrDefault(HASH_FUNCTION_NAME, hashFunctionNameDefault);
         LOGGER.info("exactlyOnce: " + exactlyOnce);
         LOGGER.info("props: " + props);
     }
@@ -92,6 +109,15 @@ public class ClickHouseSinkConfig {
 
         String group = "Connection";
         int orderInGroup = 0;
+        configDef.define(ENDPOINTS,
+                ConfigDef.Type.STRING,
+                endpointsDefault,
+                ConfigDef.Importance.HIGH,
+                "endpoints",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "Endpoints of ClickHouse Nodes.");
         configDef.define(HOSTNAME,
                 ConfigDef.Type.STRING,
                 ConfigDef.NO_DEFAULT_VALUE,
@@ -149,6 +175,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable SSL.");
+        configDef.define(HASH_FUNCTION_NAME,
+                ConfigDef.Type.STRING,
+                hashFunctionNameDefault,
+                ConfigDef.Importance.LOW,
+                "hash function name",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "hash function name for distributing messages among endpoints.");
         configDef.define(TIMEOUT_SECONDS,
                 ConfigDef.Type.INT,
                 timeoutSecondsDefault,
@@ -181,7 +216,18 @@ public class ClickHouseSinkConfig {
 
         return configDef;
     }
-
+    public String getEndpoints() { return endpoints; }
+    public List<String> getEndpoints_array() {
+        String[] eps = endpoints.split(",");
+        for (int i=0; i<eps.length; i++) {
+            String ep = eps[i].strip();
+            if (!ep.isEmpty()) {
+                eps[i] = ep;
+            }
+        }
+        Arrays.sort(eps); // Consistently sort endpoints.
+        return Arrays.asList(eps);
+    }
     public String getHostname() {
         return hostname;
     }
@@ -205,10 +251,23 @@ public class ClickHouseSinkConfig {
     public boolean isSslEnabled() {
         return sslEnabled;
     }
+    public String getHashFunctionName() {return hashFunctionName; }
 
     public int getTimeout() {
         return timeout;
     }
     public int getRetry() { return retry; }
     public boolean getExactlyOnce() { return exactlyOnce; }
+
+    public void updateHostNameAndPort(String hostnameAndPort) {
+        if (hostnameAndPort.contains(":")) {
+            String[] hp = hostnameAndPort.split(":");
+            if (hp.length == 2) {
+                hostname = hp[0];
+                port = Integer.parseInt(hp[1]);
+                return;
+            }
+        }
+        LOGGER.error("failed to parse endpoint " + hostnameAndPort);
+    }
 }
