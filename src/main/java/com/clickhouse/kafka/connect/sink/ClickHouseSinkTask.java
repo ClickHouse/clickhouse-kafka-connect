@@ -7,14 +7,7 @@ import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
-import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
-import com.clickhouse.kafka.connect.sink.processing.Processing;
-import com.clickhouse.kafka.connect.sink.state.State;
-import com.clickhouse.kafka.connect.sink.state.StateProvider;
-import com.clickhouse.kafka.connect.sink.state.StateRecord;
-import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
-import com.clickhouse.kafka.connect.sink.state.provider.RedisStateProvider;
-import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+import com.clickhouse.kafka.connect.sink.hashing.RecordHash;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.data.Struct;
@@ -37,6 +30,7 @@ public class ClickHouseSinkTask extends SinkTask {
 
     private List<ProxySinkTask> proxySinkTasks = new ArrayList<>();
     private int endpoints;
+    private String hashFunctionName;
 
     @Override
     public String version() {
@@ -60,6 +54,7 @@ public class ClickHouseSinkTask extends SinkTask {
                 this.proxySinkTasks.add(new ProxySinkTask(clickHouseSinkConfig, createErrorReporter()));
                 this.endpoints++;
             }
+            this.hashFunctionName = clickHouseSinkConfig.getHashFunctionName();
         } else {
             this.proxySinkTasks.add(new ProxySinkTask(clickHouseSinkConfig, createErrorReporter()));
             this.endpoints=1;
@@ -129,7 +124,17 @@ public class ClickHouseSinkTask extends SinkTask {
             locks.add(new ReentrantLock());
         }
         records.parallelStream().forEach(record -> {
-            int index = Math.abs(record.hashCode() % n_splits);
+            RecordHash rh = new RecordHash(record,n_splits);
+            if (!rh.setFunctionName(this.hashFunctionName)) {
+                LOGGER.error(String.format("hash function %s can not be used, available list of functions include %s ",
+                        this.hashFunctionName, rh.availableHashAlgorithms()));
+                return;
+            }
+            int index = rh.getBucketIndex();
+            if (index < 0){
+                LOGGER.error("Hash buket return "+index+" record hash failed");
+                return;
+            }
             try {
                 if (locks.get(index).tryLock(5, TimeUnit.SECONDS)) {
                     buckets.get(index).add(record);

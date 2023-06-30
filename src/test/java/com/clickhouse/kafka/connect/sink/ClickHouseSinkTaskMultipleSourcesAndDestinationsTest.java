@@ -261,6 +261,7 @@ public class ClickHouseSinkTaskMultipleSourcesAndDestinationsTest {
         String endpoints = "";
         for (ClickHouseContainer db : dbs) {endpoints += String.format("%s:%s,",db.getHost(),db.getFirstMappedPort().toString());}
         props.put(ClickHouseSinkConnector.ENDPOINTS, endpoints);
+        props.put(ClickHouseSinkConnector.HASH_FUNCTION_NAME, "SHA-512");
 //        System.out.println(props);
         chst.start(props);
         int sr_rows = 0;
@@ -281,5 +282,6 @@ public class ClickHouseSinkTaskMultipleSourcesAndDestinationsTest {
             }
         }
         assertEquals(sr_rows,total_rows);
+//        TimeUnit.MINUTES.sleep(5);
     }
 }

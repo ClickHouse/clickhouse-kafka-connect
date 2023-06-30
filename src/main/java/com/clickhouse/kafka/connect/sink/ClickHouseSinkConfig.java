@@ -1,6 +1,5 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
@@ -23,6 +22,7 @@ public class ClickHouseSinkConfig {
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
+    public static final String HASH_FUNCTION_NAME = "hashFunctionName";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -35,6 +35,7 @@ public class ClickHouseSinkConfig {
     public static final Integer timeoutSecondsDefault = 30;
     public static final Integer retryCountDefault = 3;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
+    public static final String hashFunctionNameDefault = "default";
     public enum StateStores {
         NONE,
         IN_MEMORY,
@@ -51,6 +52,7 @@ public class ClickHouseSinkConfig {
     private String password;
     private boolean sslEnabled;
     private boolean exactlyOnce;
+    private String hashFunctionName;
 
     private int timeout;
 
@@ -95,6 +97,7 @@ public class ClickHouseSinkConfig {
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
+        hashFunctionName = props.getOrDefault(HASH_FUNCTION_NAME, hashFunctionNameDefault);
         LOGGER.info("exactlyOnce: " + exactlyOnce);
         LOGGER.info("props: " + props);
     }
@@ -172,6 +175,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable SSL.");
+        configDef.define(HASH_FUNCTION_NAME,
+                ConfigDef.Type.STRING,
+                hashFunctionNameDefault,
+                ConfigDef.Importance.LOW,
+                "hash function name",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "hash function name for distributing messages among endpoints.");
         configDef.define(TIMEOUT_SECONDS,
                 ConfigDef.Type.INT,
                 timeoutSecondsDefault,
@@ -239,6 +251,7 @@ public class ClickHouseSinkConfig {
     public boolean isSslEnabled() {
         return sslEnabled;
     }
+    public String getHashFunctionName() {return hashFunctionName; }
 
     public int getTimeout() {
         return timeout;
