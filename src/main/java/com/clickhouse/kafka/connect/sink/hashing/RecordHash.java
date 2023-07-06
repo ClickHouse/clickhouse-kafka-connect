@@ -12,7 +12,7 @@ import java.security.Security;
 import java.util.Set;
 
 public class RecordHash {
-    private static final Logger LOGGER = LoggerFactory.getLogger(Processing.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(RecordHash.class);
     private SinkRecord record = null;
     private int n_buckets = 0;
     private String HashFunctionName;
