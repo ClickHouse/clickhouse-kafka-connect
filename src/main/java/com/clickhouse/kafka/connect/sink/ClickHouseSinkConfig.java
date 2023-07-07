@@ -1,18 +1,23 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.google.gson.Gson;
+import java.lang.reflect.Type;
+import com.google.gson.reflect.TypeToken;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
     public static final String ENDPOINTS = "endpoints";
+    public static final String SHARDS = "shards";
+    public static final String SHARD_REPLICA_WRITE_SELECTION = "shardReplicaWriteSelection";
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
@@ -27,6 +32,8 @@ public class ClickHouseSinkConfig {
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
     public static final String endpointsDefault = "endpoints";
+    public static final String shardsDefault = "shards";
+    public static final String shardReplicaWriteSelectionDefault = "Sequential";
     public static final String hostnameDefault = "hostname";
     public static final int portDefault = 8443;
     public static final String usernameDefault = "default";
@@ -45,6 +52,8 @@ public class ClickHouseSinkConfig {
 
     private Map<String, String> settings = null;
     private String endpoints;
+    private String shards;
+    private String shardReplicaWriteSelection;
     private String hostname;
     private int port;
     private String database;
@@ -80,11 +89,20 @@ public class ClickHouseSinkConfig {
 
     public ClickHouseSinkConfig(Map<String, String> props) {
         // Extracting configuration
-        endpoints = props.getOrDefault(ENDPOINTS, endpointsDefault);
-        if (!endpoints.equals(endpointsDefault)){ // endpoints takes precedence over hostname and ports.
+        endpoints = props.getOrDefault(ENDPOINTS, endpointsDefault); //choose either endpoints or shards
+        shards = props.getOrDefault(SHARDS, shardsDefault);
+        if (!endpoints.equals(endpointsDefault) && !shards.equals(shardsDefault)) {
+            LOGGER.error(String.format("cannot set both endpoints: %s and shards: %s, please remove one.", endpoints, shards));
+        } else if (!endpoints.equals(endpointsDefault) || !shards.equals(shardsDefault)) { // endpoints and shards take precedence over hostname and ports.
             hostname = props.getOrDefault(HOSTNAME, hostnameDefault);
-            LOGGER.info("using all endpoints: " + endpoints);
-            if (!hostname.equals(hostnameDefault)) {LOGGER.info("ignoring hostname: "+hostname);}
+            if (!endpoints.equals(endpointsDefault)) {
+                LOGGER.info(String.format("using %s: %s", ENDPOINTS, endpointsDefault));
+            } else if (!shards.equals(shardsDefault)) {
+                LOGGER.info(String.format("using %s: %s", SHARDS, shards));
+            }
+            if (!hostname.equals(hostnameDefault)) {
+                LOGGER.info("ignoring hostname: " + hostname);
+            }
         } else {
             hostname = props.get(HOSTNAME);
             LOGGER.info("using single host: " + hostname);
@@ -98,6 +116,7 @@ public class ClickHouseSinkConfig {
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
         hashFunctionName = props.getOrDefault(HASH_FUNCTION_NAME, hashFunctionNameDefault);
+        shardReplicaWriteSelection = props.getOrDefault(SHARD_REPLICA_WRITE_SELECTION,shardReplicaWriteSelectionDefault);
         LOGGER.info("exactlyOnce: " + exactlyOnce);
         LOGGER.info("props: " + props);
     }
@@ -116,8 +135,17 @@ public class ClickHouseSinkConfig {
                 "endpoints",
                 group,
                 ++orderInGroup,
-                ConfigDef.Width.MEDIUM,
+                ConfigDef.Width.LONG,
                 "Endpoints of ClickHouse Nodes.");
+        configDef.define(SHARDS,
+                ConfigDef.Type.STRING,
+                shardsDefault,
+                ConfigDef.Importance.HIGH,
+                "shards",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.LONG,
+                "Shards of ClickHouse Nodes (separate replicas with ',' and shards with ';').");
         configDef.define(HOSTNAME,
                 ConfigDef.Type.STRING,
                 ConfigDef.NO_DEFAULT_VALUE,
@@ -184,6 +212,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "hash function name for distributing messages among endpoints.");
+        configDef.define(SHARD_REPLICA_WRITE_SELECTION,
+                ConfigDef.Type.STRING,
+                shardReplicaWriteSelectionDefault,
+                ConfigDef.Importance.LOW,
+                "shard replica write selection strategy",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "shard replica write selection strategy.");
         configDef.define(TIMEOUT_SECONDS,
                 ConfigDef.Type.INT,
                 timeoutSecondsDefault,
@@ -216,8 +253,9 @@ public class ClickHouseSinkConfig {
 
         return configDef;
     }
-    public String getEndpoints() { return endpoints; }
-    public List<String> getEndpoints_array() {
+    public String getEndpointsRaw() { return endpoints; }
+    public String getShardsRaw() {return shards;}
+    public List<String> getEndpoints() {
         String[] eps = endpoints.split(",");
         for (int i=0; i<eps.length; i++) {
             String ep = eps[i].strip();
@@ -227,6 +265,14 @@ public class ClickHouseSinkConfig {
         }
         Arrays.sort(eps); // Consistently sort endpoints.
         return Arrays.asList(eps);
+    }
+    public Set<String[]> getShards() {
+        Set<String[]> shardsSet = new HashSet<>();
+        String[] replicas = shards.split(";");
+        for (String rep : replicas){
+            shardsSet.add(rep.split(","));
+        }
+        return shardsSet;
     }
     public String getHostname() {
         return hostname;
@@ -252,6 +298,7 @@ public class ClickHouseSinkConfig {
         return sslEnabled;
     }
     public String getHashFunctionName() {return hashFunctionName; }
+    public String getShardReplicaWriteSelection() {return shardReplicaWriteSelection;}
 
     public int getTimeout() {
         return timeout;

@@ -89,6 +89,7 @@ public class ClickhouseShardedTestContainersTest {
         int numMsg=10;
         for (int i = 1; i <= maxNumRep; i++) {
             ClickhouseShardedTestContainers csc = new ClickhouseShardedTestContainers();
+            csc.setClickhouseImageName("clickhouse/clickhouse-server:22.5"); // used in opensource env
             csc.addShard(i);
             csc.start();
             Map<String, String> props = new HashMap<>();
@@ -127,7 +128,7 @@ public class ClickhouseShardedTestContainersTest {
         int numMsgS1 = 10;
         int numMsgS2 = 20;
         ClickhouseShardedTestContainers csc = new ClickhouseShardedTestContainers();
-        csc.setClickhouseImageName("clickhouse/clickhouse-server:22.5");
+        csc.setClickhouseImageName("clickhouse/clickhouse-server:22.5"); // used in opensource env
         csc.addShard(S1PRep);
         csc.addShard(S2PRep);
         csc.start();

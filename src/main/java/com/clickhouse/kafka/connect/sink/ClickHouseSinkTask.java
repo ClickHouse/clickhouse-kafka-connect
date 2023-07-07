@@ -1,16 +1,10 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.*;
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
-import com.clickhouse.kafka.connect.sink.data.Record;
-import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
-import com.clickhouse.kafka.connect.sink.db.DBWriter;
-import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.hashing.RecordHash;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.ErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -22,14 +16,13 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 public class ClickHouseSinkTask extends SinkTask {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTask.class);
 
     private List<ProxySinkTask> proxySinkTasks = new ArrayList<>();
-    private int endpoints;
+    private int numConnections;
     private String hashFunctionName;
 
     @Override
@@ -44,29 +37,43 @@ public class ClickHouseSinkTask extends SinkTask {
         try {
             clickHouseSinkConfig = new ClickHouseSinkConfig(props);
         } catch (Exception e) {
-            throw new ConnectException("Failed to start new task" , e);
+            throw new ConnectException("Failed to start new task", e);
         }
-        if (!Objects.equals(clickHouseSinkConfig.getEndpoints(), ClickHouseSinkConfig.endpointsDefault)) {
-            this.endpoints=0;
-            for (String ep : clickHouseSinkConfig.getEndpoints_array()) {
+        if (!clickHouseSinkConfig.getEndpointsRaw().equals(ClickHouseSinkConfig.endpointsDefault)) {
+            this.numConnections = 0;
+            for (String ep : clickHouseSinkConfig.getEndpoints()) {
                 clickHouseSinkConfig.updateHostNameAndPort(ep);
-                LOGGER.info("connecting to endpoint: "+ep);
+                LOGGER.info("connecting to endpoint: " + ep);
                 this.proxySinkTasks.add(new ProxySinkTask(clickHouseSinkConfig, createErrorReporter()));
-                this.endpoints++;
+                this.numConnections++;
             }
             this.hashFunctionName = clickHouseSinkConfig.getHashFunctionName();
+        } else if (!clickHouseSinkConfig.getShardsRaw().equals(ClickHouseSinkConfig.shardsDefault)) {
+            this.numConnections=0;
+            this.hashFunctionName = clickHouseSinkConfig.getHashFunctionName();
+            for (String[] reps : clickHouseSinkConfig.getShards()) {
+                for (String ep : reps) {
+                    clickHouseSinkConfig.updateHostNameAndPort(ep);
+                    if (isResponsive(clickHouseSinkConfig)) {
+                        LOGGER.info("connecting to shard replica : " + ep);
+                        this.proxySinkTasks.add(new ProxySinkTask(clickHouseSinkConfig, createErrorReporter()));
+                        this.numConnections++;
+                        break;
+                    }
+                }
+            }
         } else {
             this.proxySinkTasks.add(new ProxySinkTask(clickHouseSinkConfig, createErrorReporter()));
-            this.endpoints=1;
+            this.numConnections = 1;
         }
     }
 
 
     @Override
     public void put(Collection<SinkRecord> records) {
-        if (this.endpoints==1){
+        if (this.numConnections ==1){
             this.proxySinkTasks.get(this.proxySinkTasks.size()-1).put(records);
-        } else if (this.endpoints>1) {
+        } else if (this.numConnections >1) {
             List<Collection<SinkRecord>> split_records = consistentSplitting(records, this.proxySinkTasks.size());
             for (int i = 0; i < this.proxySinkTasks.size(); i++) {
                 this.proxySinkTasks.get(i).put(split_records.get(i));
@@ -87,8 +94,8 @@ public class ClickHouseSinkTask extends SinkTask {
         for (ProxySinkTask task : this.proxySinkTasks) { task.stop(); }
     }
 
-    public int numEndpoints() {
-        return this.endpoints;
+    public int getNumConnections() {
+        return this.numConnections;
     }
 
 
@@ -145,6 +152,19 @@ public class ClickHouseSinkTask extends SinkTask {
             }
         });
         return buckets;
+    }
+
+    private boolean isResponsive(ClickHouseSinkConfig csc) {
+        ClickHouseHelperClient chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort())
+                .setDatabase(csc.getDatabase())
+                .setUsername(csc.getUsername())
+                .setPassword(csc.getPassword())
+                .sslEnable(csc.isSslEnabled())
+                .setTimeout(csc.getTimeout())
+                .setRetry(csc.getRetry())
+                .build();
+
+        return chc.ping();
     }
 
 }

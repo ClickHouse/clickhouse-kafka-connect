@@ -20,6 +20,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnector.class);
     private String endpoints;
+    private String shards;
     private String hostname;
     private String port;
     private String database;
@@ -35,6 +36,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
     private int timeout;
 
     public static final String ENDPOINTS = "endpoints";
+    public static final String SHARDS = "shards";
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
