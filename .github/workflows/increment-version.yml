@@ -15,6 +15,9 @@ on:
 permissions:
   contents: write
 
+env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
