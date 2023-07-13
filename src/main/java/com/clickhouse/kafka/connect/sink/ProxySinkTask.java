@@ -61,7 +61,7 @@ public class ProxySinkTask {
 
     public void put(final Collection<SinkRecord> records) {
         if (records.isEmpty()) {
-            LOGGER.trace("No records send to SinkTask");
+            LOGGER.trace("No records sent to SinkTask");
             return;
         }
         // Group by topic & partition

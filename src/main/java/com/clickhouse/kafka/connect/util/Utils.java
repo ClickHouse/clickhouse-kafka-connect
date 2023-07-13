@@ -31,6 +31,7 @@ public class Utils {
         Throwable runningException = e;//We have to use Throwable because of the getCause() signature
         while (runningException.getCause() != null &&
                 (!prioritizeClickHouseException || !(runningException instanceof ClickHouseException))) {
+            LOGGER.trace("Found exception: {}", runningException.getLocalizedMessage());
             runningException = runningException.getCause();
         }
 
@@ -44,7 +45,7 @@ public class Utils {
      */
 
     public static void handleException(Exception e) {
-        LOGGER.debug("Exception in doInsert", e);
+        LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
         //High-Level Explicit Exception Checking
         if (e instanceof DataException) {
             throw (DataException) e;
