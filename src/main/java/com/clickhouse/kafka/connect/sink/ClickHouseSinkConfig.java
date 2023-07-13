@@ -23,7 +23,6 @@ public class ClickHouseSinkConfig {
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
-    public static final String INSERT_QUORUM = "insertQuorum";
 
 
 
@@ -38,7 +37,6 @@ public class ClickHouseSinkConfig {
     public static final Integer timeoutSecondsDefault = 30;
     public static final Integer retryCountDefault = 3;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
-    public static final Integer insertQuorumDefault = 2;
     public enum StateStores {
         NONE,
         IN_MEMORY,
@@ -55,7 +53,6 @@ public class ClickHouseSinkConfig {
     private final boolean exactlyOnce;
     private final int timeout;
     private final int retry;
-    private final int insertQuorum;
 
     public static class UTF8String implements ConfigDef.Validator {
 
@@ -76,25 +73,16 @@ public class ClickHouseSinkConfig {
     public ClickHouseSinkConfig(Map<String, String> props) {
         // Extracting configuration
         hostname = props.get(HOSTNAME);
-        LOGGER.debug(HOSTNAME + ": " + hostname);
         port = Integer.parseInt(props.getOrDefault(PORT, String.valueOf(portDefault)));
-        LOGGER.debug(PORT + ": " + port);
         database = props.getOrDefault(DATABASE, databaseDefault);
-        LOGGER.debug(DATABASE + ": " + database);
         username = props.getOrDefault(USERNAME, usernameDefault);
-        LOGGER.debug(USERNAME + ": " + username);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
-        LOGGER.debug("password: ********"); // don't actually log password
         sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
-        LOGGER.debug(SSL_ENABLED + ": " + sslEnabled);
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
-        LOGGER.debug(TIMEOUT_SECONDS + ": " + timeout);
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
-        LOGGER.debug(RETRY_COUNT + ": " + retry);
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
-        LOGGER.debug(EXACTLY_ONCE + ": " + exactlyOnce);
-        insertQuorum = Integer.parseInt(props.getOrDefault(INSERT_QUORUM, insertQuorumDefault.toString()));
-        LOGGER.debug(INSERT_QUORUM + ": " + insertQuorum);
+        LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
+                hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
     }
 
     public static final ConfigDef CONFIG = createConfigDef();
@@ -190,16 +178,6 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable exactly once semantics.");
-        configDef.define(INSERT_QUORUM,
-                ConfigDef.Type.INT,
-                insertQuorumDefault,
-                ConfigDef.Range.between(0, 10),
-                ConfigDef.Importance.LOW,
-                "insert quorum",
-                group,
-                ++orderInGroup,
-                ConfigDef.Width.SHORT,
-                "insert quorum");
 
         return configDef;
     }
@@ -232,5 +210,4 @@ public class ClickHouseSinkConfig {
     }
     public int getRetry() { return retry; }
     public boolean getExactlyOnce() { return exactlyOnce; }
-    public int getInsertQuorum() { return insertQuorum; }
 }
