@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -227,12 +228,19 @@ public class ClickHouseWriter implements DBWriter{
                 if (value.getFieldType().equals(Schema.Type.INT64)) {
                     BinaryStreamUtils.writeUnsignedInt32(stream, ((Long) value.getObject()).longValue());
                 } else {
+
                     unsupported = true;
                 }
                 break;
             case DateTime64:
                 if (value.getFieldType().equals(Schema.Type.INT64)) {
-                    BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
+                    if (value.getObject().getClass().getName().endsWith(".Date")) {
+                        Date date = (Date)value.getObject();
+                        long time = date.getTime();
+                        BinaryStreamUtils.writeInt64(stream, time);
+                    } else {
+                        BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
+                    }
                 } else {
                     unsupported = true;
                 }
@@ -260,7 +268,13 @@ public class ClickHouseWriter implements DBWriter{
                 BinaryStreamUtils.writeInt32(stream, (Integer) value);
                 break;
             case INT64:
-                BinaryStreamUtils.writeInt64(stream, (Long) value);
+                if (value.getClass().getName().endsWith(".Date")) {
+                    Date date = (Date)value;
+                    long time = date.getTime();
+                    BinaryStreamUtils.writeInt64(stream, time);
+                } else {
+                    BinaryStreamUtils.writeInt64(stream, (Long) value);
+                }
                 break;
             case UINT8:
                 BinaryStreamUtils.writeUnsignedInt8(stream, (Byte) value);

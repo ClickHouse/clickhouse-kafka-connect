@@ -7,6 +7,7 @@ import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.data.Timestamp;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
@@ -390,6 +391,8 @@ public class ClickHouseSinkTaskWithSchemaTest {
                 .field("date32_number", Schema.OPTIONAL_INT32_SCHEMA)
                 .field("datetime_number", Schema.INT64_SCHEMA)
                 .field("datetime64_number", Schema.INT64_SCHEMA)
+                .field("timestamp_int64",  Timestamp.SCHEMA)
+                .field("timestamp_date", Timestamp.SCHEMA)
                 .build();
 
 
@@ -411,6 +414,8 @@ public class ClickHouseSinkTaskWithSchemaTest {
                     .put("date32_number", localDateInt)
                     .put("datetime_number", localDateTimeLong)
                     .put("datetime64_number", currentTime)
+                    .put("timestamp_int64", new Date(System.currentTimeMillis()))
+                    .put("timestamp_date",  new Date(System.currentTimeMillis()))
                     ;
 
 
@@ -624,7 +629,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "support-dates-table-test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, datetime64_number DateTime64, timestamp_int64 Int64, timestamp_date DateTime64 ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createDateType(topic, 1);
 
@@ -649,7 +654,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "support-unsupported-dates-table-test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64 ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64) Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = createUnsupportedDataConversions(topic, 1);
 
