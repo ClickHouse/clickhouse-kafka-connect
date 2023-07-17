@@ -43,7 +43,7 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void start(Map<String, String> props) {
-        LOGGER.info("start SinkTask: ");
+        LOGGER.info("Start SinkTask: ");
         ClickHouseSinkConfig clickHouseSinkConfig;
         try {
             clickHouseSinkConfig = new ClickHouseSinkConfig(props);

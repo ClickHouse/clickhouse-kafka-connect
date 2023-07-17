@@ -31,6 +31,7 @@ public class Utils {
         Throwable runningException = e;//We have to use Throwable because of the getCause() signature
         while (runningException.getCause() != null &&
                 (!prioritizeClickHouseException || !(runningException instanceof ClickHouseException))) {
+            LOGGER.trace("Found exception: {}", runningException.getLocalizedMessage());
             runningException = runningException.getCause();
         }
 
@@ -44,7 +45,7 @@ public class Utils {
      */
 
     public static void handleException(Exception e) {
-        LOGGER.debug("Exception in doInsert", e);
+        LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
         //High-Level Explicit Exception Checking
         if (e instanceof DataException) {
             throw (DataException) e;
@@ -67,6 +68,7 @@ public class Utils {
                 case 252: // TOO_MANY_PARTS
                 case 285: // TOO_FEW_LIVE_REPLICAS
                 case 425: // SYSTEM_ERROR
+                case 1002: // UNKNOWN_EXCEPTION
                     throw new RetriableException(e);
                 default:
                     LOGGER.error("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());

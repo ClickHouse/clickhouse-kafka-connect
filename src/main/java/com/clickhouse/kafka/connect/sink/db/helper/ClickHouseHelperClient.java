@@ -17,15 +17,15 @@ public class ClickHouseHelperClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseHelperClient.class);
 
-    private String hostname = null;
-    private int port = -1;
-    private String username = "default";
-    private String database = "default";
-    private String password = "";
-    private boolean sslEnabled = false;
-    private int timeout = ClickHouseSinkConfig.timeoutSecondsDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
+    private final String hostname;
+    private final int port;
+    private final String username;
+    private final String database;
+    private final String password;
+    private final boolean sslEnabled;
+    private final int timeout;
     private ClickHouseNode server = null;
-    private int retry;
+    private final int retry;
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
         this.port = builder.port;
@@ -45,10 +45,10 @@ public class ClickHouseHelperClient {
 
         String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);
 
-        LOGGER.info("url: " + url);
+        LOGGER.info("ClickHouse URL: " + url);
 
         if (username != null && password != null) {
-            LOGGER.info(String.format("Adding username [%s] password [%s]  ", username, Mask.passwordMask(password)));
+            LOGGER.debug(String.format("Adding username [%s]", username));
             Map<String, String> options = new HashMap<>();
             options.put("user", username);
             options.put("password", password);
@@ -61,19 +61,19 @@ public class ClickHouseHelperClient {
 
     public boolean ping() {
         ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-        LOGGER.debug(String.format("server [%s] , timeout [%d]", server, timeout));
+        LOGGER.debug(String.format("Server [%s] , Timeout [%d]", server, timeout));
         int retryCount = 0;
 
         while (retryCount < retry) {
             if (clientPing.ping(server, timeout)) {
-                LOGGER.info("Ping is successful.");
+                LOGGER.info("Ping was successful.");
                 clientPing.close();
                 return true;
             }
             retryCount++;
             LOGGER.warn(String.format("Ping retry %d out of %d", retryCount, retry));
         }
-        LOGGER.error("unable to ping to clickhouse server. ");
+        LOGGER.error("Unable to ping ClickHouse instance.");
         clientPing.close();
         return false;
     }
@@ -132,6 +132,7 @@ public class ClickHouseHelperClient {
         if (tableName.startsWith(".inner"))
             return null;
         String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
+        LOGGER.debug(describeQuery);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
@@ -145,6 +146,7 @@ public class ClickHouseHelperClient {
                 if (cols.length > 2) {
                     String defaultKind = cols[2];
                     if ("ALIAS".equals(defaultKind) || "MATERIALIZED".equals(defaultKind)) {
+                        LOGGER.debug("Skipping column {} as it is an alias or materialized view", cols[0]);
                         // Only insert into "real" columns
                         continue;
                     } else if("DEFAULT".equals(defaultKind)) {
@@ -157,10 +159,9 @@ public class ClickHouseHelperClient {
             }
             return table;
         } catch (ClickHouseException e) {
-            LOGGER.error(String.format("Got exception when running %s", describeQuery), e);
+            LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
             return null;
         }
-
     }
     public List<Table> extractTablesMapping() {
         List<Table> tableList =  new ArrayList<>();

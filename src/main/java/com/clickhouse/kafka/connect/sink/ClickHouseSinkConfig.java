@@ -7,10 +7,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
+
+    //Configuration Names
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
@@ -21,6 +24,10 @@ public class ClickHouseSinkConfig {
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
 
+
+
+
+    
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
     public static final int portDefault = 8443;
@@ -37,30 +44,23 @@ public class ClickHouseSinkConfig {
         KEEPER_MAP
     }
 
-    private Map<String, String> settings = null;
-    private String hostname;
-    private int port;
-    private String database;
-    private String username;
-    private String password;
-    private boolean sslEnabled;
-    private boolean exactlyOnce;
-
-    private int timeout;
-
-    private int retry;
+    private final String hostname;
+    private final int port;
+    private final String database;
+    private final String username;
+    private final String password;
+    private final boolean sslEnabled;
+    private final boolean exactlyOnce;
+    private final int timeout;
+    private final int retry;
 
     public static class UTF8String implements ConfigDef.Validator {
 
         @Override
         public void ensureValid(String name, Object o) {
             String s = (String) o;
-            try {
-                if (s != null ) {
-                    byte[] tmpBytes = s.getBytes("UTF-8");
-                }
-            } catch (UnsupportedEncodingException e) {
-                throw new ConfigException(name, o, "String must be non-empty");
+            if (s != null ) {
+                byte[] tmpBytes = s.getBytes(StandardCharsets.UTF_8);
             }
         }
 
@@ -81,8 +81,8 @@ public class ClickHouseSinkConfig {
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
-        LOGGER.info("exactlyOnce: " + exactlyOnce);
-        LOGGER.info("props: " + props);
+        LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
+                hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
     }
 
     public static final ConfigDef CONFIG = createConfigDef();
@@ -205,7 +205,6 @@ public class ClickHouseSinkConfig {
     public boolean isSslEnabled() {
         return sslEnabled;
     }
-
     public int getTimeout() {
         return timeout;
     }

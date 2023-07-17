@@ -1,3 +1,6 @@
+## 0.0.17 2023-07-12
+* Updating Logo
+
 ## 0.0.16 2023-06-13
 * Updated state handling so that warnings are posted, rather than errors + exceptions.
 * Adding 285 TOO_FEW_LIVE_REPLICAS to the retry list
