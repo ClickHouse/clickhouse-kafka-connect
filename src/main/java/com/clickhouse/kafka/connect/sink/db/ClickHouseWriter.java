@@ -484,11 +484,11 @@ public class ClickHouseWriter implements DBWriter{
                         
                         java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
                         String gsonString = gson.toJson(data, gsonType);
-                        LOGGER.debug(String.format("topic [%s] partition [%d] offset [%d]",
+                        LOGGER.trace("topic {} partition {} offset {} payload {}",
                                 record.getTopic(),
                                 record.getRecordOffsetContainer().getPartition(),
-                                record.getRecordOffsetContainer().getOffset()));
-                        LOGGER.trace("payload {}", gsonString);
+                                record.getRecordOffsetContainer().getOffset(),
+                                gsonString);
                         BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
                     } else {
                         LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
@@ -501,7 +501,7 @@ public class ClickHouseWriter implements DBWriter{
                 try (ClickHouseResponse response = future.get()) {
                     summary = response.getSummary();
                     long rows = summary.getWrittenRows();
-                    LOGGER.trace(String.format("insert num of rows %d", rows));
+                    LOGGER.debug("Number of rows inserted: {}", rows);
                 } catch (Exception e) {//This is mostly for auto-closing
                     LOGGER.trace("Exception", e);
                     throw e;
