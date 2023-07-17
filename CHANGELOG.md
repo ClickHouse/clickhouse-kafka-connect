@@ -1,3 +1,6 @@
+## 0.0.18 2023-07-17
+* Support inline schema with Timestamp types 
+
 ## 0.0.17 2023-07-12
 * Updating Logo
 
