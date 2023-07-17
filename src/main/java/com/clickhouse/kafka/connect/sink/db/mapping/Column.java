@@ -1,6 +1,10 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class Column {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Column.class);
     private String name;
     private Type type;
     private boolean isNullable;
@@ -130,8 +134,9 @@ public class Column {
     }
 
     public static Column extractColumn(String name, String valueType, boolean isNull) {
-        Type type = Type.NONE;
-        type = dispatchPrimitive(valueType);
+        LOGGER.trace("Extracting column {} with type {}", name, valueType);
+
+        Type type = dispatchPrimitive(valueType);
         if (valueType.startsWith("Array")) {
             type = Type.ARRAY;
             Column subType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false);
