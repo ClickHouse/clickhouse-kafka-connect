@@ -197,7 +197,13 @@ public class ClickHouseWriter implements DBWriter{
                 break;
             case Date32:
                 if (value.getFieldType().equals(Schema.Type.INT32)) {
-                    BinaryStreamUtils.writeInt32(stream, (Integer) value.getObject());
+                    if (value.getObject().getClass().getName().endsWith(".Date")) {
+                        Date date = (Date)value.getObject();
+                        int time = (int)date.getTime();
+                        BinaryStreamUtils.writeInt32(stream, time);
+                    } else {
+                        BinaryStreamUtils.writeInt32(stream, (Integer) value.getObject());
+                    }
                 } else {
                     unsupported = true;
                 }
@@ -245,7 +251,13 @@ public class ClickHouseWriter implements DBWriter{
                 BinaryStreamUtils.writeInt16(stream, (Short) value);
                 break;
             case INT32:
-                BinaryStreamUtils.writeInt32(stream, (Integer) value);
+                if (value.getClass().getName().endsWith(".Date")) {
+                    Date date = (Date)value;
+                    int time = (int)date.getTime();
+                    BinaryStreamUtils.writeInt32(stream, time);
+                } else {
+                    BinaryStreamUtils.writeInt32(stream, (Integer) value);
+                }
                 break;
             case INT64:
                 if (value.getClass().getName().endsWith(".Date")) {
