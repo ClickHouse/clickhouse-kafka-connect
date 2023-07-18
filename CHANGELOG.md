@@ -1,3 +1,7 @@
+## 0.0.18 2023-07-17
+* Support inline schema with org.apache.kafka.connect.data.Timestamp type 
+* Support inline schema with org.apache.kafka.connect.data.Time type
+
 ## 0.0.17 2023-07-12
 * Updating Logo
 
