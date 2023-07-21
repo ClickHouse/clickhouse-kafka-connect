@@ -124,6 +124,10 @@ public class ClickHouseWriter implements DBWriter{
             Record first = records.get(0);
             String topic = first.getTopic();
             Table table = this.mapping.get(Utils.escapeTopicName(topic));
+            LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
+                    first.getRecordOffsetContainer().getOffset(),
+                    records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
+                    first.getRecordOffsetContainer().getPartition());
 
             switch (first.getSchemaType()) {
                 case SCHEMA:
