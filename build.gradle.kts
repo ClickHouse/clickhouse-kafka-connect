@@ -78,7 +78,8 @@ dependencies {
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:1.7.36")
     implementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
-    implementation("org.testcontainers:testcontainers:1.17.6")
+    implementation("org.testcontainers:testcontainers:1.18.3")
+    implementation("org.testcontainers:toxiproxy:1.18.3")
 
     /*
         Will in side the Confluent Archive
@@ -98,10 +99,11 @@ dependencies {
 
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:1.17.6")
-    testImplementation("org.testcontainers:kafka:1.17.6")
+    testImplementation("org.testcontainers:kafka:1.18.3")
     testImplementation("com.clickhouse:clickhouse-jdbc:0.3.2-patch10:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.10.0")
     testImplementation("org.json:json:20230227")
+    testImplementation("org.testcontainers:toxiproxy:1.18.3")
 
 }
 
