@@ -1,7 +1,9 @@
 package com.clickhouse;
 
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.*;
+import com.clickhouse.client.http.config.ClickHouseHttpOption;
+import com.clickhouse.client.http.config.HttpConnectionProvider;
+import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.helpers.ClickHouseAPI;
 import com.clickhouse.helpers.ConfluentAPI;
 import com.clickhouse.helpers.ConnectAPI;
@@ -10,6 +12,7 @@ import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -24,15 +27,11 @@ import org.testcontainers.shaded.org.apache.commons.lang3.RandomStringUtils;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.*;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Properties;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -100,11 +99,13 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(proxyContainer.getExposedPorts()));
 
         proxyClient = new ToxiproxyClient(proxyContainer.getHost(), proxyContainer.getControlPort());
-        proxy = proxyClient.createProxy("clickhouse", "localhost:" + properties.getProperty("clickhouse.port"),
+        proxy = proxyClient.createProxy("clickhouse", "0.0.0.0:" + properties.getProperty("clickhouse.port"),
                 properties.getProperty("clickhouse.host") + ":" + properties.getProperty("clickhouse.port"));
+        LOGGER.info("Proxy: {}", proxy);
 
         Thread.sleep(10000);
         LOGGER.info("Proxy URL: {}",proxyContainer.getHost()+":"+proxyContainer.getMappedPort(Integer.parseInt(properties.getProperty("confluent.port"))));
+        LOGGER.info("Proxy Upstream: {}", proxy.getUpstream());
 
         connectContainer = new GenericContainer<>("confluentinc/cp-kafka-connect:latest")
                 .withLogConsumer(new Slf4jLogConsumer(LOGGER))
@@ -153,6 +154,7 @@ public class ExactlyOnceTest {
     public static void tearDown() throws IOException, URISyntaxException, InterruptedException {
         producer.close();
         connectContainer.stop();
+        proxyContainer.stop();
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_configs_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_offsets_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_status_" + topicCode)));
@@ -177,6 +179,28 @@ public class ExactlyOnceTest {
             assertEquals(count, Integer.parseInt(counts[1]));
         } else {
             LOGGER.info("Counts are null");
+            fail();
+        }
+    }
+
+    @Test
+    public void tryProxyConnection() {
+        try {
+            String proxyHost = proxyContainer.getHost();
+            Integer proxyPort = proxyContainer.getMappedPort(Integer.parseInt(properties.getProperty("clickhouse.port")));
+
+            Map<String, String> options = new HashMap<>();
+            options.put("proxy_type", "HTTPS");
+            options.put("proxy_host", proxyHost);
+            options.put("proxy_port", Integer.toString(proxyPort));
+            try (ClickHouseClient client = ClickHouseClient.builder().options(getClientOptions())
+                    .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP)).build()) {
+                ClickHouseNode server = createServer(proxyHost, String.valueOf(proxyPort), options);
+                LOGGER.info("Server: {}", server);
+                Assert.assertTrue(client.ping(server, 30000));
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error", e);
             fail();
         }
     }
@@ -226,4 +250,22 @@ public class ExactlyOnceTest {
     }
 
 
+
+    private static ClickHouseNode createServer(String hostname, String port, Map<String, String> opts) {
+        String protocol = "https";
+        String url = String.format("%s://%s:%s/%s", protocol, hostname, port, properties.getProperty("clickhouse.database"));
+        LOGGER.info("ClickHouse URL: " + url);
+        Map<String, String> options = new HashMap<>();
+        options.put("user", properties.getProperty("clickhouse.username"));
+        options.put("password", properties.getProperty("clickhouse.password"));
+        options.put("sslmode", "none");
+        options.putAll(opts);
+        return ClickHouseNode.of(url, options);
+    }
+
+
+    private static Map<ClickHouseOption, Serializable> getClientOptions() {
+        return Collections.singletonMap(ClickHouseHttpOption.CONNECTION_PROVIDER,
+                HttpConnectionProvider.HTTP_URL_CONNECTION);
+    }
 }

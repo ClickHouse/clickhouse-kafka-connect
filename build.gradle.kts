@@ -49,7 +49,7 @@ repositories {
 
 extra.apply {
 
-    set("clickHouseDriverVersion", "0.3.2-patch10")
+    set("clickHouseDriverVersion", "0.4.6")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 
@@ -72,6 +72,7 @@ dependencies {
     implementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
+    implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.2.0.RELEASE")
     implementation("com.google.code.gson:gson:2.10")
 
