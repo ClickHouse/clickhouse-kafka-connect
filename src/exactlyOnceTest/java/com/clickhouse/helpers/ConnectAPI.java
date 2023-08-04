@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.ClickHouseContainer;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.net.ProxySelector;
@@ -12,6 +13,8 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 public class ConnectAPI {
@@ -25,7 +28,7 @@ public class ConnectAPI {
         this.container = container;
     }
 
-    public String listConnectors() throws IOException, InterruptedException, URISyntaxException {
+    public String getConnectorState() throws IOException, InterruptedException, URISyntaxException {
         String restURL = "http://" + container.getHost() + ":" + container.getMappedPort(8083) + "/connectors?expand=status&expand=info";
         LOGGER.info(restURL);
         HttpRequest request = HttpRequest.newBuilder()
@@ -33,11 +36,16 @@ public class ConnectAPI {
                 .GET()
                 .build();
         HttpResponse<String> response = HttpClient.newBuilder().proxy(ProxySelector.getDefault()).build().send(request, HttpResponse.BodyHandlers.ofString());
-
-        LOGGER.info(String.valueOf(response.statusCode()));
         LOGGER.info(response.body());
 
-        return response.body();
+        try {
+            HashMap<String, Map<String, Map>> map = (new ObjectMapper()).readValue(response.body(), HashMap.class);
+            LOGGER.info("Map: {}", String.valueOf(map.get("clickhouse-connect")));
+            return String.valueOf(map.get("clickhouse-connect").get("status").get("connector")).toUpperCase();
+        } catch (Exception e) {
+            LOGGER.error("Error: {}", e.getMessage());
+            return "error";
+        }
     }
 
     public boolean createConnector(String topicName, boolean exactlyOnce) throws IOException, InterruptedException, URISyntaxException {

@@ -7,13 +7,9 @@ import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.helpers.ClickHouseAPI;
 import com.clickhouse.helpers.ConfluentAPI;
 import com.clickhouse.helpers.ConnectAPI;
-import eu.rekawek.toxiproxy.Proxy;
-import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.junit.Assert;
-import org.junit.Rule;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Order;
@@ -25,7 +21,6 @@ import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.shaded.org.apache.commons.io.FileUtils;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomStringUtils;
-import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 
 import java.io.*;
@@ -91,7 +86,7 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_status_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_data_" + topicCode, 1, 3, false, false)));
 
-        Thread.sleep(10000);
+        Thread.sleep(15000);
 
         connectContainer = new GenericContainer<>("confluentinc/cp-kafka-connect:latest")
                 .withLogConsumer(new Slf4jLogConsumer(LOGGER))
@@ -99,7 +94,6 @@ public class ExactlyOnceTest {
                 .withNetworkAliases("connect")
                 .withExposedPorts(8083)
                 .withEnv("CONNECT_BOOTSTRAP_SERVERS", properties.getProperty("bootstrap.servers"))
-//                .withEnv("CONNECT_BOOTSTRAP_SERVERS", proxyContainer.getHost()+":"+proxyContainer.getMappedPort(Integer.parseInt(properties.getProperty("confluent.port"))))
                 .withEnv("CONNECT_SECURITY_PROTOCOL", properties.getOrDefault("security.protocol", "SASL_SSL").toString())
                 .withEnv("CONNECT_CONSUMER_SECURITY_PROTOCOL", properties.getOrDefault("security.protocol", "SASL_SSL").toString())
                 .withEnv("CONNECT_SASL_MECHANISM", properties.getOrDefault("sasl.mechanism", "PLAIN").toString())
@@ -129,7 +123,6 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(clickhouseAPI.createTable("test_exactlyOnce_data_" + topicCode)));
 
         connectAPI = new ConnectAPI(properties, connectContainer);
-//        connectAPI = new ConnectAPI(properties, connectContainer, clickHouseContainer);
         LOGGER.info(String.valueOf(connectAPI.createConnector("test_exactlyOnce_data_" + topicCode, false)));
 
         //TODO: Check programatically rather than just waiting for a while
@@ -141,8 +134,6 @@ public class ExactlyOnceTest {
     public static void tearDown() throws IOException, URISyntaxException, InterruptedException {
         producer.close();
         connectContainer.stop();
-//        proxyContainer.stop();
-//        clickHouseContainer.stop();
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_configs_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_offsets_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_status_" + topicCode)));
@@ -154,7 +145,7 @@ public class ExactlyOnceTest {
     @Order(1)
     public void basicTest() throws InterruptedException, ExecutionException, TimeoutException, URISyntaxException, IOException {
         assertEquals(1, 1);
-        clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+        clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
     }
 
     @Test
@@ -184,52 +175,62 @@ public class ExactlyOnceTest {
             LOGGER.info(String.valueOf(clickHouseResponse));
             clickHouseResponse.close();
 
+            Date start = new Date();
             Integer count = sendDataToTopic("test_exactlyOnce_data_" + topicCode);
-            LOGGER.info(connectAPI.listConnectors());
+            Date end = new Date();
+            LOGGER.info("Time to send: {}", end.getTime() - start.getTime());
+            LOGGER.info("Connector State: {}", connectAPI.getConnectorState());
             clickhouseAPI.stopInstance(properties.getProperty("clickhouse.cloud.serviceId"));
 
-            String serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+            String serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
             int loopCount = 0;
             while(!serviceState.equals("STOPPED") && loopCount < 30) {
                 LOGGER.info("Service State: {}", serviceState);
                 Thread.sleep(5000);
-                serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+                serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
                 loopCount++;
             }
 
             clickhouseAPI.startInstance(properties.getProperty("clickhouse.cloud.serviceId"));
-            serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+            serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
             loopCount = 0;
             while(!serviceState.equals("RUNNING") && loopCount < 30) {
                 LOGGER.info("Service State: {}", serviceState);
                 Thread.sleep(5000);
-                serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+                serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
                 loopCount++;
             }
             LOGGER.info("Service State: {}", serviceState);
 
             connectAPI.restartConnector();
-            Thread.sleep(200000);
-            LOGGER.info("Actual Total: {}", count);
-            String[] counts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
-            if (counts != null) {
-                LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(counts[0]), Integer.parseInt(counts[1]), Integer.parseInt(counts[2]));
-                LOGGER.info("Counts Difference: {}", Integer.parseInt(counts[1]) - count);
 
-                if (Integer.parseInt(counts[1]) - count != 0) {
+//            Thread.sleep(200000);
+            LOGGER.info("Expected Total: {}", count);
+            String[] databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+            int timelimit = 0;
+            while(Integer.parseInt(databaseCounts[0]) < count && timelimit < 100) {
+                LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(databaseCounts[0]), Integer.parseInt(databaseCounts[1]), Integer.parseInt(databaseCounts[2]));
+                Thread.sleep(5000);
+                databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+                timelimit++;
+            }
+
+            databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+            if (databaseCounts != null) {
+                LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(databaseCounts[0]), Integer.parseInt(databaseCounts[1]), Integer.parseInt(databaseCounts[2]));
+                LOGGER.info("Counts Difference: {}", Integer.parseInt(databaseCounts[1]) - count);
+
+                if (Integer.parseInt(databaseCounts[1]) - count != 0) {
                     allSuccess = false;
                 }
-
-//                assertEquals(count, Integer.parseInt(counts[0]));
-//                assertEquals(count, Integer.parseInt(counts[1]));
             } else {
                 LOGGER.info("Counts are null");
                 fail();
             }
             runCount++;
-        } while (runCount < 2 && allSuccess);
+        } while (runCount < 5 && allSuccess);
 
-        LOGGER.info("Service State: {}", clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId")));
+
         if (allSuccess) {
             LOGGER.info("All tests passed");
             assertTrue(true);

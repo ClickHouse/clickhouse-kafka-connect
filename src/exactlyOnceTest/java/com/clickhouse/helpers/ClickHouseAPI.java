@@ -100,7 +100,7 @@ public class ClickHouseAPI {
         return response;
     }
 
-    public String checkServiceState(String serviceId) throws URISyntaxException, IOException, InterruptedException {
+    public String getServiceState(String serviceId) throws URISyntaxException, IOException, InterruptedException {
         String restURL = "https://api.clickhouse.cloud/v1/organizations/" + properties.getProperty("clickhouse.cloud.organization") + "/services/" + serviceId;
         String basicAuthCreds = Base64.getEncoder().encodeToString((properties.getProperty("clickhouse.cloud.id") + ":" + properties.getProperty("clickhouse.cloud.secret")).getBytes());
         HttpRequest request = HttpRequest.newBuilder()
