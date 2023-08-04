@@ -15,6 +15,7 @@ import com.clickhouse.kafka.connect.util.Mask;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
