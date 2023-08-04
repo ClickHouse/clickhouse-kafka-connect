@@ -114,10 +114,14 @@ public class ClickHouseAPI {
         LOGGER.info(String.valueOf(response.statusCode()));
         LOGGER.info(response.body());
 
-        HashMap<String, Map> map = (new ObjectMapper()).readValue(response.body(), HashMap.class);
-        LOGGER.info("Map: {}", String.valueOf(map.get("result")));
-
-        return response.body();
+        try {
+            HashMap<String, Map> map = (new ObjectMapper()).readValue(response.body(), HashMap.class);
+            LOGGER.info("Map: {}", String.valueOf(map.get("result")));
+            return String.valueOf(map.get("result").get("state")).toUpperCase();
+        } catch (Exception e) {
+            LOGGER.error("Error: {}", e.getMessage());
+            return "error";
+        }
     }
 
 

@@ -187,13 +187,29 @@ public class ExactlyOnceTest {
             Integer count = sendDataToTopic("test_exactlyOnce_data_" + topicCode);
             LOGGER.info(connectAPI.listConnectors());
             clickhouseAPI.stopInstance(properties.getProperty("clickhouse.cloud.serviceId"));
-            Thread.sleep(25000);
+
+            String serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+            int loopCount = 0;
+            while(!serviceState.equals("STOPPED") && loopCount < 30) {
+                LOGGER.info("Service State: {}", serviceState);
+                Thread.sleep(5000);
+                serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+                loopCount++;
+            }
+
             clickhouseAPI.startInstance(properties.getProperty("clickhouse.cloud.serviceId"));
-            Thread.sleep(30000);
-            LOGGER.info("Service State: {}", clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId")));
+            serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+            loopCount = 0;
+            while(!serviceState.equals("RUNNING") && loopCount < 30) {
+                LOGGER.info("Service State: {}", serviceState);
+                Thread.sleep(5000);
+                serviceState = clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+                loopCount++;
+            }
+            LOGGER.info("Service State: {}", serviceState);
+
             connectAPI.restartConnector();
             Thread.sleep(200000);
-            LOGGER.info("Service State: {}", clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId")));
             LOGGER.info("Actual Total: {}", count);
             String[] counts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
             if (counts != null) {
