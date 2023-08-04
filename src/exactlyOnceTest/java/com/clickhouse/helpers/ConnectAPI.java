@@ -2,6 +2,7 @@ package com.clickhouse.helpers;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.ClickHouseContainer;
 import org.testcontainers.containers.GenericContainer;
 
 import java.io.IOException;
@@ -62,6 +63,22 @@ public class ConnectAPI {
                         "\"value.converter\": \"org.apache.kafka.connect.json.JsonConverter\"," +
                         "\"value.converter.schemas.enable\": \"false\"" +
                         "}}"))
+                .build();
+        HttpResponse<String> response = HttpClient.newBuilder().proxy(ProxySelector.getDefault()).build().send(request, HttpResponse.BodyHandlers.ofString());
+
+        LOGGER.info(String.valueOf(response.statusCode()));
+        LOGGER.info(response.body());
+
+        return response.statusCode() == 201;
+    }
+
+
+    public boolean restartConnector() throws IOException, InterruptedException, URISyntaxException {
+        String restURL = "http://" + container.getHost() + ":" + container.getMappedPort(8083) + "/connectors/clickhouse-connect/restart?includeTasks=true&onlyFailed=true";
+        LOGGER.info(restURL);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(new URI(restURL))
+                .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
         HttpResponse<String> response = HttpClient.newBuilder().proxy(ProxySelector.getDefault()).build().send(request, HttpResponse.BodyHandlers.ofString());
 

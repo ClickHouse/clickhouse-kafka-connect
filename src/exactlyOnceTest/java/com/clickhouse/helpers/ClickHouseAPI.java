@@ -4,7 +4,18 @@ import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
+import java.net.ProxySelector;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 public class ClickHouseAPI {
@@ -55,6 +66,58 @@ public class ClickHouseAPI {
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public ClickHouseResponse clearTable(String tableName) {
+        String sql = "TRUNCATE TABLE " + tableName;
+        LOGGER.info("Clear table: " + sql);
+        return clickHouseHelperClient.query(sql);
+    }
+
+
+    public HttpResponse<String> stopInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {
+        return updateServiceState(serviceId, "stop");
+    }
+
+    public HttpResponse<String> startInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {
+        return updateServiceState(serviceId, "start");
+    }
+
+    public HttpResponse<String> updateServiceState(String serviceId, String command) throws URISyntaxException, IOException, InterruptedException {
+        String restURL = "https://api.clickhouse.cloud/v1/organizations/" + properties.getProperty("clickhouse.cloud.organization") + "/services/" + serviceId + "/state";
+        String basicAuthCreds = Base64.getEncoder().encodeToString((properties.getProperty("clickhouse.cloud.id") + ":" + properties.getProperty("clickhouse.cloud.secret")).getBytes());
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(new URI(restURL))
+                .header("Content-Type", "application/json;charset=UTF-8")
+                .header("Authorization", "Basic " + basicAuthCreds)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"command\": \"" + command + "\"}"))
+                .build();
+        HttpResponse<String> response = HttpClient.newBuilder().proxy(ProxySelector.getDefault()).build().send(request, HttpResponse.BodyHandlers.ofString());
+
+        LOGGER.info(String.valueOf(response.statusCode()));
+        LOGGER.info(response.body());
+
+        return response;
+    }
+
+    public String checkServiceState(String serviceId) throws URISyntaxException, IOException, InterruptedException {
+        String restURL = "https://api.clickhouse.cloud/v1/organizations/" + properties.getProperty("clickhouse.cloud.organization") + "/services/" + serviceId;
+        String basicAuthCreds = Base64.getEncoder().encodeToString((properties.getProperty("clickhouse.cloud.id") + ":" + properties.getProperty("clickhouse.cloud.secret")).getBytes());
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(new URI(restURL))
+                .header("Content-Type", "application/json;charset=UTF-8")
+                .header("Authorization", "Basic " + basicAuthCreds)
+                .GET()
+                .build();
+        HttpResponse<String> response = HttpClient.newBuilder().proxy(ProxySelector.getDefault()).build().send(request, HttpResponse.BodyHandlers.ofString());
+
+        LOGGER.info(String.valueOf(response.statusCode()));
+        LOGGER.info(response.body());
+
+        HashMap<String, Map> map = (new ObjectMapper()).readValue(response.body(), HashMap.class);
+        LOGGER.info("Map: {}", String.valueOf(map.get("result")));
+
+        return response.body();
     }
 
 

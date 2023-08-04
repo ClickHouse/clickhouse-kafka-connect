@@ -99,9 +99,9 @@ dependencies {
     testImplementation("org.mockito:mockito-junit-jupiter:${project.extra["mockitoVersion"]}")
 
     // IntegrationTests
-    testImplementation("org.testcontainers:clickhouse:1.17.6")
+    testImplementation("org.testcontainers:clickhouse:1.18.3")
     testImplementation("org.testcontainers:kafka:1.18.3")
-    testImplementation("com.clickhouse:clickhouse-jdbc:0.3.2-patch10:all")
+    testImplementation("com.clickhouse:clickhouse-jdbc:0.4.6:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.10.0")
     testImplementation("org.json:json:20230227")
     testImplementation("org.testcontainers:toxiproxy:1.18.3")
@@ -138,6 +138,7 @@ tasks.create("exactlyOnceTest", Test::class.java) {
     outputs.upToDateWhen { false }
     dependsOn("prepareConfluentArchive")
     mustRunAfter("test")
+    testLogging.showStandardStreams = true
 }
 
 tasks.withType<Test> {

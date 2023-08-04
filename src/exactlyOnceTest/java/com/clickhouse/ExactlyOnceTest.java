@@ -16,6 +16,7 @@ import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,10 +46,6 @@ public class ExactlyOnceTest {
 
     private static final Network network = Network.newNetwork();
     private static GenericContainer<?> connectContainer;
-
-    private static ToxiproxyContainer proxyContainer;
-    private static ToxiproxyClient proxyClient;
-    private static Proxy proxy;
 
     private static final String VERSION;
 
@@ -87,25 +84,14 @@ public class ExactlyOnceTest {
     public static void setUp() throws IOException, URISyntaxException, InterruptedException {
         LOGGER.info("Version: " + VERSION);
         LOGGER.info("Topic code: " + topicCode);
+
         confluentAPI = new ConfluentAPI(properties);
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_configs_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_offsets_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_status_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_data_" + topicCode, 1, 3, false, false)));
 
-        proxyContainer = createToxiproxyContainer();
-        proxyContainer.start();
         Thread.sleep(10000);
-        LOGGER.info(String.valueOf(proxyContainer.getExposedPorts()));
-
-        proxyClient = new ToxiproxyClient(proxyContainer.getHost(), proxyContainer.getControlPort());
-        proxy = proxyClient.createProxy("clickhouse", "0.0.0.0:" + properties.getProperty("clickhouse.port"),
-                properties.getProperty("clickhouse.host") + ":" + properties.getProperty("clickhouse.port"));
-        LOGGER.info("Proxy: {}", proxy);
-
-        Thread.sleep(10000);
-        LOGGER.info("Proxy URL: {}",proxyContainer.getHost()+":"+proxyContainer.getMappedPort(Integer.parseInt(properties.getProperty("confluent.port"))));
-        LOGGER.info("Proxy Upstream: {}", proxy.getUpstream());
 
         connectContainer = new GenericContainer<>("confluentinc/cp-kafka-connect:latest")
                 .withLogConsumer(new Slf4jLogConsumer(LOGGER))
@@ -143,6 +129,7 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(clickhouseAPI.createTable("test_exactlyOnce_data_" + topicCode)));
 
         connectAPI = new ConnectAPI(properties, connectContainer);
+//        connectAPI = new ConnectAPI(properties, connectContainer, clickHouseContainer);
         LOGGER.info(String.valueOf(connectAPI.createConnector("test_exactlyOnce_data_" + topicCode, false)));
 
         //TODO: Check programatically rather than just waiting for a while
@@ -154,7 +141,8 @@ public class ExactlyOnceTest {
     public static void tearDown() throws IOException, URISyntaxException, InterruptedException {
         producer.close();
         connectContainer.stop();
-        proxyContainer.stop();
+//        proxyContainer.stop();
+//        clickHouseContainer.stop();
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_configs_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_offsets_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_status_" + topicCode)));
@@ -163,11 +151,14 @@ public class ExactlyOnceTest {
     }
 
     @Test
-    public void basicTest() throws InterruptedException, ExecutionException, TimeoutException {
+    @Order(1)
+    public void basicTest() throws InterruptedException, ExecutionException, TimeoutException, URISyntaxException, IOException {
         assertEquals(1, 1);
+        clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
     }
 
     @Test
+    @Order(2)
     public void checkTotalsEqual() throws InterruptedException, ExecutionException, TimeoutException {
         Integer count = sendDataToTopic("test_exactlyOnce_data_" + topicCode);
 
@@ -184,33 +175,61 @@ public class ExactlyOnceTest {
     }
 
     @Test
-    public void tryProxyConnection() {
-        try {
-            String proxyHost = proxyContainer.getHost();
-            Integer proxyPort = proxyContainer.getMappedPort(Integer.parseInt(properties.getProperty("clickhouse.port")));
+    @Order(3)
+    public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
+        boolean allSuccess = true;
+        int runCount = 0;
+        do {
+            ClickHouseResponse clickHouseResponse = clickhouseAPI.clearTable("test_exactlyOnce_data_" + topicCode);
+            LOGGER.info(String.valueOf(clickHouseResponse));
+            clickHouseResponse.close();
 
-            Map<String, String> options = new HashMap<>();
-            options.put("proxy_type", "HTTPS");
-            options.put("proxy_host", proxyHost);
-            options.put("proxy_port", Integer.toString(proxyPort));
-            try (ClickHouseClient client = ClickHouseClient.builder().options(getClientOptions())
-                    .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP)).build()) {
-                ClickHouseNode server = createServer(proxyHost, String.valueOf(proxyPort), options);
-                LOGGER.info("Server: {}", server);
-                Assert.assertTrue(client.ping(server, 30000));
+            Integer count = sendDataToTopic("test_exactlyOnce_data_" + topicCode);
+            LOGGER.info(connectAPI.listConnectors());
+            clickhouseAPI.stopInstance(properties.getProperty("clickhouse.cloud.serviceId"));
+            Thread.sleep(25000);
+            clickhouseAPI.startInstance(properties.getProperty("clickhouse.cloud.serviceId"));
+            Thread.sleep(30000);
+            LOGGER.info("Service State: {}", clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId")));
+            connectAPI.restartConnector();
+            Thread.sleep(200000);
+            LOGGER.info("Service State: {}", clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId")));
+            LOGGER.info("Actual Total: {}", count);
+            String[] counts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+            if (counts != null) {
+                LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(counts[0]), Integer.parseInt(counts[1]), Integer.parseInt(counts[2]));
+                LOGGER.info("Counts Difference: {}", Integer.parseInt(counts[1]) - count);
+
+                if (Integer.parseInt(counts[1]) - count != 0) {
+                    allSuccess = false;
+                }
+
+//                assertEquals(count, Integer.parseInt(counts[0]));
+//                assertEquals(count, Integer.parseInt(counts[1]));
+            } else {
+                LOGGER.info("Counts are null");
+                fail();
             }
-        } catch (Exception e) {
-            LOGGER.error("Error", e);
+            runCount++;
+        } while (runCount < 2 && allSuccess);
+
+        LOGGER.info("Service State: {}", clickhouseAPI.checkServiceState(properties.getProperty("clickhouse.cloud.serviceId")));
+        if (allSuccess) {
+            LOGGER.info("All tests passed");
+            assertTrue(true);
+        } else {
+            LOGGER.info("Some tests failed");
             fail();
         }
     }
 
 
+
     private Integer sendDataToTopic(String topicName) throws InterruptedException {
         int NUM_THREADS = Integer.parseInt(properties.getProperty("messages.threads"));
         int NUM_MESSAGES = Integer.parseInt(properties.getProperty("messages.per.thread"));
-        int MESSAGE_INTERVAL_MS = Integer.parseInt(String.valueOf(properties.getOrDefault("messages.interval.ms", "1000")));
-        int MIN_MESSAGES = Integer.parseInt(String.valueOf(properties.getOrDefault("messages.min", "1000")));
+        int MESSAGE_INTERVAL_MS = Integer.parseInt(properties.getProperty("messages.interval.ms", "1000"));
+        int MIN_MESSAGES = Integer.parseInt(properties.getProperty("messages.min", "1000"));
 
         AtomicInteger counter = new AtomicInteger(0);
 
@@ -240,28 +259,6 @@ public class ExactlyOnceTest {
         return counter.get();
     }
 
-    private static ToxiproxyContainer createToxiproxyContainer() {
-        return new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.5.0")
-                .withLogConsumer(new Slf4jLogConsumer(LOGGER))
-                .withNetwork(network)
-                .withExposedPorts(8474, Integer.parseInt(properties.getProperty("confluent.port")), Integer.parseInt(properties.getProperty("clickhouse.port")))
-//                .waitingFor(Wait.forHttp("/proxies").forStatusCode(200))
-                .withStartupTimeout(Duration.ofMinutes(1));
-    }
-
-
-
-    private static ClickHouseNode createServer(String hostname, String port, Map<String, String> opts) {
-        String protocol = "https";
-        String url = String.format("%s://%s:%s/%s", protocol, hostname, port, properties.getProperty("clickhouse.database"));
-        LOGGER.info("ClickHouse URL: " + url);
-        Map<String, String> options = new HashMap<>();
-        options.put("user", properties.getProperty("clickhouse.username"));
-        options.put("password", properties.getProperty("clickhouse.password"));
-        options.put("sslmode", "none");
-        options.putAll(opts);
-        return ClickHouseNode.of(url, options);
-    }
 
 
     private static Map<ClickHouseOption, Serializable> getClientOptions() {
