@@ -216,16 +216,16 @@ public class ClickHouseWriter implements DBWriter{
                 }
                 break;
             case DateTime:
-                if (value.getFieldType().equals(Schema.Type.INT64)) {
+                if (value.getFieldType().equals(Schema.Type.INT32) || value.getFieldType().equals(Schema.Type.INT64)) {
                     if (value.getObject().getClass().getName().endsWith(".Date")) {
                         Date date = (Date)value.getObject();
-                        long time = date.getTime();
-                        BinaryStreamUtils.writeUnsignedInt32(stream, time);
+                        long epochSecond = date.toInstant().getEpochSecond();
+                        BinaryStreamUtils.writeUnsignedInt32(stream, epochSecond);
                     } else {
                         BinaryStreamUtils.writeUnsignedInt32(stream, (Long) value.getObject());
                     }
                 } else {
-
+                    
                     unsupported = true;
                 }
                 break;
