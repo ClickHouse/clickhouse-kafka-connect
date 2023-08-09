@@ -35,12 +35,17 @@ public class ClickHouseAPI {
 
 
     public ClickHouseResponse createTable(String tableName) {
+//        String sql = "CREATE TABLE IF NOT EXISTS " + tableName + " ("
+//                + "  `raw` String,"
+//                + "  `generationTimestamp` DateTime64(3),"
+//                + "  `insertTime` DateTime64(3) DEFAULT now(),"
+//                + ")"
+//                + " ORDER BY insertTime";
         String sql = "CREATE TABLE IF NOT EXISTS " + tableName + " ("
                 + "  `raw` String,"
                 + "  `generationTimestamp` DateTime64(3),"
-                + "  `insertTime` DateTime64(3) DEFAULT now(),"
                 + ")"
-                + " ORDER BY insertTime";
+                + " ORDER BY raw";
         LOGGER.info("Create table: " + sql);
         return clickHouseHelperClient.query(sql);
     }

@@ -123,7 +123,7 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(clickhouseAPI.createTable("test_exactlyOnce_data_" + topicCode)));
 
         connectAPI = new ConnectAPI(properties, connectContainer);
-        LOGGER.info(String.valueOf(connectAPI.createConnector("test_exactlyOnce_data_" + topicCode, false)));
+        LOGGER.info(String.valueOf(connectAPI.createConnector("test_exactlyOnce_data_" + topicCode, true)));
 
         //TODO: Check programatically rather than just waiting for a while
         Thread.sleep(30000);//We need to make sure the topics exist before we start the producer
@@ -204,15 +204,21 @@ public class ExactlyOnceTest {
 
             connectAPI.restartConnector();
 
-//            Thread.sleep(200000);
             LOGGER.info("Expected Total: {}", count);
             String[] databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
-            int timelimit = 0;
-            while(Integer.parseInt(databaseCounts[0]) < count && timelimit < 100) {
+            int lastCount = 0;
+            loopCount = 0;
+            while(Integer.parseInt(databaseCounts[1]) != lastCount || loopCount < 5) {
                 LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(databaseCounts[0]), Integer.parseInt(databaseCounts[1]), Integer.parseInt(databaseCounts[2]));
                 Thread.sleep(5000);
                 databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
-                timelimit++;
+                if (lastCount == Integer.parseInt(databaseCounts[1])) {
+                    loopCount++;
+                } else {
+                    loopCount = 0;
+                }
+
+                lastCount = Integer.parseInt(databaseCounts[1]);
             }
 
             databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
