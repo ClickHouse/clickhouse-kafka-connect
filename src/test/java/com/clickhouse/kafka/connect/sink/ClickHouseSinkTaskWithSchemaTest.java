@@ -396,6 +396,8 @@ public class ClickHouseSinkTaskWithSchemaTest {
                 .field("timestamp_date", Timestamp.SCHEMA)
                 .field("time_int32" , Time.SCHEMA)
                 .field("time_date32" , Time.SCHEMA)
+                .field("date_date", Time.SCHEMA)
+                .field("datetime_date", Timestamp.SCHEMA)
                 .build();
 
 
@@ -421,6 +423,8 @@ public class ClickHouseSinkTaskWithSchemaTest {
                     .put("timestamp_date",  new Date(System.currentTimeMillis()))
                     .put("time_int32", new Date(System.currentTimeMillis()))
                     .put("time_date32", new Date(System.currentTimeMillis()))
+                    .put("date_date", new Date(System.currentTimeMillis()))
+                    .put("datetime_date", new Date(System.currentTimeMillis()))
                     ;
 
 
@@ -634,7 +638,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "support-dates-table-test";
         dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, datetime64_number DateTime64, timestamp_int64 Int64, timestamp_date DateTime64, time_int32 Int32, time_date32 Date32 ) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, datetime64_number DateTime64, timestamp_int64 Int64, timestamp_date DateTime64, time_int32 Int32, time_date32 Date32, date_date Date, datetime_date DateTime ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createDateType(topic, 1);
 

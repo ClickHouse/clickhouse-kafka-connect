@@ -15,6 +15,7 @@ import com.clickhouse.kafka.connect.util.Mask;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -190,7 +191,13 @@ public class ClickHouseWriter implements DBWriter{
         switch (type) {
             case Date:
                 if (value.getFieldType().equals(Schema.Type.INT32)) {
-                    BinaryStreamUtils.writeUnsignedInt16(stream, (Integer) value.getObject());
+                    if (value.getObject().getClass().getName().endsWith(".Date")) {
+                        Date date = (Date)value.getObject();
+                        int timeInDays = (int) TimeUnit.MILLISECONDS.toDays(date.getTime());
+                        BinaryStreamUtils.writeUnsignedInt16(stream, timeInDays);
+                    } else {
+                        BinaryStreamUtils.writeUnsignedInt16(stream, (Integer) value.getObject());
+                    }
                 } else {
                     unsupported = true;
                 }
@@ -199,8 +206,8 @@ public class ClickHouseWriter implements DBWriter{
                 if (value.getFieldType().equals(Schema.Type.INT32)) {
                     if (value.getObject().getClass().getName().endsWith(".Date")) {
                         Date date = (Date)value.getObject();
-                        int time = (int)date.getTime();
-                        BinaryStreamUtils.writeInt32(stream, time);
+                        int timeInDays = (int) TimeUnit.MILLISECONDS.toDays(date.getTime());
+                        BinaryStreamUtils.writeInt32(stream, timeInDays);
                     } else {
                         BinaryStreamUtils.writeInt32(stream, (Integer) value.getObject());
                     }
@@ -209,10 +216,16 @@ public class ClickHouseWriter implements DBWriter{
                 }
                 break;
             case DateTime:
-                if (value.getFieldType().equals(Schema.Type.INT64)) {
-                    BinaryStreamUtils.writeUnsignedInt32(stream, (Long) value.getObject());
+                if (value.getFieldType().equals(Schema.Type.INT32) || value.getFieldType().equals(Schema.Type.INT64)) {
+                    if (value.getObject().getClass().getName().endsWith(".Date")) {
+                        Date date = (Date)value.getObject();
+                        long epochSecond = date.toInstant().getEpochSecond();
+                        BinaryStreamUtils.writeUnsignedInt32(stream, epochSecond);
+                    } else {
+                        BinaryStreamUtils.writeUnsignedInt32(stream, (Long) value.getObject());
+                    }
                 } else {
-
+                    
                     unsupported = true;
                 }
                 break;
