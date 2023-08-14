@@ -92,8 +92,7 @@ public class ConfluentPlatform {
             .withEnv("CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS","broker:29092")
             .withEnv("CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS","1")
             .withEnv("CONFLUENT_METRICS_ENABLE","true")
-            .withEnv("CONFLUENT_SUPPORT_CUSTOMER_ID","anonymous'")
-             ;
+            .withEnv("CONFLUENT_SUPPORT_CUSTOMER_ID","anonymous'");
 
         GenericContainer<?> cp_schema_registry = new GenericContainer<>(CP_SCHEMA_REGISTRY)
             .withNetwork(network)

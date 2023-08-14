@@ -49,12 +49,12 @@ repositories {
 
 extra.apply {
 
-    set("clickHouseDriverVersion", "0.3.2-patch10")
-    set("kafkaVersion", "2.6.0")
+    set("clickHouseDriverVersion", "0.4.6")
+    set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 
     // Testing dependencies
-    set("junitJupiterVersion", "5.8.1")
+    set("junitJupiterVersion", "5.9.2")
     set("junitPlatformVersion", "1.8.1")
     set("hamcrestVersion", "2.2")
     set("mockitoVersion", "4.0.0")
@@ -72,11 +72,15 @@ dependencies {
     implementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
+    implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.2.0.RELEASE")
     implementation("com.google.code.gson:gson:2.10")
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:1.7.36")
+    implementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
+    implementation("org.testcontainers:testcontainers:1.18.3")
+    implementation("org.testcontainers:toxiproxy:1.18.3")
 
     /*
         Will in side the Confluent Archive
@@ -95,16 +99,12 @@ dependencies {
     testImplementation("org.mockito:mockito-junit-jupiter:${project.extra["mockitoVersion"]}")
 
     // IntegrationTests
-    testImplementation("org.testcontainers:clickhouse:1.17.3")
-    testImplementation("org.testcontainers:kafka:1.17.3")
-    testImplementation("org.testcontainers:kafka:1.17.3")
-    testImplementation("com.clickhouse:clickhouse-jdbc:0.3.2-patch10:all")
+    testImplementation("org.testcontainers:clickhouse:1.18.3")
+    testImplementation("org.testcontainers:kafka:1.18.3")
+    testImplementation("com.clickhouse:clickhouse-jdbc:0.4.6:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.10.0")
-    testImplementation("org.json:json:20220320")
-
-    //testImplementation("ru.yandex.clickhouse:clickhouse-jdbc:0.3.2")
-
-
+    testImplementation("org.json:json:20230227")
+    testImplementation("org.testcontainers:toxiproxy:1.18.3")
 
 }
 
@@ -114,7 +114,6 @@ sourceSets.create("integrationTest") {
     compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
     runtimeClasspath += output + compileClasspath + sourceSets["test"].runtimeClasspath
 }
-
 tasks.create("integrationTest", Test::class.java) {
     description = "Runs the integration tests"
     group = "verification"
@@ -123,6 +122,23 @@ tasks.create("integrationTest", Test::class.java) {
     outputs.upToDateWhen { false }
     dependsOn("prepareConfluentArchive")
     mustRunAfter("test")
+}
+
+
+sourceSets.create("exactlyOnceTest") {
+    java.srcDir("src/exactlyOnceTest/java")
+    compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
+    runtimeClasspath += output + compileClasspath + sourceSets["test"].runtimeClasspath
+}
+tasks.create("exactlyOnceTest", Test::class.java) {
+    description = "Runs the exactly once tests"
+    group = "verification"
+    testClassesDirs = sourceSets["exactlyOnceTest"].output.classesDirs
+    classpath = sourceSets["exactlyOnceTest"].runtimeClasspath
+    outputs.upToDateWhen { false }
+    dependsOn("prepareConfluentArchive")
+    mustRunAfter("test")
+    testLogging.showStandardStreams = true
 }
 
 tasks.withType<Test> {

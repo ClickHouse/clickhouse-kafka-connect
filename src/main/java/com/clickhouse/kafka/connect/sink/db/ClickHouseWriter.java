@@ -2,7 +2,10 @@ package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
 import com.clickhouse.client.config.ClickHouseClientOption;
-import com.clickhouse.client.data.BinaryStreamUtils;
+import com.clickhouse.data.ClickHouseDataStreamFactory;
+import com.clickhouse.data.ClickHouseFormat;
+import com.clickhouse.data.ClickHousePipedOutputStream;
+import com.clickhouse.data.format.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
@@ -125,6 +128,10 @@ public class ClickHouseWriter implements DBWriter{
             Record first = records.get(0);
             String topic = first.getTopic();
             Table table = this.mapping.get(Utils.escapeTopicName(topic));
+            LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
+                    first.getRecordOffsetContainer().getOffset(),
+                    records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
+                    first.getRecordOffsetContainer().getPartition());
 
             switch (first.getSchemaType()) {
                 case SCHEMA:
@@ -425,9 +432,9 @@ public class ClickHouseWriter implements DBWriter{
             CompletableFuture<ClickHouseResponse> future;
 
             try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance()
-                    .createPipedOutputStream(config, null)) {
+                    .createPipedOutputStream(config)) {
                 // start the worker thread which transfer data from the input into ClickHouse
-                future = request.data(stream.getInputStream()).send();
+                future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
                 for (Record record: records ) {
                     if (record.getSinkRecord().value() != null ) {
@@ -501,9 +508,9 @@ public class ClickHouseWriter implements DBWriter{
             CompletableFuture<ClickHouseResponse> future;
 
             try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance()
-                    .createPipedOutputStream(config, null)) {
+                    .createPipedOutputStream(config)) {
                 // start the worker thread which transfer data from the input into ClickHouse
-                future = request.data(stream.getInputStream()).send();
+                future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
                 for (Record record: records ) {
                     if (record.getSinkRecord().value() != null ) {
