@@ -425,7 +425,7 @@ public class ClickHouseWriter implements DBWriter{
                     .table(table.getName())
                     .format(ClickHouseFormat.RowBinary)
                     // this is needed to get meaningful response summary
-                    .set("insert_quorum", "auto")
+                    .set("insert_quorum", "2")
                     .set("send_progress_in_http_headers", csc.getSendProgressInHttpHeaders() ? 1 : 0)
                     .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
 
@@ -503,7 +503,7 @@ public class ClickHouseWriter implements DBWriter{
                     .table(table.getName())
                     .format(ClickHouseFormat.JSONEachRow)
                     // this is needed to get meaningful response summary
-                    .set("insert_quorum", "auto")
+                    .set("insert_quorum", "2")
                     .set("input_format_skip_unknown_fields", csc.getInputFormatSkipUnknownFields() ? 1 : 0)
                     .set("send_progress_in_http_headers", csc.getSendProgressInHttpHeaders() ? 1 : 0)
                     .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
