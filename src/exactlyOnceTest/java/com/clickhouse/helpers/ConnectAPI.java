@@ -28,7 +28,7 @@ public class ConnectAPI {
         this.container = container;
     }
 
-    public String getConnectorState() throws IOException, InterruptedException, URISyntaxException {
+    public String getConnectorState(String topicName) throws IOException, InterruptedException, URISyntaxException {
         String restURL = "http://" + container.getHost() + ":" + container.getMappedPort(8083) + "/connectors?expand=status&expand=info";
         LOGGER.info(restURL);
         HttpRequest request = HttpRequest.newBuilder()
@@ -40,25 +40,25 @@ public class ConnectAPI {
 
         try {
             HashMap<String, Map<String, Map>> map = (new ObjectMapper()).readValue(response.body(), HashMap.class);
-            LOGGER.info("Map: {}", String.valueOf(map.get("clickhouse-connect")));
-            return String.valueOf(map.get("clickhouse-connect").get("status").get("connector")).toUpperCase();
+            LOGGER.info("Map: {}", String.valueOf(map.get(topicName)));
+            return String.valueOf(map.get(topicName).get("status").get("connector")).toUpperCase();
         } catch (Exception e) {
             LOGGER.error("Error: {}", e.getMessage());
             return "error";
         }
     }
 
-    public boolean createConnector(String topicName, boolean exactlyOnce) throws IOException, InterruptedException, URISyntaxException {
+    public boolean createConnector(String topicName, boolean exactlyOnce, int numberOfTasks) throws IOException, InterruptedException, URISyntaxException {
         String restURL = "http://" + container.getHost() + ":" + container.getMappedPort(8083) + "/connectors";
         LOGGER.info(restURL);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(restURL))
                 .header("Content-Type", "application/json;charset=UTF-8")
                 .POST(HttpRequest.BodyPublishers.ofString("{" +
-                        "\"name\": \"clickhouse-connect\"," +
+                        "\"name\": \"" + topicName + "\"," +
                         "\"config\": {" +
                         "\"connector.class\": \"com.clickhouse.kafka.connect.ClickHouseSinkConnector\"," +
-                        "\"tasks.max\": \"1\"," +
+                        "\"tasks.max\": \"" + numberOfTasks + "\"," +
                         "\"database\": \"" + properties.getOrDefault("clickhouse.database", "default") + "\"," +
                         "\"errors.retry.timeout\": \"60\"," +
                         "\"exactlyOnce\": \"" + exactlyOnce + "\"," +
@@ -81,8 +81,8 @@ public class ConnectAPI {
     }
 
 
-    public boolean restartConnector() throws IOException, InterruptedException, URISyntaxException {
-        String restURL = "http://" + container.getHost() + ":" + container.getMappedPort(8083) + "/connectors/clickhouse-connect/restart?includeTasks=true&onlyFailed=true";
+    public boolean restartConnector(String topicName) throws IOException, InterruptedException, URISyntaxException {
+        String restURL = "http://" + container.getHost() + ":" + container.getMappedPort(8083) + "/connectors/" + topicName + "/restart?includeTasks=true&onlyFailed=true";
         LOGGER.info(restURL);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(restURL))

@@ -85,6 +85,7 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_offsets_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_status_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_data_" + topicCode, 1, 3, false, false)));
+        LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_data_multi_" + topicCode, 3, 3, false, false)));
 
         Thread.sleep(15000);
 
@@ -121,9 +122,11 @@ public class ExactlyOnceTest {
 
         clickhouseAPI = new ClickHouseAPI(properties);
         LOGGER.info(String.valueOf(clickhouseAPI.createTable("test_exactlyOnce_data_" + topicCode)));
+        LOGGER.info(String.valueOf(clickhouseAPI.createTable("test_exactlyOnce_data_multi_" + topicCode)));
 
         connectAPI = new ConnectAPI(properties, connectContainer);
-        LOGGER.info(String.valueOf(connectAPI.createConnector("test_exactlyOnce_data_" + topicCode, true)));
+        LOGGER.info(String.valueOf(connectAPI.createConnector("test_exactlyOnce_data_" + topicCode, true, 1)));
+        LOGGER.info(String.valueOf(connectAPI.createConnector("test_exactlyOnce_data_multi_" + topicCode, true, 3)));
 
         //TODO: Check programatically rather than just waiting for a while
         Thread.sleep(30000);//We need to make sure the topics exist before we start the producer
@@ -138,24 +141,25 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_offsets_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_status_" + topicCode)));
         LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_data_" + topicCode)));
+        LOGGER.info(String.valueOf(confluentAPI.deleteTopic("test_exactlyOnce_data_multi_" + topicCode)));
         LOGGER.info(String.valueOf(clickhouseAPI.dropTable("test_exactlyOnce_data_" + topicCode)));
+        LOGGER.info(String.valueOf(clickhouseAPI.dropTable("test_exactlyOnce_data_multi_" + topicCode)));
     }
 
-    @Test
-    @Order(1)
-    public void basicTest() throws InterruptedException, ExecutionException, TimeoutException, URISyntaxException, IOException {
-        assertEquals(1, 1);
-        clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
-    }
 
     @Test
-    @Order(2)
     public void checkTotalsEqual() throws InterruptedException, ExecutionException, TimeoutException {
-        Integer count = sendDataToTopic("test_exactlyOnce_data_" + topicCode);
+        String topicName = "test_exactlyOnce_data_" + topicCode;
+
+        ClickHouseResponse clickHouseResponse = clickhouseAPI.clearTable(topicName);
+        LOGGER.info(String.valueOf(clickHouseResponse));
+        clickHouseResponse.close();
+
+        Integer count = sendDataToTopic(topicName);
 
         Thread.sleep(60000);
         LOGGER.info("Actual Total: {}", count);
-        String[] counts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+        String[] counts = clickhouseAPI.count(topicName);
         if (counts != null) {
             LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(counts[0]), Integer.parseInt(counts[1]), Integer.parseInt(counts[2]));
             assertEquals(count, Integer.parseInt(counts[1]));
@@ -166,20 +170,42 @@ public class ExactlyOnceTest {
     }
 
     @Test
-    @Order(3)
+    public void checkTotalsEqualMulti() throws InterruptedException, ExecutionException, TimeoutException {
+        String topicName = "test_exactlyOnce_data_multi_" + topicCode;
+
+        ClickHouseResponse clickHouseResponse = clickhouseAPI.clearTable(topicName);
+        LOGGER.info(String.valueOf(clickHouseResponse));
+        clickHouseResponse.close();
+
+        Integer count = sendDataToTopic(topicName);
+
+        Thread.sleep(60000);
+        LOGGER.info("Actual Total: {}", count);
+        String[] counts = clickhouseAPI.count(topicName);
+        if (counts != null) {
+            LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(counts[0]), Integer.parseInt(counts[1]), Integer.parseInt(counts[2]));
+            assertEquals(count, Integer.parseInt(counts[1]));
+        } else {
+            LOGGER.info("Counts are null");
+            fail();
+        }
+    }
+
+    @Test
     public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
+        String topicName = "test_exactlyOnce_data_" + topicCode;
         boolean allSuccess = true;
         int runCount = 0;
         do {
-            ClickHouseResponse clickHouseResponse = clickhouseAPI.clearTable("test_exactlyOnce_data_" + topicCode);
+            ClickHouseResponse clickHouseResponse = clickhouseAPI.clearTable(topicName);
             LOGGER.info(String.valueOf(clickHouseResponse));
             clickHouseResponse.close();
 
             Date start = new Date();
-            Integer count = sendDataToTopic("test_exactlyOnce_data_" + topicCode);
+            Integer count = sendDataToTopic(topicName);
             Date end = new Date();
             LOGGER.info("Time to send: {}", end.getTime() - start.getTime());
-            LOGGER.info("Connector State: {}", connectAPI.getConnectorState());
+            LOGGER.info("Connector State: {}", connectAPI.getConnectorState(topicName));
             clickhouseAPI.stopInstance(properties.getProperty("clickhouse.cloud.serviceId"));
 
             String serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
@@ -202,16 +228,16 @@ public class ExactlyOnceTest {
             }
             LOGGER.info("Service State: {}", serviceState);
 
-            connectAPI.restartConnector();
+            connectAPI.restartConnector(topicName);
 
             LOGGER.info("Expected Total: {}", count);
-            String[] databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+            String[] databaseCounts = clickhouseAPI.count(topicName);
             int lastCount = 0;
             loopCount = 0;
             while(Integer.parseInt(databaseCounts[1]) != lastCount || loopCount < 5) {
                 LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(databaseCounts[0]), Integer.parseInt(databaseCounts[1]), Integer.parseInt(databaseCounts[2]));
                 Thread.sleep(5000);
-                databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+                databaseCounts = clickhouseAPI.count(topicName);
                 if (lastCount == Integer.parseInt(databaseCounts[1])) {
                     loopCount++;
                 } else {
@@ -221,7 +247,7 @@ public class ExactlyOnceTest {
                 lastCount = Integer.parseInt(databaseCounts[1]);
             }
 
-            databaseCounts = clickhouseAPI.count("test_exactlyOnce_data_" + topicCode);
+            databaseCounts = clickhouseAPI.count(topicName);
             if (databaseCounts != null) {
                 LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(databaseCounts[0]), Integer.parseInt(databaseCounts[1]), Integer.parseInt(databaseCounts[2]));
                 LOGGER.info("Counts Difference: {}", Integer.parseInt(databaseCounts[1]) - count);
@@ -234,7 +260,89 @@ public class ExactlyOnceTest {
                 fail();
             }
             runCount++;
-        } while (runCount < 5 && allSuccess);
+        } while (runCount < 3 && allSuccess);
+
+
+        if (allSuccess) {
+            LOGGER.info("All tests passed");
+            assertTrue(true);
+        } else {
+            LOGGER.info("Some tests failed");
+            fail();
+        }
+    }
+
+
+    @Test
+    public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
+        String topicName = "test_exactlyOnce_data_multi_" + topicCode;
+        boolean allSuccess = true;
+        int runCount = 0;
+        do {
+            ClickHouseResponse clickHouseResponse = clickhouseAPI.clearTable(topicName);
+            LOGGER.info(String.valueOf(clickHouseResponse));
+            clickHouseResponse.close();
+
+            Date start = new Date();
+            Integer count = sendDataToTopic(topicName);
+            Date end = new Date();
+            LOGGER.info("Time to send: {}", end.getTime() - start.getTime());
+            LOGGER.info("Connector State: {}", connectAPI.getConnectorState(topicName));
+            clickhouseAPI.stopInstance(properties.getProperty("clickhouse.cloud.serviceId"));
+
+            String serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+            int loopCount = 0;
+            while(!serviceState.equals("STOPPED") && loopCount < 30) {
+                LOGGER.info("Service State: {}", serviceState);
+                Thread.sleep(5000);
+                serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+                loopCount++;
+            }
+
+            clickhouseAPI.startInstance(properties.getProperty("clickhouse.cloud.serviceId"));
+            serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+            loopCount = 0;
+            while(!serviceState.equals("RUNNING") && loopCount < 30) {
+                LOGGER.info("Service State: {}", serviceState);
+                Thread.sleep(5000);
+                serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
+                loopCount++;
+            }
+            LOGGER.info("Service State: {}", serviceState);
+
+            connectAPI.restartConnector(topicName);
+
+            LOGGER.info("Expected Total: {}", count);
+            String[] databaseCounts = clickhouseAPI.count(topicName);
+            int lastCount = 0;
+            loopCount = 0;
+            while(Integer.parseInt(databaseCounts[1]) != lastCount || loopCount < 5) {
+                LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(databaseCounts[0]), Integer.parseInt(databaseCounts[1]), Integer.parseInt(databaseCounts[2]));
+                Thread.sleep(5000);
+                databaseCounts = clickhouseAPI.count(topicName);
+                if (lastCount == Integer.parseInt(databaseCounts[1])) {
+                    loopCount++;
+                } else {
+                    loopCount = 0;
+                }
+
+                lastCount = Integer.parseInt(databaseCounts[1]);
+            }
+
+            databaseCounts = clickhouseAPI.count(topicName);
+            if (databaseCounts != null) {
+                LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", Integer.parseInt(databaseCounts[0]), Integer.parseInt(databaseCounts[1]), Integer.parseInt(databaseCounts[2]));
+                LOGGER.info("Counts Difference: {}", Integer.parseInt(databaseCounts[1]) - count);
+
+                if (Integer.parseInt(databaseCounts[1]) - count != 0) {
+                    allSuccess = false;
+                }
+            } else {
+                LOGGER.info("Counts are null");
+                fail();
+            }
+            runCount++;
+        } while (runCount < 3 && allSuccess);
 
 
         if (allSuccess) {
@@ -276,6 +384,7 @@ public class ExactlyOnceTest {
 
         while(counter.get() < MIN_MESSAGES) {
             Thread.sleep(1000);
+            LOGGER.info("Messages sent: {}", counter.get());
         }
         scheduler.shutdown();
         Thread.sleep(5000);

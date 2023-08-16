@@ -1,12 +1,9 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import org.apache.kafka.common.config.ConfigDef;
-import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
@@ -23,6 +20,9 @@ public class ClickHouseSinkConfig {
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
+    public static final String SEND_PROGRESS_IN_HTTP_HEADERS = "sendProgressInHttpHeaders";
+    public static final String INPUT_FORMAT_SKIP_UNKNOWN_FIELDS = "inputFormatSkipUnknownFields";
+    public static final String SUPPRESS_TABLE_EXISTENCE_EXCEPTION = "suppressTableExistenceException";
 
 
 
@@ -53,6 +53,9 @@ public class ClickHouseSinkConfig {
     private final boolean exactlyOnce;
     private final int timeout;
     private final int retry;
+    private final boolean sendProgressInHttpHeaders;
+    private final boolean inputFormatSkipUnknownFields;
+    private final boolean suppressTableExistenceException;
 
     public static class UTF8String implements ConfigDef.Validator {
 
@@ -81,6 +84,9 @@ public class ClickHouseSinkConfig {
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
+        sendProgressInHttpHeaders = Boolean.parseBoolean(props.getOrDefault(SEND_PROGRESS_IN_HTTP_HEADERS,"true"));
+        inputFormatSkipUnknownFields = Boolean.parseBoolean(props.getOrDefault(INPUT_FORMAT_SKIP_UNKNOWN_FIELDS,"true"));
+        suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
     }
@@ -178,6 +184,33 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable exactly once semantics.");
+        configDef.define(SEND_PROGRESS_IN_HTTP_HEADERS,
+                ConfigDef.Type.BOOLEAN,
+                true,
+                ConfigDef.Importance.LOW,
+                "default: true",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "send progress in http headers.");
+        configDef.define(INPUT_FORMAT_SKIP_UNKNOWN_FIELDS,
+                ConfigDef.Type.BOOLEAN,
+                true,
+                ConfigDef.Importance.LOW,
+                "skip unknown fields. default: true",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "skip unknown fields.");
+        configDef.define(SUPPRESS_TABLE_EXISTENCE_EXCEPTION,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "suppress table existence exception. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "suppress table existence exception.");
 
         return configDef;
     }
@@ -210,4 +243,16 @@ public class ClickHouseSinkConfig {
     }
     public int getRetry() { return retry; }
     public boolean getExactlyOnce() { return exactlyOnce; }
+
+    public boolean getSendProgressInHttpHeaders() {
+        return sendProgressInHttpHeaders;
+    }
+
+    public boolean getInputFormatSkipUnknownFields() {
+        return inputFormatSkipUnknownFields;
+    }
+
+    public boolean getSuppressTableExistenceException() {
+        return suppressTableExistenceException;
+    }
 }
