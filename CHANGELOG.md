@@ -1,3 +1,8 @@
+## 0.0.19 2023-08-23
+* Additional tests for ExactlyOnce
+* Allows customized settings (WIP)
+* Tweaked deduplication behavior to account for dynamic fields
+
 ## 0.0.18 2023-07-17
 * Support inline schema with org.apache.kafka.connect.data.Timestamp type 
 * Support inline schema with org.apache.kafka.connect.data.Time type
