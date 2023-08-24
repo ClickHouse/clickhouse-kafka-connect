@@ -243,7 +243,7 @@ public class ClickHouseWriter implements DBWriter{
                         long time = date.getTime();
                         BinaryStreamUtils.writeInt64(stream, time);
                     } else {
-                        BinaryStreamUtils.writeInt64(stream, ((Long) value.getObject()).longValue());
+                        BinaryStreamUtils.writeInt64(stream, (Long) value.getObject());
                     }
                 } else {
                     unsupported = true;
@@ -425,8 +425,9 @@ public class ClickHouseWriter implements DBWriter{
                     .table(table.getName())
                     .format(ClickHouseFormat.RowBinary)
                     // this is needed to get meaningful response summary
-                    .set("insert_quorum", 2)
-                    .set("send_progress_in_http_headers", 1);
+                    .set("insert_quorum", "2")
+                    .set("send_progress_in_http_headers", csc.getSendProgressInHttpHeaders() ? 1 : 0)
+                    .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
 
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
@@ -483,9 +484,14 @@ public class ClickHouseWriter implements DBWriter{
         LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
         Table table = this.mapping.get(Utils.escapeTopicName(topic));
         if (table == null) {
-            //TODO to pick the correct exception here
-            LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
-            throw new RuntimeException(String.format("Table %s does not exists", topic));
+            if (csc.getSuppressTableExistenceException()) {
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
+                return;
+            } else {
+                //TODO to pick the correct exception here
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
+                throw new RuntimeException(String.format("Table %s does not exists", topic));
+            }
         }
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
@@ -497,9 +503,10 @@ public class ClickHouseWriter implements DBWriter{
                     .table(table.getName())
                     .format(ClickHouseFormat.JSONEachRow)
                     // this is needed to get meaningful response summary
-                    .set("insert_quorum", 2)
-                    .set("input_format_skip_unknown_fields", 1)
-                    .set("send_progress_in_http_headers", 1);
+                    .set("insert_quorum", "2")
+                    .set("input_format_skip_unknown_fields", csc.getInputFormatSkipUnknownFields() ? 1 : 0)
+                    .set("send_progress_in_http_headers", csc.getSendProgressInHttpHeaders() ? 1 : 0)
+                    .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
 
 
             ClickHouseConfig config = request.getConfig();
