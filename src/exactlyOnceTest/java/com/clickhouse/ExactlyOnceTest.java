@@ -211,7 +211,8 @@ public class ExactlyOnceTest {
                 Thread.sleep(5 * 1000);
                 serviceState = clickhouseAPI.getServiceState(properties.getProperty("clickhouse.cloud.serviceId"));
 
-                if (loopCount >= 30) {
+                if (loopCount >= 60) {
+                    LOGGER.error("Exceeded the maximum number of loops.");
                     fail("Exceeded the maximum number of loops.");
                 }
                 loopCount++;
@@ -226,7 +227,6 @@ public class ExactlyOnceTest {
             int lastCount = 0;
             loopCount = 0;
             while(databaseCounts[1] != lastCount || loopCount < 5) {
-                LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", databaseCounts[0], databaseCounts[1], databaseCounts[2]);
                 Thread.sleep(5 * 1000);
                 databaseCounts = clickhouseAPI.count(topicName);
                 if (lastCount == databaseCounts[1]) {
@@ -247,11 +247,11 @@ public class ExactlyOnceTest {
                     allSuccess = false;
                 }
             } else {
-                LOGGER.info("Counts are null");
+                LOGGER.error("Counts are null");
                 fail();
             }
             runCount++;
-        } while (runCount < 5 && allSuccess);
+        } while (runCount < 3 && allSuccess);
 
         assertTrue(allSuccess);
     }

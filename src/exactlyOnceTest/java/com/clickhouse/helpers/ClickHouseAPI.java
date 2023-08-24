@@ -58,7 +58,7 @@ public class ClickHouseAPI {
                      .executeAndWait()) {
 //            ClickHouseResponseSummary summary = response.getSummary();
             String countAsString = response.firstRecord().getValue(0).asString();
-            LOGGER.info("Counts String: {}", countAsString);
+            LOGGER.debug("Counts String: {}", countAsString);
             return Arrays.stream(countAsString.split("\t")).mapToInt(Integer::parseInt).toArray();
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
