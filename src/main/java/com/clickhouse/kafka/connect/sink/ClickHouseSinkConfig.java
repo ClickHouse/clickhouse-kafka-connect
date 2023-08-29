@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 
 public class ClickHouseSinkConfig {
@@ -20,8 +21,6 @@ public class ClickHouseSinkConfig {
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
-    public static final String SEND_PROGRESS_IN_HTTP_HEADERS = "sendProgressInHttpHeaders";
-    public static final String INPUT_FORMAT_SKIP_UNKNOWN_FIELDS = "inputFormatSkipUnknownFields";
     public static final String SUPPRESS_TABLE_EXISTENCE_EXCEPTION = "suppressTableExistenceException";
 
 
@@ -53,9 +52,9 @@ public class ClickHouseSinkConfig {
     private final boolean exactlyOnce;
     private final int timeout;
     private final int retry;
-    private final boolean sendProgressInHttpHeaders;
-    private final boolean inputFormatSkipUnknownFields;
     private final boolean suppressTableExistenceException;
+
+    private final Map<String, String> clickhouseSettings;
 
     public static class UTF8String implements ConfigDef.Validator {
 
@@ -84,11 +83,38 @@ public class ClickHouseSinkConfig {
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
-        sendProgressInHttpHeaders = Boolean.parseBoolean(props.getOrDefault(SEND_PROGRESS_IN_HTTP_HEADERS,"true"));
-        inputFormatSkipUnknownFields = Boolean.parseBoolean(props.getOrDefault(INPUT_FORMAT_SKIP_UNKNOWN_FIELDS,"true"));
         suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
+
+        Map<String, String> clickhouseSettings = new HashMap<>();
+        String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
+
+        if (!clickhouseSettingsString.isBlank()) {
+            String [] stringSplit = clickhouseSettingsString.split(",");
+            for (String clickProp: stringSplit) {
+                String [] propSplit = clickProp.trim().split("=");
+                if ( propSplit.length == 2 ) {
+                    clickhouseSettings.put(propSplit[0].trim(), propSplit[1].trim());
+                }
+            }
+        }
+        this.clickhouseSettings = clickhouseSettings;
+        this.addClickHouseSetting("insert_quorum", "2", false);
+        this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
+        this.addClickHouseSetting("send_progress_in_http_headers", "1", false);
+
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
+        LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
+    }
+
+    public void addClickHouseSetting(String key, String value, boolean override) {
+        if (clickhouseSettings.containsKey(key)) {
+            if (override) {
+                clickhouseSettings.put(key, value);
+            }
+        } else {
+            clickhouseSettings.put(key, value);
+        }
     }
 
     public static final ConfigDef CONFIG = createConfigDef();
@@ -184,24 +210,6 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable exactly once semantics.");
-        configDef.define(SEND_PROGRESS_IN_HTTP_HEADERS,
-                ConfigDef.Type.BOOLEAN,
-                true,
-                ConfigDef.Importance.LOW,
-                "default: true",
-                group,
-                ++orderInGroup,
-                ConfigDef.Width.SHORT,
-                "send progress in http headers.");
-        configDef.define(INPUT_FORMAT_SKIP_UNKNOWN_FIELDS,
-                ConfigDef.Type.BOOLEAN,
-                true,
-                ConfigDef.Importance.LOW,
-                "skip unknown fields. default: true",
-                group,
-                ++orderInGroup,
-                ConfigDef.Width.SHORT,
-                "skip unknown fields.");
         configDef.define(SUPPRESS_TABLE_EXISTENCE_EXCEPTION,
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -243,16 +251,9 @@ public class ClickHouseSinkConfig {
     }
     public int getRetry() { return retry; }
     public boolean getExactlyOnce() { return exactlyOnce; }
-
-    public boolean getSendProgressInHttpHeaders() {
-        return sendProgressInHttpHeaders;
-    }
-
-    public boolean getInputFormatSkipUnknownFields() {
-        return inputFormatSkipUnknownFields;
-    }
-
     public boolean getSuppressTableExistenceException() {
         return suppressTableExistenceException;
     }
+    public Map<String, String> getClickhouseSettings() {return clickhouseSettings;}
+
 }

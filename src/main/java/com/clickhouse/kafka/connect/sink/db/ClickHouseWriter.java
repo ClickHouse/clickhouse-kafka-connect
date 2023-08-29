@@ -425,9 +425,11 @@ public class ClickHouseWriter implements DBWriter{
                     .table(table.getName())
                     .format(ClickHouseFormat.RowBinary)
                     // this is needed to get meaningful response summary
-                    .set("insert_quorum", "2")
-                    .set("send_progress_in_http_headers", csc.getSendProgressInHttpHeaders() ? 1 : 0)
                     .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
+
+            for (String clickhouseSetting: csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
+                request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            }
 
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
@@ -503,10 +505,11 @@ public class ClickHouseWriter implements DBWriter{
                     .table(table.getName())
                     .format(ClickHouseFormat.JSONEachRow)
                     // this is needed to get meaningful response summary
-                    .set("insert_quorum", "2")
-                    .set("input_format_skip_unknown_fields", csc.getInputFormatSkipUnknownFields() ? 1 : 0)
-                    .set("send_progress_in_http_headers", csc.getSendProgressInHttpHeaders() ? 1 : 0)
                     .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
+
+            for (String clickhouseSetting: csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
+                request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            }
 
 
             ClickHouseConfig config = request.getConfig();
@@ -514,8 +517,7 @@ public class ClickHouseWriter implements DBWriter{
 
             CompletableFuture<ClickHouseResponse> future;
 
-            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance()
-                    .createPipedOutputStream(config)) {
+            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance().createPipedOutputStream(config)) {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
@@ -629,6 +631,7 @@ public class ClickHouseWriter implements DBWriter{
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
     }
     **/
+
 
     @Override
     public long recordsInserted() {
