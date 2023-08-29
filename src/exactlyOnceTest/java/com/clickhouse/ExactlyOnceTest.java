@@ -87,8 +87,8 @@ public class ExactlyOnceTest {
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_configs_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_offsets_" + topicCode, 1, 3, true, false)));
         LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_status_" + topicCode, 1, 3, true, false)));
-        LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_data_" + topicCode, 1, 3, false, false)));
-        LOGGER.info(String.valueOf(confluentAPI.createTopic("test_exactlyOnce_data_multi_" + topicCode, 3, 3, false, false)));
+        LOGGER.info(String.valueOf(confluentAPI.createTopic(singlePartitionTopic, 1, 3, false, false)));
+        LOGGER.info(String.valueOf(confluentAPI.createTopic(multiPartitionTopic, 3, 3, false, false)));
 
         Thread.sleep(15000);
 
@@ -150,32 +150,35 @@ public class ExactlyOnceTest {
     }
 
 
-    private void compareCounts(String topicName) throws InterruptedException {
+    private boolean compareCounts(String topicName) throws InterruptedException {
         ClickHouseResponse clickHouseResponse = clickhouseAPI.clearTable(topicName);
         LOGGER.info(String.valueOf(clickHouseResponse));
         clickHouseResponse.close();
 
         Integer count = sendDataToTopic(topicName);
+        LOGGER.info("Expected Total: {}", count);
+        waitForCount(topicName);
 
-        Thread.sleep(60 * 1000);
-        LOGGER.info("Actual Total: {}", count);
-        int[] counts = clickhouseAPI.count(topicName);
-        if (counts != null) {
-            assertEquals(count, counts[1]);
+        int[] databaseCounts = clickhouseAPI.count(topicName);
+        if (databaseCounts != null) {
+            LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", databaseCounts[0], databaseCounts[1], databaseCounts[2]);
+            LOGGER.info("Counts Difference: {}", databaseCounts[1] - count);
+
+            return databaseCounts[1] - count == 0;
         } else {
-            LOGGER.info("Counts are null");
-            fail();
+            LOGGER.error("Counts are null");
+            return false;
         }
     }
 
     @Test
     public void checkTotalsEqual() throws InterruptedException {
-        compareCounts(singlePartitionTopic);
+        assertTrue(compareCounts(singlePartitionTopic));
     }
 
     @Test
     public void checkTotalsEqualMulti() throws InterruptedException {
-        compareCounts(multiPartitionTopic);
+        assertTrue(compareCounts(multiPartitionTopic));
     }
 
 
@@ -223,22 +226,9 @@ public class ExactlyOnceTest {
             connectAPI.restartConnector(topicName);
 
             LOGGER.info("Expected Total: {}", count);
+            waitForCount(topicName);
+
             int[] databaseCounts = clickhouseAPI.count(topicName);
-            int lastCount = 0;
-            loopCount = 0;
-            while(databaseCounts[1] != lastCount || loopCount < 5) {
-                Thread.sleep(5 * 1000);
-                databaseCounts = clickhouseAPI.count(topicName);
-                if (lastCount == databaseCounts[1]) {
-                    loopCount++;
-                } else {
-                    loopCount = 0;
-                }
-
-                lastCount = databaseCounts[1];
-            }
-
-            databaseCounts = clickhouseAPI.count(topicName);
             if (databaseCounts != null) {
                 LOGGER.info("Unique Counts: {}, Total Counts: {}, Difference: {}", databaseCounts[0], databaseCounts[1], databaseCounts[2]);
                 LOGGER.info("Counts Difference: {}", databaseCounts[1] - count);
@@ -266,6 +256,25 @@ public class ExactlyOnceTest {
     @Test
     public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
         checkSpottyNetwork(multiPartitionTopic);
+    }
+
+
+
+    private void waitForCount(String topicName) throws InterruptedException {
+        int[] databaseCounts = clickhouseAPI.count(topicName);
+        int lastCount = 0;
+        int loopCount = 0;
+        while(databaseCounts[1] != lastCount || loopCount < 6) {
+            Thread.sleep(10 * 1000);
+            databaseCounts = clickhouseAPI.count(topicName);
+            if (lastCount == databaseCounts[1]) {
+                loopCount++;
+            } else {
+                loopCount = 0;
+            }
+
+            lastCount = databaseCounts[1];
+        }
     }
 
 
