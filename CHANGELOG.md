@@ -1,7 +1,8 @@
 ## 0.0.19 2023-08-23
 * Additional tests for ExactlyOnce
-* Allows customized settings (WIP)
+* Allows customized ClickHouse settings using `clickhouse.settings' property
 * Tweaked deduplication behavior to account for dynamic fields
+* Added support for `errors.tolerance' and the DLQ
 
 ## 0.0.18 2023-07-17
 * Support inline schema with org.apache.kafka.connect.data.Timestamp type 
