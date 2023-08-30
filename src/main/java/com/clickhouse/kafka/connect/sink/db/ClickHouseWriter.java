@@ -13,6 +13,8 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
+import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
+import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.Mask;
 
 import com.clickhouse.kafka.connect.util.Utils;
@@ -119,8 +121,11 @@ public class ClickHouseWriter implements DBWriter{
         return chc.getServer();
     }
 
-    @Override
     public void doInsert(List<Record> records) {
+        doInsert(records, null);
+    }
+    @Override
+    public void doInsert(List<Record> records, ErrorReporter errorReporter) {
         if ( records.isEmpty() )
             return;
 
@@ -148,7 +153,12 @@ public class ClickHouseWriter implements DBWriter{
             }
         } catch (Exception e) {
             LOGGER.trace("Passing the exception to the exception handler.");
-            Utils.handleException(e);
+            Utils.handleException(e, csc.getErrorsTolerance());
+            if (csc.getErrorsTolerance()) {
+                records.forEach( r ->
+                        Utils.sendTODlq(errorReporter, r, e)
+                );
+            }
         }
     }
 

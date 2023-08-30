@@ -1,6 +1,8 @@
 package com.clickhouse.kafka.connect.util;
 
 import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.slf4j.Logger;
@@ -44,8 +46,13 @@ public class Utils {
      * @param e Exception to check
      */
 
-    public static void handleException(Exception e) {
+    public static void handleException(Exception e, boolean errorsTolerance) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
+        if (errorsTolerance) {//Right now this is all exceptions - should we restrict to just ClickHouseExceptions?
+            LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
+            return;
+        }
+
         //High-Level Explicit Exception Checking
         if (e instanceof DataException) {
             throw (DataException) e;
@@ -85,6 +92,13 @@ public class Utils {
         }
 
         throw new RuntimeException(e);
+    }
+
+
+    public static void sendTODlq(ErrorReporter errorReporter, Record record, Exception exception) {
+        if (errorReporter != null && record.getSinkRecord() != null) {
+            errorReporter.report(record.getSinkRecord(), exception);
+        }
     }
 
 }

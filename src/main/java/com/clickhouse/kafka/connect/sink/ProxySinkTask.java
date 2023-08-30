@@ -34,7 +34,7 @@ public class ProxySinkTask {
     private int id = NEXT_ID.getAndAdd(1);
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
-        LOGGER.info(String.format("enable ExactlyOnce %s", Boolean.toString(clickHouseSinkConfig.getExactlyOnce())));
+        LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.getExactlyOnce());
         if ( clickHouseSinkConfig.getExactlyOnce() ) {
             this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
         } else {
