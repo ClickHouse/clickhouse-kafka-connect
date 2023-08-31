@@ -9,6 +9,7 @@ import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
+import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTaskContext;
 import org.slf4j.Logger;
@@ -42,8 +43,10 @@ public class Processing {
      * @param records
      */
     private void doInsert(List<Record> records) {
-        dbWriter.doInsert(records);
+        dbWriter.doInsert(records, errorReporter);
     }
+
+
 
 
     private RangeContainer extractRange(List<Record> records, String topic, int partition) {
@@ -72,11 +75,7 @@ public class Processing {
                         .values()
         );
     }
-    private void sendTODlq(Record record, Exception exception) {
-        if (errorReporter != null && record.getSinkRecord() != null) {
-            errorReporter.report(record.getSinkRecord(), exception);
-        }
-    }
+
 
     public void doLogic(List<Record> records) {
         List<Record> trimmedRecords;
@@ -124,7 +123,7 @@ public class Processing {
                         LOGGER.warn(String.format("Records seemingly missing compared to prior batch for topic [%s] partition [%s].", topic, partition));
                         // Do nothing - write to dead letter queue
                         records.forEach( r ->
-                                sendTODlq(record, new DuplicateException(String.format(record.getTopicAndPartition())))
+                                Utils.sendTODlq(errorReporter, r, new DuplicateException(String.format(record.getTopicAndPartition())))
                         );
                         break;
                     case OVER_LAPPING:
