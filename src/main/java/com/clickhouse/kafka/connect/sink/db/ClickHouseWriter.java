@@ -154,7 +154,7 @@ public class ClickHouseWriter implements DBWriter{
         } catch (Exception e) {
             LOGGER.trace("Passing the exception to the exception handler.");
             Utils.handleException(e, csc.getErrorsTolerance());
-            if (csc.getErrorsTolerance()) {
+            if (csc.getErrorsTolerance() && errorReporter != null) {
                 records.forEach( r ->
                         Utils.sendTODlq(errorReporter, r, e)
                 );
