@@ -39,7 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-public class ClickHouseWriter implements DBWriter{
+public class ClickHouseWriter implements DBWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
@@ -74,16 +74,30 @@ public class ClickHouseWriter implements DBWriter{
 
         LOGGER.debug("Ping was successful.");
 
-        List<Table> tableList = chc.extractTablesMapping();
-        if (tableList.isEmpty()) {
+        this.updateMapping();
+        if (mapping.isEmpty()) {
             LOGGER.error("Did not find any tables in destination Please create before running.");
             return false;
         }
 
-        for (Table table: tableList) {//TODO: Should we pull ALL tables in memory?
+        return true;
+    }
+    public void updateMapping() {
+        LOGGER.debug("Update table mapping.");
+
+        // Getting tables from ClickHouse
+        List<Table> tableList = this.chc.extractTablesMapping();
+        if (tableList.isEmpty()) {
+            return;
+        }
+
+        // Adding new tables to mapping
+        // TODO: check Kafka Connect's topics name or topics regex config and
+        // only add tables to in-memory mapping that matches the topics we consume.
+        // TODO: remove dropped tables from mapping
+        for (Table table: tableList) {
             this.mapping.put(table.getName(), table);
         }
-        return true;
     }
 
     @Override
