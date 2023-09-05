@@ -38,6 +38,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import java.util.Collections;
 
 public class ClickHouseWriter implements DBWriter {
 
@@ -51,7 +52,7 @@ public class ClickHouseWriter implements DBWriter {
     private boolean isBinary = false;
 
     public ClickHouseWriter() {
-        this.mapping = new HashMap<>();
+        this.mapping = java.util.Collections.synchronizedMap(new HashMap<String, Table>());
     }
 
     @Override
@@ -89,6 +90,21 @@ public class ClickHouseWriter implements DBWriter {
         List<Table> tableList = this.chc.extractTablesMapping();
         if (tableList.isEmpty()) {
             return;
+        }
+
+        // Removed dropped tables from mapping
+        for (String tableName : this.mapping.keySet()) {
+            boolean hasTable = false;
+            for (Table table: tableList) {
+                if (tableName.equals(table.getName())) {
+                    hasTable = true;
+                    break;
+                }
+            }
+            if (!hasTable) {
+                LOGGER.debug(String.format("Removing dropped table from mapping [%s]", tableName));
+                this.mapping.remove(tableName);
+            }
         }
 
         // Adding new tables to mapping
