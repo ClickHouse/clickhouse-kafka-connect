@@ -110,7 +110,6 @@ public class ClickHouseWriter implements DBWriter {
         // Adding new tables to mapping
         // TODO: check Kafka Connect's topics name or topics regex config and
         // only add tables to in-memory mapping that matches the topics we consume.
-        // TODO: remove dropped tables from mapping
         for (Table table: tableList) {
             this.mapping.put(table.getName(), table);
         }
