@@ -38,7 +38,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
-import java.util.Collections;
 
 public class ClickHouseWriter implements DBWriter {
 
@@ -52,7 +51,7 @@ public class ClickHouseWriter implements DBWriter {
     private boolean isBinary = false;
 
     public ClickHouseWriter() {
-        this.mapping = java.util.Collections.synchronizedMap(new HashMap<String, Table>());
+        this.mapping = new HashMap<String, Table>();
     }
 
     @Override
@@ -92,27 +91,16 @@ public class ClickHouseWriter implements DBWriter {
             return;
         }
 
-        // Removed dropped tables from mapping
-        for (String tableName : this.mapping.keySet()) {
-            boolean hasTable = false;
-            for (Table table: tableList) {
-                if (tableName.equals(table.getName())) {
-                    hasTable = true;
-                    break;
-                }
-            }
-            if (!hasTable) {
-                LOGGER.debug(String.format("Removing dropped table from mapping [%s]", tableName));
-                this.mapping.remove(tableName);
-            }
-        }
+        HashMap<String, Table> mapping = new HashMap<String, Table>();
 
         // Adding new tables to mapping
         // TODO: check Kafka Connect's topics name or topics regex config and
         // only add tables to in-memory mapping that matches the topics we consume.
         for (Table table: tableList) {
-            this.mapping.put(table.getName(), table);
+            mapping.put(table.getName(), table);
         }
+
+        this.mapping = mapping;
     }
 
     @Override
