@@ -238,12 +238,45 @@ SASL_MECHANISM=[INSERT_SASL_MECHANISM_HERE]
 SASL_JAAS_CONFIG=[INSERT_SASL_JAAS_CONFIG_HERE]
 ```
 
+You can then run the docker compose file using the following command:
+```bash
+docker-compose -f docker-compose.yml up
+```
 
-## Documentation
+##### REST API
+To make use of the connector (once we have docker up and running) we use the REST API - the following commands will add the connector to the cluster, and then check the status of the connector.
 
-See the [ClickHouse website](https://clickhouse.com/docs/en/integrations/kafka/clickhouse-kafka-connect-sink) for the full documentation entry.
+```bash
+curl -X POST -H "Content-Type: application/json" --data @clickhouse-connect.json http://localhost:8083/connectors
+curl -X GET http://localhost:8083/connectors/clickhouse-connect/status
+```
 
-## Design
+The contents of clickhouse-connect.json should be the configuration recipe above.
+
+Sample response:
+```json
+{
+  "name": "clickhouse-connect",
+  "connector": {
+    "state": "RUNNING",
+    "worker_id": "connect:8083"
+  },
+  "tasks": [
+    {
+      "id": 0,
+      "state": "RUNNING",
+      "worker_id": "connect:8083"
+    }
+  ],
+  "type": "sink"
+}
+```
+
+
+## ClickHouse Documentation
+See the [ClickHouse documentation](https://clickhouse.com/docs/en/intro) for more documentation on ClickHouse.
+
+## Exactly-Once Design
 For a full overview of the design and how exactly-once delivery semantics are achieved, see the [design document](./docs/DESIGN.md).
 
 ## Help
