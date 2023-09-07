@@ -1,4 +1,4 @@
-## 0.0.19 2023-08-23
+## 1.0.0 2023-08-23
 * Additional tests for ExactlyOnce
 * Allows customized ClickHouse settings using `clickhouse.settings' property
 * Tweaked deduplication behavior to account for dynamic fields
