@@ -1,6 +1,6 @@
 name: ClickHouse Kafka Connect Tests CI
 
-on: [push]
+on: [push, 'pull_request']
 
 jobs:
   build:
