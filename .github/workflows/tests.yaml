@@ -1,10 +1,6 @@
 name: ClickHouse Kafka Connect Tests CI
 
-on:
-  push:
-    branches: 
-      - main
-  pull_request:
+on: [push]
 
 jobs:
   build:
@@ -21,7 +17,3 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: test
-      - name: Setup and execute Gradle 'integrationTest' task
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: integrationTest

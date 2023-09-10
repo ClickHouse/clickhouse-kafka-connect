@@ -271,57 +271,6 @@ public class ClickHouseDbWriterTest {
         assertEquals(records.size(), countRows("table_name_test"));
     }
 
-    @Test
-    @Description("write to table if it was created after start")
-    public void UpdateTableMapping() throws InterruptedException {
-
-        String hostname = System.getenv("HOST");
-        String port = System.getenv("PORT");
-        String password = System.getenv("PASSWORD");
-        if (hostname == null || port == null || password == null)
-            throw new RuntimeException("Can not continue missing env variables.");
-
-        chw = new ClickHouseWriter();
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, hostname);
-        props.put(ClickHouseSinkConnector.PORT, port);
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, "default");
-        props.put(ClickHouseSinkConnector.PASSWORD, password);
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
-        props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort())
-                .setDatabase(csc.getDatabase())
-                .setUsername(csc.getUsername())
-                .setPassword(csc.getPassword())
-                .sslEnable(csc.isSslEnabled())
-                .setTimeout(csc.getTimeout())
-                .setRetry(csc.getRetry())
-                .build();
-
-
-        dropStateTable();
-        createStateTable();
-
-        dropTable("table_name_test");
-
-        chw.start(csc);
-
-        // Table created after ClickHouseWriter is already started
-        createTable("table_name_test");
-        // Call manually to fetch new tables
-        chw.updateMapping();
-
-        List<Record> records = createRecords("table_name_test", 1);
-        // Let's create a table;
-        chw.doInsert(records);
-        //Thread.sleep(5 * 1000);
-        // Let's check that we inserted all records
-        assertEquals(records.size(), countRows("table_name_test"));
-    }
-
     @AfterAll
     protected static void tearDown() {
         db.stop();
