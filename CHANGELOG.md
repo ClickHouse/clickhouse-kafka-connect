@@ -1,3 +1,6 @@
+## 1.0.1 2023-09-11
+* Added support for `tableRefreshInterval` to re-fetch table changes from ClickHouse
+
 ## 1.0.0 2023-08-23
 * Additional tests for ExactlyOnce
 * Allows customized ClickHouse settings using `clickhouse.settings' property
