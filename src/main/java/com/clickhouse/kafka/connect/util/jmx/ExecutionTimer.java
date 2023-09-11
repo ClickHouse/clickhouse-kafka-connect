@@ -1,14 +1,14 @@
 package com.clickhouse.kafka.connect.util.jmx;
 
-public class Timer {
+public class ExecutionTimer {
     private final long startTime;
 
-    private Timer() {
+    private ExecutionTimer() {
         this.startTime = System.nanoTime();
     }
 
-    public static Timer start() {
-        return new Timer();
+    public static ExecutionTimer start() {
+        return new ExecutionTimer();
     }
 
     public long nanosElapsed() {

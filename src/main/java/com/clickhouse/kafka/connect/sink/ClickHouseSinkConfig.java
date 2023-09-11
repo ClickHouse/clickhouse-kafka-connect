@@ -24,6 +24,7 @@ public class ClickHouseSinkConfig {
     public static final String SUPPRESS_TABLE_EXISTENCE_EXCEPTION = "suppressTableExistenceException";
     public static final String CLICKHOUSE_SETTINGS = "clickhouseSettings";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
+    public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
 
 
 
@@ -37,6 +38,7 @@ public class ClickHouseSinkConfig {
     public static final Boolean sslDefault = Boolean.TRUE;
     public static final Integer timeoutSecondsDefault = 30;
     public static final Integer retryCountDefault = 3;
+    public static final Integer tableRefreshIntervalDefault = 0;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
     public enum StateStores {
         NONE,
@@ -54,6 +56,7 @@ public class ClickHouseSinkConfig {
     private final boolean exactlyOnce;
     private final int timeout;
     private final int retry;
+    private final long tableRefreshInterval;
     private final boolean suppressTableExistenceException;
     private final boolean errorsTolerance;
 
@@ -85,6 +88,7 @@ public class ClickHouseSinkConfig {
         sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
+        tableRefreshInterval = Long.parseLong(props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
         suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
 
@@ -207,6 +211,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "ClickHouse driver retry");
+        configDef.define(TABLE_REFRESH_INTERVAL,
+                ConfigDef.Type.LONG,
+                tableRefreshIntervalDefault,
+                ConfigDef.Range.between(0, 60 * 10),
+                ConfigDef.Importance.LOW,
+                "table refresh interval in sec, default: 0",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "table refresh interval");
         configDef.define(EXACTLY_ONCE,
                 ConfigDef.Type.BOOLEAN,
                 exactlyOnceDefault,
@@ -274,6 +288,9 @@ public class ClickHouseSinkConfig {
         return timeout;
     }
     public int getRetry() { return retry; }
+    public long getTableRefreshInterval() { 
+        return tableRefreshInterval;
+    }
     public boolean getExactlyOnce() { return exactlyOnce; }
     public boolean getSuppressTableExistenceException() {
         return suppressTableExistenceException;

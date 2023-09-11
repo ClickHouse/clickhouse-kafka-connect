@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
+import com.clickhouse.kafka.connect.sink.db.TableMappingRefresher;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
@@ -10,7 +11,7 @@ import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
-import com.clickhouse.kafka.connect.util.jmx.Timer;
+import com.clickhouse.kafka.connect.util.jmx.ExecutionTimer;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.Timer;
 
 public class ProxySinkTask {
 
@@ -40,7 +42,16 @@ public class ProxySinkTask {
         } else {
             this.stateProvider = new InMemoryState();
         }
-        this.dbWriter = new ClickHouseWriter();
+
+        ClickHouseWriter chWriter = new ClickHouseWriter();
+        this.dbWriter = chWriter;
+
+        // Add table mapping refresher
+        if (clickHouseSinkConfig.getTableRefreshInterval() > 0) {
+            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(chWriter);
+            Timer tableRefreshTimer = new Timer();
+            tableRefreshTimer.schedule(tableMappingRefresher, clickHouseSinkConfig.getTableRefreshInterval(), clickHouseSinkConfig.getTableRefreshInterval());
+        }
 
         // Add dead letter queue
         boolean isStarted = dbWriter.start(clickHouseSinkConfig);
@@ -65,10 +76,10 @@ public class ProxySinkTask {
             return;
         }
         // Group by topic & partition
-        Timer taskTime = Timer.start();
+        ExecutionTimer taskTime = ExecutionTimer.start();
         statistics.receivedRecords(records.size());
         LOGGER.trace(String.format("Got %d records from put API.", records.size()));
-        Timer processingTime = Timer.start();
+        ExecutionTimer processingTime = ExecutionTimer.start();
         Map<String, List<Record>> dataRecords = records.stream()
                 .map(v -> Record.convert(v))
                 .collect(Collectors.groupingBy(Record::getTopicAndPartition));

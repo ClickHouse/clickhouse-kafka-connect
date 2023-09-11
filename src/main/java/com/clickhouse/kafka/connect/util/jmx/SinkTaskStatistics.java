@@ -23,11 +23,11 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         this.receivedRecords += n;
     }
 
-    public void recordProcessingTime(Timer timer) {
+    public void recordProcessingTime(ExecutionTimer timer) {
         this.recordProcessingTime += timer.nanosElapsed();
     }
 
-    public void taskProcessingTime(Timer timer) {
+    public void taskProcessingTime(ExecutionTimer timer) {
         this.taskProcessingTime += timer.nanosElapsed();
     }
 
