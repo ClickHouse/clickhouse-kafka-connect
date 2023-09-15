@@ -86,7 +86,7 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.debug("Update table mapping.");
 
         // Getting tables from ClickHouse
-        List<Table> tableList = this.chc.extractTablesMapping();
+        List<Table> tableList = this.chc.extractTablesMapping(this.mapping);
         if (tableList.isEmpty()) {
             return;
         }

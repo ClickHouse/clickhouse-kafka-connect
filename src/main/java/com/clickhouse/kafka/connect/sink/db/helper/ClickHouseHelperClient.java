@@ -166,9 +166,21 @@ public class ClickHouseHelperClient {
             return null;
         }
     }
+    
     public List<Table> extractTablesMapping() {
+        HashMap<String, Table> cache = new HashMap<String, Table>();
+        return extractTablesMapping(cache);
+    }
+
+    public List<Table> extractTablesMapping(Map<String, Table> cache) {
         List<Table> tableList =  new ArrayList<>();
         for (String tableName : showTables() ) {
+            // Read from cache if we already described this table before
+            if (cache.containsKey(tableName)) {
+                tableList.add(cache.get(tableName));
+                continue;
+            }
+
             Table table = describeTable(tableName);
             if (table != null )
                 tableList.add(table);
