@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +48,7 @@ public class ClickHouseWriter implements DBWriter {
     private ClickHouseSinkConfig csc = null;
 
     private Map<String, Table> mapping = null;
+    private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
 
     private boolean isBinary = false;
 
@@ -83,24 +85,34 @@ public class ClickHouseWriter implements DBWriter {
         return true;
     }
     public void updateMapping() {
-        LOGGER.debug("Update table mapping.");
-
-        // Getting tables from ClickHouse
-        List<Table> tableList = this.chc.extractTablesMapping(this.mapping);
-        if (tableList.isEmpty()) {
+        // Do not start a new update cycle if one is already in progress
+        if (this.isUpdateMappingRunning.get()) {
             return;
         }
+        this.isUpdateMappingRunning.set(true);
 
-        HashMap<String, Table> mapping = new HashMap<String, Table>();
+        LOGGER.debug("Update table mapping.");
 
-        // Adding new tables to mapping
-        // TODO: check Kafka Connect's topics name or topics regex config and
-        // only add tables to in-memory mapping that matches the topics we consume.
-        for (Table table: tableList) {
-            mapping.put(table.getName(), table);
+        try {
+            // Getting tables from ClickHouse
+            List<Table> tableList = this.chc.extractTablesMapping(this.mapping);
+            if (tableList.isEmpty()) {
+                return;
+            }
+
+            HashMap<String, Table> mapping = new HashMap<String, Table>();
+
+            // Adding new tables to mapping
+            // TODO: check Kafka Connect's topics name or topics regex config and
+            // only add tables to in-memory mapping that matches the topics we consume.
+            for (Table table: tableList) {
+                mapping.put(table.getName(), table);
+            }
+
+            this.mapping = mapping;
+        } finally {
+            this.isUpdateMappingRunning.set(false);
         }
-
-        this.mapping = mapping;
     }
 
     @Override

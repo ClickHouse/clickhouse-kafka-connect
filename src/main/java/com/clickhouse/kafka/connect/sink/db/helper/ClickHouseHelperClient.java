@@ -176,6 +176,7 @@ public class ClickHouseHelperClient {
         List<Table> tableList =  new ArrayList<>();
         for (String tableName : showTables() ) {
             // Read from cache if we already described this table before
+            // This means we won't pick up edited table configs until the connector is restarted
             if (cache.containsKey(tableName)) {
                 tableList.add(cache.get(tableName));
                 continue;
