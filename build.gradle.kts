@@ -73,7 +73,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
-    implementation("io.lettuce:lettuce-core:6.2.0.RELEASE")
+    implementation("io.lettuce:lettuce-core:6.2.6.RELEASE")
     implementation("com.google.code.gson:gson:2.10")
 
     // TODO: need to remove ???
@@ -85,7 +85,7 @@ dependencies {
     /*
         Will in side the Confluent Archive
      */
-    clickhouseDependencies("io.lettuce:lettuce-core:6.2.0.RELEASE")
+    clickhouseDependencies("io.lettuce:lettuce-core:6.2.6.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.google.code.gson:gson:2.10")
