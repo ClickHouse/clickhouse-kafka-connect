@@ -103,7 +103,7 @@ dependencies {
     testImplementation("org.testcontainers:kafka:1.19.0")
     testImplementation("com.clickhouse:clickhouse-jdbc:0.4.6:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.11.0")
-    testImplementation("org.json:json:20230227")
+    testImplementation("org.json:json:20230618")
     testImplementation("org.testcontainers:toxiproxy:1.19.0")
 
 }
