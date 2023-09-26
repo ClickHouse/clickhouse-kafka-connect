@@ -74,7 +74,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.2.6.RELEASE")
-    implementation("com.google.code.gson:gson:2.10")
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:1.7.36")
@@ -88,7 +88,7 @@ dependencies {
     clickhouseDependencies("io.lettuce:lettuce-core:6.2.6.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
-    clickhouseDependencies("com.google.code.gson:gson:2.10")
+    clickhouseDependencies("com.google.code.gson:gson:2.10.1")
 
     // Unit Tests
     testImplementation(platform("org.junit:junit-bom:${project.extra["junitJupiterVersion"]}"))
