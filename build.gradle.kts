@@ -77,7 +77,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
 
     // TODO: need to remove ???
-    implementation("org.slf4j:slf4j-reload4j:1.7.36")
+    implementation("org.slf4j:slf4j-reload4j:2.0.9")
     implementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
     implementation("org.testcontainers:testcontainers:1.19.0")
     implementation("org.testcontainers:toxiproxy:1.19.0")
