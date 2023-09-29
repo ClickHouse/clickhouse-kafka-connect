@@ -1,3 +1,6 @@
+## 1.0.2 2023-09-29
+* Updated dependencies
+
 ## 1.0.1 2023-09-11
 * Added support for `tableRefreshInterval` to re-fetch table changes from ClickHouse
 
