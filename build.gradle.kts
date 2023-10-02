@@ -80,7 +80,7 @@ dependencies {
     implementation("org.slf4j:slf4j-reload4j:2.0.9")
     implementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
     implementation("org.testcontainers:testcontainers:1.19.0")
-    implementation("org.testcontainers:toxiproxy:1.19.0")
+    implementation("org.testcontainers:toxiproxy:1.19.1")
 
     /*
         Will in side the Confluent Archive
@@ -104,7 +104,7 @@ dependencies {
     testImplementation("com.clickhouse:clickhouse-jdbc:0.4.6:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.11.0")
     testImplementation("org.json:json:20230618")
-    testImplementation("org.testcontainers:toxiproxy:1.19.0")
+    testImplementation("org.testcontainers:toxiproxy:1.19.1")
 
 }
 
