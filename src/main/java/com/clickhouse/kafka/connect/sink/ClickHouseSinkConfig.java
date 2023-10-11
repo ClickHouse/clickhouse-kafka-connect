@@ -23,6 +23,7 @@ public class ClickHouseSinkConfig {
     public static final String EXACTLY_ONCE = "exactlyOnce";
     public static final String SUPPRESS_TABLE_EXISTENCE_EXCEPTION = "suppressTableExistenceException";
     public static final String CLICKHOUSE_SETTINGS = "clickhouseSettings";
+    public static final String TABLE_MAPPING = "tableMapping";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
 
@@ -61,6 +62,7 @@ public class ClickHouseSinkConfig {
     private final boolean errorsTolerance;
 
     private final Map<String, String> clickhouseSettings;
+    private final Map<String, String> topicToTableMap;
 
     public static class UTF8String implements ConfigDef.Validator {
 
@@ -97,7 +99,6 @@ public class ClickHouseSinkConfig {
 
         Map<String, String> clickhouseSettings = new HashMap<>();
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
-
         if (!clickhouseSettingsString.isBlank()) {
             String [] stringSplit = clickhouseSettingsString.split(",");
             for (String clickProp: stringSplit) {
@@ -112,9 +113,22 @@ public class ClickHouseSinkConfig {
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
         this.addClickHouseSetting("send_progress_in_http_headers", "1", false);
 
+        topicToTableMap = new HashMap<>();
+        String topicToTableMapString = props.getOrDefault(TABLE_MAPPING, "").trim();
+        if (!topicToTableMapString.isBlank()) {
+            String [] stringSplit = topicToTableMapString.split(",");
+            for (String topicToTable: stringSplit) {
+                String [] propSplit = topicToTable.trim().split("=");
+                if ( propSplit.length == 2 ) {
+                    topicToTableMap.put(propSplit[0].trim(), propSplit[1].trim());
+                }
+            }
+        }
+
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
+        LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
     }
 
     public void addClickHouseSetting(String key, String value, boolean override) {
@@ -248,6 +262,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.LONG,
                 "ClickHouse settings.");
+        configDef.define(TABLE_MAPPING,
+                ConfigDef.Type.LIST,
+                "",
+                ConfigDef.Importance.LOW,
+                "A comma-separated list of topic=table mappings",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.LONG,
+                "Table mapping.");
         configDef.define(ERRORS_TOLERANCE,
                 ConfigDef.Type.STRING,
                 "none",
@@ -296,6 +319,7 @@ public class ClickHouseSinkConfig {
         return suppressTableExistenceException;
     }
     public Map<String, String> getClickhouseSettings() {return clickhouseSettings;}
+    public Map<String, String> getTopicToTableMap() {return topicToTableMap;}
     public boolean getErrorsTolerance() { return errorsTolerance; }
 
 }

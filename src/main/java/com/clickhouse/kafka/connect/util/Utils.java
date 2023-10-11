@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.Map;
 
 public class Utils {
 
@@ -99,6 +100,16 @@ public class Utils {
         if (errorReporter != null && record.getSinkRecord() != null) {
             errorReporter.report(record.getSinkRecord(), exception);
         }
+    }
+
+    public static String getTableName(String topicName, Map<String, String> topicToTableMap) {
+        String tableName = topicToTableMap.get(topicName);
+        LOGGER.debug("Topic name: {}, Table Name: {}", topicName, tableName);
+        if (tableName == null) {
+            tableName = topicName;
+        }
+
+        return escapeTopicName(tableName);
     }
 
 }
