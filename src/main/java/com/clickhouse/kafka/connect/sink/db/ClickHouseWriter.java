@@ -161,7 +161,6 @@ public class ClickHouseWriter implements DBWriter {
         try {
             Record first = records.get(0);
             String topic = first.getTopic();
-//            Table table = this.mapping.get(Utils.escapeTopicName(topic));
             Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
             LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
                     first.getRecordOffsetContainer().getOffset(),
