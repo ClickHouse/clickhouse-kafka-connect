@@ -23,7 +23,7 @@ public class ClickHouseSinkConfig {
     public static final String EXACTLY_ONCE = "exactlyOnce";
     public static final String SUPPRESS_TABLE_EXISTENCE_EXCEPTION = "suppressTableExistenceException";
     public static final String CLICKHOUSE_SETTINGS = "clickhouseSettings";
-    public static final String TABLE_MAPPING = "tableMapping";
+    public static final String TABLE_MAPPING = "topic2TableMap";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
 
