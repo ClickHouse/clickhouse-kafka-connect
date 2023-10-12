@@ -8,8 +8,8 @@ updates:
   - package-ecosystem: "gradle"
     directory: "/" 
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     labels:
       - "dependencies"
-    open-pull-requests-limit: 6
+    open-pull-requests-limit: 5
       
