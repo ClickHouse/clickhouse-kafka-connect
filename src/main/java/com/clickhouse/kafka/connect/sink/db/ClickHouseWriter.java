@@ -161,11 +161,12 @@ public class ClickHouseWriter implements DBWriter {
         try {
             Record first = records.get(0);
             String topic = first.getTopic();
-            Table table = this.mapping.get(Utils.escapeTopicName(topic));
+            Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
             LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
                     first.getRecordOffsetContainer().getOffset(),
                     records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
                     first.getRecordOffsetContainer().getPartition());
+            LOGGER.debug("Table name: {}", table.getName());
 
             switch (first.getSchemaType()) {
                 case SCHEMA:
@@ -446,7 +447,7 @@ public class ClickHouseWriter implements DBWriter {
         Record first = records.get(0);
         String topic = first.getTopic();
         LOGGER.info("Inserting {} records into topic {}", batchSize, topic);
-        Table table = this.mapping.get(Utils.escapeTopicName(topic));
+        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
         if (table == null) {
             //TODO to pick the correct exception here
             throw new RuntimeException(String.format("Table %s does not exist.", topic));
@@ -523,7 +524,7 @@ public class ClickHouseWriter implements DBWriter {
         Record first = records.get(0);
         String topic = first.getTopic();
         LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
-        Table table = this.mapping.get(Utils.escapeTopicName(topic));
+        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
         if (table == null) {
             if (csc.getSuppressTableExistenceException()) {
                 LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
