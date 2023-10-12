@@ -525,6 +525,33 @@ public class ClickHouseSinkTaskSchemalessTest {
         assertEquals(sr.size() / 2, countRowsWithEmojis(chc, topic));
     }
 
+
+    @Test
+    public void tableMappingTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
+
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "mapping_table_test";
+        String tableName = "table_mapping_test";
+        dropTable(chc, tableName);
+        createTable(chc, tableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), countRows(chc, tableName));
+    }
+
+
     @AfterAll
     protected static void tearDown() {
         db.stop();
