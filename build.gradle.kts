@@ -34,7 +34,7 @@ plugins {
     id("com.github.gmazzo.buildconfig") version "4.1.2"
     //id("com.github.spotbugs") version "4.7.9"
     id("com.diffplug.spotless") version "6.22.0"
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "com.clickhouse.kafka"
