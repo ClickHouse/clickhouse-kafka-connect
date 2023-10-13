@@ -49,7 +49,7 @@ repositories {
 
 extra.apply {
 
-    set("clickHouseDriverVersion", "0.4.6")
+    set("clickHouseDriverVersion", "0.5.0")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 
@@ -101,7 +101,7 @@ dependencies {
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:1.19.1")
     testImplementation("org.testcontainers:kafka:1.19.1")
-    testImplementation("com.clickhouse:clickhouse-jdbc:0.4.6:all")
+    testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.11.0")
     testImplementation("org.json:json:20230618")
     testImplementation("org.testcontainers:toxiproxy:1.19.1")

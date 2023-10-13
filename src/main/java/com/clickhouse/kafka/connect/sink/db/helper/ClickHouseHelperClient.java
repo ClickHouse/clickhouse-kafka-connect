@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.data.ClickHouseValue;
@@ -95,7 +96,8 @@ public class ClickHouseHelperClient {
         ClickHouseException ce = null;
         while (retryCount < retry) {
             try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-                 ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
+                 ClickHouseResponse response = client.read(server) // or client.connect(endpoints)
+//                         .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/" + ClickHouseSinkConfig.VERSION)
                          // you'll have to parse response manually if using a different format
 
                          .format(clickHouseFormat)
@@ -115,7 +117,8 @@ public class ClickHouseHelperClient {
     public List<String> showTables() {
         List<String> tablesNames = new ArrayList<>();
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(server)
+//                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/" + ClickHouseSinkConfig.VERSION)
                      // you'll have to parse response manually if using a different format
 
                      .query("SHOW TABLES")
@@ -139,7 +142,8 @@ public class ClickHouseHelperClient {
         LOGGER.debug(describeQuery);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(server) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(server)
+//                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/" + ClickHouseSinkConfig.VERSION)
                      .query(describeQuery)
                      .executeAndWait()) {
             Table table = new Table(tableName);

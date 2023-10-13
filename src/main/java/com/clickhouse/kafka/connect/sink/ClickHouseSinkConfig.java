@@ -11,6 +11,8 @@ import java.util.Map;
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
 
+    public static final String VERSION = "1.0.2";
+
     //Configuration Names
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";

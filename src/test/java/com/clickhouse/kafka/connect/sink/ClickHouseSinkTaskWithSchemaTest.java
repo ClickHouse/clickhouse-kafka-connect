@@ -65,7 +65,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     private void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -83,7 +83,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         String createTableQueryTmp = String.format(createTableQuery, topic);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -100,7 +100,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     private int countRows(ClickHouseHelperClient chc, String topic) {
         String queryCount = String.format("select count(*) from `%s`", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
