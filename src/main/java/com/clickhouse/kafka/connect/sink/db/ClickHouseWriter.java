@@ -468,7 +468,7 @@ public class ClickHouseWriter implements DBWriter {
         long s2 = System.currentTimeMillis();
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
             ClickHouseRequest.Mutation request = client.read(chc.getServer())
-                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/" + ClickHouseSinkConfig.VERSION)
+                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect")
                     .write()
                     .table(table.getName())
                     .format(ClickHouseFormat.RowBinary)
@@ -549,7 +549,7 @@ public class ClickHouseWriter implements DBWriter {
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
             ClickHouseRequest.Mutation request = client.read(chc.getServer())
-                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/" + ClickHouseSinkConfig.VERSION)
+                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect")
                     .write()
                     .table(table.getName())
                     .format(ClickHouseFormat.JSONEachRow)
