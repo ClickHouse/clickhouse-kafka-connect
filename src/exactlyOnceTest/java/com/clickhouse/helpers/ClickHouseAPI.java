@@ -52,7 +52,7 @@ public class ClickHouseAPI {
         String sql = "SELECT uniqExact(raw) as uniqueTotal, count(*) as total, total - uniqueTotal FROM " + tableName;
         LOGGER.info("Count table: " + sql);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(clickHouseHelperClient.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(clickHouseHelperClient.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
                      .query(sql)
                      .executeAndWait()) {

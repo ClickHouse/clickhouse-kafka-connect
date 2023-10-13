@@ -156,7 +156,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private int countRowsWithEmojis() {
         String queryCount = "select count(*) from stock_gen_topic_single_schemaless_task_flat where SYMBOL LIKE '%😀%';";
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -175,7 +175,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 //        ClickHouseResponse response = chc.query(queryCount);
 //        return response.firstRecord().getValue(0).asInteger();
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
