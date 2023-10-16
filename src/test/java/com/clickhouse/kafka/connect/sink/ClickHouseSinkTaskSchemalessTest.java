@@ -9,6 +9,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
+
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.LongStream;
 
@@ -102,8 +104,8 @@ public class ClickHouseSinkTaskSchemalessTest {
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
-
     }
+
     private int countRows(ClickHouseHelperClient chc, String topic) {
         String queryCount = String.format("select count(*) from `%s`", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
@@ -353,6 +355,30 @@ public class ClickHouseSinkTaskSchemalessTest {
         });
         return array;
     }
+
+    public Collection<SinkRecord> createDecimalTypes(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("str", "num" + n);
+            value_struct.put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     @Test
     public void primitiveTypesTest() {
         Map<String, String> props = new HashMap<>();
@@ -551,6 +577,30 @@ public class ClickHouseSinkTaskSchemalessTest {
         assertEquals(sr.size(), countRows(chc, tableName));
     }
 
+    @Test
+    public void decimalDataTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "decimal_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `num` String, `decimal_14_2` Decimal(14, 2)) Engine = MergeTree ORDER BY num");
+        Collection<SinkRecord> sr = createDecimalTypes(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
 
     @AfterAll
     protected static void tearDown() {
