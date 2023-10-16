@@ -24,5 +24,6 @@ public enum Type {
     UINT32,
     UINT64,
     UINT128,
-    UINT256
+    UINT256,
+    Decimal
 }

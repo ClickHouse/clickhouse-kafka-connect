@@ -20,6 +20,8 @@ import com.clickhouse.kafka.connect.util.Mask;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+
+import java.math.BigDecimal;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -199,6 +201,8 @@ public class ClickHouseWriter implements DBWriter {
             Type type = col.getType();
             boolean isNullable = col.isNullable();
             if (!isNullable) {
+                Map<String, Schema> schemaMap = record.getFields().stream().collect(Collectors.toMap(Field::name, Field::schema));
+                var objSchema = schemaMap.get(colName);
                 Data obj = record.getJsonMap().get(colName);
                 if (obj == null) {
                     validSchema = false;
@@ -217,7 +221,12 @@ public class ClickHouseWriter implements DBWriter {
                         case "UUID":
                             break;//I notice we just break here, rather than actually validate the type
                         default:
-                            if (!colTypeName.equals(dataTypeName)) {
+                            if (
+                                !(
+                                    colTypeName.equals(dataTypeName)
+                                    || ("Decimal".equals(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal"))
+                                )
+                            ) {
                                 validSchema = false;
                                 LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
                             }
@@ -398,6 +407,10 @@ public class ClickHouseWriter implements DBWriter {
                     case DateTime:
                     case DateTime64:
                         doWriteDates(colType, stream, value);
+                        break;
+                    case Decimal:
+                        BigDecimal decimal = (BigDecimal) value.getObject();
+                        BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
                         break;
                     case MAP:
                         Map<?,?> mapTmp = (Map<?,?>)value.getObject();
