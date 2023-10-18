@@ -28,6 +28,9 @@ public class StructToJsonMap {
                 case STRING:
                     jsonMap.put(fieldName, new Data(fieldType, struct.getString(fieldName)));
                     break;
+                case BYTES:
+                    jsonMap.put(fieldName, new Data(fieldType, struct.getBytes(fieldName)));
+                    break;
                 case INT32:
                     if (Date.LOGICAL_NAME.equals(schemaName) || Time.LOGICAL_NAME.equals(schemaName)) {
                         jsonMap.put(fieldName, new Data(fieldType, (java.util.Date) struct.get(fieldName)));

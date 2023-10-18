@@ -166,7 +166,7 @@ public class ClickHouseWriter implements DBWriter {
                     first.getRecordOffsetContainer().getOffset(),
                     records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
                     first.getRecordOffsetContainer().getPartition());
-            LOGGER.debug("Table name: {}", table.getName());
+            LOGGER.debug("Table: {}", table);
 
             switch (first.getSchemaType()) {
                 case SCHEMA:
@@ -185,6 +185,8 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.trace("Passing the exception to the exception handler.");
             Utils.handleException(e, csc.getErrorsTolerance());
             if (csc.getErrorsTolerance() && errorReporter != null) {
+                LOGGER.debug("Sending records to DLQ.");
+
                 records.forEach( r ->
                         Utils.sendTODlq(errorReporter, r, e)
                 );
@@ -218,8 +220,10 @@ public class ClickHouseWriter implements DBWriter {
                             break;//I notice we just break here, rather than actually validate the type
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
-                                validSchema = false;
-                                LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                                if (!(colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))) {
+                                    validSchema = false;
+                                    LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                                }
                             }
                     }
                 }
@@ -296,14 +300,14 @@ public class ClickHouseWriter implements DBWriter {
             throw new DataException(msg);
         }
     }
-    private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
-        LOGGER.trace("Writing primitive type: {}, value: {}", type, value);
+    private void doWritePrimitive(Type columnType, Schema.Type dataType, ClickHousePipedOutputStream stream, Object value) throws IOException {
+        LOGGER.trace("Writing primitive type: {}, value: {}", columnType, value);
 
         if (value == null) {
             BinaryStreamUtils.writeNull(stream);
             return;
         }
-        switch (type) {
+        switch (columnType) {
             case INT8:
                 BinaryStreamUtils.writeInt8(stream, (Byte) value);
                 break;
@@ -350,7 +354,11 @@ public class ClickHouseWriter implements DBWriter {
                 BinaryStreamUtils.writeBoolean(stream, (Boolean) value);
                 break;
             case STRING:
-                BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                if (Schema.Type.BYTES.equals(dataType)) {
+                    BinaryStreamUtils.writeString(stream, (byte[]) value);
+                } else {
+                    BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                }
                 break;
             case UUID:
                 BinaryStreamUtils.writeUuid(stream, UUID.fromString((String) value));
@@ -391,7 +399,7 @@ public class ClickHouseWriter implements DBWriter {
                     case BOOLEAN:
                     case UUID:
                     case STRING:
-                        doWritePrimitive(colType, stream, value.getObject());
+                        doWritePrimitive(colType, value.getFieldType(), stream, value.getObject());
                         break;
                     case Date:
                     case Date32:
@@ -405,8 +413,8 @@ public class ClickHouseWriter implements DBWriter {
                         BinaryStreamUtils.writeVarInt(stream, mapSize);
                         mapTmp.forEach((key, value1) -> {
                             try {
-                                doWritePrimitive(col.getMapKeyType(), stream, key);
-                                doWritePrimitive(col.getMapValueType(), stream, value1);
+                                doWritePrimitive(col.getMapKeyType(), value.getFieldType(), stream, key);
+                                doWritePrimitive(col.getMapValueType(), value.getFieldType(), stream, value1);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -418,7 +426,7 @@ public class ClickHouseWriter implements DBWriter {
                         BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
                         arrObject.forEach( v -> {
                             try {
-                                doWritePrimitive(col.getSubType().getType(), stream, v);
+                                doWritePrimitive(col.getSubType().getType(), value.getFieldType(), stream, v);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
