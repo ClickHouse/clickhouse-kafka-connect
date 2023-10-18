@@ -205,8 +205,7 @@ public class ClickHouseWriter implements DBWriter {
                 if (obj == null) {
                     validSchema = false;
                     LOGGER.error(String.format("Table column name [%s] was not found.", colName));
-                }
-                if (!onlyFieldsName) {
+                } else if (!onlyFieldsName) {
                     String colTypeName = type.name();
                     String dataTypeName = obj.getFieldType().getName().toUpperCase();
                     // TODO: make extra validation for Map/Array type
