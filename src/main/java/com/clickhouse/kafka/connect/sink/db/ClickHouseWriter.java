@@ -171,7 +171,7 @@ public class ClickHouseWriter implements DBWriter {
                     first.getRecordOffsetContainer().getOffset(),
                     records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
                     first.getRecordOffsetContainer().getPartition());
-            LOGGER.debug("Table name: {}", table.getName());
+            LOGGER.debug("Table: {}", table);
 
             switch (first.getSchemaType()) {
                 case SCHEMA:
@@ -191,6 +191,7 @@ public class ClickHouseWriter implements DBWriter {
             Utils.handleException(e, csc.getErrorsTolerance());
             if (csc.getErrorsTolerance() && errorReporter != null) {
                 records.forEach(r ->
+                LOGGER.debug("Sending records to DLQ.");
                         Utils.sendTODlq(errorReporter, r, e)
                 );
             }
@@ -208,8 +209,7 @@ public class ClickHouseWriter implements DBWriter {
                 if (obj == null) {
                     validSchema = false;
                     LOGGER.error(String.format("Table column name [%s] was not found.", colName));
-                }
-                if (!onlyFieldsName) {
+                } else if (!onlyFieldsName) {
                     String colTypeName = type.name();
                     String dataTypeName = obj.getFieldType().getName().toUpperCase();
                     // TODO: make extra validation for Map/Array type
@@ -223,8 +223,10 @@ public class ClickHouseWriter implements DBWriter {
                             break;//I notice we just break here, rather than actually validate the type
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
-                                validSchema = false;
-                                LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                                if (!(colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))) {
+                                    validSchema = false;
+                                    LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                                }
                             }
                     }
                 }
@@ -302,14 +304,14 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private void doWritePrimitive(Type type, ClickHousePipedOutputStream stream, Object value) throws IOException {
-        LOGGER.trace("Writing primitive type: {}, value: {}", type, value);
+    private void doWritePrimitive(Type columnType, Schema.Type dataType, ClickHousePipedOutputStream stream, Object value) throws IOException {
+        LOGGER.trace("Writing primitive type: {}, value: {}", columnType, value);
 
         if (value == null) {
             BinaryStreamUtils.writeNull(stream);
             return;
         }
-        switch (type) {
+        switch (columnType) {
             case INT8:
                 BinaryStreamUtils.writeInt8(stream, (Byte) value);
                 break;
@@ -356,7 +358,11 @@ public class ClickHouseWriter implements DBWriter {
                 BinaryStreamUtils.writeBoolean(stream, (Boolean) value);
                 break;
             case STRING:
-                BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                if (Schema.Type.BYTES.equals(dataType)) {
+                    BinaryStreamUtils.writeString(stream, (byte[]) value);
+                } else {
+                    BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                }
                 break;
             case UUID:
                 BinaryStreamUtils.writeUuid(stream, UUID.fromString((String) value));
@@ -368,73 +374,69 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
 
-        String name = col.getName();
-        Type colType = col.getType();
-        boolean filedExists = record.getJsonMap().containsKey(name);
-        if (filedExists) {
-            Data value = record.getJsonMap().get(name);
-            LOGGER.trace("Column value is {}", value);
-            // TODO: the mapping need to be more efficient
-            // If column is nullable && the object is also null add the not null marker
-            if (col.isNullable() && value.getObject() != null) {
-                BinaryStreamUtils.writeNonNull(stream);
-            }
-            if (!col.isNullable() && value.getObject() == null) {
-                // this the situation when the col is not isNullable, but the data is null here we need to drop the records
-                throw new RuntimeException(("col.isNullable() is false and value is empty"));
-            }
-            switch (colType) {
-                case INT8:
-                case INT16:
-                case INT32:
-                case INT64:
-                case UINT8:
-                case UINT16:
-                case UINT32:
-                case UINT64:
-                case FLOAT32:
-                case FLOAT64:
-                case BOOLEAN:
-                case UUID:
-                case STRING:
-                    doWritePrimitive(colType, stream, value.getObject());
-                    break;
-                case Date:
-                case Date32:
-                case DateTime:
-                case DateTime64:
-                    doWriteDates(colType, stream, value);
-                    break;
-                case MAP:
-                    Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
-                    int mapSize = mapTmp.size();
-                    BinaryStreamUtils.writeVarInt(stream, mapSize);
-                    mapTmp.forEach((key, value1) -> {
-                        try {
-                            doWritePrimitive(col.getMapKeyType(), stream, key);
-                            doWritePrimitive(col.getMapValueType(), stream, value1);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
-                    break;
-                case ARRAY:
-                    List<?> arrObject = (List<?>) value.getObject();
-                    int sizeArrObject = arrObject.size();
-                    BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
-                    arrObject.forEach(v -> {
-                        try {
-                            doWritePrimitive(col.getSubType().getType(), stream, v);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
-                    break;
-            }
-        } else {
-            if (col.isNullable()) {
-                // set null since there is no value
-                BinaryStreamUtils.writeNull(stream);
+            String name = col.getName();
+            Type colType = col.getType();
+            boolean filedExists = record.getJsonMap().containsKey(name);
+            if (filedExists) {
+                Data value = record.getJsonMap().get(name);
+                LOGGER.trace("Column value is {}", value);
+                // TODO: the mapping need to be more efficient
+                // If column is nullable && the object is also null add the not null marker
+                if (col.isNullable() && value.getObject() != null) {
+                    BinaryStreamUtils.writeNonNull(stream);
+                }
+                if (!col.isNullable() && value.getObject() == null) {
+                    // this the situation when the col is not isNullable, but the data is null here we need to drop the records
+                    throw new RuntimeException(("col.isNullable() is false and value is empty"));
+                }
+                switch (colType) {
+                    case INT8:
+                    case INT16:
+                    case INT32:
+                    case INT64:
+                    case UINT8:
+                    case UINT16:
+                    case UINT32:
+                    case UINT64:
+                    case FLOAT32:
+                    case FLOAT64:
+                    case BOOLEAN:
+                    case UUID:
+                    case STRING:
+                        doWritePrimitive(colType, value.getFieldType(), stream, value.getObject());
+                        break;
+                    case Date:
+                    case Date32:
+                    case DateTime:
+                    case DateTime64:
+                        doWriteDates(colType, stream, value);
+                        break;
+                    case MAP:
+                        Map<?,?> mapTmp = (Map<?,?>)value.getObject();
+                        int mapSize = mapTmp.size();
+                        BinaryStreamUtils.writeVarInt(stream, mapSize);
+                        mapTmp.forEach((key, value1) -> {
+                            try {
+                                doWritePrimitive(col.getMapKeyType(), value.getFieldType(), stream, key);
+                                doWritePrimitive(col.getMapValueType(), value.getFieldType(), stream, value1);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+                        break;
+                    case ARRAY:
+                        List<?> arrObject = (List<?>)value.getObject();
+                        int sizeArrObject = arrObject.size();
+                        BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
+                        arrObject.forEach( v -> {
+                            try {
+                                doWritePrimitive(col.getSubType().getType(), value.getFieldType(), stream, v);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+                        break;
+                }
             } else {
                 // no filled and not nullable
                 LOGGER.error("Column {} is not nullable and no value is provided", name);

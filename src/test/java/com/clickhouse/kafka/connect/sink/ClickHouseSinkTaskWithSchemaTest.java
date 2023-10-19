@@ -216,6 +216,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         return array;
     }
 
+
     public Collection<SinkRecord> createArrayType(String topic, int partition) {
 
         Schema ARRAY_SCHEMA = SchemaBuilder.array(Schema.STRING_SCHEMA).build();
@@ -366,6 +367,34 @@ public class ClickHouseSinkTaskWithSchemaTest {
                     .put("null_value_data", null_value_data)
                     ;
 
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        Collection<SinkRecord> collection = array;
+        return collection;
+    }
+
+    public Collection<SinkRecord> createBytesValueData(String topic, int partition) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("string", Schema.BYTES_SCHEMA)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 2).forEachOrdered(n -> {
+            Struct value_struct = new Struct(NESTED_SCHEMA).put("string", Long.toBinaryString(n).getBytes());
 
             SinkRecord sr = new SinkRecord(
                     topic,
@@ -762,6 +791,33 @@ public class ClickHouseSinkTaskWithSchemaTest {
         createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, default_value_data DateTime DEFAULT now() ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createNullValueData(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+
+    @Test
+    public void testSchemaWithBytes() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "bytes-value-table-test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE `%s` (`string` String) Engine = MergeTree ORDER BY `string`");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = createBytesValueData(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
