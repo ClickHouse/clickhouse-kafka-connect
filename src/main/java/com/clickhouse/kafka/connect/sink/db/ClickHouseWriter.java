@@ -190,11 +190,8 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.trace("Passing the exception to the exception handler.");
             Utils.handleException(e, csc.getErrorsTolerance());
             if (csc.getErrorsTolerance() && errorReporter != null) {
-                records.forEach(r -> {
-                            LOGGER.debug("Sending records to DLQ.");
-                            Utils.sendTODlq(errorReporter, r, e);
-                        }
-                );
+                LOGGER.debug("Sending records to DLQ.");
+                records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
             }
         }
     }
