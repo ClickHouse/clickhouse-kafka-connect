@@ -97,7 +97,7 @@ public class ClickHouseHelperClient {
         while (retryCount < retry) {
             try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
                  ClickHouseResponse response = client.read(server) // or client.connect(endpoints)
-                         .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect")
+                         .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
                          // you'll have to parse response manually if using a different format
 
                          .format(clickHouseFormat)
@@ -118,7 +118,7 @@ public class ClickHouseHelperClient {
         List<String> tablesNames = new ArrayList<>();
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(server)
-                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect")
+                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
                      // you'll have to parse response manually if using a different format
 
                      .query("SHOW TABLES")
@@ -143,7 +143,7 @@ public class ClickHouseHelperClient {
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(server)
-                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect")
+                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
                      .query(describeQuery)
                      .executeAndWait()) {
             Table table = new Table(tableName);
