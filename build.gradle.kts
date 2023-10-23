@@ -12,12 +12,14 @@ import java.net.URI
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+
 val defaultJdkVersion = 17
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(11))
     }
 }
+
 
 buildscript {
     repositories {
@@ -193,6 +195,12 @@ tasks.withType<Test> {
 /*
  * ShadowJar
  */
+tasks.withType<Jar> {
+    manifest {
+        attributes["Implementation-Title"] = "ClickHouse-Kafka-Connect"
+        attributes["Implementation-Version"] = project.version.toString()
+    }
+}
 tasks.register<ShadowJar>("confluentJar") {
     archiveClassifier.set("confluent")
     from(clickhouseDependencies, sourceSets.main.get().output)
@@ -204,6 +212,7 @@ tasks.register<ShadowJar>("allJar") {
     from(clickhouseDependencies, sourceSets.main.get().output)
 }
 */
+
 
 // Confluent Archive
 val releaseDate by extra(DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDateTime.now()))
