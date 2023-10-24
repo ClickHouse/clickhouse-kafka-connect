@@ -122,7 +122,7 @@ public class ClickHouseDbWriterTest {
 //        String createTable = String.format("CREATE TABLE %s ( `off8` Int8, `off16` Int16)  Engine = MergeTree ORDER BY off8", topic);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -139,7 +139,7 @@ public class ClickHouseDbWriterTest {
     private void dropTable(String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -156,7 +156,7 @@ public class ClickHouseDbWriterTest {
     private int countRows(String topic) {
         String queryCount = String.format("select count(*) from %s", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 

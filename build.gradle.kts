@@ -12,12 +12,14 @@ import java.net.URI
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+
 val defaultJdkVersion = 17
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(11))
     }
 }
+
 
 buildscript {
     repositories {
@@ -49,7 +51,7 @@ repositories {
 
 extra.apply {
 
-    set("clickHouseDriverVersion", "0.4.6")
+    set("clickHouseDriverVersion", "0.5.0")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 
@@ -75,6 +77,8 @@ dependencies {
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.2.6.RELEASE")
     implementation("com.google.code.gson:gson:2.10.1")
+    // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
+    implementation("org.apache.httpcomponents.client5:httpclient5:5.2.1")
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:2.0.9")
@@ -85,6 +89,7 @@ dependencies {
     /*
         Will in side the Confluent Archive
      */
+    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.2.1")
     clickhouseDependencies("io.lettuce:lettuce-core:6.2.6.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
@@ -101,7 +106,7 @@ dependencies {
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:1.19.1")
     testImplementation("org.testcontainers:kafka:1.19.1")
-    testImplementation("com.clickhouse:clickhouse-jdbc:0.4.6:all")
+    testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.11.0")
     testImplementation("org.json:json:20230618")
     testImplementation("org.testcontainers:toxiproxy:1.19.1")
@@ -190,6 +195,12 @@ tasks.withType<Test> {
 /*
  * ShadowJar
  */
+tasks.withType<Jar> {
+    manifest {
+        attributes["Implementation-Title"] = "ClickHouse-Kafka-Connect"
+        attributes["Implementation-Version"] = project.version.toString()
+    }
+}
 tasks.register<ShadowJar>("confluentJar") {
     archiveClassifier.set("confluent")
     from(clickhouseDependencies, sourceSets.main.get().output)
@@ -201,6 +212,7 @@ tasks.register<ShadowJar>("allJar") {
     from(clickhouseDependencies, sourceSets.main.get().output)
 }
 */
+
 
 // Confluent Archive
 val releaseDate by extra(DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDateTime.now()))

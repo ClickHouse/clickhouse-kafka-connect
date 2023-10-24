@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect;
 
+import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import org.apache.kafka.common.config.Config;
@@ -55,7 +56,8 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     @Override
     public void start(Map<String, String> props) {
-        LOGGER.info("start SinkConnect: ");
+        LOGGER.info("Starting SinkConnect...");
+        LOGGER.info("Version: " + ClickHouseClientOption.class.getPackage().getImplementationVersion());
         settings = props;
     }
 
@@ -90,7 +92,7 @@ public class ClickHouseSinkConnector extends SinkConnector {
 
     @Override
     public String version() {
-        return "0.0.1";
+        return ClickHouseClientOption.class.getPackage().getImplementationVersion();
     }
 
     @Override
