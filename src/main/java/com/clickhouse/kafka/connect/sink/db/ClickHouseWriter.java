@@ -627,7 +627,6 @@ public class ClickHouseWriter implements DBWriter {
 
     public void doInsertString(List<Record> records) throws IOException, ExecutionException, InterruptedException {
         //https://devqa.io/how-to-convert-java-map-to-json/
-        Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
         long s2 = 0;
         long s3 = 0;
