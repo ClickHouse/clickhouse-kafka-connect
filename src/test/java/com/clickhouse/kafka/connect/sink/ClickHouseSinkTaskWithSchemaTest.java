@@ -63,7 +63,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     private void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -81,7 +81,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         String createTableQueryTmp = String.format(createTableQuery, topic);
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -98,7 +98,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     private int countRows(ClickHouseHelperClient chc, String topic) {
         String queryCount = String.format("select count(*) from `%s`", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
 
 
@@ -213,6 +213,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         });
         return array;
     }
+
 
     public Collection<SinkRecord> createArrayType(String topic, int partition) {
 
@@ -364,6 +365,34 @@ public class ClickHouseSinkTaskWithSchemaTest {
                     .put("null_value_data", null_value_data)
                     ;
 
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        Collection<SinkRecord> collection = array;
+        return collection;
+    }
+
+    public Collection<SinkRecord> createBytesValueData(String topic, int partition) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("string", Schema.BYTES_SCHEMA)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 2).forEachOrdered(n -> {
+            Struct value_struct = new Struct(NESTED_SCHEMA).put("string", Long.toBinaryString(n).getBytes());
 
             SinkRecord sr = new SinkRecord(
                     topic,
@@ -810,12 +839,36 @@ public class ClickHouseSinkTaskWithSchemaTest {
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
 
         ClickHouseHelperClient chc = createClient(props);
-
+  
         String topic = "decimal-value-table-test";
         dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `decimal_14_2` Decimal(14, 2) ) Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = createDecimalValueData(topic, 1);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+    @Test
+    public void testSchemaWithBytes() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "bytes-value-table-test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE `%s` (`string` String) Engine = MergeTree ORDER BY `string`");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = createBytesValueData(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);

@@ -78,7 +78,7 @@ public class KeeperStateProvider implements StateProvider {
         String key = String.format("%s-%d", topic, partition);
         String selectStr = String.format("SELECT * from connect_state where `key`= '%s'", key);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.connect(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(selectStr)
                      .executeAndWait()) {
