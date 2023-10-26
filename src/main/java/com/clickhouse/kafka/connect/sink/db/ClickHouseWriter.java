@@ -225,9 +225,9 @@ public class ClickHouseWriter implements DBWriter {
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
                                 if (!(colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))) {
-                                  if (!("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal"))) {
-                                      validSchema = false;
-                                      LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                                    if (!("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal"))) {
+                                        validSchema = false;
+                                        LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
                                     }
                                 }
                             }
@@ -376,82 +376,16 @@ public class ClickHouseWriter implements DBWriter {
     private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream) throws IOException {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
-            String name = col.getName();
-            Type colType = col.getType();
-            boolean filedExists = record.getJsonMap().containsKey(name);
-            if (filedExists) {
-                Data value = record.getJsonMap().get(name);
-                LOGGER.trace("Column value is {}", value);
-                // TODO: the mapping need to be more efficient
-                // If column is nullable && the object is also null add the not null marker
-                if (col.isNullable() && value.getObject() != null) {
-                    BinaryStreamUtils.writeNonNull(stream);
-                }
-                if (!col.isNullable() && value.getObject() == null) {
-                    // this the situation when the col is not isNullable, but the data is null here we need to drop the records
-                    throw new RuntimeException(("col.isNullable() is false and value is empty"));
-                }
-                switch (colType) {
-                    case INT8:
-                    case INT16:
-                    case INT32:
-                    case INT64:
-                    case UINT8:
-                    case UINT16:
-                    case UINT32:
-                    case UINT64:
-                    case FLOAT32:
-                    case FLOAT64:
-                    case BOOLEAN:
-                    case UUID:
-                    case STRING:
-                        doWritePrimitive(colType, stream, value.getObject());
-                        break;
-                    case Date:
-                    case Date32:
-                    case DateTime:
-                    case DateTime64:
-                        doWriteDates(colType, stream, value);
-                        break;
-                    case Decimal:
-                        BigDecimal decimal = (BigDecimal) value.getObject();
-                        BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
-                        break;
-                    case MAP:
-                        Map<?,?> mapTmp = (Map<?,?>)value.getObject();
-                        int mapSize = mapTmp.size();
-                        BinaryStreamUtils.writeVarInt(stream, mapSize);
-                        mapTmp.forEach((key, value1) -> {
-                            try {
-                                doWritePrimitive(col.getMapKeyType(), stream, key);
-                                doWritePrimitive(col.getMapValueType(), stream, value1);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
-                        break;
-                    case ARRAY:
-                        List<?> arrObject = (List<?>)value.getObject();
-                        int sizeArrObject = arrObject.size();
-                        BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
-                        arrObject.forEach( v -> {
-                            try {
-                                doWritePrimitive(col.getSubType().getType(), stream, v);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
-                        break;
-                }
-            } else {
-                if ( col.isNullable() ) {
-                    // set null since there is no value
-                    BinaryStreamUtils.writeNull(stream);
-                } else {
-                    // no filled and not nullable
-                    LOGGER.error("Column {} is not nullable and no value is provided", name);
-                    throw new RuntimeException();
-                }
+        String name = col.getName();
+        Type colType = col.getType();
+        boolean filedExists = record.getJsonMap().containsKey(name);
+        if (filedExists) {
+            Data value = record.getJsonMap().get(name);
+            LOGGER.trace("Column value is {}", value);
+            // TODO: the mapping need to be more efficient
+            // If column is nullable && the object is also null add the not null marker
+            if (col.isNullable() && value.getObject() != null) {
+                BinaryStreamUtils.writeNonNull(stream);
             }
             if (!col.isNullable() && value.getObject() == null) {
                 // this the situation when the col is not isNullable, but the data is null here we need to drop the records
@@ -478,6 +412,10 @@ public class ClickHouseWriter implements DBWriter {
                 case DateTime:
                 case DateTime64:
                     doWriteDates(colType, stream, value);
+                    break;
+                case Decimal:
+                    BigDecimal decimal = (BigDecimal) value.getObject();
+                    BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
                     break;
                 case MAP:
                     Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
@@ -506,9 +444,14 @@ public class ClickHouseWriter implements DBWriter {
                     break;
             }
         } else {
-            // no filled and not nullable
-            LOGGER.error("Column {} is not nullable and no value is provided", name);
-            throw new RuntimeException();
+            if (col.isNullable()) {
+                // set null since there is no value
+                BinaryStreamUtils.writeNull(stream);
+            } else {
+                // no filled and not nullable
+                LOGGER.error("Column {} is not nullable and no value is provided", name);
+                throw new RuntimeException();
+            }
         }
     }
 
