@@ -185,6 +185,9 @@ public class ClickHouseWriter implements DBWriter {
                 case SCHEMA_LESS:
                     doInsertJson(records);
                     break;
+                case STRING_SCHEMA:
+                    doInsertString(records);
+                    break;
             }
         } catch (Exception e) {
             LOGGER.trace("Passing the exception to the exception handler.");
@@ -622,6 +625,89 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
     }
 
+    public void doInsertString(List<Record> records) throws IOException, ExecutionException, InterruptedException {
+        //https://devqa.io/how-to-convert-java-map-to-json/
+        Gson gson = new Gson();
+        long s1 = System.currentTimeMillis();
+        long s2 = 0;
+        long s3 = 0;
+
+        if (records.isEmpty())
+            return;
+        int batchSize = records.size();
+
+        Record first = records.get(0);
+        String topic = first.getTopic();
+        LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
+        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
+        if (table == null) {
+            if (csc.getSuppressTableExistenceException()) {
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
+                return;
+            } else {
+                //TODO to pick the correct exception here
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
+                throw new RuntimeException(String.format("Table %s does not exists", topic));
+            }
+        }
+
+        // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
+        // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
+
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
+            ClickHouseRequest.Mutation request = client.read(chc.getServer())
+                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
+                    .write()
+                    .table(table.getName())
+                    .format(ClickHouseFormat.JSONEachRow)
+                    // this is needed to get meaningful response summary
+                    .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
+
+            for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
+                request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            }
+
+
+            ClickHouseConfig config = request.getConfig();
+            request.option(ClickHouseClientOption.WRITE_BUFFER_SIZE, 8192);
+
+            CompletableFuture<ClickHouseResponse> future;
+
+            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance().createPipedOutputStream(config)) {
+                // start the worker thread which transfer data from the input into ClickHouse
+                future = request.data(stream.getInputStream()).execute();
+                // write bytes into the piped stream
+                for (Record record : records) {
+                    if (record.getSinkRecord().value() != null) {
+                        String data = (String)record.getSinkRecord().value();
+                        BinaryStreamUtils.writeBytes(stream, data.getBytes(StandardCharsets.UTF_8));
+                    } else {
+                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
+                    }
+                }
+
+                stream.close();
+                ClickHouseResponseSummary summary;
+                s2 = System.currentTimeMillis();
+                try (ClickHouseResponse response = future.get()) {
+                    summary = response.getSummary();
+                    long rows = summary.getWrittenRows();
+                    LOGGER.debug("Number of rows inserted: {}", rows);
+                } catch (Exception e) {//This is mostly for auto-closing
+                    LOGGER.trace("Exception", e);
+                    throw e;
+                }
+            } catch (Exception e) {//This is mostly for auto-closing
+                LOGGER.trace("Exception", e);
+                throw e;
+            }
+        } catch (Exception e) {//This is mostly for auto-closing
+            LOGGER.trace("Exception", e);
+            throw e;
+        }
+        s3 = System.currentTimeMillis();
+        LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
+    }
     @Override
     public long recordsInserted() {
         return 0;
