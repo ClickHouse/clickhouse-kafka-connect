@@ -186,6 +186,48 @@ public class ClickHouseSinkTaskStringTest {
         return array;
     }
 
+    public Collection<SinkRecord> createCSV(String topic, int partition) {
+        Gson gson = new Gson();
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            String dataAsCSV = String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s\n",  (short)n, "num" + n, (byte)n, (short)n, (int)n, (long)n, (float)n*1.1, (double)n*1.111111, (boolean)true);
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    dataAsCSV,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public Collection<SinkRecord> createTSV(String topic, int partition) {
+        Gson gson = new Gson();
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            String dataAsCSV = String.format("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",  (short)n, "num" + n, (byte)n, (short)n, (int)n, (long)n, (float)n*1.1, (double)n*1.111111, (boolean)true);
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    dataAsCSV,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     public Collection<SinkRecord> createDataWithEmojis(String topic, int partition) {
         Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
@@ -594,6 +636,53 @@ public class ClickHouseSinkTaskStringTest {
         assertEquals(sr.size(), countRows(chc, tableName));
     }
 
+    @Test
+    public void csvTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConfig.INSERT_FORMAT, "csv");
+
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "csv_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createCSV(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
+
+    @Test
+    public void tsvTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConfig.INSERT_FORMAT, "tsv");
+
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "tsv_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createTSV(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), countRows(chc, topic));
+    }
 
     @AfterAll
     protected static void tearDown() {

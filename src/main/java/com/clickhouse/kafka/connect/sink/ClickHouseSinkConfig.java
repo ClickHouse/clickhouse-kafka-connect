@@ -26,8 +26,7 @@ public class ClickHouseSinkConfig {
     public static final String TABLE_MAPPING = "topic2TableMap";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
-
-
+    public static final String INSERT_FORMAT = "insertFormat";
 
 
     
@@ -64,6 +63,15 @@ public class ClickHouseSinkConfig {
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
 
+    public enum InsertFormats {
+        NONE,
+        CSV,
+        TSV,
+        STRING,
+        JSON
+    }
+
+    private InsertFormats insertFormat = InsertFormats.NONE;
     public static class UTF8String implements ConfigDef.Validator {
 
         @Override
@@ -124,6 +132,19 @@ public class ClickHouseSinkConfig {
                 }
             }
         }
+
+        String insertFormatTmp = props.getOrDefault(INSERT_FORMAT, "json");
+        switch (insertFormatTmp) {
+            case "csv":
+                this.insertFormat = InsertFormats.CSV;
+                break;
+            case "tsv":
+                this.insertFormat = InsertFormats.TSV;
+                break;
+            default:
+                this.insertFormat = InsertFormats.JSON;
+        }
+
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -321,5 +342,5 @@ public class ClickHouseSinkConfig {
     public Map<String, String> getClickhouseSettings() {return clickhouseSettings;}
     public Map<String, String> getTopicToTableMap() {return topicToTableMap;}
     public boolean getErrorsTolerance() { return errorsTolerance; }
-
+    public InsertFormats getInsertFormat() { return insertFormat; }
 }

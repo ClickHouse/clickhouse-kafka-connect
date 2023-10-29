@@ -652,13 +652,24 @@ public class ClickHouseWriter implements DBWriter {
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
+        ClickHouseFormat clickHouseFormat = null;
+        switch (csc.getInsertFormat()) {
+            case CSV:
+                clickHouseFormat = ClickHouseFormat.CSV;
+                break;
+            case TSV:
+                clickHouseFormat = ClickHouseFormat.TSV;
+                break;
+            default:
+                clickHouseFormat = ClickHouseFormat.JSONEachRow;
+        }
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
             ClickHouseRequest.Mutation request = client.read(chc.getServer())
                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
                     .write()
                     .table(table.getName())
-                    .format(ClickHouseFormat.JSONEachRow)
+                    .format(clickHouseFormat)
                     // this is needed to get meaningful response summary
                     .set("insert_deduplication_token", first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
 
