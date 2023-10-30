@@ -9,6 +9,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
+
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.LongStream;
 
@@ -102,18 +104,29 @@ public class ClickHouseSinkTaskSchemalessTest {
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
-
     }
+
     private int countRows(ClickHouseHelperClient chc, String topic) {
         String queryCount = String.format("select count(*) from `%s`", topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
-
-
                      .query(queryCount)
                      .executeAndWait()) {
             ClickHouseResponseSummary summary = response.getSummary();
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private int sumRows(ClickHouseHelperClient chc, String topic, String column) {
+        String queryCount = String.format("select SUM(`%s`) from `%s`", column, topic);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+                     .query(queryCount)
+                     .executeAndWait()) {
             return response.firstRecord().getValue(0).asInteger();
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
@@ -353,6 +366,30 @@ public class ClickHouseSinkTaskSchemalessTest {
         });
         return array;
     }
+
+    public Collection<SinkRecord> createDecimalTypes(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("str", "num" + n);
+            value_struct.put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     @Test
     public void primitiveTypesTest() {
         Map<String, String> props = new HashMap<>();
@@ -551,6 +588,31 @@ public class ClickHouseSinkTaskSchemalessTest {
         assertEquals(sr.size(), countRows(chc, tableName));
     }
 
+    @Test
+    public void decimalDataTest() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "decimal_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `num` String, `decimal_14_2` Decimal(14, 2)) Engine = MergeTree ORDER BY num");
+        Collection<SinkRecord> sr = createDecimalTypes(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(499700, sumRows(chc, topic, "decimal_14_2"));
+    }
 
     @AfterAll
     protected static void tearDown() {

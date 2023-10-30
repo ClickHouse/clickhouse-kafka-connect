@@ -4,11 +4,7 @@ import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.apache.kafka.common.record.TimestampType;
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.SchemaBuilder;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.data.Time;
-import org.apache.kafka.connect.data.Timestamp;
+import org.apache.kafka.connect.data.*;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
@@ -16,14 +12,17 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.ClickHouseContainer;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.Date;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClickHouseSinkTaskWithSchemaTest {
 
@@ -102,11 +101,22 @@ public class ClickHouseSinkTaskWithSchemaTest {
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
-
-
                      .query(queryCount)
                      .executeAndWait()) {
             ClickHouseResponseSummary summary = response.getSummary();
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private int sumRows(ClickHouseHelperClient chc, String topic, String column) {
+        String queryCount = String.format("select SUM(`%s`) from `%s`", column, topic);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+                     .query(queryCount)
+                     .executeAndWait()) {
             return response.firstRecord().getValue(0).asInteger();
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
@@ -122,8 +132,6 @@ public class ClickHouseSinkTaskWithSchemaTest {
                 .build();
 
         LongStream.range(0, 1000).forEachOrdered(n -> {
-
-
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("p_int64", n);
@@ -518,6 +526,34 @@ public class ClickHouseSinkTaskWithSchemaTest {
         Collection<SinkRecord> collection = array;
         return collection;
     }
+    public Collection<SinkRecord> createDecimalValueData(String topic, int partition) {
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("decimal_14_2", Decimal.schema(2))
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+
+        return array;
+    }
     @Test
     public void arrayTypesTest() {
         Map<String, String> props = new HashMap<>();
@@ -800,6 +836,31 @@ public class ClickHouseSinkTaskWithSchemaTest {
         assertEquals(sr.size(), countRows(chc, topic));
     }
 
+    @Test
+    public void testSchemaWithDecimal() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+
+        ClickHouseHelperClient chc = createClient(props);
+  
+        String topic = "decimal-value-table-test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `decimal_14_2` Decimal(14, 2) ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> sr = createDecimalValueData(topic, 1);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(499700, sumRows(chc, topic, "decimal_14_2"));
+    }
 
     @Test
     public void testSchemaWithBytes() {
@@ -812,7 +873,6 @@ public class ClickHouseSinkTaskWithSchemaTest {
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
 
         ClickHouseHelperClient chc = createClient(props);
-
         String topic = "bytes-value-table-test";
         dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE `%s` (`string` String) Engine = MergeTree ORDER BY `string`");

@@ -21,6 +21,7 @@ import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import java.math.BigDecimal;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.connect.data.Field;
@@ -203,6 +204,8 @@ public class ClickHouseWriter implements DBWriter {
             Type type = col.getType();
             boolean isNullable = col.isNullable();
             if (!isNullable) {
+                Map<String, Schema> schemaMap = record.getFields().stream().collect(Collectors.toMap(Field::name, Field::schema));
+                var objSchema = schemaMap.get(colName);
                 Data obj = record.getJsonMap().get(colName);
                 if (obj == null) {
                     validSchema = false;
@@ -222,8 +225,10 @@ public class ClickHouseWriter implements DBWriter {
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
                                 if (!(colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))) {
-                                    validSchema = false;
-                                    LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                                    if (!("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal"))) {
+                                        validSchema = false;
+                                        LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
+                                    }
                                 }
                             }
                     }
@@ -371,7 +376,6 @@ public class ClickHouseWriter implements DBWriter {
     private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream) throws IOException {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
-
         String name = col.getName();
         Type colType = col.getType();
         boolean filedExists = record.getJsonMap().containsKey(name);
@@ -409,6 +413,10 @@ public class ClickHouseWriter implements DBWriter {
                 case DateTime64:
                     doWriteDates(colType, stream, value);
                     break;
+                case Decimal:
+                    BigDecimal decimal = (BigDecimal) value.getObject();
+                    BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
+                    break;
                 case MAP:
                     Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
                     int mapSize = mapTmp.size();
@@ -436,9 +444,14 @@ public class ClickHouseWriter implements DBWriter {
                     break;
             }
         } else {
-            // no filled and not nullable
-            LOGGER.error("Column {} is not nullable and no value is provided", name);
-            throw new RuntimeException();
+            if (col.isNullable()) {
+                // set null since there is no value
+                BinaryStreamUtils.writeNull(stream);
+            } else {
+                // no filled and not nullable
+                LOGGER.error("Column {} is not nullable and no value is provided", name);
+                throw new RuntimeException();
+            }
         }
     }
 

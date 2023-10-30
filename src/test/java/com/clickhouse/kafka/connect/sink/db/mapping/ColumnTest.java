@@ -31,4 +31,41 @@ class ColumnTest {
         assertEquals(Type.STRING, col.getSubType().getType());
     }
 
+    @Test
+    public void testExtractDecimalNullableColumn() {
+        Column col = Column.extractColumn("columnName", "Nullable(Decimal)", true);
+        assertEquals(Type.Decimal, col.getType());
+    }
+
+    @Test
+    public void testExtractDecimal_default() {
+        Column col = Column.extractColumn("columnName", "Decimal", true);
+        assertEquals(Type.Decimal, col.getType());
+        assertEquals(10, col.getPrecision());
+        assertEquals(0, col.getScale());
+    }
+
+    @Test
+    public void testExtractDecimal_default_5() {
+        Column col = Column.extractColumn("columnName", "Decimal(5)", true);
+        assertEquals(Type.Decimal, col.getType());
+        assertEquals(5, col.getPrecision());
+        assertEquals(0, col.getScale());
+    }
+
+    @Test
+    public void testExtractDecimal_sized_5() {
+        Column col = Column.extractColumn("columnName", "Decimal256(5)", true);
+        assertEquals(Type.Decimal, col.getType());
+        assertEquals(76, col.getPrecision());
+        assertEquals(5, col.getScale());
+    }
+
+    @Test
+    public void testExtractDecimal_14_5() {
+        Column col = Column.extractColumn("columnName", "Decimal(14,2)", true);
+        assertEquals(Type.Decimal, col.getType());
+        assertEquals(14, col.getPrecision());
+        assertEquals(2, col.getScale());
+    }
 }

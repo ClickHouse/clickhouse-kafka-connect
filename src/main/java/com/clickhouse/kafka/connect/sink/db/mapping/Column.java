@@ -1,7 +1,16 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import com.clickhouse.kafka.connect.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.regex.MatchResult;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Column {
     private static final Logger LOGGER = LoggerFactory.getLogger(Column.class);
@@ -11,6 +20,8 @@ public class Column {
     private Column subType = null;
     private Type mapKeyType = Type.NONE;
     private Type mapValueType = Type.NONE;
+    private int precision;
+    private int scale;
 
     private Column(String name, Type type, boolean isNullable) {
         this.name = name;
@@ -35,6 +46,14 @@ public class Column {
         this.subType = subType;
     }
 
+    private Column(String name, Type type, boolean isNullable, int precision, int scale) {
+        this.name = name;
+        this.type = type;
+        this.isNullable = isNullable;
+        this.precision = precision;
+        this.scale = scale;
+    }
+
 
     public String getName() {
         return name;
@@ -51,6 +70,12 @@ public class Column {
         return isNullable;
     }
 
+    public int getPrecision() {
+        return precision;
+    }
+    public int getScale() {
+        return scale;
+    }
     public Type getMapKeyType() {
         return mapKeyType;
     }
@@ -124,8 +149,9 @@ public class Column {
                 if (valueType.startsWith("DateTime64")) {
                     // Need to understand why DateTime64(3)
                     type = Type.DateTime64;
+                } else if (valueType.startsWith("Decimal")) {
+                    type = Type.Decimal;
                 }
-
 
                 break;
 
@@ -152,7 +178,38 @@ public class Column {
             return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull);
         } else if (valueType.startsWith("Nullable")) {
             return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true);
+        } else if (type == Type.Decimal) {
+            final Pattern patter = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
+            Matcher match = patter.matcher(valueType);
+
+            if (!match.matches()) {
+                throw new RuntimeException("type doesn't match");
+            }
+
+            Optional<Integer> size = Optional.ofNullable(match.group("size")).map(Integer::parseInt);
+            Optional<Integer> arg1 = Optional.ofNullable(match.group("a1")).map(Integer::parseInt);
+            Optional<Integer> arg2 = Optional.ofNullable(match.group("a2")).map(Integer::parseInt);
+
+            if (size.isPresent()) {
+                int precision;
+                switch (size.get()) {
+                    case 32: precision = 9; break;
+                    case 64: precision = 18; break;
+                    case 128: precision = 38; break;
+                    case 256: precision = 76; break;
+                    default: throw new RuntimeException("Not supported precision");
+                }
+
+                return new Column(name, type, isNull, precision, arg1.orElseThrow());
+            } else if (arg2.isPresent()) {
+                return new Column(name, type, isNull, arg1.orElseThrow(), arg2.orElseThrow());
+            } else if (arg1.isPresent()) {
+                return new Column(name, type, isNull, arg1.orElseThrow(), 0);
+            } else {
+                return new Column(name, type, isNull, 10, 0);
+            }
         }
+
         return new Column(name, type, isNull);
     }
 }
