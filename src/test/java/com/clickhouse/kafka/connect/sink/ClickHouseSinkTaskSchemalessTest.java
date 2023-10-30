@@ -111,11 +111,22 @@ public class ClickHouseSinkTaskSchemalessTest {
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
-
-
                      .query(queryCount)
                      .executeAndWait()) {
             ClickHouseResponseSummary summary = response.getSummary();
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private int sumRows(ClickHouseHelperClient chc, String topic, String column) {
+        String queryCount = String.format("select SUM(`%s`) from `%s`", column, topic);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+                     .query(queryCount)
+                     .executeAndWait()) {
             return response.firstRecord().getValue(0).asInteger();
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
@@ -600,6 +611,7 @@ public class ClickHouseSinkTaskSchemalessTest {
         chst.stop();
 
         assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(499700, sumRows(chc, topic, "decimal_14_2"));
     }
 
     @AfterAll
