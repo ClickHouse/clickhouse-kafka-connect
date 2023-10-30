@@ -22,6 +22,7 @@ import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClickHouseSinkTaskWithSchemaTest {
 
@@ -100,11 +101,22 @@ public class ClickHouseSinkTaskWithSchemaTest {
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      // you'll have to parse response manually if using a different format
-
-
                      .query(queryCount)
                      .executeAndWait()) {
             ClickHouseResponseSummary summary = response.getSummary();
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private int sumRows(ClickHouseHelperClient chc, String topic, String column) {
+        String queryCount = String.format("select SUM(`%s`) from `%s`", column, topic);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+                     .query(queryCount)
+                     .executeAndWait()) {
             return response.firstRecord().getValue(0).asInteger();
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
@@ -120,8 +132,6 @@ public class ClickHouseSinkTaskWithSchemaTest {
                 .build();
 
         LongStream.range(0, 1000).forEachOrdered(n -> {
-
-
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("p_int64", n);
@@ -527,8 +537,6 @@ public class ClickHouseSinkTaskWithSchemaTest {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));
-                    ;
-
 
             SinkRecord sr = new SinkRecord(
                     topic,
@@ -851,6 +859,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.stop();
 
         assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(499700, sumRows(chc, topic, "decimal_14_2"));
     }
 
     @Test

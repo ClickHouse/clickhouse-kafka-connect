@@ -5,6 +5,7 @@ import org.apache.kafka.connect.data.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,7 +30,11 @@ public class StructToJsonMap {
                     jsonMap.put(fieldName, new Data(fieldType, struct.getString(fieldName)));
                     break;
                 case BYTES:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.getBytes(fieldName)));
+                    if (Decimal.LOGICAL_NAME.equals(schemaName)) {
+                        jsonMap.put(fieldName, new Data(fieldType, (BigDecimal) struct.get(fieldName)));
+                    } else {
+                        jsonMap.put(fieldName, new Data(fieldType, struct.getBytes(fieldName)));
+                    }
                     break;
                 case INT32:
                     if (Date.LOGICAL_NAME.equals(schemaName) || Time.LOGICAL_NAME.equals(schemaName)) {
