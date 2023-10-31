@@ -5,8 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
+import static com.clickhouse.data.ClickHouseDataType.Array;
 
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
@@ -26,6 +30,7 @@ public class ClickHouseSinkConfig {
     public static final String TABLE_MAPPING = "topic2TableMap";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
+    public static final String CUSTOM_INSERT_FORMAT_ENABLE = "customInsertFormat";
     public static final String INSERT_FORMAT = "insertFormat";
 
 
@@ -40,6 +45,7 @@ public class ClickHouseSinkConfig {
     public static final Integer retryCountDefault = 3;
     public static final Integer tableRefreshIntervalDefault = 0;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
+    public static final Boolean customInsertFormatDefault = Boolean.FALSE;
     public enum StateStores {
         NONE,
         IN_MEMORY,
@@ -67,7 +73,6 @@ public class ClickHouseSinkConfig {
         NONE,
         CSV,
         TSV,
-        STRING,
         JSON
     }
 
@@ -85,6 +90,22 @@ public class ClickHouseSinkConfig {
         @Override
         public String toString() {
             return "utf-8 string";
+        }
+    }
+
+    public static final class InsertFormatValidatorAndRecommender implements ConfigDef.Recommender {
+
+        @Override
+        public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
+            Boolean enableCustom = (Boolean) parsedConfig.get(ClickHouseSinkConfig.CUSTOM_INSERT_FORMAT_ENABLE);
+            if (enableCustom)
+                return Arrays.asList("NONE", "CSV", "TSV", "STRING", "JSON");
+            else
+                return Arrays.asList("NONE");
+        }
+        @Override
+        public boolean visible(String name, Map<String, Object> parsedConfig) {
+            return true;
         }
     }
 
@@ -133,8 +154,11 @@ public class ClickHouseSinkConfig {
             }
         }
 
-        String insertFormatTmp = props.getOrDefault(INSERT_FORMAT, "json");
+        String insertFormatTmp = props.getOrDefault(INSERT_FORMAT, "node").toLowerCase();
         switch (insertFormatTmp) {
+            case "none":
+                this.insertFormat = InsertFormats.NONE;
+                break;
             case "csv":
                 this.insertFormat = InsertFormats.CSV;
                 break;
@@ -144,7 +168,6 @@ public class ClickHouseSinkConfig {
             default:
                 this.insertFormat = InsertFormats.JSON;
         }
-
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -301,6 +324,26 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Tolerate errors.");
+        configDef.define(CUSTOM_INSERT_FORMAT_ENABLE,
+                ConfigDef.Type.BOOLEAN,
+                customInsertFormatDefault,
+                ConfigDef.Importance.LOW,
+                "enable custom insert format only for org.apache.kafka.connect.storage.StringConverter. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "enable custom insert format.");
+        configDef.define(INSERT_FORMAT,
+                ConfigDef.Type.STRING,
+                "none",
+                ConfigDef.Importance.LOW,
+                "Set insert format when using org.apache.kafka.connect.storage.StringConverterr",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.LONG,
+                "Insert format.",
+                new InsertFormatValidatorAndRecommender()
+                );
 
         return configDef;
     }

@@ -187,10 +187,12 @@ public class ClickHouseSinkTaskStringTest {
     }
 
     public Collection<SinkRecord> createCSV(String topic, int partition) {
-        Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, 1000).forEachOrdered(n -> {
-            String dataAsCSV = String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s\n",  (short)n, "num" + n, (byte)n, (short)n, (int)n, (long)n, (float)n*1.1, (double)n*1.111111, (boolean)true);
+            String dataAsCSV = String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s",  (short)n, "num" + n, (byte)n, (short)n, (int)n, (long)n, (float)n*1.1, (double)n*1.111111, (boolean)true);
+            if (n % 2 == 0) {
+                dataAsCSV += "\n";
+            }
             SinkRecord sr = new SinkRecord(
                     topic,
                     partition,
@@ -208,16 +210,18 @@ public class ClickHouseSinkTaskStringTest {
     }
 
     public Collection<SinkRecord> createTSV(String topic, int partition) {
-        Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, 1000).forEachOrdered(n -> {
-            String dataAsCSV = String.format("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",  (short)n, "num" + n, (byte)n, (short)n, (int)n, (long)n, (float)n*1.1, (double)n*1.111111, (boolean)true);
+            String dataAsTSV = String.format("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",  (short)n, "num" + n, (byte)n, (short)n, (int)n, (long)n, (float)n*1.1, (double)n*1.111111, (boolean)true);
+            if (n % 2 == 0) {
+                dataAsTSV += "\n";
+            }
             SinkRecord sr = new SinkRecord(
                     topic,
                     partition,
                     null,
                     null, null,
-                    dataAsCSV,
+                    dataAsTSV,
                     n,
                     System.currentTimeMillis(),
                     TimestampType.CREATE_TIME

@@ -626,7 +626,8 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     public void doInsertString(List<Record> records) throws IOException, ExecutionException, InterruptedException {
-        //https://devqa.io/how-to-convert-java-map-to-json/
+        byte[] endingLine = new byte[]{'\n'};
+
         long s1 = System.currentTimeMillis();
         long s2 = 0;
         long s3 = 0;
@@ -654,6 +655,8 @@ public class ClickHouseWriter implements DBWriter {
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
         ClickHouseFormat clickHouseFormat = null;
         switch (csc.getInsertFormat()) {
+            case NONE:
+                throw new RuntimeException("using org.apache.kafka.connect.storage.StringConverter, but did not enable.");
             case CSV:
                 clickHouseFormat = ClickHouseFormat.CSV;
                 break;
@@ -690,7 +693,16 @@ public class ClickHouseWriter implements DBWriter {
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
                         String data = (String)record.getSinkRecord().value();
-                        BinaryStreamUtils.writeBytes(stream, data.getBytes(StandardCharsets.UTF_8));
+                        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                        BinaryStreamUtils.writeBytes(stream, bytes);
+                        switch (csc.getInsertFormat()) {
+                            case CSV:
+                            case TSV:
+                                if (bytes[bytes.length-1] != '\n')
+                                    BinaryStreamUtils.writeBytes(stream, endingLine);
+                                break;
+                        }
+
                     } else {
                         LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
                     }
