@@ -78,13 +78,16 @@ public class Utils {
 
         //High-Level Explicit Exception Checking
         if (e instanceof DataException && !errorsTolerance) {
+            LOGGER.warn("DataException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw (DataException) e;
         }
 
         //Otherwise use Root-Cause Exception Checking
         if (rootCause instanceof SocketTimeoutException) {
+            LOGGER.warn("SocketTimeoutException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw new RetriableException(e);
         } else if (rootCause instanceof UnknownHostException) {
+            LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw new RetriableException(e);
         }
 
