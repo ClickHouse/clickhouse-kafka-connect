@@ -14,6 +14,7 @@ import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.sink.state.provider.RedisStateProvider;
+import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -35,6 +36,8 @@ public class ClickHouseSinkTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTask.class);
 
     private ProxySinkTask proxySinkTask;
+    private ClickHouseSinkConfig clickHouseSinkConfig;
+    private ErrorReporter errorReporter;
 
     @Override
     public String version() {
@@ -44,21 +47,32 @@ public class ClickHouseSinkTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         LOGGER.info("Start SinkTask: ");
-        ClickHouseSinkConfig clickHouseSinkConfig;
         try {
             clickHouseSinkConfig = new ClickHouseSinkConfig(props);
+            errorReporter = createErrorReporter();
         } catch (Exception e) {
             throw new ConnectException("Failed to start new task" , e);
         }
 
-        this.proxySinkTask = new ProxySinkTask(clickHouseSinkConfig, createErrorReporter());
+        this.proxySinkTask = new ProxySinkTask(clickHouseSinkConfig, errorReporter);
     }
 
 
     @Override
     public void put(Collection<SinkRecord> records) {
-        this.proxySinkTask.put(records);
+        try {
+            this.proxySinkTask.put(records);
+        } catch (Exception e) {
+            LOGGER.trace("Passing the exception to the exception handler.");
+            boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.getErrorsTolerance();
+            Utils.handleException(e, errorTolerance);
+            if (errorTolerance && errorReporter != null) {
+                LOGGER.debug("Sending records to DLQ.");
+                records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
+            }
+        }
     }
+
 
     // TODO: can be removed ss
     @Override

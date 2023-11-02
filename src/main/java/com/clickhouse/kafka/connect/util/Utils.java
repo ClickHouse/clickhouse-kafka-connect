@@ -5,6 +5,7 @@ import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
+import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,8 +98,11 @@ public class Utils {
 
 
     public static void sendTODlq(ErrorReporter errorReporter, Record record, Exception exception) {
-        if (errorReporter != null && record.getSinkRecord() != null) {
-            errorReporter.report(record.getSinkRecord(), exception);
+        sendTODlq(errorReporter, record.getSinkRecord(), exception);
+    }
+    public static void sendTODlq(ErrorReporter errorReporter, SinkRecord record, Exception exception) {
+        if (errorReporter != null && record != null) {
+            errorReporter.report(record, exception);
         }
     }
 

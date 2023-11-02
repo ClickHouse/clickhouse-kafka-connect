@@ -19,7 +19,7 @@ import java.util.List;
 
 public class ConfluentPlatform {
 
-    private static final String CONFLUENT_VERSION = "6.1.0";
+    private static final String CONFLUENT_VERSION = "7.5.0";
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
         "confluentinc/cp-kafka-rest:" + CONFLUENT_VERSION
     );
@@ -37,7 +37,7 @@ public class ConfluentPlatform {
     );
 // 0.4.0-6.0.1
     private static final DockerImageName CP_DATA_GEN = DockerImageName.parse(
-        "cnfldemos/cp-server-connect-datagen:0.4.0-" + CONFLUENT_VERSION
+        "cnfldemos/cp-server-connect-datagen:0.6.2-7.5.0"
     );
 
     private static final DockerImageName CP_CONTROL_CENTER = DockerImageName.parse(
