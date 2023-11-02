@@ -693,6 +693,7 @@ public class ClickHouseWriter implements DBWriter {
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
                         String data = (String)record.getSinkRecord().value();
+                        LOGGER.debug(String.format("data: %s", data));
                         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
                         BinaryStreamUtils.writeBytes(stream, bytes);
                         switch (csc.getInsertFormat()) {
