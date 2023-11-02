@@ -1,6 +1,9 @@
 ## 1.0.2 2023-11-02
 * Updated dependencies
 * Add BYTES type support
+* Add Decimal type support
+* Additional exception handling
+* Retriable Exceptions are now always retried (even when errors.tolerance=all)
 * Support for org.apache.kafka.connect.storage.StringConverter
 
 ## 1.0.1 2023-09-11
