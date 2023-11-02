@@ -4,6 +4,7 @@ import com.clickhouse.kafka.connect.sink.data.convert.EmptyRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.RecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemalessRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemaRecordConvertor;
+import com.clickhouse.kafka.connect.sink.data.convert.StringRecordConvertor;
 import com.clickhouse.kafka.connect.sink.kafka.OffsetContainer;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -63,6 +64,7 @@ public class Record {
     private static RecordConvertor schemaRecordConvertor = new SchemaRecordConvertor();
     private static RecordConvertor schemalessRecordConvertor = new SchemalessRecordConvertor();
     private static RecordConvertor emptyRecordConvertor = new EmptyRecordConvertor();
+    private static RecordConvertor stringRecordConvertor = new StringRecordConvertor();
     private static RecordConvertor getConvertor(Schema schema, Object data) {
         if (data == null ) {
             return emptyRecordConvertor;
@@ -72,6 +74,9 @@ public class Record {
         }
         if (data instanceof Map) {
             return schemalessRecordConvertor;
+        }
+        if (data instanceof String) {
+            return stringRecordConvertor;
         }
         throw new DataException(String.format("No converter was found due to unexpected object type %s", data.getClass().getName()));
     }
