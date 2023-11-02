@@ -50,15 +50,6 @@ public class Utils {
 
     public static void handleException(Exception e, boolean errorsTolerance) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
-        if (errorsTolerance) {//Right now this is all exceptions - should we restrict to just ClickHouseExceptions?
-            LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
-            return;
-        }
-
-        //High-Level Explicit Exception Checking
-        if (e instanceof DataException) {
-            throw (DataException) e;
-        }
 
         //Let's check if we have a ClickHouseException to reference the error code
         //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
@@ -85,15 +76,24 @@ public class Utils {
             }
         }
 
-        //Otherwise use Root-Cause Exception Checking
+        //High-Level Explicit Exception Checking
+        if (e instanceof DataException && !errorsTolerance) {
+            throw (DataException) e;
+        }
 
+        //Otherwise use Root-Cause Exception Checking
         if (rootCause instanceof SocketTimeoutException) {
             throw new RetriableException(e);
         } else if (rootCause instanceof UnknownHostException) {
             throw new RetriableException(e);
         }
 
-        throw new RuntimeException(e);
+        if (errorsTolerance) {//Right now this is all exceptions - should we restrict to just ClickHouseExceptions?
+            LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
+        } else {
+            LOGGER.error("Errors tolerance is disabled, wrapping exception: {}", e.getLocalizedMessage());
+            throw new RuntimeException(e);
+        }
     }
 
 
