@@ -64,13 +64,15 @@ public class ClickHouseSinkTask extends SinkTask {
             this.proxySinkTask.put(records);
         } catch (Exception e) {
             LOGGER.trace("Passing the exception to the exception handler.");
-            Utils.handleException(e, clickHouseSinkConfig.getErrorsTolerance());
-            if (clickHouseSinkConfig.getErrorsTolerance() && errorReporter != null) {
+            boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.getErrorsTolerance();
+            Utils.handleException(e, errorTolerance);
+            if (errorTolerance && errorReporter != null) {
                 LOGGER.debug("Sending records to DLQ.");
                 records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
             }
         }
     }
+
 
     // TODO: can be removed ss
     @Override
