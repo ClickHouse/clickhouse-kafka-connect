@@ -99,7 +99,7 @@ public class ClickHouseSinkConfig {
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
             Boolean enableCustom = (Boolean) parsedConfig.get(ClickHouseSinkConfig.CUSTOM_INSERT_FORMAT_ENABLE);
             if (enableCustom)
-                return Arrays.asList("NONE", "CSV", "TSV", "STRING", "JSON");
+                return Arrays.asList("NONE", "CSV", "TSV", "JSON");
             else
                 return Arrays.asList("NONE");
         }
@@ -337,7 +337,7 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Type.STRING,
                 "none",
                 ConfigDef.Importance.LOW,
-                "Set insert format when using org.apache.kafka.connect.storage.StringConverterr",
+                "Set insert format when using org.apache.kafka.connect.storage.StringConverter",
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.LONG,
