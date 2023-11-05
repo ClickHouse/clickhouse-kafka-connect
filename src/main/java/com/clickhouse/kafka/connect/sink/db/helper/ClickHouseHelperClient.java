@@ -34,9 +34,9 @@ public class ClickHouseHelperClient {
     private final int timeout;
     private ClickHouseNode server = null;
     private final int retry;
-    private String proxyType = null;
+    private ClickHouseProxyType proxyType = null;
     private String proxyHost = null;
-    private String proxyPort = null;
+    private int proxyPort = -1;
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -56,10 +56,10 @@ public class ClickHouseHelperClient {
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
         options.put(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion());
-        if (proxyType != null && !proxyType.isEmpty()) {
-            options.put(ClickHouseClientOption.PROXY_TYPE, ClickHouseProxyType.valueOf(proxyType));
+        if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
+            options.put(ClickHouseClientOption.PROXY_TYPE, proxyType);
             options.put(ClickHouseClientOption.PROXY_HOST, proxyHost);
-            options.put(ClickHouseClientOption.PROXY_PORT, Integer.parseInt(proxyPort));
+            options.put(ClickHouseClientOption.PROXY_PORT, proxyPort);
         }
         return options;
     }
@@ -228,11 +228,11 @@ public class ClickHouseHelperClient {
         private int timeout = ClickHouseSinkConfig.timeoutSecondsDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
         private int retry = ClickHouseSinkConfig.retryCountDefault;
 
-        private String proxyType = null;
+        private ClickHouseProxyType proxyType = null;
         private String proxyHost = null;
-        private String proxyPort = null;
+        private int proxyPort = -1;
 
-        public ClickHouseClientBuilder(String hostname, int port, String proxyType, String proxyHost, String proxyPort) {
+        public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
             this.port = port;
             this.proxyType = proxyType;
