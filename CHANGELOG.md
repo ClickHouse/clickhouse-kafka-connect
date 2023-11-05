@@ -1,3 +1,6 @@
+## 1.0.3 2023-11-XX
+* Added support for proxy configurations
+
 ## 1.0.2 2023-11-02
 * Updated dependencies
 * Add BYTES type support
