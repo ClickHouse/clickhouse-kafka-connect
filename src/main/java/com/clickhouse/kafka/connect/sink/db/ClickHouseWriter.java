@@ -580,6 +580,7 @@ public class ClickHouseWriter implements DBWriter {
             request.option(ClickHouseClientOption.WRITE_BUFFER_SIZE, 8192);
 
             CompletableFuture<ClickHouseResponse> future;
+            java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
 
             try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance().createPipedOutputStream(config)) {
                 // start the worker thread which transfer data from the input into ClickHouse
@@ -601,8 +602,6 @@ public class ClickHouseWriter implements DBWriter {
                                 break;
                         }
 
-                        java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {
-                        }.getType();
                         String gsonString = gson.toJson(data, gsonType);
                         LOGGER.trace("topic {} partition {} offset {} payload {}",
                                 record.getTopic(),
