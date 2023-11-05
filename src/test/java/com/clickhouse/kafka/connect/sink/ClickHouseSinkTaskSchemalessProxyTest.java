@@ -66,8 +66,6 @@ public class ClickHouseSinkTaskSchemalessProxyTest {
                 .build();
         return chc;
     }
-
-
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
         props.put(ClickHouseSinkConnector.DATABASE, "default");
@@ -214,6 +212,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest {
         chst.stop();
         assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRowsWithEmojis(chc, topic));
     }
+
 
     @Test
     public void tableMappingTest() {
