@@ -1,4 +1,4 @@
-package com.clickhouse.kafka.connect.sink;
+package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -57,6 +57,22 @@ public class ClickHouseTestHelpers {
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
              ClickHouseResponse response = client.read(chc.getServer())
+                     .query(queryCount)
+                     .executeAndWait()) {
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
+        String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%'";
+
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      .query(queryCount)
                      .executeAndWait()) {
             return response.firstRecord().getValue(0).asInteger();

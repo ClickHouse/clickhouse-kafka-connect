@@ -4,10 +4,10 @@ import com.clickhouse.client.*;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
-import org.apache.kafka.common.record.TimestampType;
-import org.apache.kafka.connect.data.*;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
@@ -18,13 +18,7 @@ import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.util.Date;
 import java.util.*;
-import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -86,438 +80,6 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
     }
 
 
-    public Collection<SinkRecord> createWithEmptyDataRecords(String topic, int partition) {
-        List<SinkRecord> array = new ArrayList<>();
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("p_int64", Schema.INT64_SCHEMA)
-                .build();
-
-        LongStream.range(0, 1000).forEachOrdered(n -> {
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("p_int64", n);
-
-            SinkRecord sr = null;
-            if (n % 2 == 0) {
-                sr = new SinkRecord(
-                        topic,
-                        partition,
-                        null,
-                        null, NESTED_SCHEMA,
-                        value_struct,
-                        n,
-                        System.currentTimeMillis(),
-                        TimestampType.CREATE_TIME
-                );
-            } else {
-                sr = new SinkRecord(
-                        topic,
-                        partition,
-                        null,
-                        null, NESTED_SCHEMA,
-                        null,
-                        n,
-                        System.currentTimeMillis(),
-                        TimestampType.CREATE_TIME
-                );
-            }
-            array.add(sr);
-        });
-        return array;
-    }
-
-    public Collection<SinkRecord> createWithLowCardinality(String topic, int partition) {
-        List<SinkRecord> array = new ArrayList<>();
-
-        Schema SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("p_int64", Schema.INT64_SCHEMA)
-                .field("lc_string", Schema.STRING_SCHEMA)
-                .field("nullable_lc_string", Schema.OPTIONAL_STRING_SCHEMA)
-                .build();
-
-        LongStream.range(0, 10).forEachOrdered(n -> {
-            Struct value_struct = new Struct(SCHEMA)
-                    .put("off16", (short)n)
-                    .put("p_int64", n)
-                    .put("lc_string", "abc")
-                    .put("nullable_lc_string", n % 2 == 0 ? "def" : null);
-
-            array.add(new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            ));
-        });
-        return array;
-    }
-
-
-    public Collection<SinkRecord> createWithUUID(String topic, int partition) {
-        List<SinkRecord> array = new ArrayList<>();
-
-        Schema SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("uuid", Schema.STRING_SCHEMA)
-                .build();
-
-        LongStream.range(0, 10).forEachOrdered(n -> {
-            Struct value_struct = new Struct(SCHEMA)
-                    .put("off16", (short)n)
-                    .put("uuid", UUID.randomUUID().toString());
-
-            array.add(new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            ));
-        });
-        return array;
-    }
-
-
-    public Collection<SinkRecord> createArrayType(String topic, int partition) {
-
-        Schema ARRAY_SCHEMA = SchemaBuilder.array(Schema.STRING_SCHEMA).build();
-        Schema ARRAY_INT8_SCHEMA = SchemaBuilder.array(Schema.INT8_SCHEMA).build();
-        Schema ARRAY_INT16_SCHEMA = SchemaBuilder.array(Schema.INT16_SCHEMA).build();
-        Schema ARRAY_INT32_SCHEMA = SchemaBuilder.array(Schema.INT32_SCHEMA).build();
-        Schema ARRAY_INT64_SCHEMA = SchemaBuilder.array(Schema.INT64_SCHEMA).build();
-        Schema ARRAY_FLOAT32_SCHEMA = SchemaBuilder.array(Schema.FLOAT32_SCHEMA).build();
-        Schema ARRAY_FLOAT64_SCHEMA = SchemaBuilder.array(Schema.FLOAT64_SCHEMA).build();
-        Schema ARRAY_BOOLEAN_SCHEMA = SchemaBuilder.array(Schema.BOOLEAN_SCHEMA).build();
-
-
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("arr", ARRAY_SCHEMA)
-                .field("arr_empty", ARRAY_SCHEMA)
-                .field("arr_int8", ARRAY_INT8_SCHEMA)
-                .field("arr_int16", ARRAY_INT16_SCHEMA)
-                .field("arr_int32", ARRAY_INT32_SCHEMA)
-                .field("arr_int64", ARRAY_INT64_SCHEMA)
-                .field("arr_float32", ARRAY_FLOAT32_SCHEMA)
-                .field("arr_float64", ARRAY_FLOAT64_SCHEMA)
-                .field("arr_bool", ARRAY_BOOLEAN_SCHEMA)
-                .build();
-
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
-
-            List<String> arrayTmp = Arrays.asList("1","2");
-            List<String> arrayEmpty = new ArrayList<>();
-            List<Byte> arrayInt8Tmp = Arrays.asList((byte)1,(byte)2);
-            List<Short> arrayInt16Tmp = Arrays.asList((short)1,(short)2);
-            List<Integer> arrayInt32Tmp = Arrays.asList((int)1,(int)2);
-            List<Long> arrayInt64Tmp = Arrays.asList((long)1,(long)2);
-            List<Float> arrayFloat32Tmp = Arrays.asList((float)1,(float)2);
-            List<Double> arrayFloat64Tmp = Arrays.asList((double)1,(double)2);
-            List<Boolean> arrayBoolTmp = Arrays.asList(true,false);
-
-
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("arr", arrayTmp)
-                    .put("arr_empty", arrayEmpty)
-                    .put("arr_int8", arrayInt8Tmp)
-                    .put("arr_int16", arrayInt16Tmp)
-                    .put("arr_int32", arrayInt32Tmp)
-                    .put("arr_int64", arrayInt64Tmp)
-                    .put("arr_float32", arrayFloat32Tmp)
-                    .put("arr_float64", arrayFloat64Tmp)
-                    .put("arr_bool", arrayBoolTmp)
-                    ;
-
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-        Collection<SinkRecord> collection = array;
-        return collection;
-    }
-    public Collection<SinkRecord> createMapType(String topic, int partition) {
-
-        Schema MAP_SCHEMA_STRING_STRING = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA);
-        Schema MAP_SCHEMA_STRING_INT64 = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.INT64_SCHEMA);
-        Schema MAP_SCHEMA_INT64_STRING = SchemaBuilder.map(Schema.INT64_SCHEMA, Schema.STRING_SCHEMA);
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("map_string_string", MAP_SCHEMA_STRING_STRING)
-                .field("map_string_int64", MAP_SCHEMA_STRING_INT64)
-                .field("map_int64_string", MAP_SCHEMA_INT64_STRING)
-                .build();
-
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
-
-            Map<String,String> mapStringString = Map.of(
-                    "k1", "v1",
-                    "k2", "v1"
-            );
-
-            Map<String,Long> mapStringLong = Map.of(
-                    "k1", (long)1,
-                    "k2", (long)2
-            );
-
-            Map<Long,String> mapLongString = Map.of(
-                    (long)1, "v1",
-                    (long)2, "v2"
-            );
-
-
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("map_string_string", mapStringString)
-                    .put("map_string_int64", mapStringLong)
-                    .put("map_int64_string", mapLongString)
-                    ;
-
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-        Collection<SinkRecord> collection = array;
-        return collection;
-    }
-
-    public Collection<SinkRecord> createNullValueData(String topic, int partition) {
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("null_value_data", Schema.OPTIONAL_INT64_SCHEMA)
-                .build();
-
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 2).forEachOrdered(n -> {
-
-            Long null_value_data = null;
-
-            if ( n % 2 == 0) {
-                null_value_data = Long.valueOf((short)n);
-            }
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("null_value_data", null_value_data)
-                    ;
-
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-        Collection<SinkRecord> collection = array;
-        return collection;
-    }
-
-    public Collection<SinkRecord> createBytesValueData(String topic, int partition) {
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("string", Schema.BYTES_SCHEMA)
-                .build();
-
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 2).forEachOrdered(n -> {
-            Struct value_struct = new Struct(NESTED_SCHEMA).put("string", Long.toBinaryString(n).getBytes());
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-        Collection<SinkRecord> collection = array;
-        return collection;
-    }
-
-    public Collection<SinkRecord> createDateType(String topic, int partition) {
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("date_number", Schema.OPTIONAL_INT32_SCHEMA)
-                .field("date32_number", Schema.OPTIONAL_INT32_SCHEMA)
-                .field("datetime_number", Schema.INT64_SCHEMA)
-                .field("datetime64_number", Schema.INT64_SCHEMA)
-                .field("timestamp_int64",  Timestamp.SCHEMA)
-                .field("timestamp_date", Timestamp.SCHEMA)
-                .field("time_int32" , Time.SCHEMA)
-                .field("time_date32" , Time.SCHEMA)
-                .field("date_date", Time.SCHEMA)
-                .field("datetime_date", Timestamp.SCHEMA)
-                .build();
-
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
-            long currentTime = System.currentTimeMillis();
-            LocalDate localDate = LocalDate.now();
-            Integer localDateInt = (int)localDate.toEpochDay();
-            if(n%3 == 0) {
-                localDateInt = null;
-            }
-
-            LocalDateTime localDateTime = LocalDateTime.now();
-            long localDateTimeLong = localDateTime.toEpochSecond(ZoneOffset.UTC);
-
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("date_number", localDateInt)
-                    .put("date32_number", localDateInt)
-                    .put("datetime_number", localDateTimeLong)
-                    .put("datetime64_number", currentTime)
-                    .put("timestamp_int64", new Date(System.currentTimeMillis()))
-                    .put("timestamp_date",  new Date(System.currentTimeMillis()))
-                    .put("time_int32", new Date(System.currentTimeMillis()))
-                    .put("time_date32", new Date(System.currentTimeMillis()))
-                    .put("date_date", new Date(System.currentTimeMillis()))
-                    .put("datetime_date", new Date(System.currentTimeMillis()))
-                    ;
-
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-        Collection<SinkRecord> collection = array;
-        return collection;
-    }
-    public Collection<SinkRecord> createUnsupportedDataConversions(String topic, int partition) {
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("date_number", Schema.INT64_SCHEMA)
-                .field("date32_number", Schema.INT64_SCHEMA)
-                .field("datetime_number", Schema.INT32_SCHEMA)
-                .field("datetime64_number", Schema.INT32_SCHEMA)
-                .build();
-
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
-            long currentTime = System.currentTimeMillis();
-            LocalDate localDate = LocalDate.now();
-            int localDateInt = (int)localDate.toEpochDay();
-
-            LocalDateTime localDateTime = LocalDateTime.now();
-            long localDateTimeLong = localDateTime.toEpochSecond(ZoneOffset.UTC);
-
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("date_number", localDateTimeLong)
-                    .put("date32_number", currentTime)
-                    .put("datetime_number", localDateInt)
-                    .put("datetime64_number", localDateInt)
-                    ;
-
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-        Collection<SinkRecord> collection = array;
-        return collection;
-    }
-    public Collection<SinkRecord> createDecimalValueData(String topic, int partition) {
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("decimal_14_2", Decimal.schema(2))
-                .build();
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-
-        return array;
-    }
-
     @Test
     public void proxyPingTest() throws IOException {
         ClickHouseHelperClient chc = createClient(getTestProperties());
@@ -537,7 +99,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), " +
                 "`arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = createArrayType(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -557,7 +119,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
                 "map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = createMapType(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -578,7 +140,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), " +
                 "`arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         ClickHouseTestHelpers.createTable(chc, topic + "mate", "CREATE MATERIALIZED VIEW %s ( `off16` Int16 ) Engine = MergeTree ORDER BY `off16` POPULATE AS SELECT off16 FROM m_array_string_table_test ");
-        Collection<SinkRecord> sr = createArrayType(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -599,7 +161,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
                 "map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = createMapType(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -619,7 +181,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, null_value_data Nullable(DateTime64(6, 'UTC')) ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = createNullValueData(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -641,7 +203,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, " +
                 "datetime64_number DateTime64, timestamp_int64 Int64, timestamp_date DateTime64, time_int32 Int32, time_date32 Date32, date_date Date, datetime_date DateTime ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = createDateType(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createDateType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -659,7 +221,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64) Engine = MergeTree ORDER BY off16");
 
-        Collection<SinkRecord> sr = createUnsupportedDataConversions(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createUnsupportedDataConversions(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -675,7 +237,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         String topic = "schema_empty_records_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64) Engine = MergeTree ORDER BY off16");
-        Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -692,7 +254,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         String topic = "schema_empty_records_lc_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64, lc_string LowCardinality(String), nullable_lc_string LowCardinality(Nullable(String))) Engine = MergeTree ORDER BY off16");
-        Collection<SinkRecord> sr = createWithLowCardinality(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createWithLowCardinality(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -709,7 +271,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         String topic = "schema_empty_records_lc_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, uuid UUID) Engine = MergeTree ORDER BY off16");
-        Collection<SinkRecord> sr = createWithUUID(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createWithUUID(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -719,7 +281,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
     }
 
     @Test
-    public void testSchemaWithDefaults() {
+    public void schemaWithDefaultsTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -727,7 +289,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, default_value_data DateTime DEFAULT now() ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = createNullValueData(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -738,7 +300,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
     }
 
     @Test
-    public void testSchemaWithDecimal() {
+    public void schemaWithDecimalTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
   
@@ -746,7 +308,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `decimal_14_2` Decimal(14, 2) ) Engine = MergeTree ORDER BY off16");
 
-        Collection<SinkRecord> sr = createDecimalValueData(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createDecimalValueData(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
@@ -757,14 +319,14 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
     }
 
     @Test
-    public void testSchemaWithBytes() {
+    public void schemaWithBytesTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "bytes-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (`string` String) Engine = MergeTree ORDER BY `string`");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = createBytesValueData(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createBytesValueData(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
