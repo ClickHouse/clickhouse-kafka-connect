@@ -1,8 +1,11 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import eu.rekawek.toxiproxy.Proxy;
+import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.*;
 import org.apache.kafka.connect.errors.DataException;
@@ -10,31 +13,41 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.ClickHouseContainer;
+import org.testcontainers.clickhouse.ClickHouseContainer;
+import org.testcontainers.containers.Network;
+import org.testcontainers.containers.ToxiproxyContainer;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.*;
 import java.util.Date;
+import java.util.*;
 import java.util.stream.LongStream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-public class ClickHouseSinkTaskWithSchemaTest {
+public class ClickHouseSinkTaskWithSchemaProxyTest {
 
     private static ClickHouseContainer db = null;
+    private static ToxiproxyContainer toxiproxy = null;
+    private static Proxy proxy = null;
 
     private static ClickHouseHelperClient chc = null;
 
     @BeforeAll
-    public static void setup() {
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:22.5");
+    public static void setup() throws IOException {
+        Network network = Network.newNetwork();
+        db = new org.testcontainers.clickhouse.ClickHouseContainer("clickhouse/clickhouse-server:22.5").withNetwork(network).withNetworkAliases("clickhouse");
         db.start();
 
+        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
+        toxiproxy.start();
+
+        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
     }
 
     private ClickHouseHelperClient createClient(Map<String,String> props) {
@@ -60,68 +73,18 @@ public class ClickHouseSinkTaskWithSchemaTest {
         return chc;
     }
 
-
-    private void dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(dropTable)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
+    private Map<String, String> getTestProperties() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
+        props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
+        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(8666)));
+        return props;
     }
 
-    private void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(createTableQueryTmp)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
-    private int countRows(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from `%s`", topic);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private int sumRows(ClickHouseHelperClient chc, String topic, String column) {
-        String queryCount = String.format("select SUM(`%s`) from `%s`", column, topic);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     public Collection<SinkRecord> createWithEmptyDataRecords(String topic, int partition) {
         List<SinkRecord> array = new ArrayList<>();
@@ -554,21 +517,25 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         return array;
     }
+
+    @Test
+    public void proxyPingTest() throws IOException {
+        ClickHouseHelperClient chc = createClient(getTestProperties());
+        assertTrue(chc.ping());
+        proxy.disable();
+        assertFalse(chc.ping());
+        proxy.enable();
+    }
+
     @Test
     public void arrayTypesTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "array_string_table_test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), " +
+                "`arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createArrayType(topic, 1);
 
@@ -577,24 +544,18 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     public void mapTypesTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "map_table_test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
+                "map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
 
@@ -603,26 +564,20 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
     public void materializedViewsBug() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "m_array_string_table_test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
-        createTable(chc, topic + "mate", "CREATE MATERIALIZED VIEW %s ( `off16` Int16 ) Engine = MergeTree ORDER BY `off16` POPULATE AS SELECT off16 FROM m_array_string_table_test ");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), " +
+                "`arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic + "mate", "CREATE MATERIALIZED VIEW %s ( `off16` Int16 ) Engine = MergeTree ORDER BY `off16` POPULATE AS SELECT off16 FROM m_array_string_table_test ");
         Collection<SinkRecord> sr = createArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -630,25 +585,19 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "special-char-table-test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
+                "map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
 
@@ -657,25 +606,18 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
     public void nullValueDataTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "null-value-table-test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, null_value_data Nullable(DateTime64(6, 'UTC')) ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, null_value_data Nullable(DateTime64(6, 'UTC')) ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createNullValueData(topic, 1);
 
@@ -684,26 +626,20 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
 
     }
 
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
     public void supportDatesTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "support-dates-table-test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, datetime64_number DateTime64, timestamp_int64 Int64, timestamp_date DateTime64, time_int32 Int32, time_date32 Date32, date_date Date, datetime_date DateTime ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, " +
+                "datetime64_number DateTime64, timestamp_int64 Int64, timestamp_date DateTime64, time_int32 Int32, time_date32 Date32, date_date Date, datetime_date DateTime ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createDateType(topic, 1);
 
@@ -712,23 +648,16 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
     @Test
     public void detectUnsupportedDataConversions() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "support-unsupported-dates-table-test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64) Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = createUnsupportedDataConversions(topic, 1);
 
@@ -740,91 +669,63 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
     @Test
     public void withEmptyDataRecordsTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "schema_empty_records_table_test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRows(chc, topic));
+        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     public void withLowCardinalityTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "schema_empty_records_lc_table_test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64, lc_string LowCardinality(String), nullable_lc_string LowCardinality(Nullable(String))) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, p_int64 Int64, lc_string LowCardinality(String), nullable_lc_string LowCardinality(Nullable(String))) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createWithLowCardinality(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     public void withUUIDTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "schema_empty_records_lc_table_test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, uuid UUID) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, uuid UUID) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createWithUUID(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     public void testSchemaWithDefaults() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "default-value-table-test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, default_value_data DateTime DEFAULT now() ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, default_value_data DateTime DEFAULT now() ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createNullValueData(topic, 1);
 
@@ -833,24 +734,17 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     public void testSchemaWithDecimal() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
   
         String topic = "decimal-value-table-test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `decimal_14_2` Decimal(14, 2) ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `decimal_14_2` Decimal(14, 2) ) Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = createDecimalValueData(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -858,24 +752,17 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
-        assertEquals(499700, sumRows(chc, topic, "decimal_14_2"));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
     }
 
     @Test
     public void testSchemaWithBytes() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-
+        Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "bytes-value-table-test";
-        dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` (`string` String) Engine = MergeTree ORDER BY `string`");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (`string` String) Engine = MergeTree ORDER BY `string`");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createBytesValueData(topic, 1);
 
@@ -884,7 +771,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @AfterAll

@@ -51,7 +51,7 @@ public class ClickHouseSinkTaskStringTest {
         int timeout = csc.getTimeout();
 
 
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port)
+        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(database)
                 .setUsername(username)
                 .setPassword(password)

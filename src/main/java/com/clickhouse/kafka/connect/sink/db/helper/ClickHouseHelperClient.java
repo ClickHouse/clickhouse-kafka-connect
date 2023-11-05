@@ -2,6 +2,8 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
 import com.clickhouse.client.config.ClickHouseClientOption;
+import com.clickhouse.client.config.ClickHouseProxyType;
+import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.data.ClickHouseValue;
@@ -13,6 +15,7 @@ import com.clickhouse.kafka.connect.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -31,6 +34,10 @@ public class ClickHouseHelperClient {
     private final int timeout;
     private ClickHouseNode server = null;
     private final int retry;
+    private String proxyType = null;
+    private String proxyHost = null;
+    private String proxyPort = null;
+
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
         this.port = builder.port;
@@ -40,7 +47,21 @@ public class ClickHouseHelperClient {
         this.sslEnabled = builder.sslEnabled;
         this.timeout = builder.timeout;
         this.retry = builder.retry;
+        this.proxyType = builder.proxyType;
+        this.proxyHost = builder.proxyHost;
+        this.proxyPort = builder.proxyPort;
         this.server = create();
+    }
+
+    public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
+        Map<ClickHouseOption, Serializable> options = new HashMap<>();
+        options.put(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion());
+        if (proxyType != null && !proxyType.isEmpty()) {
+            options.put(ClickHouseClientOption.PROXY_TYPE, ClickHouseProxyType.valueOf(proxyType));
+            options.put(ClickHouseClientOption.PROXY_HOST, proxyHost);
+            options.put(ClickHouseClientOption.PROXY_PORT, Integer.parseInt(proxyPort));
+        }
+        return options;
     }
 
     private ClickHouseNode create() {
@@ -65,7 +86,10 @@ public class ClickHouseHelperClient {
     }
 
     public boolean ping() {
-        ClickHouseClient clientPing = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+        ClickHouseClient clientPing = ClickHouseClient.builder()
+                .options(getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
         LOGGER.debug(String.format("Server [%s] , Timeout [%d]", server, timeout));
         int retryCount = 0;
 
@@ -96,10 +120,8 @@ public class ClickHouseHelperClient {
         ClickHouseException ce = null;
         while (retryCount < retry) {
             try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-                 ClickHouseResponse response = client.read(server) // or client.connect(endpoints)
-                         .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
-                         // you'll have to parse response manually if using a different format
-
+                 ClickHouseResponse response = client.read(server)
+                         .options(getDefaultClientOptions())
                          .format(clickHouseFormat)
                          .query(query)
                          .executeAndWait()) {
@@ -118,9 +140,7 @@ public class ClickHouseHelperClient {
         List<String> tablesNames = new ArrayList<>();
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(server)
-                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
-                     // you'll have to parse response manually if using a different format
-
+                     .options(getDefaultClientOptions())
                      .query("SHOW TABLES")
                      .executeAndWait()) {
             for (ClickHouseRecord r : response.records()) {
@@ -143,7 +163,7 @@ public class ClickHouseHelperClient {
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(server)
-                     .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
+                     .options(getDefaultClientOptions())
                      .query(describeQuery)
                      .executeAndWait()) {
             Table table = new Table(tableName);
@@ -198,6 +218,7 @@ public class ClickHouseHelperClient {
     }
 
     public static class ClickHouseClientBuilder{
+        private ClickHouseSinkConfig config = null;
         private String hostname = null;
         private int port = -1;
         private String username = "default";
@@ -206,9 +227,17 @@ public class ClickHouseHelperClient {
         private boolean sslEnabled = false;
         private int timeout = ClickHouseSinkConfig.timeoutSecondsDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
         private int retry = ClickHouseSinkConfig.retryCountDefault;
-        public ClickHouseClientBuilder(String hostname, int port) {
+
+        private String proxyType = null;
+        private String proxyHost = null;
+        private String proxyPort = null;
+
+        public ClickHouseClientBuilder(String hostname, int port, String proxyType, String proxyHost, String proxyPort) {
             this.hostname = hostname;
             this.port = port;
+            this.proxyType = proxyType;
+            this.proxyHost = proxyHost;
+            this.proxyPort = proxyPort;
         }
 
 
