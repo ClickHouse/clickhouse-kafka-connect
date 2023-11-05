@@ -178,8 +178,7 @@ public class SchemaTestData {
 
             array.add(sr);
         });
-        Collection<SinkRecord> collection = array;
-        return collection;
+        return array;
     }
     public static Collection<SinkRecord> createMapType(String topic, int partition) {
 
@@ -235,8 +234,7 @@ public class SchemaTestData {
 
             array.add(sr);
         });
-        Collection<SinkRecord> collection = array;
-        return collection;
+        return array;
     }
     public static Collection<SinkRecord> createNullValueData(String topic, int partition) {
 
@@ -273,8 +271,7 @@ public class SchemaTestData {
 
             array.add(sr);
         });
-        Collection<SinkRecord> collection = array;
-        return collection;
+        return array;
     }
     public static Collection<SinkRecord> createBytesValueData(String topic, int partition) {
 
@@ -300,8 +297,7 @@ public class SchemaTestData {
 
             array.add(sr);
         });
-        Collection<SinkRecord> collection = array;
-        return collection;
+        return array;
     }
     public static Collection<SinkRecord> createDateType(String topic, int partition) {
 
@@ -360,8 +356,7 @@ public class SchemaTestData {
 
             array.add(sr);
         });
-        Collection<SinkRecord> collection = array;
-        return collection;
+        return array;
     }
     public static Collection<SinkRecord> createUnsupportedDataConversions(String topic, int partition) {
 
@@ -405,8 +400,7 @@ public class SchemaTestData {
 
             array.add(sr);
         });
-        Collection<SinkRecord> collection = array;
-        return collection;
+        return array;
     }
     public static Collection<SinkRecord> createDecimalValueData(String topic, int partition) {
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
