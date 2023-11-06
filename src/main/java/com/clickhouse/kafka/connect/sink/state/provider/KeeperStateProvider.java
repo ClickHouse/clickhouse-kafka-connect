@@ -42,7 +42,7 @@ public class KeeperStateProvider implements StateProvider {
 
         LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, Mask.passwordMask(password), sslEnabled, timeout));
 
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port)
+        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(database)
                 .setUsername(username)
                 .setPassword(password)

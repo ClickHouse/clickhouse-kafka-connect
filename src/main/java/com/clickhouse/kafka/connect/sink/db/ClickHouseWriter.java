@@ -63,7 +63,7 @@ public class ClickHouseWriter implements DBWriter {
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
         this.csc = csc;
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort())
+        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(csc.getDatabase())
                 .setUsername(csc.getUsername())
                 .setPassword(csc.getPassword())
@@ -131,8 +131,7 @@ public class ClickHouseWriter implements DBWriter {
     // TODO: we need to refactor that
     private String convertHelper(Object v) {
         if (v instanceof List) {
-            return ((List<?>) v).stream().map(vv -> vv.toString()).collect(Collectors.joining(",", "[", "]"));
-
+            return ((List<?>) v).stream().map(Object::toString).collect(Collectors.joining(",", "[", "]"));
         } else {
             return v.toString();
         }
@@ -140,10 +139,7 @@ public class ClickHouseWriter implements DBWriter {
 
     private String convertWithStream(List<Object> values, String prefixChar, String suffixChar, String delimiterChar, String trimChar) {
         return values
-                .stream().map(
-                        v ->
-                                trimChar + convertHelper(v) + trimChar
-                )
+                .stream().map( v -> trimChar + convertHelper(v) + trimChar )
                 .collect(Collectors.joining(delimiterChar, prefixChar, suffixChar));
     }
 
@@ -481,9 +477,11 @@ public class ClickHouseWriter implements DBWriter {
         // Do we have all elements from the table inside the record
 
         long s2 = System.currentTimeMillis();
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build()) {
             ClickHouseRequest.Mutation request = client.read(chc.getServer())
-                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
                     .write()
                     .table(table.getName())
                     .format(ClickHouseFormat.RowBinary)
@@ -562,9 +560,11 @@ public class ClickHouseWriter implements DBWriter {
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
 
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build()) {
             ClickHouseRequest.Mutation request = client.read(chc.getServer())
-                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
                     .write()
                     .table(table.getName())
                     .format(ClickHouseFormat.JSONEachRow)
@@ -680,9 +680,11 @@ public class ClickHouseWriter implements DBWriter {
                 clickHouseFormat = ClickHouseFormat.JSONEachRow;
         }
 
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP)) {
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build()) {
             ClickHouseRequest.Mutation request = client.read(chc.getServer())
-                    .option(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion())
                     .write()
                     .table(table.getName())
                     .format(clickHouseFormat)

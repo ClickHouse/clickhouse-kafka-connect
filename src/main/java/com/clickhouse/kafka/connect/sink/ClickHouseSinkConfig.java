@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.clickhouse.client.config.ClickHouseProxyType;
 import org.apache.kafka.common.config.ConfigDef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,9 @@ public class ClickHouseSinkConfig {
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
     public static final String CUSTOM_INSERT_FORMAT_ENABLE = "customInsertFormat";
     public static final String INSERT_FORMAT = "insertFormat";
+    public static final String PROXY_TYPE = "proxyType";
+    public static final String PROXY_HOST = "proxyHost";
+    public static final String PROXY_PORT = "proxyPort";
 
 
     
@@ -69,6 +73,10 @@ public class ClickHouseSinkConfig {
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
 
+    private final ClickHouseProxyType proxyType;
+    private final String proxyHost;
+    private final int proxyPort;
+
     public enum InsertFormats {
         NONE,
         CSV,
@@ -94,7 +102,6 @@ public class ClickHouseSinkConfig {
     }
 
     public static final class InsertFormatValidatorAndRecommender implements ConfigDef.Recommender {
-
         @Override
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
             Boolean enableCustom = (Boolean) parsedConfig.get(ClickHouseSinkConfig.CUSTOM_INSERT_FORMAT_ENABLE);
@@ -102,6 +109,17 @@ public class ClickHouseSinkConfig {
                 return Arrays.asList("NONE", "CSV", "TSV", "JSON");
             else
                 return Arrays.asList("NONE");
+        }
+        @Override
+        public boolean visible(String name, Map<String, Object> parsedConfig) {
+            return true;
+        }
+    }
+
+    public static final class ProxyTypeValidatorAndRecommender implements ConfigDef.Recommender {
+        @Override
+        public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
+            return List.of(ClickHouseProxyType.values());
         }
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
@@ -168,6 +186,23 @@ public class ClickHouseSinkConfig {
             default:
                 this.insertFormat = InsertFormats.JSON;
         }
+
+        String proxyTypeTmp = props.getOrDefault(PROXY_TYPE, "none").toLowerCase();
+        switch (proxyTypeTmp) {
+            case "http":
+                this.proxyType = ClickHouseProxyType.HTTP;
+                break;
+            case "socks":
+                this.proxyType = ClickHouseProxyType.SOCKS;
+                break;
+            case "direct":
+                this.proxyType = ClickHouseProxyType.DIRECT;
+                break;
+            default:
+                this.proxyType = ClickHouseProxyType.IGNORE;
+        }
+        this.proxyHost = props.getOrDefault(PROXY_HOST, "");
+        this.proxyPort = Integer.parseInt(props.getOrDefault(PROXY_PORT, "-1"));
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -344,6 +379,37 @@ public class ClickHouseSinkConfig {
                 "Insert format.",
                 new InsertFormatValidatorAndRecommender()
                 );
+        configDef.define(PROXY_TYPE,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "What type of proxy to use. Default: none",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Proxy type",
+                new ProxyTypeValidatorAndRecommender()
+        );
+        configDef.define(PROXY_HOST,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "If we're using a proxy, what is the host?",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Proxy host"
+        );
+        configDef.define(PROXY_PORT,
+                ConfigDef.Type.INT,
+                -1,
+                ConfigDef.Importance.LOW,
+                "If we're using a proxy, what is the port?",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Proxy port"
+        );
 
         return configDef;
     }
@@ -386,4 +452,13 @@ public class ClickHouseSinkConfig {
     public Map<String, String> getTopicToTableMap() {return topicToTableMap;}
     public boolean getErrorsTolerance() { return errorsTolerance; }
     public InsertFormats getInsertFormat() { return insertFormat; }
+    public ClickHouseProxyType getProxyType() {
+        return proxyType;
+    }
+    public String getProxyHost() {
+        return proxyHost;
+    }
+    public int getProxyPort() {
+        return proxyPort;
+    }
 }
