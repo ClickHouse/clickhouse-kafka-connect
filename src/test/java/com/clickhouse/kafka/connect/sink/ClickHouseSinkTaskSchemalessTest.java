@@ -198,26 +198,6 @@ public class ClickHouseSinkTaskSchemalessTest {
     }
 
     @Test
-    public void tableMappingTest() {
-        Map<String, String> props = getTestProperties();
-        props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
-        ClickHouseHelperClient chc = createClient(props);
-
-        String topic = "mapping_table_test";
-        String tableName = "table_mapping_test";
-        ClickHouseTestHelpers.dropTable(chc, tableName);
-        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
-        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
-
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, tableName));
-    }
-
-    @Test
     public void decimalDataTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);

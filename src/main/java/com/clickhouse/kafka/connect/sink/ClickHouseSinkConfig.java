@@ -72,7 +72,6 @@ public class ClickHouseSinkConfig {
 
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
-
     private final ClickHouseProxyType proxyType;
     private final String proxyHost;
     private final int proxyPort;
