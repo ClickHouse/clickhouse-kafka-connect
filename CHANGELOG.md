@@ -1,5 +1,6 @@
 ## 1.0.3 2023-11-07
 * Added support for proxy configurations
+* Additional test cases
 * Additional error codes added to retry list (242, 319, 999)
 
 ## 1.0.2 2023-11-02
