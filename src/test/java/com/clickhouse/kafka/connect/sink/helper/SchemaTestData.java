@@ -13,7 +13,12 @@ import java.util.Date;
 import java.util.stream.LongStream;
 
 public class SchemaTestData {
+    public static final int DEFAULT_TOTAL_RECORDS = 1000;
+
     public static Collection<SinkRecord> createWithEmptyDataRecords(String topic, int partition) {
+        return createWithEmptyDataRecords(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createWithEmptyDataRecords(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
@@ -21,7 +26,7 @@ public class SchemaTestData {
                 .field("p_int64", Schema.INT64_SCHEMA)
                 .build();
 
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("p_int64", n);
@@ -54,7 +59,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createWithLowCardinality(String topic, int partition) {
+        return createWithLowCardinality(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createWithLowCardinality(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
 
         Schema SCHEMA = SchemaBuilder.struct()
@@ -64,7 +73,7 @@ public class SchemaTestData {
                 .field("nullable_lc_string", Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
 
-        LongStream.range(0, 10).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct value_struct = new Struct(SCHEMA)
                     .put("off16", (short)n)
                     .put("p_int64", n)
@@ -84,7 +93,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createWithUUID(String topic, int partition) {
+        return createWithUUID(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createWithUUID(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
 
         Schema SCHEMA = SchemaBuilder.struct()
@@ -92,7 +105,7 @@ public class SchemaTestData {
                 .field("uuid", Schema.STRING_SCHEMA)
                 .build();
 
-        LongStream.range(0, 10).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct value_struct = new Struct(SCHEMA)
                     .put("off16", (short)n)
                     .put("uuid", UUID.randomUUID().toString());
@@ -110,7 +123,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createArrayType(String topic, int partition) {
+        return createArrayType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createArrayType(String topic, int partition, int totalRecords) {
 
         Schema ARRAY_SCHEMA = SchemaBuilder.array(Schema.STRING_SCHEMA).build();
         Schema ARRAY_INT8_SCHEMA = SchemaBuilder.array(Schema.INT8_SCHEMA).build();
@@ -138,7 +155,7 @@ public class SchemaTestData {
 
 
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
 
             List<String> arrayTmp = Arrays.asList("1","2");
             List<String> arrayEmpty = new ArrayList<>();
@@ -180,7 +197,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createMapType(String topic, int partition) {
+        return createMapType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createMapType(String topic, int partition, int totalRecords) {
 
         Schema MAP_SCHEMA_STRING_STRING = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA);
         Schema MAP_SCHEMA_STRING_INT64 = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.INT64_SCHEMA);
@@ -195,7 +216,7 @@ public class SchemaTestData {
 
 
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
 
             Map<String,String> mapStringString = Map.of(
                     "k1", "v1",
@@ -236,7 +257,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createNullValueData(String topic, int partition) {
+        return createNullValueData(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createNullValueData(String topic, int partition, int totalRecords) {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
@@ -245,7 +270,7 @@ public class SchemaTestData {
 
 
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 2).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
 
             Long null_value_data = null;
 
@@ -273,7 +298,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createBytesValueData(String topic, int partition) {
+        return createBytesValueData(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createBytesValueData(String topic, int partition, int totalRecords) {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("string", Schema.BYTES_SCHEMA)
@@ -281,7 +310,7 @@ public class SchemaTestData {
 
 
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 2).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct value_struct = new Struct(NESTED_SCHEMA).put("string", Long.toBinaryString(n).getBytes());
 
             SinkRecord sr = new SinkRecord(
@@ -299,7 +328,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createDateType(String topic, int partition) {
+        return createDateType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createDateType(String topic, int partition, int totalRecords) {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
@@ -317,7 +350,7 @@ public class SchemaTestData {
 
 
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             long currentTime = System.currentTimeMillis();
             LocalDate localDate = LocalDate.now();
             Integer localDateInt = (int)localDate.toEpochDay();
@@ -358,7 +391,11 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createUnsupportedDataConversions(String topic, int partition) {
+        return createUnsupportedDataConversions(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createUnsupportedDataConversions(String topic, int partition, int totalRecords) {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
@@ -370,7 +407,7 @@ public class SchemaTestData {
 
 
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             long currentTime = System.currentTimeMillis();
             LocalDate localDate = LocalDate.now();
             int localDateInt = (int)localDate.toEpochDay();
@@ -402,14 +439,18 @@ public class SchemaTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createDecimalValueData(String topic, int partition) {
+        return createDecimalValueData(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createDecimalValueData(String topic, int partition, int totalRecords) {
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
                 .field("decimal_14_2", Decimal.schema(2))
                 .build();
 
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));

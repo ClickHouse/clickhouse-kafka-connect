@@ -8,9 +8,14 @@ import java.util.*;
 import java.util.stream.LongStream;
 
 public class SchemalessTestData {
+    public static final int DEFAULT_TOTAL_RECORDS = 1000;
+
     public static Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
+        return createPrimitiveTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createPrimitiveTypes(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("str", "num" + n);
             value_struct.put("off16", (short)n);
@@ -37,9 +42,13 @@ public class SchemalessTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createDataWithEmojis(String topic, int partition) {
+        return createDataWithEmojis(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createDataWithEmojis(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("off16", (short)n);
             if ( n % 2 == 0) value_struct.put("str", "num \uD83D\uDE00 :" + n);
@@ -59,9 +68,13 @@ public class SchemalessTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createPrimitiveTypesWithNulls(String topic, int partition) {
+        return createPrimitiveTypesWithNulls(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createPrimitiveTypesWithNulls(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("str", "num" + n);
             value_struct.put("null_str", null);  // the column that should be inserted as it is.
@@ -89,9 +102,13 @@ public class SchemalessTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createArrayType(String topic, int partition) {
+        return createArrayType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createArrayType(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
 
             List<String> arrayTmp = Arrays.asList("1","2");
             List<String> arrayEmpty = new ArrayList<>();
@@ -130,9 +147,13 @@ public class SchemalessTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createMapType(String topic, int partition) {
+        return createMapType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createMapType(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
 
             Map<String,String> mapStringString = Map.of(
                     "k1", "v1",
@@ -172,9 +193,13 @@ public class SchemalessTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createWithEmptyDataRecords(String topic, int partition) {
+        return createWithEmptyDataRecords(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createWithEmptyDataRecords(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("str", "num" + n);
             value_struct.put("off16", (short)n);
@@ -214,9 +239,13 @@ public class SchemalessTestData {
         });
         return array;
     }
+
     public static Collection<SinkRecord> createDecimalTypes(String topic, int partition) {
+        return createDecimalTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createDecimalTypes(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("str", "num" + n);
             value_struct.put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));
