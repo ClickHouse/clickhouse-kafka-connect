@@ -65,9 +65,12 @@ public class Utils {
                 case 203: // NO_FREE_CONNECTION
                 case 209: // SOCKET_TIMEOUT
                 case 210: // NETWORK_ERROR
+                case 242: // TABLE_IS_READ_ONLY
                 case 252: // TOO_MANY_PARTS
                 case 285: // TOO_FEW_LIVE_REPLICAS
+                case 319: // UNKNOWN_STATUS_OF_INSERT
                 case 425: // SYSTEM_ERROR
+                case 999: // KEEPER_EXCEPTION
                 case 1002: // UNKNOWN_EXCEPTION
                     throw new RetriableException(e);
                 default:
