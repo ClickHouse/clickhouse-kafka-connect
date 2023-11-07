@@ -1,4 +1,4 @@
-## 1.0.3 2023-11-XX
+## 1.0.3 2023-11-07
 * Added support for proxy configurations
 * Additional error codes added to retry list (242, 319, 999)
 
