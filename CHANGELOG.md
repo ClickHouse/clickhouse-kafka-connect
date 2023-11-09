@@ -1,3 +1,6 @@
+## 1.0.4 2023-11-08
+* Bugfix
+
 ## 1.0.3 2023-11-07
 * Added support for proxy configurations
 * Additional test cases
