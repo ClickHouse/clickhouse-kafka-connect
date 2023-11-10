@@ -67,7 +67,7 @@ public class KeeperStateProvider implements StateProvider {
     }
 
     private boolean init() {
-        String createTable = String.format("create table if not exists connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
+        String createTable = String.format("CREATE TABLE IF NOT EXISTS connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-connect') PRIMARY KEY `key`;" );
         chc.query(createTable);
         return true;
     }
@@ -77,7 +77,10 @@ public class KeeperStateProvider implements StateProvider {
         //SELECT * from connect_state where `key`= ''
         String key = String.format("%s-%d", topic, partition);
         String selectStr = String.format("SELECT * from connect_state where `key`= '%s'", key);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
              ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(selectStr)
