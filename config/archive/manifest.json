@@ -1,7 +1,6 @@
 {
     "name" : "clickhouse-kafka-connect",
     "version" : "${project.version}",
-    "implementation-version" : "${project.version}",
     "title" : "ClickHouse Connector for Apache Kafka",
     "description" : "the official Kafka Connect Sink connector for ClickHouse.",
     "documentation_url": "https://clickhouse.com/docs/en/integrations/kafka/clickhouse-kafka-connect-sink",
