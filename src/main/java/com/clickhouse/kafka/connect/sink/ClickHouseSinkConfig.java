@@ -37,6 +37,8 @@ public class ClickHouseSinkConfig {
     public static final String PROXY_TYPE = "proxyType";
     public static final String PROXY_HOST = "proxyHost";
     public static final String PROXY_PORT = "proxyPort";
+    public static final String ZK_PATH = "zkPath";
+    public static final String ZK_DATABASE = "zkDatabase";
 
 
     
@@ -215,8 +217,8 @@ public class ClickHouseSinkConfig {
         }
         this.proxyHost = props.getOrDefault(PROXY_HOST, "");
         this.proxyPort = Integer.parseInt(props.getOrDefault(PROXY_PORT, "-1"));
-        this.zkPath = props.getOrDefault("zkPath", "/kafka-connect");
-        this.zkDatabase = props.getOrDefault("zkDatabase", "connect_state");
+        this.zkPath = props.getOrDefault(ZK_PATH, "/kafka-connect");
+        this.zkDatabase = props.getOrDefault(ZK_DATABASE, "connect_state");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -424,7 +426,7 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Proxy port"
         );
-        configDef.define("zkPath",
+        configDef.define(ZK_PATH,
                 ConfigDef.Type.STRING,
                 "/kafka-connect",
                 new ZKPathValidator(),
@@ -435,7 +437,7 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.MEDIUM,
                 "Zookeeper path"
         );
-        configDef.define("zkDatabase",
+        configDef.define(ZK_DATABASE,
                 ConfigDef.Type.STRING,
                 "connect_state",
                 ConfigDef.Importance.LOW,
