@@ -119,9 +119,11 @@ public class ClickHouseHelperClient {
         int retryCount = 0;
         ClickHouseException ce = null;
         while (retryCount < retry) {
-            try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+            try (ClickHouseClient client = ClickHouseClient.builder()
+                    .options(getDefaultClientOptions())
+                    .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                    .build();
                  ClickHouseResponse response = client.read(server)
-                         .options(getDefaultClientOptions())
                          .format(clickHouseFormat)
                          .query(query)
                          .executeAndWait()) {
@@ -138,9 +140,11 @@ public class ClickHouseHelperClient {
 
     public List<String> showTables() {
         List<String> tablesNames = new ArrayList<>();
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
              ClickHouseResponse response = client.read(server)
-                     .options(getDefaultClientOptions())
                      .query("SHOW TABLES")
                      .executeAndWait()) {
             for (ClickHouseRecord r : response.records()) {
@@ -161,9 +165,11 @@ public class ClickHouseHelperClient {
         String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
         LOGGER.debug(describeQuery);
 
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
              ClickHouseResponse response = client.read(server)
-                     .options(getDefaultClientOptions())
                      .query(describeQuery)
                      .executeAndWait()) {
             Table table = new Table(tableName);

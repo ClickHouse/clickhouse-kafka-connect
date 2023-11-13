@@ -26,11 +26,10 @@ public class KeeperStateProvider implements StateProvider {
 
 
     private ClickHouseHelperClient chc = null;
+    private ClickHouseSinkConfig csc = null;
 
-    /*
-    create table connect_state (`key` String,  minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect', 'localhost:9181') PRIMARY KEY `key`;
-     */
     public KeeperStateProvider(ClickHouseSinkConfig csc) {
+        this.csc = csc;
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -66,18 +65,24 @@ public class KeeperStateProvider implements StateProvider {
         init();
     }
 
-    private boolean init() {
-        String createTable = String.format("create table if not exists connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
-        chc.query(createTable);
-        return true;
+    private void init() {
+        String createTable = String.format("CREATE TABLE IF NOT EXISTS `%s` " +
+                "(`key` String, minOffset BIGINT, maxOffset BIGINT, state String) " +
+                "ENGINE=KeeperMap('%s') PRIMARY KEY `key`;",
+                csc.getZkDatabase(),
+                csc.getZkPath());
+        ClickHouseResponse r = chc.query(createTable);
+        r.close();
     }
 
     @Override
     public StateRecord getStateRecord(String topic, int partition) {
-        //SELECT * from connect_state where `key`= ''
         String key = String.format("%s-%d", topic, partition);
-        String selectStr = String.format("SELECT * from connect_state where `key`= '%s'", key);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+        String selectStr = String.format("SELECT * FROM `%s` WHERE `key`= '%s'", csc.getZkDatabase(), key);
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
              ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(selectStr)
@@ -94,7 +99,6 @@ public class KeeperStateProvider implements StateProvider {
             LOGGER.debug(String.format("read state record: topic %s partition %s with %s state max %d min %d", topic, partition, state, maxOffset, minOffset));
             return new StateRecord(topic, partition, maxOffset, minOffset, state);
         } catch (ClickHouseException e) {
-            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }
@@ -105,9 +109,10 @@ public class KeeperStateProvider implements StateProvider {
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
         String state = stateRecord.getState().toString();
-        String insertStr = String.format("INSERT INTO connect_state values ('%s', %d, %d, '%s');", key, minOffset, maxOffset, state);
+        String insertStr = String.format("INSERT INTO `%s` values ('%s', %d, %d, '%s');", csc.getZkDatabase() ,key, minOffset, maxOffset, state);
         ClickHouseResponse response = this.chc.query(insertStr);
         LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
         LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
+        response.close();
     }
 }
