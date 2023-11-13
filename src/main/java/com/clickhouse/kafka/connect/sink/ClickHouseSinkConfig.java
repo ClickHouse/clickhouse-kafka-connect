@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.config.ClickHouseProxyType;
 import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +37,8 @@ public class ClickHouseSinkConfig {
     public static final String PROXY_TYPE = "proxyType";
     public static final String PROXY_HOST = "proxyHost";
     public static final String PROXY_PORT = "proxyPort";
+    public static final String ZK_PATH = "zkPath";
+    public static final String ZK_DATABASE = "zkDatabase";
 
 
     
@@ -75,6 +78,8 @@ public class ClickHouseSinkConfig {
     private final ClickHouseProxyType proxyType;
     private final String proxyHost;
     private final int proxyPort;
+    private final String zkPath;
+    private final String zkDatabase;
 
     public enum InsertFormats {
         NONE,
@@ -97,6 +102,16 @@ public class ClickHouseSinkConfig {
         @Override
         public String toString() {
             return "utf-8 string";
+        }
+    }
+    public static final class ZKPathValidator implements ConfigDef.Validator {
+
+        @Override
+        public void ensureValid(String name, Object o) {
+            String s = (String) o;
+            if (s == null || s.isBlank() || !s.startsWith("/")) {
+                throw new ConfigException("zkPath cannot be empty and must begin with a forward slash");
+            }
         }
     }
 
@@ -202,6 +217,8 @@ public class ClickHouseSinkConfig {
         }
         this.proxyHost = props.getOrDefault(PROXY_HOST, "");
         this.proxyPort = Integer.parseInt(props.getOrDefault(PROXY_PORT, "-1"));
+        this.zkPath = props.getOrDefault(ZK_PATH, "/kafka-connect");
+        this.zkDatabase = props.getOrDefault(ZK_DATABASE, "connect_state");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -409,6 +426,27 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Proxy port"
         );
+        configDef.define(ZK_PATH,
+                ConfigDef.Type.STRING,
+                "/kafka-connect",
+                new ZKPathValidator(),
+                ConfigDef.Importance.LOW,
+                "This is the zookeeper path for the state store",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "Zookeeper path"
+        );
+        configDef.define(ZK_DATABASE,
+                ConfigDef.Type.STRING,
+                "connect_state",
+                ConfigDef.Importance.LOW,
+                "This is the database for the state store",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "State store database"
+        );
 
         return configDef;
     }
@@ -459,5 +497,11 @@ public class ClickHouseSinkConfig {
     }
     public int getProxyPort() {
         return proxyPort;
+    }
+    public String getZkPath() {
+        return zkPath;
+    }
+    public String getZkDatabase() {
+        return zkDatabase;
     }
 }
