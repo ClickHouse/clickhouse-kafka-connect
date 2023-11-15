@@ -435,6 +435,9 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
                     arrObject.forEach(v -> {
                         try {
+                            if (col.getSubType().isNullable() && v != null) {
+                                BinaryStreamUtils.writeNonNull(stream);
+                            }
                             doWritePrimitive(col.getSubType().getType(), value.getFieldType(), stream, v);
                         } catch (IOException e) {
                             throw new RuntimeException(e);

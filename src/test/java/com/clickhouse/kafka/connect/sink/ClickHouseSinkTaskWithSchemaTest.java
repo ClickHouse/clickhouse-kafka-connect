@@ -81,6 +81,24 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
+
+    @Test
+    public void arrayNullableSubtypesTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "array_nullable_subtypes_table_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr_nullable_str` Array(Nullable(String)), `arr_empty_nullable_str` Array(Nullable(String)), `arr_nullable_int8` Array(Nullable(Int8)), `arr_nullable_int16` Array(Nullable(Int16)), `arr_nullable_int32` Array(Nullable(Int32)), `arr_nullable_int64` Array(Nullable(Int64)), `arr_nullable_float32` Array(Nullable(Float32)), `arr_nullable_float64` Array(Nullable(Float64)), `arr_nullable_bool` Array(Nullable(Bool))  ) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemaTestData.createArrayNullableSubtypes(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
     
     @Test
     public void mapTypesTest() {
