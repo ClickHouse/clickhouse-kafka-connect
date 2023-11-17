@@ -9,6 +9,7 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.Map;
@@ -18,17 +19,20 @@ public class Utils {
     public static String escapeTopicName(String topic) {
         return String.format("`%s`", topic);
     }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
-    public static Exception getRootCause (Exception e) {
+
+    public static Exception getRootCause(Exception e) {
         return getRootCause(e, false);
     }
 
     /**
      * This will drill down to the first ClickHouseException in the exception chain
+     *
      * @param e Exception to drill down
      * @return ClickHouseException or null if none found
      */
-    public static Exception getRootCause (Exception e, Boolean prioritizeClickHouseException) {
+    public static Exception getRootCause(Exception e, Boolean prioritizeClickHouseException) {
         if (e == null)
             return null;
 
@@ -45,6 +49,7 @@ public class Utils {
 
     /**
      * This method checks to see if we should retry, otherwise it just throws the exception again
+     *
      * @param e Exception to check
      */
 
@@ -94,6 +99,8 @@ public class Utils {
             throw new RetriableException(e);
         }
 
+        handleClickHouseClientTimeoutException(e);
+
         if (errorsTolerance) {//Right now this is all exceptions - should we restrict to just ClickHouseExceptions?
             LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
         } else {
@@ -102,10 +109,23 @@ public class Utils {
         }
     }
 
+    public static final String CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG = "Read timed out";
+    public static final String CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG = "Write timed out";
+
+    public static void handleClickHouseClientTimeoutException(Exception e) {
+        if (e instanceof IOException) {
+            final String msg = e.getMessage();
+            if (msg.indexOf(CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG) == 0 || msg.indexOf(CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG) == 0) {
+                LOGGER.warn("ClickHouseClientException thrown, wrapping exception: {}", e.getLocalizedMessage());
+                throw new RetriableException(e);
+            }
+        }
+    }
 
     public static void sendTODlq(ErrorReporter errorReporter, Record record, Exception exception) {
         sendTODlq(errorReporter, record.getSinkRecord(), exception);
     }
+
     public static void sendTODlq(ErrorReporter errorReporter, SinkRecord record, Exception exception) {
         if (errorReporter != null && record != null) {
             errorReporter.report(record, exception);
