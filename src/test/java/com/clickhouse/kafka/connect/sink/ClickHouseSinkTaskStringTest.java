@@ -57,7 +57,7 @@ public class ClickHouseSinkTaskStringTest {
                 .setPassword(password)
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
-                .setRetry(csc.getRetry())
+                .setRetry(csc.getMaxRetry())
                 .build();
         return chc;
     }

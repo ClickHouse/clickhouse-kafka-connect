@@ -69,7 +69,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setPassword(csc.getPassword())
                 .sslEnable(csc.isSslEnabled())
                 .setTimeout(csc.getTimeout())
-                .setRetry(csc.getRetry())
+                .setRetry(csc.getMaxRetry())
                 .build();
 
         if (!chc.ping()) {
@@ -151,48 +151,40 @@ public class ClickHouseWriter implements DBWriter {
         return chc.getServer();
     }
 
-    public void doInsert(List<Record> records) {
+    public void doInsert(List<Record> records) throws IOException, ExecutionException, InterruptedException {
         doInsert(records, null);
     }
 
     @Override
-    public void doInsert(List<Record> records, ErrorReporter errorReporter) {
+    public void doInsert(List<Record> records, ErrorReporter errorReporter) throws IOException, ExecutionException, InterruptedException {
         if (records.isEmpty())
             return;
 
-        try {
-            Record first = records.get(0);
-            String topic = first.getTopic();
-            Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
-            LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
-                    first.getRecordOffsetContainer().getOffset(),
-                    records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
-                    first.getRecordOffsetContainer().getPartition());
-            LOGGER.debug("Table: {}", table);
+        LOGGER.info("Inserting {} records from topic {}", records.size(), records.get(0).getTopic());
+        Record first = records.get(0);
+        String topic = first.getTopic();
+        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
+        LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
+                first.getRecordOffsetContainer().getOffset(),
+                records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
+                first.getRecordOffsetContainer().getPartition());
+        LOGGER.debug("Table: {}", table);
 
-            switch (first.getSchemaType()) {
-                case SCHEMA:
-                    if (table.hasDefaults()) {
-                        LOGGER.debug("Default value present, switching to JSON insert instead.");
-                        doInsertJson(records);
-                    } else {
-                        doInsertRawBinary(records);
-                    }
-                    break;
-                case SCHEMA_LESS:
+        switch (first.getSchemaType()) {
+            case SCHEMA:
+                if (table.hasDefaults()) {
+                    LOGGER.debug("Default value present, switching to JSON insert instead.");
                     doInsertJson(records);
-                    break;
-                case STRING_SCHEMA:
-                    doInsertString(records);
-                    break;
-            }
-        } catch (Exception e) {
-            LOGGER.trace("Passing the exception to the exception handler.");
-            Utils.handleException(e, csc.getErrorsTolerance());
-            if (csc.getErrorsTolerance() && errorReporter != null) {
-                LOGGER.debug("Sending records to DLQ.");
-                records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
-            }
+                } else {
+                    doInsertRawBinary(records);
+                }
+                break;
+            case SCHEMA_LESS:
+                doInsertJson(records);
+                break;
+            case STRING_SCHEMA:
+                doInsertString(records);
+                break;
         }
     }
 
@@ -467,11 +459,17 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String topic = first.getTopic();
-        LOGGER.info("Inserting {} records into topic {}", batchSize, topic);
-        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
+        String tableName = Utils.getTableName(topic, csc.getTopicToTableMap());
+        Table table = this.mapping.get(tableName);
         if (table == null) {
-            //TODO to pick the correct exception here
-            throw new RuntimeException(String.format("Table %s does not exist.", topic));
+            if (csc.getSuppressTableExistenceException()) {
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", tableName);
+                return;
+            } else {
+                //TODO to pick the correct exception here
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", tableName);
+                throw new RuntimeException(String.format("Table %s does not exist", tableName));
+            }
         }
 
         if (!validateDataSchema(table, first, false))
@@ -547,16 +545,16 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String topic = first.getTopic();
-        LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
-        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
+        String tableName = Utils.getTableName(topic, csc.getTopicToTableMap());
+        Table table = this.mapping.get(tableName);
         if (table == null) {
             if (csc.getSuppressTableExistenceException()) {
-                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", tableName);
                 return;
             } else {
                 //TODO to pick the correct exception here
-                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
-                throw new RuntimeException(String.format("Table %s does not exists", topic));
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", tableName);
+                throw new RuntimeException(String.format("Table %s does not exist", tableName));
             }
         }
 
@@ -624,18 +622,9 @@ public class ClickHouseWriter implements DBWriter {
                     summary = response.getSummary();
                     long rows = summary.getWrittenRows();
                     LOGGER.debug("Number of rows inserted: {}", rows);
-                } catch (Exception e) {//This is mostly for auto-closing
-                    LOGGER.trace("Exception", e);
-                    throw e;
-                }
-            } catch (Exception e) {//This is mostly for auto-closing
-                LOGGER.trace("Exception", e);
-                throw e;
-            }
-        } catch (Exception e) {//This is mostly for auto-closing
-            LOGGER.trace("Exception", e);
-            throw e;
-        }
+                }//Auto-close
+            }//Auto-close
+        }//Auto-close
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
     }
@@ -653,16 +642,16 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String topic = first.getTopic();
-        LOGGER.info(String.format("Number of records to insert %d to table name %s", batchSize, topic));
-        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
+        String tableName = Utils.getTableName(topic, csc.getTopicToTableMap());
+        Table table = this.mapping.get(tableName);
         if (table == null) {
             if (csc.getSuppressTableExistenceException()) {
-                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", tableName);
                 return;
             } else {
                 //TODO to pick the correct exception here
-                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", topic);
-                throw new RuntimeException(String.format("Table %s does not exists", topic));
+                LOGGER.error("Table {} does not exist - see docs for more details about table names and topic names.", tableName);
+                throw new RuntimeException(String.format("Table %s does not exist", tableName));
             }
         }
 
@@ -733,18 +722,9 @@ public class ClickHouseWriter implements DBWriter {
                     summary = response.getSummary();
                     long rows = summary.getWrittenRows();
                     LOGGER.debug("Number of rows inserted: {}", rows);
-                } catch (Exception e) {//This is mostly for auto-closing
-                    LOGGER.trace("Exception", e);
-                    throw e;
-                }
-            } catch (Exception e) {//This is mostly for auto-closing
-                LOGGER.trace("Exception", e);
-                throw e;
-            }
-        } catch (Exception e) {//This is mostly for auto-closing
-            LOGGER.trace("Exception", e);
-            throw e;
-        }
+                }//Auto-close
+            }//Auto-close
+        }//Auto-close
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
     }

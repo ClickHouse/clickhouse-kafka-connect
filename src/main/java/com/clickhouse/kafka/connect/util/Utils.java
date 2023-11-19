@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.util;
 import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
+import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -98,7 +99,7 @@ public class Utils {
             LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
         } else {
             LOGGER.error("Errors tolerance is disabled, wrapping exception: {}", e.getLocalizedMessage());
-            throw new RuntimeException(e);
+            throw new ConnectException(e);
         }
     }
 

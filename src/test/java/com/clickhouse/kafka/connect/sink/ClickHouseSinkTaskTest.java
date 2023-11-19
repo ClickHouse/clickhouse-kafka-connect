@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import org.apache.kafka.connect.errors.ConnectException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -25,13 +26,13 @@ public class ClickHouseSinkTaskTest {
     }
 
     @Test
-    public void testExceptionHandling() {
+    public void exceptionHandlingTest() {
         ClickHouseSinkTask task = new ClickHouseSinkTask();
-        assertThrows(RuntimeException.class, () -> task.put(null));
+        assertThrows(ConnectException.class, () -> task.put(null));
         try {
             task.put(null);
         } catch (Exception e) {
-            assertEquals(e.getClass(), RuntimeException.class);
+            assertEquals(e.getClass(), ConnectException.class);
             assertTrue(e.getCause() instanceof NullPointerException);
 
             StringWriter sw = new StringWriter();

@@ -68,7 +68,7 @@ public class ClickHouseSinkConfig {
     private final boolean sslEnabled;
     private final boolean exactlyOnce;
     private final int timeout;
-    private final int retry;
+    private final int maxRetry;
     private final long tableRefreshInterval;
     private final boolean suppressTableExistenceException;
     private final boolean errorsTolerance;
@@ -150,7 +150,7 @@ public class ClickHouseSinkConfig {
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
         sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
-        retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
+        maxRetry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         tableRefreshInterval = Long.parseLong(props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
         suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
@@ -221,7 +221,7 @@ public class ClickHouseSinkConfig {
         this.zkDatabase = props.getOrDefault(ZK_DATABASE, "connect_state");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
-                hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
+                hostname, port, database, username, sslEnabled, timeout, maxRetry, exactlyOnce);
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
         LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
     }
@@ -477,7 +477,7 @@ public class ClickHouseSinkConfig {
     public int getTimeout() {
         return timeout;
     }
-    public int getRetry() { return retry; }
+    public int getMaxRetry() { return maxRetry; }
     public long getTableRefreshInterval() { 
         return tableRefreshInterval;
     }

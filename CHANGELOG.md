@@ -1,3 +1,6 @@
+## 1.0.6 2023-11-19
+* Limiting the number of retried exception attempts
+
 ## 1.0.5 2023-11-12
 * Added 'zkPath' and 'zkDatabase' properties to customize exactly-once state storage
 
