@@ -78,13 +78,8 @@ public class ClickHouseSinkTask extends SinkTask {
             } catch (RetriableException re) {//Re-catch RetriableException to avoid retrying forever
                 if (clickHouseSinkConfig.getMaxRetries() < 0 || putAttempts <= clickHouseSinkConfig.getMaxRetries()) {//If maxRetries is -1, retry forever
                     throw re;
-                } else if (errorTolerance && errorReporter != null) {
-                    LOGGER.warn("Max retry attempts reached");
-                    putAttempts = 0;
-                    LOGGER.warn("Sending {} records to DLQ.", records.size());
-                    records.forEach(r -> Utils.sendTODlq(errorReporter, r, re));
                 } else {
-                    LOGGER.error("Max retry attempts reached");
+                    LOGGER.error("Max retry attempts [{}] reached.", clickHouseSinkConfig.getMaxRetries());
                     throw new ConnectException(re);
                 }
             }
