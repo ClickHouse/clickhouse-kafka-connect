@@ -16,9 +16,11 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.Timer;
@@ -70,7 +72,7 @@ public class ProxySinkTask {
         MBeanServerUtils.unregisterMBean(getMBeanNAme());
     }
 
-    public void put(final Collection<SinkRecord> records) {
+    public void put(final Collection<SinkRecord> records) throws IOException, ExecutionException, InterruptedException {
         if (records.isEmpty()) {
             LOGGER.trace("No records sent to SinkTask");
             return;

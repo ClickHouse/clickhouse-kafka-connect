@@ -39,6 +39,7 @@ public class ClickHouseSinkConfig {
     public static final String PROXY_PORT = "proxyPort";
     public static final String ZK_PATH = "zkPath";
     public static final String ZK_DATABASE = "zkDatabase";
+    public static final String MAX_RETRIES = "maxRetries";
 
 
     
@@ -80,6 +81,8 @@ public class ClickHouseSinkConfig {
     private final int proxyPort;
     private final String zkPath;
     private final String zkDatabase;
+    private final int maxRetries;
+
 
     public enum InsertFormats {
         NONE,
@@ -219,6 +222,7 @@ public class ClickHouseSinkConfig {
         this.proxyPort = Integer.parseInt(props.getOrDefault(PROXY_PORT, "-1"));
         this.zkPath = props.getOrDefault(ZK_PATH, "/kafka-connect");
         this.zkDatabase = props.getOrDefault(ZK_DATABASE, "connect_state");
+        this.maxRetries = Integer.parseInt(props.getOrDefault(MAX_RETRIES, "-1"));
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -447,6 +451,16 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.MEDIUM,
                 "State store database"
         );
+        configDef.define(MAX_RETRIES,
+                ConfigDef.Type.INT,
+                "-1",
+                ConfigDef.Importance.LOW,
+                "This is the maximum number of retries for a failed insert",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "Maximum number of retries"
+        );
 
         return configDef;
     }
@@ -503,5 +517,8 @@ public class ClickHouseSinkConfig {
     }
     public String getZkDatabase() {
         return zkDatabase;
+    }
+    public int getMaxRetries() {
+        return maxRetries;
     }
 }

@@ -21,6 +21,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.sink.ErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
@@ -38,6 +39,7 @@ public class ClickHouseSinkTask extends SinkTask {
     private ProxySinkTask proxySinkTask;
     private ClickHouseSinkConfig clickHouseSinkConfig;
     private ErrorReporter errorReporter;
+    private int putAttempts = 0;
 
     @Override
     public String version() {
@@ -60,14 +62,36 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.getErrorsTolerance();
+
         try {
+            if (putAttempts > 0) {//First one isn't a retry attempt
+                LOGGER.info("ClickHouseSinkTask retry attempt #{}", putAttempts);
+            }
+            putAttempts++;
             this.proxySinkTask.put(records);
+            putAttempts = 0;
         } catch (Exception e) {
-            LOGGER.trace("Passing the exception to the exception handler.");
-            boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.getErrorsTolerance();
-            Utils.handleException(e, errorTolerance);
-            if (errorTolerance && errorReporter != null) {
-                LOGGER.debug("Sending records to DLQ.");
+            LOGGER.trace("Passing the exception to the exception handler");
+            try {
+                Utils.handleException(e, errorTolerance, records);
+            } catch (RetriableException re) {//Re-catch RetriableException to avoid retrying forever
+                if (clickHouseSinkConfig.getMaxRetries() < 0 || putAttempts <= clickHouseSinkConfig.getMaxRetries()) {//If maxRetries is -1, retry forever
+                    throw re;
+                } else if (errorTolerance && errorReporter != null) {
+                    LOGGER.warn("Max retry attempts reached");
+                    putAttempts = 0;
+                    LOGGER.warn("Sending {} records to DLQ.", records.size());
+                    records.forEach(r -> Utils.sendTODlq(errorReporter, r, re));
+                } else {
+                    LOGGER.error("Max retry attempts reached");
+                    throw new ConnectException(re);
+                }
+            }
+
+            if (errorTolerance && errorReporter != null) {//We only get here if we are in error tolerance mode
+                putAttempts = 0;
+                LOGGER.warn("Sending {} records to DLQ.", records.size());
                 records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
             }
         }
