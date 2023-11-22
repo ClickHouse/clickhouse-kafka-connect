@@ -39,7 +39,7 @@ public class ClickHouseSinkConfig {
     public static final String PROXY_PORT = "proxyPort";
     public static final String ZK_PATH = "zkPath";
     public static final String ZK_DATABASE = "zkDatabase";
-    public static final String MAX_RETRIES = "maxRetries";
+    public static final String MAX_RETRIES = "max.retries";
 
 
     
