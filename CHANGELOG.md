@@ -1,3 +1,6 @@
+## 1.0.6 2023-11-22
+* Added additional logging to help debug future issues
+
 ## 1.0.5 2023-11-12
 * Added 'zkPath' and 'zkDatabase' properties to customize exactly-once state storage
 

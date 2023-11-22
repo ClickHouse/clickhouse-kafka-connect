@@ -151,48 +151,39 @@ public class ClickHouseWriter implements DBWriter {
         return chc.getServer();
     }
 
-    public void doInsert(List<Record> records) {
+    public void doInsert(List<Record> records) throws IOException, ExecutionException, InterruptedException {
         doInsert(records, null);
     }
 
     @Override
-    public void doInsert(List<Record> records, ErrorReporter errorReporter) {
+    public void doInsert(List<Record> records, ErrorReporter errorReporter) throws IOException, ExecutionException, InterruptedException {
         if (records.isEmpty())
             return;
 
-        try {
-            Record first = records.get(0);
-            String topic = first.getTopic();
-            Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
-            LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
-                    first.getRecordOffsetContainer().getOffset(),
-                    records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
-                    first.getRecordOffsetContainer().getPartition());
-            LOGGER.debug("Table: {}", table);
+        Record first = records.get(0);
+        String topic = first.getTopic();
+        Table table = this.mapping.get(Utils.getTableName(topic, csc.getTopicToTableMap()));
+        LOGGER.debug("Actual Min Offset: {} Max Offset: {} Partition: {}",
+                first.getRecordOffsetContainer().getOffset(),
+                records.get(records.size() - 1).getRecordOffsetContainer().getOffset(),
+                first.getRecordOffsetContainer().getPartition());
+        LOGGER.debug("Table: {}", table);
 
-            switch (first.getSchemaType()) {
-                case SCHEMA:
-                    if (table.hasDefaults()) {
-                        LOGGER.debug("Default value present, switching to JSON insert instead.");
-                        doInsertJson(records);
-                    } else {
-                        doInsertRawBinary(records);
-                    }
-                    break;
-                case SCHEMA_LESS:
+        switch (first.getSchemaType()) {
+            case SCHEMA:
+                if (table.hasDefaults()) {
+                    LOGGER.debug("Default value present, switching to JSON insert instead.");
                     doInsertJson(records);
-                    break;
-                case STRING_SCHEMA:
-                    doInsertString(records);
-                    break;
-            }
-        } catch (Exception e) {
-            LOGGER.trace("Passing the exception to the exception handler.");
-            Utils.handleException(e, csc.getErrorsTolerance());
-            if (csc.getErrorsTolerance() && errorReporter != null) {
-                LOGGER.debug("Sending records to DLQ.");
-                records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
-            }
+                } else {
+                    doInsertRawBinary(records);
+                }
+                break;
+            case SCHEMA_LESS:
+                doInsertJson(records);
+                break;
+            case STRING_SCHEMA:
+                doInsertString(records);
+                break;
         }
     }
 

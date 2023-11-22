@@ -15,8 +15,10 @@ import org.apache.kafka.connect.sink.SinkTaskContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class Processing {
@@ -42,7 +44,7 @@ public class Processing {
      *
      * @param records
      */
-    private void doInsert(List<Record> records) {
+    private void doInsert(List<Record> records) throws IOException, ExecutionException, InterruptedException {
         dbWriter.doInsert(records, errorReporter);
     }
 
@@ -77,7 +79,7 @@ public class Processing {
     }
 
 
-    public void doLogic(List<Record> records) {
+    public void doLogic(List<Record> records) throws IOException, ExecutionException, InterruptedException {
         List<Record> trimmedRecords;
         Record record = records.get(0);
 
