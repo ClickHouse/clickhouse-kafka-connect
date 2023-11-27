@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,7 +44,7 @@ public class UtilsTest {
     public void TestClickHouseClientTimeoutCause(){
         assertThrows(RetriableException.class, () -> {
             Exception timeout = new IOException("Write timed out after 30000 ms");
-            Utils.handleException(timeout, false);
+            Utils.handleException(timeout, false, new ArrayList<>());
         });
     }
 }
