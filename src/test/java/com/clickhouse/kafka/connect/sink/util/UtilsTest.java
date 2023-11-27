@@ -43,7 +43,7 @@ public class UtilsTest {
     public void TestClickHouseClientTimeoutCause(){
         assertThrows(RetriableException.class, () -> {
             Exception timeout = new IOException("Write timed out after 30000 ms");
-            Utils.handleClickHouseClientTimeoutException(timeout);
+            Utils.handleException(timeout, false);
         });
     }
 }
