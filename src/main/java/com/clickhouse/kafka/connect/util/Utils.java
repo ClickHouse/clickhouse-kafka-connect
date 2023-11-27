@@ -98,7 +98,7 @@ public class Utils {
             LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw new RetriableException(e);
         } else if (rootCause instanceof IOException) {
-            final String msg = e.getMessage();
+            final String msg = rootCause.getMessage();
             if (msg.indexOf(CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG) == 0 || msg.indexOf(CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG) == 0) {
                 LOGGER.warn("IOException thrown, wrapping exception: {}", e.getLocalizedMessage());
                 throw new RetriableException(e);
