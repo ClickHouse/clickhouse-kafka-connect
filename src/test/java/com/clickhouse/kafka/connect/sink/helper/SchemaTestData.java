@@ -431,6 +431,7 @@ public class SchemaTestData {
             Schema NESTED_SCHEMA = SchemaBuilder.struct()
                     .field("off16", Schema.INT16_SCHEMA)
                     .field("arr_datetime64_number", SchemaBuilder.array(Schema.INT64_SCHEMA).build())
+                    .field("arr_timestamp_date", SchemaBuilder.array(Timestamp.SCHEMA).build())
                     .build();
 
 
@@ -438,11 +439,15 @@ public class SchemaTestData {
             LongStream.range(0, 1000).forEachOrdered(n -> {
                 long currentTime1 = System.currentTimeMillis();
                 long currentTime2 = System.currentTimeMillis();
+                Date date1 = new Date(System.currentTimeMillis());
+                Date date2 = new Date(System.currentTimeMillis());
                 List<Long> arrayDateTime64Number = Arrays.asList(currentTime1, currentTime2);
+                List<Date> arrayTimestamps = Arrays.asList(date1, date2);
 
                 Struct value_struct = new Struct(NESTED_SCHEMA)
                         .put("off16", (short)n)
                         .put("arr_datetime64_number", arrayDateTime64Number)
+                        .put("arr_timestamp_date", arrayTimestamps)
                         ;
 
 

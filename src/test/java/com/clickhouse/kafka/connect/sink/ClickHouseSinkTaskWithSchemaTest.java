@@ -207,7 +207,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "support-array-datetime64-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, arr_datetime64_number Array(DateTime64) ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, arr_datetime64_number Array(DateTime64), arr_timestamp_date Array(DateTime64) ) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemaTestData.createArrayDateTime64Type(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();

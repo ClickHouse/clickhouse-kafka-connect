@@ -320,6 +320,7 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeInt32(stream, (Integer) value);
                 }
                 break;
+            case DateTime64:
             case INT64:
                 if (value.getClass().getName().endsWith(".Date")) {
                     Date date = (Date) value;
@@ -360,8 +361,6 @@ public class ClickHouseWriter implements DBWriter {
             case UUID:
                 BinaryStreamUtils.writeUuid(stream, UUID.fromString((String) value));
                 break;
-            case DateTime64:
-                BinaryStreamUtils.writeInt64(stream, (Long) value);
         }
     }
 
