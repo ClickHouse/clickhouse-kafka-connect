@@ -360,6 +360,8 @@ public class ClickHouseWriter implements DBWriter {
             case UUID:
                 BinaryStreamUtils.writeUuid(stream, UUID.fromString((String) value));
                 break;
+            case DateTime64:
+                BinaryStreamUtils.writeInt64(stream, (Long) value);
         }
     }
 

@@ -426,6 +426,41 @@ public class SchemaTestData {
         });
         return array;
     }
+    public static Collection<SinkRecord> createArrayDateTime64Type(String topic, int partition) {
+
+            Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                    .field("off16", Schema.INT16_SCHEMA)
+                    .field("arr_datetime64_number", SchemaBuilder.array(Schema.INT64_SCHEMA).build())
+                    .build();
+
+
+            List<SinkRecord> array = new ArrayList<>();
+            LongStream.range(0, 1000).forEachOrdered(n -> {
+                long currentTime1 = System.currentTimeMillis();
+                long currentTime2 = System.currentTimeMillis();
+                List<Long> arrayDateTime64Number = Arrays.asList(currentTime1, currentTime2);
+
+                Struct value_struct = new Struct(NESTED_SCHEMA)
+                        .put("off16", (short)n)
+                        .put("arr_datetime64_number", arrayDateTime64Number)
+                        ;
+
+
+                SinkRecord sr = new SinkRecord(
+                        topic,
+                        partition,
+                        null,
+                        null, NESTED_SCHEMA,
+                        value_struct,
+                        n,
+                        System.currentTimeMillis(),
+                        TimestampType.CREATE_TIME
+                );
+
+                array.add(sr);
+            });
+            return array;
+        }
     public static Collection<SinkRecord> createUnsupportedDataConversions(String topic, int partition) {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
