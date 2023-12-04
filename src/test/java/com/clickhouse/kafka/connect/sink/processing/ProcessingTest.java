@@ -20,9 +20,11 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
 
 public class ProcessingTest {
@@ -47,7 +49,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessAllAtOnceNewTest")
-    public void ProcessAllAtOnceNewTest() {
+    public void ProcessAllAtOnceNewTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
@@ -58,7 +60,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessSplitNewTest")
-    public void ProcessSplitNewTest() {
+    public void ProcessSplitNewTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         int splitPoint = 11;
         List<Record> recordsHead = records.subList(0, splitPoint);
@@ -75,7 +77,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessAllNewTwiceTest")
-    public void ProcessAllNewTwiceTest() {
+    public void ProcessAllNewTwiceTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
@@ -88,7 +90,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessAllNewFailedSetStateAfterProcessingTest")
-    public void ProcessAllNewFailedSetStateAfterProcessingTest() {
+    public void ProcessAllNewFailedSetStateAfterProcessingTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         int splitPoint = 11;
         List<Record> recordsHead = records.subList(0, splitPoint);
@@ -106,7 +108,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessContainsBeforeProcessingTest")
-    public void ProcessContainsBeforeProcessingTest() {
+    public void ProcessContainsBeforeProcessingTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         List<Record> containsRecords = records.subList(345,850);
         StateProvider stateProvider = new InMemoryState();
@@ -123,7 +125,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessContainsAfterProcessingTest")
-    public void ProcessContainsAfterProcessingTest() {
+    public void ProcessContainsAfterProcessingTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         List<Record> containsRecords = records.subList(345,850);
         StateProvider stateProvider = new InMemoryState();
@@ -138,7 +140,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessContainsAfterProcessingTest")
-    public void ProcessOverlappingBeforeProcessingTest() {
+    public void ProcessOverlappingBeforeProcessingTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         List<Record> containsRecords = records.subList(345,850);
         StateProvider stateProvider = new InMemoryState();
@@ -153,7 +155,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessSplitNewWithBeforeProcessingTest")
-    public void ProcessSplitNewWithBeforeProcessingTest() {
+    public void ProcessSplitNewWithBeforeProcessingTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         int splitPoint = 11;
         List<Record> recordsHead = records.subList(0, splitPoint);
@@ -173,7 +175,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("ProcessDeletedTopicBeforeProcessingTest")
-    public void ProcessDeletedTopicBeforeProcessingTest() {
+    public void ProcessDeletedTopicBeforeProcessingTest() throws IOException, ExecutionException, InterruptedException {
         List<Record> records = createRecords("test", 1);
         List<Record> containsRecords = records.subList(0,150);
         StateProvider stateProvider = new InMemoryState();
@@ -190,7 +192,7 @@ public class ProcessingTest {
 
     @Test
     @DisplayName("Processing with dlq test")
-    public void ProcessingWithDLQTest() {
+    public void ProcessingWithDLQTest() throws IOException, ExecutionException, InterruptedException {
         InMemoryDLQ er = new InMemoryDLQ();
         List<Record> records = createRecords("test", 1);
         List<Record> containsRecords = records.subList(345,850);
