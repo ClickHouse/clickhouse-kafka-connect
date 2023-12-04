@@ -20,4 +20,4 @@ jobs:
       - name: Setup and execute Gradle 'integrationTest' task
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: integrationTest --info -D clickhouse.host="${{vars.CLICKHOUSE_HOST}}" -D clickhouse.port=${{vars.CLICKHOUSE_PORT}} -D clickhouse.password="${{secrets.CLICKHOUSE_PASSWORD}}" -D clickhouse.cloud.organization="${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}}" -D clickhouse.cloud.id="${{vars.CLICKHOUSE_CLOUD_ID}}" -D clickhouse.cloud.secret="${{secrets.CLICKHOUSE_CLOUD_SECRET}}" -D clickhouse.cloud.serviceId="${{vars.CLICKHOUSE_CLOUD_SERVICE_ID}}" -D clickhouse.cloud.host="${{vars.CLICKHOUSE_CLOUD_API_HOST}}"
+          arguments: integrationTest --info -D clickhouse.host=${{vars.CLICKHOUSE_HOST}} -D clickhouse.port=${{vars.CLICKHOUSE_PORT}} -D clickhouse.password=${{secrets.CLICKHOUSE_PASSWORD}} -D clickhouse.cloud.organization=${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}} -D clickhouse.cloud.id=${{vars.CLICKHOUSE_CLOUD_ID}} -D clickhouse.cloud.secret=${{secrets.CLICKHOUSE_CLOUD_SECRET}} -D clickhouse.cloud.serviceId=${{vars.CLICKHOUSE_CLOUD_SERVICE_ID}} -D clickhouse.cloud.host=${{vars.CLICKHOUSE_CLOUD_API_HOST}}
