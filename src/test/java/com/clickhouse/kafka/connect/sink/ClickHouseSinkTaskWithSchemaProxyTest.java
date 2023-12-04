@@ -339,5 +339,6 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
     @AfterAll
     protected static void tearDown() {
         db.stop();
+        toxiproxy.stop();
     }
 }
