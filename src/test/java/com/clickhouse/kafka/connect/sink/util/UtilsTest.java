@@ -1,13 +1,15 @@
 package com.clickhouse.kafka.connect.sink.util;
 
 import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.kafka.connect.util.Mask;
 import com.clickhouse.kafka.connect.util.Utils;
+import org.apache.kafka.connect.errors.RetriableException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.io.IOException;
+import java.util.ArrayList;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 public class UtilsTest {
 
@@ -37,5 +39,12 @@ public class UtilsTest {
         assertEquals(123, ((ClickHouseException) clickHouseException).getErrorCode());
     }
 
-
+    @Test
+    @DisplayName("Test ClickHouseClient Timeout Throw Cause")
+    public void TestClickHouseClientTimeoutCause(){
+        assertThrows(RetriableException.class, () -> {
+            Exception timeout = new IOException("Write timed out after 30000 ms");
+            Utils.handleException(timeout, false, new ArrayList<>());
+        });
+    }
 }

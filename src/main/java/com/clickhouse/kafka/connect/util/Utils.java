@@ -9,26 +9,33 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class Utils {
 
     public static String escapeTopicName(String topic) {
         return String.format("`%s`", topic);
     }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
-    public static Exception getRootCause (Exception e) {
+
+    public static Exception getRootCause(Exception e) {
         return getRootCause(e, false);
     }
 
     /**
      * This will drill down to the first ClickHouseException in the exception chain
+     *
      * @param e Exception to drill down
      * @return ClickHouseException or null if none found
      */
-    public static Exception getRootCause (Exception e, Boolean prioritizeClickHouseException) {
+    public static Exception getRootCause(Exception e, Boolean prioritizeClickHouseException) {
         if (e == null)
             return null;
 
@@ -45,11 +52,21 @@ public class Utils {
 
     /**
      * This method checks to see if we should retry, otherwise it just throws the exception again
+     *
      * @param e Exception to check
      */
 
-    public static void handleException(Exception e, boolean errorsTolerance) {
+    public static void handleException(Exception e, boolean errorsTolerance, Collection<SinkRecord> records) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
+        if (records != null && !records.isEmpty()) {
+            LOGGER.warn("Number of total records: {}", records.size());
+            Map<String, List<SinkRecord>> dataRecords = records.stream().collect(Collectors.groupingBy((r) -> r.topic() + "-" + r.kafkaPartition()));
+            for (String topicAndPartition : dataRecords.keySet()) {
+                LOGGER.warn("Number of records in [{}] : {}", topicAndPartition, dataRecords.get(topicAndPartition).size());
+                List<SinkRecord> recordsByTopicAndPartition = dataRecords.get(topicAndPartition);
+                LOGGER.warn("Exception context: topic: [{}], partition: [{}], offsets: [{}]", recordsByTopicAndPartition.get(0).topic(), recordsByTopicAndPartition.get(0).kafkaPartition(), getOffsets(records));
+            }
+        }
 
         //Let's check if we have a ClickHouseException to reference the error code
         //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
@@ -92,6 +109,12 @@ public class Utils {
         } else if (rootCause instanceof UnknownHostException) {
             LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw new RetriableException(e);
+        } else if (rootCause instanceof IOException) {
+            final String msg = rootCause.getMessage();
+            if (msg.indexOf(CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG) == 0 || msg.indexOf(CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG) == 0) {
+                LOGGER.warn("IOException thrown, wrapping exception: {}", e.getLocalizedMessage());
+                throw new RetriableException(e);
+            }
         }
 
         if (errorsTolerance) {//Right now this is all exceptions - should we restrict to just ClickHouseExceptions?
@@ -102,10 +125,13 @@ public class Utils {
         }
     }
 
+    private static final String CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG = "Read timed out after";
+    private static final String CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG = "Write timed out after";
 
     public static void sendTODlq(ErrorReporter errorReporter, Record record, Exception exception) {
         sendTODlq(errorReporter, record.getSinkRecord(), exception);
     }
+
     public static void sendTODlq(ErrorReporter errorReporter, SinkRecord record, Exception exception) {
         if (errorReporter != null && record != null) {
             errorReporter.report(record, exception);
@@ -122,4 +148,20 @@ public class Utils {
         return escapeTopicName(tableName);
     }
 
+
+    public static String getOffsets(Collection<SinkRecord> records) {
+        long minOffset = Long.MAX_VALUE;
+        long maxOffset = -1;
+
+        for (SinkRecord record : records) {
+            if (record.kafkaOffset() > maxOffset) {
+                maxOffset = record.kafkaOffset();
+            }
+            if (record.kafkaOffset() < minOffset) {
+                minOffset = record.kafkaOffset();
+            }
+        }
+
+        return String.format("minOffset: %d, maxOffset: %d", minOffset, maxOffset);
+    }
 }
