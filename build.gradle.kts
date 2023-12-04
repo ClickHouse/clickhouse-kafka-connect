@@ -106,10 +106,13 @@ dependencies {
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:1.19.1")
     testImplementation("org.testcontainers:kafka:1.19.1")
-    testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("org.json:json:20231013")
     testImplementation("org.testcontainers:toxiproxy:1.19.1")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.2.1")
+    testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
+    testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
+    testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
 
 }
 
@@ -127,24 +130,9 @@ tasks.create("integrationTest", Test::class.java) {
     outputs.upToDateWhen { false }
     dependsOn("prepareConfluentArchive")
     mustRunAfter("test")
+    systemProperties = System.getProperties() as Map<String, Any>
 }
 
-
-sourceSets.create("exactlyOnceTest") {
-    java.srcDir("src/exactlyOnceTest/java")
-    compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
-    runtimeClasspath += output + compileClasspath + sourceSets["test"].runtimeClasspath
-}
-tasks.create("exactlyOnceTest", Test::class.java) {
-    description = "Runs the exactly once tests"
-    group = "verification"
-    testClassesDirs = sourceSets["exactlyOnceTest"].output.classesDirs
-    classpath = sourceSets["exactlyOnceTest"].runtimeClasspath
-    outputs.upToDateWhen { false }
-    dependsOn("prepareConfluentArchive")
-    mustRunAfter("test")
-    testLogging.showStandardStreams = true
-}
 
 tasks.withType<Test> {
     tasks.getByName("check").dependsOn(this)
@@ -252,8 +240,4 @@ tasks.register<Zip>("createConfluentArchive") {
     archiveAppendix.set(archiveFilename)
     archiveVersion.set(project.version.toString())
     destinationDirectory.set(file("$buildDir/confluent"))
-}
-
-tasks.getByName("integrationTest") {
-    onlyIf{ System.getenv("HOST") != null &&  System.getenv("PORT") != null && System.getenv("PASSWORD") != null}
 }

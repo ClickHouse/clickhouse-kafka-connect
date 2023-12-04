@@ -1,16 +1,18 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.config.ClickHouseProxyType;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
-import jdk.jfr.Description;
-import org.junit.Ignore;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Order;
-import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.ClickHouseContainer;
-import org.testcontainers.containers.ConfluentPlatform;
+import eu.rekawek.toxiproxy.Proxy;
+import eu.rekawek.toxiproxy.ToxiproxyClient;
+import org.junit.jupiter.api.*;
+import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.clickhouse.ClickHouseContainer;
+import org.testcontainers.containers.Network;
+import org.testcontainers.containers.ToxiproxyContainer;
 
 import java.io.File;
 import java.io.IOException;
@@ -18,396 +20,217 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class ClickHouseSinkConnectorIntegrationTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnectorIntegrationTest.class);
+    public static ConfluentPlatform confluentPlatform;
+    private static ClickHouseContainer db;
+    private static ClickHouseHelperClient chcNoProxy;
+    public static ToxiproxyContainer toxiproxy;
+    public static Proxy clickhouseProxy;
+    private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
 
-    /*
-
-
-    {
-  "side": "SELL",
-  "quantity": 3737,
-  "symbol": "ZVV",
-  "price": 710,
-  "account": "LMN456",
-  "userid": "User_9"
-}
-
-{
-  "connect.name": "ksql.StockTrade",
-  "connect.parameters": {
-    "io.confluent.connect.avro.field.doc.account": "Simulated accounts assigned to the trade",
-    "io.confluent.connect.avro.field.doc.price": "A simulated random trade price in pennies",
-    "io.confluent.connect.avro.field.doc.quantity": "A simulated random quantity of the trade",
-    "io.confluent.connect.avro.field.doc.side": "A simulated trade side (buy or sell or short)",
-    "io.confluent.connect.avro.field.doc.symbol": "Simulated stock symbols",
-    "io.confluent.connect.avro.field.doc.userid": "The simulated user who executed the trade",
-    "io.confluent.connect.avro.record.doc": "Defines a hypothetical stock trade using some known test stock symbols."
-  },
-  "doc": "Defines a hypothetical stock trade using some known test stock symbols.",
-  "fields": [
-    {
-      "doc": "A simulated trade side (buy or sell or short)",
-      "name": "side",
-      "type": "string"
-    },
-    {
-      "doc": "A simulated random quantity of the trade",
-      "name": "quantity",
-      "type": "int"
-    },
-    {
-      "doc": "Simulated stock symbols",
-      "name": "symbol",
-      "type": "string"
-    },
-    {
-      "doc": "A simulated random trade price in pennies",
-      "name": "price",
-      "type": "int"
-    },
-    {
-      "doc": "Simulated accounts assigned to the trade",
-      "name": "account",
-      "type": "string"
-    },
-    {
-      "doc": "The simulated user who executed the trade",
-      "name": "userid",
-      "type": "string"
-    }
-  ],
-  "name": "StockTrade",
-  "namespace": "ksql",
-  "type": "record"
-}
-
-     */
-
-    private static String hostname = null;
-    private static String port = null;
-    private static String password = null;
-
-    public static ConfluentPlatform confluentPlatform = null;
-    private static ClickHouseContainer db = null;
-    private static ClickHouseWriter chw = null;
-    private static ClickHouseHelperClient chc = null;
-    @Ignore
     @BeforeAll
-    private static void setup() {
-        hostname = System.getenv("HOST");
-        port = System.getenv("PORT");
-        password = System.getenv("PASSWORD");
-        // TODO: we need to ignore the test if there is not ENV variables
-        if (hostname == null || port == null || password == null)
-            throw new RuntimeException("Can not continue missing env variables.");
-
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:22.5");
-        db.start();
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, Integer.valueOf(port))
-                .setUsername("default")
-                .setPassword(password)
-                .sslEnable(true)
-                .build();
-
-        System.out.println("ping");
-        System.out.println(chc.ping());
-
+    public static void setup() {
+        Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
         String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();
         connectorPath.add(confluentArchive);
-        confluentPlatform = new ConfluentPlatform(connectorPath);
+        confluentPlatform = new ConfluentPlatform(network, connectorPath);
+
+        db = new ClickHouseContainer("clickhouse/clickhouse-server:22.5").withNetwork(network).withNetworkAliases("clickhouse");
+        db.start();
+
+        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
+        toxiproxy.start();
+
+        chcNoProxy = createClientNoProxy(getTestProperties());
     }
 
-
-    private void dropStateTable() {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s SYNC", "connect_state");
-        chc.query(dropTable);
-    }
-
-    private void createStateTable() {
-        String createTable = String.format("create table connect_state (`key` String, minOffset BIGINT, maxOffset BIGINT, state String) ENGINE=KeeperMap('/kafka-coonect') PRIMARY KEY `key`;" );
-        chc.query(createTable);
-    }
-    private void dropTable(String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
-        chc.query(dropTable);
-    }
-
-    private void dropFlatTable(String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s_flat", tableName);
-        chc.query(dropTable);
-    }
-    private void createTable(String tableName) {
-        String createTable = String.format("CREATE TABLE %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String )  Engine = MergeTree ORDER BY symbol", tableName);
-        chc.query(createTable);
-    }
-
-    private void createFlatTable(String tableName) {
-        String createTable = String.format("CREATE TABLE %s_flat ( `SIDE` String, `SYMBOL` String )  Engine = MergeTree ORDER BY SYMBOL", tableName);
-        System.out.println(createTable);
-        chc.query(createTable);
-    }
-    //
-
-    private int countRowsWithEmojis() {
-        String queryCount = "select count(*) from stock_gen_topic_single_schemaless_task_flat where SYMBOL LIKE '%😀%';";
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
-    private int countRows(String topic) {
-        String queryCount = String.format("select count(*) from %s", topic);
-//        ClickHouseResponse response = chc.query(queryCount);
-//        return response.firstRecord().getValue(0).asInteger();
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-
-    private void sleep(long l) {
-        try {
-            Thread.sleep(l);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-
-    @Test
-    @Order(1)
-    @Description("stockGenSingleTask")
-    public void stockGenSingleTaskTest() throws IOException {
-        dropStateTable();
-        // Create KeeperMap table
-        //createStateTable();
-
-        String topicName = "stock_gen_topic_single_task";
-        int parCount = 1;
-        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
-
-        confluentPlatform.createTopic(topicName, 1);
-        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Single", "DatagenConnectorConnector_Single", parCount, topicName));
-
-        // Now let's create the correct table & configure Sink to insert data to ClickHouse
-        dropTable(topicName);
-        createTable(topicName);
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-
-        sleep(5 * 1000);
-
-        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Single", "ClickHouseSinkConnectorConnector_Single", parCount, topicName, hostname, port, password));
-
-        long count = 0;
-        while (count < 10000) {
-            sleep(5*1000);
-            long endOffset = confluentPlatform.getOffset(topicName, 0 );
-            if (endOffset % 100 == 0)
-                System.out.println(endOffset);
-            if (endOffset == 10000) {
-                break;
-            }
-            count+=1;
-        }
-        // TODO : see the progress of the offset currently it is 1 min
-        sleep(30 * 1000);
-
-
-        count = countRows(topicName);
-        System.out.println(count);
-        while (count < 10000) {
-            long tmpCount = countRows(topicName);
-            System.out.println(tmpCount);
-            sleep(2 * 1000);
-            if (tmpCount > count)
-                count = tmpCount;
-        }
-        assertEquals(10000, countRows(topicName));
-
-    }
-
-
-    @Test
-    @Order(2)
-    @Description("stockGenSingleTaskSchemalessTest")
-    public void stockGenSingleTaskSchemalessTest() throws IOException {
-        dropStateTable();
-        // Create KeeperMap table
-        //createStateTable();
-
-        String topicName = "stock_gen_topic_single_schemaless_task";
-        String flatTableName = String.format("%s_flat", topicName);
-        int parCount = 1;
-        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
-
-        confluentPlatform.createTopic(topicName, 1);
-        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Single_Schemaless", "DatagenConnectorConnector_Single_Schemaless", parCount, topicName));
-        sleep(5 * 1000);
-        String ksqlCreateStreamPayload = String.format("{\"ksql\": \"CREATE STREAM tmp_%s (side STRING, symbol STRING, userid STRING) WITH (KAFKA_TOPIC='%s', VALUE_FORMAT = 'AVRO');\"}", topicName, topicName);
-        System.out.println(ksqlCreateStreamPayload);
-        confluentPlatform.runKsql(ksqlCreateStreamPayload);
-        sleep(5 * 1000);
-        String ksqlCreateStreamJSONPayload = String.format("{\"ksql\": \"CREATE STREAM %s_flat WITH (KAFKA_TOPIC='%s_flat', VALUE_FORMAT = 'JSON') AS SELECT side, symbol + '\uD83D\uDE00' as symbol FROM tmp_%s EMIT CHANGES;\"}", topicName, topicName, topicName);
-        System.out.println(ksqlCreateStreamJSONPayload);
-        confluentPlatform.runKsql(ksqlCreateStreamJSONPayload);
-        sleep(5 * 1000);
-
-
-        // Now let's create the correct table & configure Sink to insert data to ClickHouse
-        dropFlatTable(topicName);
-        createFlatTable(topicName);
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_json.json")));
-
-        sleep(5 * 1000);
-
-         confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Single_Schemaless", "ClickHouseSinkConnectorConnector_Single_Schemaless", parCount, flatTableName, hostname, port, password));
-
-        long count = 0;
-        while (count < 10000) {
-            sleep(2*1000);
-            long endOffset = confluentPlatform.getOffset(topicName, 0 );
-            if (endOffset % 100 == 0)
-                System.out.println(endOffset);
-            if (endOffset >= 10000 / 4) {
-                break;
-            }
-            count+=1;
-        }
-        // TODO : see the progress of the offset currently it is 1 min
-        sleep(2 * 1000);
-
-
-        count = countRows(flatTableName);
-        System.out.println(count);
-        while (count < 10000 / 10) {
-            long tmpCount = countRows(flatTableName);
-            System.out.println(tmpCount);
-            sleep(2 * 1000);
-            if (tmpCount > count)
-                count = tmpCount;
-        }
-        assertTrue(countRows(flatTableName) >= 1000);
-        assertTrue(countRowsWithEmojis() >= 1000);
-        //assertEquals(10000, countRows(flatTableName));
-    }
-    @Description("stockMultiTask")
-    public void stockGenMultiTaskTest() throws IOException {
-        dropStateTable();
-        // Create KeeperMap table
-        //createStateTable();
-        String topicName = "stock_gen_topic_multi_task";
-        int parCount = 3;
-        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
-
-        confluentPlatform.createTopic(topicName, parCount);
-        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Multi", "DatagenConnectorConnector_Multi", parCount, topicName));
-
-        // Now let's create the correct table & configure Sink to insert data to ClickHouse
-        dropTable(topicName);
-        createTable(topicName);
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-
-        sleep(5 * 1000);
-
-        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Multi", "ClickHouseSinkConnectorConnector_Multi", parCount, topicName, hostname, port, password));
-
-        long count = 0;
-        count = countRows(topicName);
-        System.out.println(count);
-        while (count < 10000 * parCount) {
-            long tmpCount = countRows(topicName);
-            System.out.println(tmpCount);
-            sleep(2 * 1000);
-            if (tmpCount > count)
-                count = tmpCount;
-        }
-        assertEquals(10000 * parCount, countRows(topicName));
-
-    }
-
-//    @Test
-//    @Ignore
-    @Description("stockMultiTaskTopic")
-    public void stockGenMultiTaskTopicTest() throws IOException {
-        dropStateTable();
-        // Create KeeperMap table
-        //createStateTable();
-
-        String topicName01 = "stock_gen_topic_multi_task_01";
-        String topicName02 = "stock_gen_topic_multi_task_02";
-        int parCount = 3;
-        String payloadDataGen = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/stock_gen.json")));
-
-        confluentPlatform.createTopic(topicName01, parCount);
-        confluentPlatform.createTopic(topicName02, parCount);
-
-        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Multi_01", "DatagenConnectorConnector_Multi_01", parCount, topicName01));
-        confluentPlatform.createConnect(String.format(payloadDataGen, "DatagenConnectorConnector_Multi_02", "DatagenConnectorConnector_Multi_02", parCount, topicName02));
-
-        // Now let's create the correct table & configure Sink to insert data to ClickHouse
-        dropTable(topicName01);
-        dropTable(topicName02);
-        createTable(topicName01);
-        createTable(topicName02);
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-
-        sleep(5 * 1000);
-
-        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Multi_01", "ClickHouseSinkConnectorConnector_Multi_01", parCount, topicName01, hostname, port, password));
-        confluentPlatform.createConnect(String.format(payloadClickHouseSink, "ClickHouseSinkConnectorConnector_Multi_02", "ClickHouseSinkConnectorConnector_Multi_02", parCount, topicName02, hostname, port, password));
-
-        long count01 = 0;
-        long count02 = 0;
-        count01 = countRows(topicName01);
-        System.out.println(count01);
-        while (count01 < 10000 * parCount) {
-            long tmpCount = countRows(topicName01);
-            System.out.println(tmpCount);
-            sleep(2 * 1000);
-            if (tmpCount > count01)
-                count01 = tmpCount;
-        }
-
-        count02 = countRows(topicName01);
-        System.out.println(count02);
-        while (count02 < 10000 * parCount) {
-            long tmpCount = countRows(topicName01);
-            System.out.println(tmpCount);
-            sleep(2 * 1000);
-            if (tmpCount > count02)
-                count02 = tmpCount;
-        }
-
-        assertEquals(10000 * parCount, countRows(topicName01));
-        assertEquals(10000 * parCount, countRows(topicName02));
-
-    }
     @AfterAll
-    protected static void tearDown() {
+    public static void tearDown() {
         db.stop();
+        toxiproxy.stop();
+        confluentPlatform.close();
     }
+
+    private static Map<String, String> getTestProperties() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, String.valueOf(db.getMappedPort(ClickHouseProtocol.HTTP.getDefaultPort())));
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
+        props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
+        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(8666)));
+        return props;
+    }
+
+    private static ClickHouseHelperClient createClient(Map<String,String> props) {
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
+        return new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+                .setDatabase(csc.getDatabase())
+                .setUsername(csc.getUsername())
+                .setPassword(csc.getPassword())
+                .sslEnable(csc.isSslEnabled())
+                .setTimeout(csc.getTimeout())
+                .setRetry(csc.getRetry())
+                .build();
+    }
+    private static ClickHouseHelperClient createClientNoProxy(Map<String,String> props) {
+        props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.IGNORE.name());
+        return createClient(props);
+    }
+
+
+
+
+
+
+
+
+    private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
+        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen.json", topicName, numberOfPartitions, numberOfRecords);
+    }
+    private int generateSchemalessData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
+        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
+    }
+
+
+
+
+    private void setupConnector(String topicName, int taskCount) throws IOException, InterruptedException {
+        LOGGER.info("Setting up connector...");
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+        dropTable(chcNoProxy, topicName);
+        createTable(chcNoProxy, topicName);
+
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
+        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
+
+        confluentPlatform.createConnect(jsonString);
+        Thread.sleep(1000);
+    }
+
+    private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
+        LOGGER.info("Setting up schemaless connector...");
+        dropTable(chcNoProxy, topicName);
+        createTable(chcNoProxy, topicName);
+
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
+        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
+
+        confluentPlatform.createConnect(jsonString);
+        Thread.sleep(1000);
+    }
+
+
+    @BeforeEach
+    public void beforeEach() throws IOException {
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+
+        if (clickhouseProxy != null) {
+            clickhouseProxy.delete();
+        }
+
+        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
+        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
+    }
+
+
+
+
+
+    @Test
+    public void stockGenSingleTaskTest() throws IOException, InterruptedException {
+        String topicName = "stockGenSingleTaskTest";
+        confluentPlatform.createTopic(topicName, 1);
+        int dataCount = generateData(topicName, 1, 100);
+        setupConnector(topicName, 1);
+        waitWhileCounting(chcNoProxy, topicName, 3);
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+
+    @Test
+    public void stockGenSingleTaskSchemalessTest() throws IOException, InterruptedException {
+        String topicName = "stockGenSingleTaskSchemalessTest";
+        confluentPlatform.createTopic(topicName, 1);
+        int dataCount = generateSchemalessData(topicName, 1, 100);
+        setupSchemalessConnector(topicName, 1);
+        waitWhileCounting(chcNoProxy, topicName, 3);
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+
+
+    private void checkInterruptTest(String topicName, int parCount) throws InterruptedException, IOException {
+        confluentPlatform.createTopic(topicName, parCount);
+        int dataCount = generateData(topicName, parCount, 2500);
+        setupConnector(topicName, parCount);
+        int databaseCount = countRows(chcNoProxy, topicName);
+        int lastCount = 0;
+        int loopCount = 0;
+
+        while(databaseCount != lastCount || loopCount < 5) {
+            if (loopCount == 0) {
+                LOGGER.info("Disabling proxy");
+                clickhouseProxy.disable();
+            } else if (!clickhouseProxy.isEnabled()) {
+                LOGGER.info("Re-enabling proxy");
+                clickhouseProxy.enable();
+            }
+            Thread.sleep(3500);
+            databaseCount = countRows(chcNoProxy, topicName);
+            if (lastCount == databaseCount) {
+                loopCount++;
+            } else {
+                loopCount = 0;
+            }
+
+            lastCount = databaseCount;
+        }
+
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+    @Test
+    public void stockGenSingleTaskInterruptTest() throws IOException, InterruptedException {
+        checkInterruptTest("stockGenSingleTaskInterruptTest", 1);
+    }
+
+    @Test
+    public void stockGenMultiTaskInterruptTest() throws IOException, InterruptedException {
+        checkInterruptTest("stockGenMultiTaskInterruptTest", 3);
+    }
+
+
+    @Test
+    public void stockGenMultiTaskTopicTest() throws IOException, InterruptedException {
+        String topicName = "stockGenMultiTaskTopicTest";
+        int parCount = 3;
+        confluentPlatform.createTopic(topicName, parCount);
+        int dataCount = generateData(topicName, parCount, 200);
+        setupConnector(topicName, parCount);
+        waitWhileCounting(chcNoProxy, topicName, 3);
+        LOGGER.info(confluentPlatform.getConnectors());
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+
+    @Test
+    public void stockGenMultiTaskSchemalessTest() throws IOException, InterruptedException {
+        String topicName = "stockGenMultiTaskSchemalessTest";
+        int parCount = 3;
+        confluentPlatform.createTopic(topicName, parCount);
+        int dataCount = generateSchemalessData(topicName, parCount, 200);
+        setupSchemalessConnector(topicName, parCount);
+        waitWhileCounting(chcNoProxy, topicName, 3);
+        LOGGER.info(confluentPlatform.getConnectors());
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+
 
 }
