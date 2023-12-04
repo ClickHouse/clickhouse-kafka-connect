@@ -1,3 +1,8 @@
+## 1.0.8 2023-12-04
+* Remove send_progress_in_http_headers flag as it conflicts
+* Updated tests
+* Updated dependencies
+
 ## 1.0.7 2023-12-04
 * Make sure an HTTP request is successfully processed by ClickHouse 
 
