@@ -35,7 +35,7 @@ plugins {
    // checkstyle
     id("com.github.gmazzo.buildconfig") version "4.1.2"
     //id("com.github.spotbugs") version "4.7.9"
-    id("com.diffplug.spotless") version "6.22.0"
+    id("com.diffplug.spotless") version "6.23.2"
     id("com.github.johnrengelman.shadow") version "7.1.2"
 }
 
