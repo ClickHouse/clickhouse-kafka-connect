@@ -1,4 +1,4 @@
-name: ClickHouse Kafka Connect Integration Tests
+name: Integration Tests
 
 on: [workflow_dispatch]
 
