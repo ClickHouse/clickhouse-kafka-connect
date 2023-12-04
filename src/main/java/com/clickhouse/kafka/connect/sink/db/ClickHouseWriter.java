@@ -616,17 +616,8 @@ public class ClickHouseWriter implements DBWriter {
                     summary = response.getSummary();
                     long rows = summary.getWrittenRows();
                     LOGGER.debug("Number of rows inserted: {}", rows);
-                } catch (Exception e) {//This is mostly for auto-closing
-                    LOGGER.trace("Exception", e);
-                    throw e;
                 }
-            } catch (Exception e) {//This is mostly for auto-closing
-                LOGGER.trace("Exception", e);
-                throw e;
             }
-        } catch (Exception e) {//This is mostly for auto-closing
-            LOGGER.trace("Exception", e);
-            throw e;
         }
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);
@@ -725,17 +716,8 @@ public class ClickHouseWriter implements DBWriter {
                     summary = response.getSummary();
                     long rows = summary.getWrittenRows();
                     LOGGER.debug("Number of rows inserted: {}", rows);
-                } catch (Exception e) {//This is mostly for auto-closing
-                    LOGGER.trace("Exception", e);
-                    throw e;
                 }
-            } catch (Exception e) {//This is mostly for auto-closing
-                LOGGER.trace("Exception", e);
-                throw e;
             }
-        } catch (Exception e) {//This is mostly for auto-closing
-            LOGGER.trace("Exception", e);
-            throw e;
         }
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize {} data ms {} send {}", batchSize, s2 - s1, s3 - s2);

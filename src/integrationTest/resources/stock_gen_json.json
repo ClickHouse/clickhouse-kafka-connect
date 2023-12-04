@@ -2,6 +2,8 @@
   "name": "%s",
   "config": {
     "name": "%s",
+    "value.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
     "tasks.max": "%d",
     "kafka.topic": "%s",

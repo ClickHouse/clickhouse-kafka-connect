@@ -35,7 +35,7 @@ plugins {
    // checkstyle
     id("com.github.gmazzo.buildconfig") version "4.1.2"
     //id("com.github.spotbugs") version "4.7.9"
-    id("com.diffplug.spotless") version "6.22.0"
+    id("com.diffplug.spotless") version "6.23.2"
     id("com.github.johnrengelman.shadow") version "7.1.2"
 }
 
@@ -75,10 +75,10 @@ dependencies {
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
-    implementation("io.lettuce:lettuce-core:6.2.6.RELEASE")
+    implementation("io.lettuce:lettuce-core:6.3.0.RELEASE")
     implementation("com.google.code.gson:gson:2.10.1")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
-    implementation("org.apache.httpcomponents.client5:httpclient5:5.2.1")
+    implementation("org.apache.httpcomponents.client5:httpclient5:5.2.3")
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:2.0.9")
@@ -89,8 +89,8 @@ dependencies {
     /*
         Will in side the Confluent Archive
      */
-    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.2.1")
-    clickhouseDependencies("io.lettuce:lettuce-core:6.2.6.RELEASE")
+    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.2.3")
+    clickhouseDependencies("io.lettuce:lettuce-core:6.3.0.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.google.code.gson:gson:2.10.1")
@@ -104,12 +104,15 @@ dependencies {
     testImplementation("org.mockito:mockito-junit-jupiter:${project.extra["mockitoVersion"]}")
 
     // IntegrationTests
-    testImplementation("org.testcontainers:clickhouse:1.19.1")
-    testImplementation("org.testcontainers:kafka:1.19.1")
-    testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
+    testImplementation("org.testcontainers:clickhouse:1.19.3")
+    testImplementation("org.testcontainers:kafka:1.19.3")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("org.json:json:20231013")
     testImplementation("org.testcontainers:toxiproxy:1.19.1")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.2.3")
+    testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
+    testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
+    testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
 
 }
 
@@ -127,24 +130,9 @@ tasks.create("integrationTest", Test::class.java) {
     outputs.upToDateWhen { false }
     dependsOn("prepareConfluentArchive")
     mustRunAfter("test")
+    systemProperties = System.getProperties() as Map<String, Any>
 }
 
-
-sourceSets.create("exactlyOnceTest") {
-    java.srcDir("src/exactlyOnceTest/java")
-    compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
-    runtimeClasspath += output + compileClasspath + sourceSets["test"].runtimeClasspath
-}
-tasks.create("exactlyOnceTest", Test::class.java) {
-    description = "Runs the exactly once tests"
-    group = "verification"
-    testClassesDirs = sourceSets["exactlyOnceTest"].output.classesDirs
-    classpath = sourceSets["exactlyOnceTest"].runtimeClasspath
-    outputs.upToDateWhen { false }
-    dependsOn("prepareConfluentArchive")
-    mustRunAfter("test")
-    testLogging.showStandardStreams = true
-}
 
 tasks.withType<Test> {
     tasks.getByName("check").dependsOn(this)
@@ -252,8 +240,4 @@ tasks.register<Zip>("createConfluentArchive") {
     archiveAppendix.set(archiveFilename)
     archiveVersion.set(project.version.toString())
     destinationDirectory.set(file("$buildDir/confluent"))
-}
-
-tasks.getByName("integrationTest") {
-    onlyIf{ System.getenv("HOST") != null &&  System.getenv("PORT") != null && System.getenv("PASSWORD") != null}
 }

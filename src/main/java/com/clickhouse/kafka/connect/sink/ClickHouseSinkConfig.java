@@ -120,9 +120,9 @@ public class ClickHouseSinkConfig {
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
             Boolean enableCustom = (Boolean) parsedConfig.get(ClickHouseSinkConfig.CUSTOM_INSERT_FORMAT_ENABLE);
             if (enableCustom)
-                return Arrays.asList("NONE", "CSV", "TSV", "JSON");
+                return Arrays.asList("CSV", "TSV", "JSON");
             else
-                return Arrays.asList("NONE");
+                return List.of("NONE");
         }
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
@@ -172,7 +172,7 @@ public class ClickHouseSinkConfig {
         this.clickhouseSettings = clickhouseSettings;
         this.addClickHouseSetting("insert_quorum", "2", false);
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
-        this.addClickHouseSetting("send_progress_in_http_headers", "1", false);
+        this.addClickHouseSetting("wait_end_of_query", "1", false);
 
         topicToTableMap = new HashMap<>();
         String topicToTableMapString = props.getOrDefault(TABLE_MAPPING, "").trim();

@@ -8,8 +8,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.*;
 import java.util.Date;
+import java.util.*;
 import java.util.stream.LongStream;
 
 public class SchemaTestData {
@@ -179,75 +179,6 @@ public class SchemaTestData {
                     .put("arr_float32", arrayFloat32Tmp)
                     .put("arr_float64", arrayFloat64Tmp)
                     .put("arr_bool", arrayBoolTmp)
-                    ;
-
-
-            SinkRecord sr = new SinkRecord(
-                    topic,
-                    partition,
-                    null,
-                    null, NESTED_SCHEMA,
-                    value_struct,
-                    n,
-                    System.currentTimeMillis(),
-                    TimestampType.CREATE_TIME
-            );
-
-            array.add(sr);
-        });
-        return array;
-    }
-
-    public static Collection<SinkRecord> createArrayNullableSubtypes(String topic, int partition) {
-        Schema ARRAY_OPTIONAL_STRING_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).build();
-        Schema ARRAY_OPTIONAL_INT8_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_INT8_SCHEMA).build();
-        Schema ARRAY_OPTIONAL_INT16_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_INT16_SCHEMA).build();
-        Schema ARRAY_OPTIONAL_INT32_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_INT32_SCHEMA).build();
-        Schema ARRAY_OPTIONAL_INT64_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_INT64_SCHEMA).build();
-        Schema ARRAY_OPTIONAL_FLOAT32_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_FLOAT32_SCHEMA).build();
-        Schema ARRAY_OPTIONAL_FLOAT64_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_FLOAT64_SCHEMA).build();
-        Schema ARRAY_OPTIONAL_BOOLEAN_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_BOOLEAN_SCHEMA).build();
-
-
-
-        Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("arr_nullable_str", ARRAY_OPTIONAL_STRING_SCHEMA)
-                .field("arr_empty_nullable_str", ARRAY_OPTIONAL_STRING_SCHEMA)
-                .field("arr_nullable_int8", ARRAY_OPTIONAL_INT8_SCHEMA)
-                .field("arr_nullable_int16", ARRAY_OPTIONAL_INT16_SCHEMA)
-                .field("arr_nullable_int32", ARRAY_OPTIONAL_INT32_SCHEMA)
-                .field("arr_nullable_int64", ARRAY_OPTIONAL_INT64_SCHEMA)
-                .field("arr_nullable_float32", ARRAY_OPTIONAL_FLOAT32_SCHEMA)
-                .field("arr_nullable_float64", ARRAY_OPTIONAL_FLOAT64_SCHEMA)
-                .field("arr_nullable_bool", ARRAY_OPTIONAL_BOOLEAN_SCHEMA)
-                .build();
-
-        List<SinkRecord> array = new ArrayList<>();
-        LongStream.range(0, 1000).forEachOrdered(n -> {
-
-            List<String> arrayNullableStrTmp = Arrays.asList("1","2");
-            List<String> arrayNullableStrEmpty = new ArrayList<>();
-            List<Byte> arrayNullableInt8Tmp = Arrays.asList((byte)1,null);
-            List<Short> arrayNullableInt16Tmp = Arrays.asList((short)1, null);
-            List<Integer> arrayNullableInt32Tmp = Arrays.asList((int)1,null);
-            List<Long> arrayNullableInt64Tmp = Arrays.asList((long)1,null);
-            List<Float> arrayNullableFloat32Tmp = Arrays.asList((float)1,null);
-            List<Double> arrayNullableFloat64Tmp = Arrays.asList((double)1,null);
-            List<Boolean> arrayNullableBoolTmp = Arrays.asList(true,null);
-
-
-            Struct value_struct = new Struct(NESTED_SCHEMA)
-                    .put("off16", (short)n)
-                    .put("arr_nullable_str", arrayNullableStrTmp)
-                    .put("arr_empty_nullable_str", arrayNullableStrEmpty)
-                    .put("arr_nullable_int8", arrayNullableInt8Tmp)
-                    .put("arr_nullable_int16", arrayNullableInt16Tmp)
-                    .put("arr_nullable_int32", arrayNullableInt32Tmp)
-                    .put("arr_nullable_int64", arrayNullableInt64Tmp)
-                    .put("arr_nullable_float32", arrayNullableFloat32Tmp)
-                    .put("arr_nullable_float64", arrayNullableFloat64Tmp)
-                    .put("arr_nullable_bool", arrayNullableBoolTmp)
                     ;
 
 
@@ -460,47 +391,6 @@ public class SchemaTestData {
         });
         return array;
     }
-
-    public static Collection<SinkRecord> createArrayDateTime64Type(String topic, int partition) {
-
-            Schema NESTED_SCHEMA = SchemaBuilder.struct()
-                    .field("off16", Schema.INT16_SCHEMA)
-                    .field("arr_datetime64_number", SchemaBuilder.array(Schema.INT64_SCHEMA).build())
-                    .field("arr_timestamp_date", SchemaBuilder.array(Timestamp.SCHEMA).build())
-                    .build();
-
-
-            List<SinkRecord> array = new ArrayList<>();
-            LongStream.range(0, 1000).forEachOrdered(n -> {
-                long currentTime1 = System.currentTimeMillis();
-                long currentTime2 = System.currentTimeMillis();
-                Date date1 = new Date(System.currentTimeMillis());
-                Date date2 = new Date(System.currentTimeMillis());
-                List<Long> arrayDateTime64Number = Arrays.asList(currentTime1, currentTime2);
-                List<Date> arrayTimestamps = Arrays.asList(date1, date2);
-
-                Struct value_struct = new Struct(NESTED_SCHEMA)
-                        .put("off16", (short)n)
-                        .put("arr_datetime64_number", arrayDateTime64Number)
-                        .put("arr_timestamp_date", arrayTimestamps)
-                        ;
-
-
-                SinkRecord sr = new SinkRecord(
-                        topic,
-                        partition,
-                        null,
-                        null, NESTED_SCHEMA,
-                        value_struct,
-                        n,
-                        System.currentTimeMillis(),
-                        TimestampType.CREATE_TIME
-                );
-
-                array.add(sr);
-            });
-            return array;
-        }
 
     public static Collection<SinkRecord> createUnsupportedDataConversions(String topic, int partition) {
         return createUnsupportedDataConversions(topic, partition, DEFAULT_TOTAL_RECORDS);

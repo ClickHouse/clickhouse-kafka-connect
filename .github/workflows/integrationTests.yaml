@@ -1,0 +1,23 @@
+name: Integration Tests
+
+on: [workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mask secure properties
+        run: |
+            echo "::add-mask::${{ secrets.CLICKHOUSE_PASSWORD }}"
+            echo "::add-mask::${{ secrets.CLICKHOUSE_CLOUD_SECRET }}"
+      - uses: actions/checkout@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          architecture: x64
+      - name: Setup and execute Gradle 'integrationTest' task
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: integrationTest --info -D clickhouse.host=${{vars.CLICKHOUSE_HOST}} -D clickhouse.port=${{vars.CLICKHOUSE_PORT}} -D clickhouse.password=${{secrets.CLICKHOUSE_PASSWORD}} -D clickhouse.cloud.organization=${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}} -D clickhouse.cloud.id=${{vars.CLICKHOUSE_CLOUD_ID}} -D clickhouse.cloud.secret=${{secrets.CLICKHOUSE_CLOUD_SECRET}} -D clickhouse.cloud.serviceId=${{vars.CLICKHOUSE_CLOUD_SERVICE_ID}} -D clickhouse.cloud.host=${{vars.CLICKHOUSE_CLOUD_API_HOST}}
