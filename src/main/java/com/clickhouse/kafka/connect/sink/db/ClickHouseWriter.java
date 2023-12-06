@@ -464,7 +464,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         s3 = System.currentTimeMillis();
-        LOGGER.debug("batchSize: {} data ms: {} send ms: {}", records.size(), s2 - s1, s3 - s2);
+        LOGGER.info("batchSize: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
 
@@ -530,7 +530,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
         s3 = System.currentTimeMillis();
-        LOGGER.debug("batchSize: {} data ms: {} send ms: {}", records.size(), s2 - s1, s3 - s2);
+        LOGGER.info("batchSize: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
     protected void doInsertString(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
@@ -595,7 +595,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
         s3 = System.currentTimeMillis();
-        LOGGER.debug("batchSize: {} data ms: {} send ms: {}", records.size(), s2 - s1, s3 - s2);
+        LOGGER.info("batchSize: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
 
