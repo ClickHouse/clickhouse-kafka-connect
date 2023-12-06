@@ -133,7 +133,7 @@ public class ClickHouseSinkConfig {
     public static final class ProxyTypeValidatorAndRecommender implements ConfigDef.Recommender {
         @Override
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
-            return List.of(ClickHouseProxyType.values());
+            return List.of((Object[]) ClickHouseProxyType.values());
         }
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
