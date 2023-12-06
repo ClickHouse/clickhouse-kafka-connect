@@ -457,7 +457,7 @@ public class ClickHouseWriter implements DBWriter {
                 // We need to close the stream before getting a response
                 stream.close();
                 try (ClickHouseResponse response = future.get()) {
-                    LOGGER.info("Response Summary: {}", response.getSummary());
+                    LOGGER.info("Response Summary: {} - (QueryId: [{}])", response.getSummary(), queryId.getQueryId());
                 }
             }
         }
@@ -523,7 +523,7 @@ public class ClickHouseWriter implements DBWriter {
                 stream.close();
                 s2 = System.currentTimeMillis();
                 try (ClickHouseResponse response = future.get()) {
-                    LOGGER.info("Response Summary: {}", response.getSummary());
+                    LOGGER.info("Response Summary: {} - (QueryId: [{}])", response.getSummary(), queryId.getQueryId());
                 }
             }
         }
@@ -587,7 +587,7 @@ public class ClickHouseWriter implements DBWriter {
                 stream.close();
                 s2 = System.currentTimeMillis();
                 try (ClickHouseResponse response = future.get()) {
-                    LOGGER.info("Response Summary: {}", response.getSummary());
+                    LOGGER.info("Response Summary: {} - (QueryId: [{}])", response.getSummary(), queryId.getQueryId());
                 }
             }
         }
