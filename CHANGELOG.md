@@ -1,3 +1,7 @@
+## 1.0.9 2023-12-06
+* Added more logging to help debug future issues
+* Restored send_progress_in_http_headers flag
+
 ## 1.0.8 2023-12-04
 * Remove send_progress_in_http_headers flag as it conflicts
 * Updated tests

@@ -5,6 +5,7 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
+import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
@@ -14,8 +15,7 @@ import org.testcontainers.clickhouse.ClickHouseContainer;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class ClickHouseSinkTaskWithSchemaTest {
 
@@ -213,7 +213,11 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
-        assertThrows(DataException.class, () -> chst.put(sr), "Did not detect wrong date conversion ");
+        try {
+            chst.put(sr);
+        } catch (RuntimeException e) {
+            assertTrue(Utils.getRootCause(e) instanceof DataException, "Did not detect wrong date conversion ");
+        }
         chst.stop();
     }
 

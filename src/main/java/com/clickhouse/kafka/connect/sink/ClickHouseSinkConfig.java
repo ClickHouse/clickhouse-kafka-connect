@@ -133,7 +133,7 @@ public class ClickHouseSinkConfig {
     public static final class ProxyTypeValidatorAndRecommender implements ConfigDef.Recommender {
         @Override
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
-            return List.of(ClickHouseProxyType.values());
+            return List.of((Object[]) ClickHouseProxyType.values());
         }
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
@@ -173,6 +173,8 @@ public class ClickHouseSinkConfig {
         this.addClickHouseSetting("insert_quorum", "2", false);
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
         this.addClickHouseSetting("wait_end_of_query", "1", false);
+        //We set this so our ResponseSummary has actual data in it
+        this.addClickHouseSetting("send_progress_in_http_headers", "1", false);
 
         topicToTableMap = new HashMap<>();
         String topicToTableMapString = props.getOrDefault(TABLE_MAPPING, "").trim();
