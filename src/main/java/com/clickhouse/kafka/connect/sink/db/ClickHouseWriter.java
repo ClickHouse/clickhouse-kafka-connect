@@ -379,8 +379,13 @@ public class ClickHouseWriter implements DBWriter {
                     doWriteDates(colType, stream, value);
                     break;
                 case Decimal:
-                    BigDecimal decimal = (BigDecimal) value.getObject();
-                    BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
+                    if (value.getObject() == null) {
+                        BinaryStreamUtils.writeNull(stream);
+                        return;
+                    } else {
+                        BigDecimal decimal = (BigDecimal) value.getObject();
+                        BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
+                    }
                     break;
                 case MAP:
                     Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();

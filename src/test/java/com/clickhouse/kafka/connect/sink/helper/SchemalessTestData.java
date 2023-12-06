@@ -240,6 +240,33 @@ public class SchemalessTestData {
         return array;
     }
 
+    public static Collection<SinkRecord> createNullableDecimalTypes(String topic, int partition) {
+        return createNullableDecimalTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createNullableDecimalTypes(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("str", "num" + n);
+            value_struct.put("decimal_14_2", n % 10 == 0 ? null : new BigDecimal(String.format("%d.%d", n, 2)));
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     public static Collection<SinkRecord> createDecimalTypes(String topic, int partition) {
         return createDecimalTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
     }

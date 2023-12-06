@@ -311,6 +311,25 @@ public class ClickHouseSinkTaskWithSchemaTest {
     }
 
     @Test
+    public void schemaWithNullableDecimalTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "nullable-decimal-value-table-test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `decimal_14_2` Nullable(Decimal(14, 2)) ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> sr = SchemaTestData.createDecimalValueDataWithNulls(topic, 1);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(450180, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
+    }
+
+    @Test
     public void schemaWithBytesTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);

@@ -216,6 +216,25 @@ public class ClickHouseSinkTaskSchemalessTest {
         assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
     }
 
+    @Test
+    public void nullableDecimalDataTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "nullable_decimal_table_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `num` String, `decimal_14_2` Nullable(Decimal(14, 2))) Engine = MergeTree ORDER BY num");
+        Collection<SinkRecord> sr = SchemalessTestData.createNullableDecimalTypes(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(450180, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
+    }
+
     @AfterAll
     protected static void tearDown() {
         db.stop();
