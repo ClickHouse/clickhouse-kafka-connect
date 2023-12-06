@@ -52,9 +52,13 @@ public class Processing {
      */
     private void doInsert(List<Record> records, String topic, int partition, long minOffset, long maxOffset) {
         QueryIdentifier queryId = new QueryIdentifier(topic, partition, minOffset, maxOffset, UUID.randomUUID().toString());
+        if (records == null || records.isEmpty()) {
+            LOGGER.info("doInsert - No records to insert - {}", queryId);
+            return;
+        }
 
         try {
-            LOGGER.info("doInsert - {}", queryId);
+            LOGGER.info("doInsert - Records: [{}] - {}", records.size(), queryId);
             dbWriter.doInsert(records, queryId, errorReporter);
         } catch (Exception e) {
             throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
