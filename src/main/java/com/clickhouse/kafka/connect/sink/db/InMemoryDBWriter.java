@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink.db;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
+import com.clickhouse.kafka.connect.util.QueryIdentifier;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,13 +31,13 @@ public class InMemoryDBWriter implements DBWriter {
     }
 
     @Override
-    public void doInsert(List<Record> records) {
+    public void doInsert(List<Record> records, QueryIdentifier queryId) {
         records.stream().forEach( r -> this.recordMap.put(r.getRecordOffsetContainer().getOffset(), r) );
     }
 
     @Override
-    public void doInsert(List<Record> records, ErrorReporter errorReporter) {
-        doInsert(records);
+    public void doInsert(List<Record> records, QueryIdentifier queryId, ErrorReporter errorReporter) {
+        doInsert(records, queryId);
     }
 
     @Override
