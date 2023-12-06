@@ -58,15 +58,6 @@ public class Utils {
 
     public static void handleException(Exception e, boolean errorsTolerance, Collection<SinkRecord> records) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
-        if (records != null && !records.isEmpty()) {
-            LOGGER.warn("Number of total records: {}", records.size());
-            Map<String, List<SinkRecord>> dataRecords = records.stream().collect(Collectors.groupingBy((r) -> r.topic() + "-" + r.kafkaPartition()));
-            for (String topicAndPartition : dataRecords.keySet()) {
-                LOGGER.warn("Number of records in [{}] : {}", topicAndPartition, dataRecords.get(topicAndPartition).size());
-                List<SinkRecord> recordsByTopicAndPartition = dataRecords.get(topicAndPartition);
-                LOGGER.warn("Exception context: topic: [{}], partition: [{}], offsets: [{}]", recordsByTopicAndPartition.get(0).topic(), recordsByTopicAndPartition.get(0).kafkaPartition(), getOffsets(records));
-            }
-        }
 
         //Let's check if we have a ClickHouseException to reference the error code
         //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
@@ -121,7 +112,12 @@ public class Utils {
             LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
         } else {
             LOGGER.error("Errors tolerance is disabled, wrapping exception: {}", e.getLocalizedMessage());
-            throw new RuntimeException(e);
+            if (records != null) {
+                throw new RuntimeException(String.format("Number of records: %d", records.size()), e);
+            } else {
+                throw new RuntimeException("Records was null", e);
+            }
+
         }
     }
 
