@@ -40,4 +40,8 @@ public class QueryIdentifier {
     public long getMaxOffset() {
         return maxOffset;
     }
+
+    public String getDeduplicationToken() {
+        return String.format("%s-%s-%s-%s", topic, partition, minOffset, maxOffset);
+    }
 }
