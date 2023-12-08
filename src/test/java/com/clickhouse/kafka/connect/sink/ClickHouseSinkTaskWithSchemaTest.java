@@ -120,6 +120,22 @@ public class ClickHouseSinkTaskWithSchemaTest {
     }
 
     @Test
+    public void nullableArrayTypeTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "nullable_array_string_table_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String)  ) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        assertThrowsExactly(RuntimeException.class, () -> chst.put(sr), "An attempt to write null into not nullable column 'arr'");
+        chst.stop();
+    }
+
+    @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
     public void materializedViewsBug() {
         Map<String, String> props = getTestProperties();
@@ -346,6 +362,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
+
 
     @AfterAll
     protected static void tearDown() {
