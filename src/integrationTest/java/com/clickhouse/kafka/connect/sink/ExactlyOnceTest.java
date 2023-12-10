@@ -81,7 +81,8 @@ public class ExactlyOnceTest {
                 properties.getOrDefault("clickhouse.port", ClickHouseProtocol.HTTP.getDefaultPort()),
                 properties.getOrDefault("clickhouse.database", "default"),
                 properties.getOrDefault("clickhouse.username", "default"),
-                properties.getOrDefault("clickhouse.password", ""));
+                properties.getOrDefault("clickhouse.password", ""),
+                true);
 
         confluentPlatform.createConnect(jsonString);
     }

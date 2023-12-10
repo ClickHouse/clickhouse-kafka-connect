@@ -18,6 +18,7 @@ public class SchemalessTestData {
         LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("str", "num" + n);
+            value_struct.put("indexCount", n);
             value_struct.put("off16", (short)n);
             value_struct.put("p_int8", (byte)n);
             value_struct.put("p_int16", (short)n);
