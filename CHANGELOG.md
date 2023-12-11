@@ -1,5 +1,8 @@
-## 1.0.10 2023-12-08
-* Bugfix (de-duplication token collision)
+## 1.0.10 2023-12-11
+* Fixed writing into nullable Decimal column by @mlivirov in #276
+* Adjusting the deduplication token hash by @Paultagoras in #280
+* Fixed exception for when an array type column gets null value by @mlivirov in #279
+* Support for data ingestion into Array(DateTime64(3)) type columns by @alexshanabrook in #260
 
 ## 1.0.9 2023-12-06
 * Added more logging to help debug future issues
