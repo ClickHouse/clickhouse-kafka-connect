@@ -124,6 +124,45 @@ public class SchemaTestData {
         return array;
     }
 
+    public static Collection<SinkRecord> createNullableArrayType(String topic, int partition) {
+        return createNullableArrayType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createNullableArrayType(String topic, int partition, int totalRecords) {
+        Schema ARRAY_SCHEMA = SchemaBuilder.array(Schema.STRING_SCHEMA).optional().build();
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("arr", ARRAY_SCHEMA)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            List<String> arrayTmp = Arrays.asList("1","2");
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("arr", n % 10 == 0 ? null : arrayTmp)
+                    ;
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     public static Collection<SinkRecord> createArrayType(String topic, int partition) {
         return createArrayType(topic, partition, DEFAULT_TOTAL_RECORDS);
     }

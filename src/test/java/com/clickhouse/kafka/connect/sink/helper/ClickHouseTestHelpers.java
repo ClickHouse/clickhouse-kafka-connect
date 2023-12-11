@@ -80,4 +80,22 @@ public class ClickHouseTestHelpers {
             throw new RuntimeException(e);
         }
     }
+
+    @Deprecated(since = "for debug purposes only")
+    public static void showRows(ClickHouseHelperClient chc, String topic) {
+        String queryCount = String.format("select * from %s", topic);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+                     .query(queryCount)
+                     .executeAndWait()) {
+            ClickHouseResponseSummary summary = response.getSummary();
+            response.records().forEach(r -> {
+                //int colsCount = r.size();
+                System.out.println(r.getValue(0));
+            });
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
