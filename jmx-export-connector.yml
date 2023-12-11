@@ -1,0 +1,10 @@
+---
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+rules:
+  - pattern: "com.clickhouse<type=ClickHouseKafkaConnector, name=SinkTask(.*)><>(.*): (.*)"
+    name: clickhouse_kafka_connect
+    labels:
+      sinktask: "$1"
+      attribute: "$2"
+    type: COUNTER
