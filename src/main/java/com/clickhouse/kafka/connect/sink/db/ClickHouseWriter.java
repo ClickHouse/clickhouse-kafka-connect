@@ -295,6 +295,7 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeInt32(stream, (Integer) value);
                 }
                 break;
+            case DateTime64:
             case INT64:
                 if (value.getClass().getName().endsWith(".Date")) {
                     Date date = (Date) value;
