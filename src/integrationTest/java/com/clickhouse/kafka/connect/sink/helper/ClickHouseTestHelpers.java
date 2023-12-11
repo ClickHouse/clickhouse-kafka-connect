@@ -1,10 +1,14 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ClickHouseTestHelpers {
-    public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
+    public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
@@ -13,13 +17,13 @@ public class ClickHouseTestHelpers {
              ClickHouseResponse response = client.read(chc.getServer())
                      .query(dropTable)
                      .executeAndWait()) {
-            return response.getSummary();
+            return;
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public static ClickHouseResponseSummary createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
+    public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
         String createTableQueryTmp = String.format(createTableQuery, tableName);
 
         try (ClickHouseClient client = ClickHouseClient.builder()
@@ -29,7 +33,7 @@ public class ClickHouseTestHelpers {
              ClickHouseResponse response = client.read(chc.getServer())
                      .query(createTableQueryTmp)
                      .executeAndWait()) {
-            return response.getSummary();
+            return;
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
@@ -37,27 +41,26 @@ public class ClickHouseTestHelpers {
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+        return runQuery(chc, queryCount);
     }
 
     public static int sumRows(ClickHouseHelperClient chc, String tableName, String column) {
         String queryCount = String.format("SELECT SUM(`%s`) FROM `%s`", column, tableName);
+        return runQuery(chc, queryCount);
+    }
+
+    public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
+        String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%'";
+        return runQuery(chc, queryCount);
+    }
+
+    private static int runQuery(ClickHouseHelperClient chc, String query) {
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
              ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
+                     .query(query)
                      .executeAndWait()) {
             return response.firstRecord().getValue(0).asInteger();
         } catch (ClickHouseException e) {
@@ -65,17 +68,28 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%'";
-
+    public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
+        String queryCount = String.format("SELECT DISTINCT `indexCount` FROM `%s` ORDER BY `indexCount` ASC", tableName);
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+             ClickHouseResponse response = client.read(chc.getServer())
                      .query(queryCount)
                      .executeAndWait()) {
-            return response.firstRecord().getValue(0).asInteger();
+
+            int expectedIndexCount = 0;
+            for (ClickHouseRecord record : response.records()) {
+                int currentIndexCount = record.getValue(0).asInteger();
+                if (currentIndexCount != expectedIndexCount) {
+                    LOGGER.error("currentIndexCount: {}, expectedIndexCount: {}", currentIndexCount, expectedIndexCount);
+                    return false;
+                }
+                expectedIndexCount++;
+            }
+
+            LOGGER.info("Total Records: {}, expectedIndexCount: {}", totalRecords, expectedIndexCount);
+            return totalRecords == expectedIndexCount;
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }

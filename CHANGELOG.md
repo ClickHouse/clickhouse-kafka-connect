@@ -1,3 +1,6 @@
+## 1.0.10 2023-12-08
+* Bugfix (de-duplication token collision)
+
 ## 1.0.9 2023-12-06
 * Added more logging to help debug future issues
 * Restored send_progress_in_http_headers flag

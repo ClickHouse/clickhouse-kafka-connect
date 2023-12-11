@@ -443,8 +443,7 @@ public class ClickHouseWriter implements DBWriter {
 
         s2 = System.currentTimeMillis();
         try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), queryId.getQueryId(),
-                    first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
+            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), queryId);
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -488,8 +487,7 @@ public class ClickHouseWriter implements DBWriter {
 
 
         try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.JSONEachRow, table.getName(), queryId.getQueryId(),
-                    first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
+            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.JSONEachRow, table.getName(), queryId);
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -563,8 +561,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, clickHouseFormat, table.getName(), queryId.getQueryId(),
-                    first.getRecordOffsetContainer().getOffset() + first.getTopicAndPartition());
+            ClickHouseRequest.Mutation request = getMutationRequest(client, clickHouseFormat, table.getName(), queryId);
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -614,12 +611,12 @@ public class ClickHouseWriter implements DBWriter {
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
     }
-    private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String queryId, String deduplicationToken) {
+    private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, QueryIdentifier queryId) {
         ClickHouseRequest.Mutation request = client.read(chc.getServer())
                 .write()
-                .table(tableName, queryId)
+                .table(tableName, queryId.getQueryId())
                 .format(format)
-                .set("insert_deduplication_token", deduplicationToken);
+                .set("insert_deduplication_token", queryId.getDeduplicationToken());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));

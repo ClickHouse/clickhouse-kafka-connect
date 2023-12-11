@@ -11,6 +11,6 @@
     "username": "%s",
     "password": "%s",
     "ssl": "true",
-    "exactlyOnce" : "true"
+    "exactlyOnce" : "%b"
   }
 }
