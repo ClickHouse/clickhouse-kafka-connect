@@ -14,6 +14,7 @@
 * Updated dependencies
 
 ## 1.0.7 2023-12-04
+* Fix Handle ClickHouse JDBC Client Timeout Exception by @ygrzjh in #252
 * Make sure an HTTP request is successfully processed by ClickHouse 
 
 ## 1.0.6 2023-11-22
