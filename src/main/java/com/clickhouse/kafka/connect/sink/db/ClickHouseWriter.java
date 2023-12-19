@@ -350,10 +350,10 @@ public class ClickHouseWriter implements DBWriter {
                 BinaryStreamUtils.writeNonNull(stream);
             }
             if (!col.isNullable() && value.getObject() == null) {
-                if (colType != Type.ARRAY) {//Arrays can't be nullable so we ignore those
-                    // this the situation when the col is not isNullable, but the data is null here we need to drop the records
+                if (colType == Type.ARRAY && col.getSubType().isNullable())
+                    BinaryStreamUtils.writeNonNull(stream);
+                else
                     throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
-                }
             }
             switch (colType) {
                 case INT8:
@@ -403,7 +403,6 @@ public class ClickHouseWriter implements DBWriter {
                     List<?> arrObject = (List<?>) value.getObject();
 
                     if (arrObject == null) {
-                        BinaryStreamUtils.writeNonNull(stream);
                         doWritePrimitive(colType, value.getFieldType(), stream, new ArrayList<>());
                     } else {
                         int sizeArrObject = arrObject.size();
