@@ -170,7 +170,6 @@ public class ClickHouseSinkConfig {
             }
         }
         this.clickhouseSettings = clickhouseSettings;
-        this.addClickHouseSetting("insert_quorum", "2", false);
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
         this.addClickHouseSetting("wait_end_of_query", "1", false);
         //We set this so our ResponseSummary has actual data in it
