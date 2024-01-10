@@ -131,8 +131,10 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
-        assertThrowsExactly(RuntimeException.class, () -> chst.put(sr), "An attempt to write null into not nullable column 'arr'");
+        chst.put(sr);
         chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test

@@ -350,7 +350,7 @@ public class ClickHouseWriter implements DBWriter {
                 BinaryStreamUtils.writeNonNull(stream);
             }
             if (!col.isNullable() && value.getObject() == null) {
-                if (colType == Type.ARRAY && col.getSubType().isNullable())
+                if (colType == Type.ARRAY)
                     BinaryStreamUtils.writeNonNull(stream);
                 else
                     throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
