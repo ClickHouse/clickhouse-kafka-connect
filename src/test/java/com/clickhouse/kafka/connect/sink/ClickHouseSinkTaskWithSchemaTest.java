@@ -120,7 +120,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
     }
 
     @Test
-    public void nullableArrayTypeTest() {
+    public void nullArrayTypeTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -131,8 +131,28 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
-        assertThrowsExactly(RuntimeException.class, () -> chst.put(sr), "An attempt to write null into not nullable column 'arr'");
+        chst.put(sr);
         chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    public void nullableArrayTypeTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "nullable_array_string_table_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(Nullable(String))  ) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test

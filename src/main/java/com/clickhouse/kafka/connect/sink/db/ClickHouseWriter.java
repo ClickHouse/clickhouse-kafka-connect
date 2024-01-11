@@ -23,6 +23,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.math.BigDecimal;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.connect.data.Field;
@@ -35,11 +36,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -354,8 +350,10 @@ public class ClickHouseWriter implements DBWriter {
                 BinaryStreamUtils.writeNonNull(stream);
             }
             if (!col.isNullable() && value.getObject() == null) {
-                // this the situation when the col is not isNullable, but the data is null here we need to drop the records
-                throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
+                if (colType == Type.ARRAY)
+                    BinaryStreamUtils.writeNonNull(stream);
+                else
+                    throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
             }
             switch (colType) {
                 case INT8:
@@ -403,18 +401,23 @@ public class ClickHouseWriter implements DBWriter {
                     break;
                 case ARRAY:
                     List<?> arrObject = (List<?>) value.getObject();
-                    int sizeArrObject = arrObject.size();
-                    BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
-                    arrObject.forEach(v -> {
-                        try {
-                            if (col.getSubType().isNullable() && v != null) {
-                                BinaryStreamUtils.writeNonNull(stream);
+
+                    if (arrObject == null) {
+                        doWritePrimitive(colType, value.getFieldType(), stream, new ArrayList<>());
+                    } else {
+                        int sizeArrObject = arrObject.size();
+                        BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
+                        arrObject.forEach(v -> {
+                            try {
+                                if (col.getSubType().isNullable() && v != null) {
+                                    BinaryStreamUtils.writeNonNull(stream);
+                                }
+                                doWritePrimitive(col.getSubType().getType(), value.getFieldType(), stream, v);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
                             }
-                            doWritePrimitive(col.getSubType().getType(), value.getFieldType(), stream, v);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
+                        });
+                    }
                     break;
             }
         } else {
