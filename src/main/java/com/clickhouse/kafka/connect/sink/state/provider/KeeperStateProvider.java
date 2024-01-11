@@ -109,7 +109,7 @@ public class KeeperStateProvider implements StateProvider {
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
         String state = stateRecord.getState().toString();
-        String insertStr = String.format("INSERT INTO `%s` values ('%s', %d, %d, '%s');", csc.getZkDatabase() ,key, minOffset, maxOffset, state);
+        String insertStr = String.format("INSERT INTO `%s` SETTINGS async_insert=0 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase() ,key, minOffset, maxOffset, state);
         ClickHouseResponse response = this.chc.query(insertStr);
         LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
         LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
