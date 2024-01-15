@@ -47,11 +47,12 @@ repositories {
     mavenCentral()
     maven("https://packages.confluent.io/maven/")
     maven("https://jitpack.io")
+    maven("https://s01.oss.sonatype.org/content/groups/staging/")
 }
 
 extra.apply {
 
-    set("clickHouseDriverVersion", "0.5.0")
+    set("clickHouseDriverVersion", "0.6.0")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 
