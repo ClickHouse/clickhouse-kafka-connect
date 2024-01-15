@@ -107,7 +107,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        createTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
@@ -120,7 +120,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         dropTable(chcNoProxy, topicName);
-        createTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
