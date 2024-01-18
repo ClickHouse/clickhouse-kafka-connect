@@ -81,7 +81,7 @@ dependencies {
     implementation("org.apache.httpcomponents.client5:httpclient5:5.2.3")
 
     // TODO: need to remove ???
-    implementation("org.slf4j:slf4j-reload4j:2.0.9")
+    implementation("org.slf4j:slf4j-reload4j:2.0.11")
     implementation("org.junit.jupiter:junit-jupiter-api:5.10.1")
     implementation("org.testcontainers:testcontainers:1.19.3")
     implementation("org.testcontainers:toxiproxy:1.19.3")
