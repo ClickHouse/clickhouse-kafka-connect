@@ -174,6 +174,7 @@ public class ClickHouseHelperClient {
                      .executeAndWait()) {
             Table table = new Table(tableName);
             for (ClickHouseRecord r : response.records()) {
+                boolean hasDefault = false;
                 ClickHouseValue v = r.getValue(0);
                 String value = v.asString();
                 String[] cols = value.split("\t");
@@ -185,11 +186,13 @@ public class ClickHouseHelperClient {
                         continue;
                     } else if("DEFAULT".equals(defaultKind)) {
                         table.setHasDefaults(true);
+                        hasDefault = true;
                     }
                 }
                 String name = cols[0];
                 String type = cols[1];
-                table.addColumn(Column.extractColumn(name, type, false));
+                Column column = Column.extractColumn(name, type, false, hasDefault);
+                table.addColumn(column);
             }
             return table;
         } catch (ClickHouseException e) {

@@ -33,7 +33,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest {
     @BeforeAll
     public static void setup() throws IOException {
         Network network = Network.newNetwork();
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:22.5").withNetwork(network).withNetworkAliases("clickhouse");
+        db = new ClickHouseContainer("clickhouse/clickhouse-server:23.9").withNetwork(network).withNetworkAliases("clickhouse");
         db.start();
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
