@@ -47,7 +47,6 @@ repositories {
     mavenCentral()
     maven("https://packages.confluent.io/maven/")
     maven("https://jitpack.io")
-    maven("https://s01.oss.sonatype.org/content/groups/staging/")
 }
 
 extra.apply {
