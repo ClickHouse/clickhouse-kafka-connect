@@ -1,3 +1,8 @@
+## 1.1.0 2024-01-26
+* Added support for RowBinaryWithDefaults
+* Updated dependencies
+* Adjusting default values for some settings (like insert_quorum)
+
 ## 1.0.10 2023-12-11
 * Fixed writing into nullable Decimal column by @mlivirov in #276
 * Adjusting the deduplication token hash by @Paultagoras in #280
