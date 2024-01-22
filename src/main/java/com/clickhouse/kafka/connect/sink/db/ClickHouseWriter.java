@@ -142,12 +142,7 @@ public class ClickHouseWriter implements DBWriter {
 
         switch (first.getSchemaType()) {
             case SCHEMA:
-                if (table.hasDefaults()) {
-                    LOGGER.debug("Default value present, switching to JSON insert instead.");
-                    doInsertJson(records, table, queryId);
-                } else {
-                    doInsertRawBinary(records, table, queryId);
-                }
+                doInsertRawBinary(records, table, queryId, table.hasDefaults());
                 break;
             case SCHEMA_LESS:
                 doInsertJson(records, table, queryId);
@@ -164,7 +159,8 @@ public class ClickHouseWriter implements DBWriter {
             String colName = col.getName();
             Type type = col.getType();
             boolean isNullable = col.isNullable();
-            if (!isNullable) {
+            boolean hasDefault = col.hasDefault();
+            if (!isNullable && !hasDefault) {
                 Map<String, Schema> schemaMap = record.getFields().stream().collect(Collectors.toMap(Field::name, Field::schema));
                 var objSchema = schemaMap.get(colName);
                 Data obj = record.getJsonMap().get(colName);
@@ -335,7 +331,8 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream) throws IOException {
+
+    private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream, boolean defaultsSupport) throws IOException {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
         String name = col.getName();
@@ -345,16 +342,40 @@ public class ClickHouseWriter implements DBWriter {
             Data value = record.getJsonMap().get(name);
             LOGGER.trace("Column value is {}", value);
             // TODO: the mapping need to be more efficient
-            // If column is nullable && the object is also null add the not null marker
-            if (col.isNullable() && value.getObject() != null) {
-                BinaryStreamUtils.writeNonNull(stream);
-            }
-            if (!col.isNullable() && value.getObject() == null) {
-                if (colType == Type.ARRAY)
+            if (defaultsSupport) {
+                if (value.getObject() != null) {//Because we now support defaults, we have to send nonNull
+                    BinaryStreamUtils.writeNonNull(stream);//Write 0 for no default
+
+                    if (col.isNullable()) {//If the column is nullable
+                        BinaryStreamUtils.writeNonNull(stream);//Write 0 for not null
+                    }
+                } else {//So if the object is null
+                    if (col.hasDefault()) {
+                        BinaryStreamUtils.writeNull(stream);//Send 1 for default
+                        return;
+                    } else if (col.isNullable()) {//And the column is nullable
+                        BinaryStreamUtils.writeNonNull(stream);
+                        BinaryStreamUtils.writeNull(stream);//Then we send null, write 1
+                        return;//And we're done
+                    } else if (colType == Type.ARRAY) {//If the column is an array
+                        BinaryStreamUtils.writeNonNull(stream);//Then we send nonNull
+                    } else {
+                        throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
+                    }
+                }
+            } else {
+                // If column is nullable && the object is also null add the not null marker
+                if (col.isNullable() && value.getObject() != null) {
                     BinaryStreamUtils.writeNonNull(stream);
-                else
-                    throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
+                }
+                if (!col.isNullable() && value.getObject() == null) {
+                    if (colType == Type.ARRAY)
+                        BinaryStreamUtils.writeNonNull(stream);
+                    else
+                        throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
+                }
             }
+
             switch (colType) {
                 case INT8:
                 case INT16:
@@ -403,6 +424,9 @@ public class ClickHouseWriter implements DBWriter {
                     List<?> arrObject = (List<?>) value.getObject();
 
                     if (arrObject == null) {
+                        if (defaultsSupport) {
+                            BinaryStreamUtils.writeNonNull(stream);
+                        }
                         doWritePrimitive(colType, value.getFieldType(), stream, new ArrayList<>());
                     } else {
                         int sizeArrObject = arrObject.size();
@@ -421,8 +445,13 @@ public class ClickHouseWriter implements DBWriter {
                     break;
             }
         } else {
-            if (col.isNullable()) {
+            if (col.hasDefault()) {
+                BinaryStreamUtils.writeNull(stream);
+            } else if (col.isNullable()) {
                 // set null since there is no value
+                if (defaultsSupport) {//Only set this if we're using defaults
+                    BinaryStreamUtils.writeNonNull(stream);
+                }
                 BinaryStreamUtils.writeNull(stream);
             } else {
                 // no filled and not nullable
@@ -433,7 +462,7 @@ public class ClickHouseWriter implements DBWriter {
     }
 
 
-    protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
+    protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
         long s2 = 0;
         long s3 = 0;
@@ -447,7 +476,12 @@ public class ClickHouseWriter implements DBWriter {
 
         s2 = System.currentTimeMillis();
         try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), queryId);
+            ClickHouseRequest.Mutation request;
+            if (supportDefaults) {
+                request = getMutationRequest(client, ClickHouseFormat.RowBinaryWithDefaults, table.getName(), queryId);
+            } else {
+                request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), queryId);
+            }
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -459,7 +493,7 @@ public class ClickHouseWriter implements DBWriter {
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
                         for (Column col : table.getColumns())
-                            doWriteCol(record, col, stream);
+                            doWriteCol(record, col, stream, supportDefaults);
                     }
                 }
                 // We need to close the stream before getting a response

@@ -9,7 +9,6 @@ import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 
 import java.io.*;
@@ -18,10 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.createTable;
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.dropTable;
+import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 
 public class ExactlyOnceTest {
@@ -73,7 +70,7 @@ public class ExactlyOnceTest {
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chcNoProxy, topicName);
-        createTable(chcNoProxy, topicName);
+        createReplicatedMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
@@ -107,7 +104,7 @@ public class ExactlyOnceTest {
 
 
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
-        ClickHouseAPI.createTable(chcNoProxy, topicName);
+        createReplicatedMergeTreeTable(chcNoProxy, topicName);
         ClickHouseAPI.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
@@ -137,7 +134,7 @@ public class ExactlyOnceTest {
         do {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
-            ClickHouseAPI.createTable(chcNoProxy, topicName);
+            createReplicatedMergeTreeTable(chcNoProxy, topicName);
             ClickHouseAPI.clearTable(chcNoProxy, topicName);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);

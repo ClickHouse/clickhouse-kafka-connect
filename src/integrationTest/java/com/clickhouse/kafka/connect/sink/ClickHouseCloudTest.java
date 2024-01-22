@@ -1,31 +1,16 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.clickhouse.ClickHouseContainer;
-import org.testcontainers.containers.Network;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.*;
 
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.createTable;
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.dropTable;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class ClickHouseCloudTest {
