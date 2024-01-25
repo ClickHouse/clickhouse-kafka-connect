@@ -2,6 +2,7 @@
 * Added support for RowBinaryWithDefaults
 * Updated dependencies
 * Adjusting default values for some settings (like insert_quorum)
+* Added minimum version check for ClickHouse
 
 ## 1.0.10 2023-12-11
 * Fixed writing into nullable Decimal column by @mlivirov in #276
