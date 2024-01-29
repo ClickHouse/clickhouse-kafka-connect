@@ -37,6 +37,7 @@ public class KeeperStateProvider implements StateProvider {
         String username = csc.getUsername();
         String password = csc.getPassword();
         boolean sslEnabled = csc.isSslEnabled();
+        String jdbcConnectionProperties = csc.getJdbcConnectionProperties();
         int timeout = csc.getTimeout();
 
         LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, Mask.passwordMask(password), sslEnabled, timeout));
@@ -46,6 +47,7 @@ public class KeeperStateProvider implements StateProvider {
                 .setUsername(username)
                 .setPassword(password)
                 .sslEnable(sslEnabled)
+                .setJdbcConnectionProperties(jdbcConnectionProperties)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .build();

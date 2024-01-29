@@ -3,6 +3,7 @@
 * Updated dependencies
 * Adjusting default values for some settings (like insert_quorum)
 * Added string support for DateTime64
+* Add support for configuring JDBC properties in connection URL (i.e. `?auto_discovery=true`)
 
 ## 1.0.10 2023-12-11
 * Fixed writing into nullable Decimal column by @mlivirov in #276

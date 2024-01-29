@@ -63,6 +63,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setUsername(csc.getUsername())
                 .setPassword(csc.getPassword())
                 .sslEnable(csc.isSslEnabled())
+                .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .build();

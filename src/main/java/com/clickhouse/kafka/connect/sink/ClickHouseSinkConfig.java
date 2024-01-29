@@ -24,6 +24,7 @@ public class ClickHouseSinkConfig {
     public static final String USERNAME = "username";
     public static final String PASSWORD = "password";
     public static final String SSL_ENABLED = "ssl";
+    public static final String JDBC_CONNECTION_PROPERTIES = "jdbcConnectionProperties";
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
@@ -48,6 +49,7 @@ public class ClickHouseSinkConfig {
     public static final String usernameDefault = "default";
     public static final String passwordDefault = "";
     public static final Boolean sslDefault = Boolean.TRUE;
+    public static final String jdbcConnectionPropertiesDefault = "";
     public static final Integer timeoutSecondsDefault = 30;
     public static final Integer retryCountDefault = 3;
     public static final Integer tableRefreshIntervalDefault = 0;
@@ -66,6 +68,7 @@ public class ClickHouseSinkConfig {
     private final String username;
     private final String password;
     private final boolean sslEnabled;
+    private final String jdbcConnectionProperties;
     private final boolean exactlyOnce;
     private final int timeout;
     private final int retry;
@@ -149,6 +152,7 @@ public class ClickHouseSinkConfig {
         username = props.getOrDefault(USERNAME, usernameDefault);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
         sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
+        jdbcConnectionProperties = props.getOrDefault(JDBC_CONNECTION_PROPERTIES,"").trim();
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         tableRefreshInterval = Long.parseLong(props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
@@ -301,6 +305,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable SSL.");
+        configDef.define(JDBC_CONNECTION_PROPERTIES,
+                ConfigDef.Type.STRING,
+                jdbcConnectionPropertiesDefault,
+                ConfigDef.Importance.LOW,
+                "Clickhouse JDBC connection properties. default: empty",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "JDBC properties for Clickhouse connection.");
         configDef.define(TIMEOUT_SECONDS,
                 ConfigDef.Type.INT,
                 timeoutSecondsDefault,
@@ -474,6 +487,9 @@ public class ClickHouseSinkConfig {
 
     public boolean isSslEnabled() {
         return sslEnabled;
+    }
+    public String getJdbcConnectionProperties() {
+        return jdbcConnectionProperties;
     }
     public int getTimeout() {
         return timeout;
