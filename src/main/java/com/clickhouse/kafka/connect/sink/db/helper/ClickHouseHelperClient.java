@@ -10,7 +10,6 @@ import com.clickhouse.data.ClickHouseValue;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
-import com.clickhouse.kafka.connect.util.Mask;
 import com.clickhouse.kafka.connect.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
