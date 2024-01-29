@@ -23,6 +23,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.math.BigDecimal;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -251,6 +252,14 @@ public class ClickHouseWriter implements DBWriter {
                         BinaryStreamUtils.writeInt64(stream, time);
                     } else {
                         BinaryStreamUtils.writeInt64(stream, (Long) value.getObject());
+                    }
+                } else if (value.getFieldType().equals(Schema.Type.STRING)) {
+                    try {
+                        ZonedDateTime zonedDateTime = ZonedDateTime.parse((String) value.getObject());
+                        BinaryStreamUtils.writeInt64(stream, zonedDateTime.toInstant().toEpochMilli());
+                    } catch (Exception e) {
+                        LOGGER.error("Error parsing date time string: {}", value.getObject());
+                        unsupported = true;
                     }
                 } else {
                     unsupported = true;
