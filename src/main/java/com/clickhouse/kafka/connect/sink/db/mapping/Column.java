@@ -30,6 +30,7 @@ public class Column {
         this.isNullable = isNullable;
         this.hasDefaultValue = hasDefaultValue;
         this.subType = null;
+        this.precision = 0;
     }
 
     private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Type mapKeyType, Type mapValueType) {
@@ -40,6 +41,7 @@ public class Column {
         this.subType = null;
         this.mapKeyType = mapKeyType;
         this.mapValueType = mapValueType;
+        this.precision = 0;
     }
 
     private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Column subType) {
@@ -48,6 +50,7 @@ public class Column {
         this.isNullable = isNullable;
         this.hasDefaultValue = hasDefaultValue;
         this.subType = subType;
+        this.precision = 0;
     }
 
     private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, int precision, int scale) {
@@ -186,6 +189,11 @@ public class Column {
             return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue);
         } else if (valueType.startsWith("Nullable")) {
             return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true, hasDefaultValue);
+        } else if (type == Type.DateTime64) {
+            String[] scaleAndTimezone = valueType.substring("DateTime64".length() + 1, valueType.length() - 1).split(",");
+            int precision = Integer.parseInt(scaleAndTimezone[0].trim());
+            LOGGER.trace("Precision is {}", precision);
+            return new Column(name, type, isNull, hasDefaultValue, precision, 0);
         } else if (type == Type.Decimal) {
             final Pattern patter = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
             Matcher match = patter.matcher(valueType);
