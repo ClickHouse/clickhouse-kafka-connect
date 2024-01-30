@@ -150,11 +150,11 @@ public class ClickHouseSinkConfig {
         username = props.getOrDefault(USERNAME, usernameDefault);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
         sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
-        jdbcConnectionProperties = props.getOrDefault(JDBC_CONNECTION_PROPERTIES,"").trim();
+        jdbcConnectionProperties = props.getOrDefault(JDBC_CONNECTION_PROPERTIES,jdbcConnectionPropertiesDefault).trim();
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         tableRefreshInterval = Long.parseLong(props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
-        exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE, jdbcConnectionPropertiesDefault));
+        exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
         suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
 
         String errorsToleranceString = props.getOrDefault("errors.tolerance", "none").trim();

@@ -20,8 +20,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static java.util.Optional.ofNullable;
-
 public class ClickHouseHelperClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseHelperClient.class);
@@ -76,11 +74,8 @@ public class ClickHouseHelperClient {
                 protocol, 
                 hostname, 
                 port, 
-                database, 
-                ofNullable(jdbcConnectionProperties)
-                        .filter(prop -> !prop.isEmpty())
-                        .map(prop -> "?" + prop)
-                        .orElse("")
+                database,
+                jdbcConnectionProperties
         );
 
         LOGGER.info("ClickHouse URL: " + url);
