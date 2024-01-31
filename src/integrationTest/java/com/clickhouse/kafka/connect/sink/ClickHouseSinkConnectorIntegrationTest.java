@@ -130,6 +130,20 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
+    private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
+        LOGGER.info("Setting up connector with jdbc properties...");
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+        dropTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName);
+
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
+        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
+
+        confluentPlatform.createConnect(jsonString);
+        Thread.sleep(1000);
+    }
+
 
     @BeforeEach
     public void beforeEach() throws IOException {
@@ -153,6 +167,16 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
         setupConnector(topicName, 1);
+        waitWhileCounting(chcNoProxy, topicName, 3);
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+
+    @Test
+    public void stockGenWithJdbcPropSingleTaskTest() throws IOException, InterruptedException {
+        String topicName = "stockGenWithJdbcPropSingleTaskTest";
+        confluentPlatform.createTopic(topicName, 1);
+        int dataCount = generateData(topicName, 1, 100);
+        setupConnectorWithJdbcProperties(topicName, 1);
         waitWhileCounting(chcNoProxy, topicName, 3);
         assertTrue(dataCount <= countRows(chcNoProxy, topicName));
     }
