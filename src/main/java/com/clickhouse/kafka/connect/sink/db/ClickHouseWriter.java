@@ -13,9 +13,7 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
-import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
-import com.clickhouse.kafka.connect.util.Mask;
 
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -23,6 +21,8 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.math.BigDecimal;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoField;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -217,7 +217,7 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
-    private void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value) throws IOException {
+    private void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision) throws IOException {
         // TODO: develop more specific tests to have better coverage
         if (value.getObject() == null) {
             BinaryStreamUtils.writeNull(stream);
@@ -260,8 +260,16 @@ public class ClickHouseWriter implements DBWriter {
                     } else {
                         BinaryStreamUtils.writeUnsignedInt32(stream, (Long) value.getObject());
                     }
+                } else if (value.getFieldType().equals(Schema.Type.STRING)) {
+                    try {
+                        ZonedDateTime zonedDateTime = ZonedDateTime.parse((String) value.getObject());
+                        LOGGER.trace("Writing epoch seconds: {}", zonedDateTime.toInstant().getEpochSecond());
+                        BinaryStreamUtils.writeUnsignedInt32(stream, zonedDateTime.toInstant().getEpochSecond());
+                    } catch (Exception e) {
+                        LOGGER.error("Error parsing date time string: {}", value.getObject());
+                        unsupported = true;
+                    }
                 } else {
-
                     unsupported = true;
                 }
                 break;
@@ -273,6 +281,31 @@ public class ClickHouseWriter implements DBWriter {
                         BinaryStreamUtils.writeInt64(stream, time);
                     } else {
                         BinaryStreamUtils.writeInt64(stream, (Long) value.getObject());
+                    }
+                } else if (value.getFieldType().equals(Schema.Type.STRING)) {
+                    try {
+                        ZonedDateTime zonedDateTime = ZonedDateTime.parse((String) value.getObject());
+                        long seconds = zonedDateTime.toInstant().getEpochSecond();
+                        long milliSeconds = zonedDateTime.toInstant().toEpochMilli();
+                        long microSeconds = TimeUnit.MICROSECONDS.convert(seconds, TimeUnit.SECONDS) + zonedDateTime.get(ChronoField.MICRO_OF_SECOND);
+                        long nanoSeconds = TimeUnit.NANOSECONDS.convert(seconds, TimeUnit.SECONDS) + zonedDateTime.getNano();
+
+                        if (precision == 3) {
+                            LOGGER.trace("Writing epoch milliseconds: {}", milliSeconds);
+                            BinaryStreamUtils.writeInt64(stream, milliSeconds);
+                        } else if (precision == 6) {
+                            LOGGER.trace("Writing epoch microseconds: {}", microSeconds);
+                            BinaryStreamUtils.writeInt64(stream, microSeconds);
+                        } else if (precision == 9) {
+                            LOGGER.trace("Writing epoch nanoseconds: {}", nanoSeconds);
+                            BinaryStreamUtils.writeInt64(stream, nanoSeconds);
+                        } else {
+                            LOGGER.trace("Writing epoch seconds: {}", seconds);
+                            BinaryStreamUtils.writeInt64(stream, seconds);
+                        }
+                    } catch (Exception e) {
+                        LOGGER.error("Error parsing date time string: {}", value.getObject());
+                        unsupported = true;
                     }
                 } else {
                     unsupported = true;
@@ -418,7 +451,7 @@ public class ClickHouseWriter implements DBWriter {
                 case Date32:
                 case DateTime:
                 case DateTime64:
-                    doWriteDates(colType, stream, value);
+                    doWriteDates(colType, stream, value, col.getPrecision());
                     break;
                 case Decimal:
                     if (value.getObject() == null) {

@@ -1,8 +1,9 @@
-## 1.1.0 2024-01-26
+## 1.0.11 2024-02-01
 * Added support for RowBinaryWithDefaults
 * Updated dependencies
 * Adjusting default values for some settings (like insert_quorum)
 * Added minimum version check for ClickHouse
+* Added string support for DateTime64
 
 ## 1.0.10 2023-12-11
 * Fixed writing into nullable Decimal column by @mlivirov in #276
