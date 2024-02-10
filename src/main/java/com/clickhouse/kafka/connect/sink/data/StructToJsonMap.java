@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class StructToJsonMap {
 
@@ -26,40 +27,40 @@ public class StructToJsonMap {
             LOGGER.debug(String.format("fieldName [%s] fieldType [%s] schemaName [%s]" , fieldName, fieldType.name(), schemaName));
             switch (fieldType) {
                 case STRING:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.getString(fieldName)));
+                    jsonMap.put(fieldName, new Data(field.schema(), struct.getString(fieldName)));
                     break;
                 case BYTES:
                     if (Decimal.LOGICAL_NAME.equals(schemaName)) {
-                        jsonMap.put(fieldName, new Data(fieldType, (BigDecimal) struct.get(fieldName)));
+                        jsonMap.put(fieldName, new Data(field.schema(), (BigDecimal) struct.get(fieldName)));
                     } else {
-                        jsonMap.put(fieldName, new Data(fieldType, struct.getBytes(fieldName)));
+                        jsonMap.put(fieldName, new Data(field.schema(), struct.getBytes(fieldName)));
                     }
                     break;
                 case INT32:
                     if (Date.LOGICAL_NAME.equals(schemaName) || Time.LOGICAL_NAME.equals(schemaName)) {
-                        jsonMap.put(fieldName, new Data(fieldType, (java.util.Date) struct.get(fieldName)));
+                        jsonMap.put(fieldName, new Data(field.schema(), (java.util.Date) struct.get(fieldName)));
                     } else {
-                        jsonMap.put(fieldName, new Data(fieldType, struct.getInt32(fieldName)));
+                        jsonMap.put(fieldName, new Data(field.schema(), struct.getInt32(fieldName)));
                     }
                     break;
                 case INT16:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.getInt16(fieldName)));
+                    jsonMap.put(fieldName, new Data(field.schema(), struct.getInt16(fieldName)));
                     break;
                 case INT64:
                     if (Timestamp.LOGICAL_NAME.equals(schemaName)) {
-                        jsonMap.put(fieldName, new Data(fieldType, (java.util.Date) struct.get(fieldName)));
+                        jsonMap.put(fieldName, new Data(field.schema(), (java.util.Date) struct.get(fieldName)));
                     } else {
-                        jsonMap.put(fieldName, new Data(fieldType, struct.getInt64(fieldName)));
+                        jsonMap.put(fieldName, new Data(field.schema(), struct.getInt64(fieldName)));
                     }
                     break;
                 case FLOAT32:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.getFloat32(fieldName)));
+                    jsonMap.put(fieldName, new Data(field.schema(), struct.getFloat32(fieldName)));
                     break;
                 case FLOAT64:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.getFloat64(fieldName)));
+                    jsonMap.put(fieldName, new Data(field.schema(), struct.getFloat64(fieldName)));
                     break;
                 case BOOLEAN:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.getBoolean(fieldName)));
+                    jsonMap.put(fieldName, new Data(field.schema(), struct.getBoolean(fieldName)));
                     break;
                 case ARRAY:
                     List<Object> fieldArray = struct.getArray(fieldName);
@@ -69,19 +70,26 @@ public class StructToJsonMap {
                         fieldArray.forEach(item -> {
                             jsonArray.add(toJsonMap((Struct) item));
                         });
-                        jsonMap.put(fieldName, new Data(fieldType, jsonArray));
+                        jsonMap.put(fieldName, new Data(field.schema(), jsonArray));
                     } else {
-                        jsonMap.put(fieldName, new Data(fieldType, fieldArray));
+                        jsonMap.put(fieldName, new Data(field.schema(), fieldArray));
                     }
                     break;
                 case STRUCT:
-                    jsonMap.put(fieldName, new Data(fieldType, toJsonMap(struct.getStruct(fieldName))));
+                    jsonMap.put(fieldName, new Data(field.schema(), toJsonMap(struct.getStruct(fieldName))));
                     break;
                 case MAP:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.getMap(fieldName)));
+                    Map<Object, Object> fieldMap = struct.getMap(fieldName);
+                    if (fieldMap != null && !fieldMap.isEmpty() && fieldMap.values().iterator().next() instanceof Struct) {
+                        // Map values are `Struct`
+                        for (Map.Entry<Object, Object> entry : fieldMap.entrySet()) {
+                            entry.setValue(toJsonMap((Struct) entry.getValue()));
+                        }
+                    }
+                    jsonMap.put(fieldName, new Data(field.schema(), fieldMap));
                     break;
                 default:
-                    jsonMap.put(fieldName, new Data(fieldType, struct.get(fieldName)));
+                    jsonMap.put(fieldName, new Data(field.schema(), struct.get(fieldName)));
                     break;
             }
         }

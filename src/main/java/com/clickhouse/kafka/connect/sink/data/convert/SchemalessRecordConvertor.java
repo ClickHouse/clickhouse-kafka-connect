@@ -28,7 +28,7 @@ public class SchemalessRecordConvertor implements RecordConvertor {
         int index = 0;
         map.forEach((key,val) -> {
                     fields.add(new Field(key.toString(), index, Schema.STRING_SCHEMA));
-                    data.put(key.toString(), new Data(Schema.Type.STRING, val == null ? null : val.toString()));
+                    data.put(key.toString(), new Data(Schema.STRING_SCHEMA, val == null ? null : val.toString()));
                 });
         return new Record(SchemaType.SCHEMA_LESS, new OffsetContainer(topic, partition, offset), fields, data, sinkRecord);
     }

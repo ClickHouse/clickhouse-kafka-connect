@@ -297,6 +297,78 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
+    private void doWriteColValue(Column col, ClickHousePipedOutputStream stream, Data value, boolean defaultsSupport) throws IOException {
+        Type columnType = col.getType();
+
+        switch (columnType) {
+            case INT8:
+            case INT16:
+            case INT32:
+            case INT64:
+            case UINT8:
+            case UINT16:
+            case UINT32:
+            case UINT64:
+            case FLOAT32:
+            case FLOAT64:
+            case BOOLEAN:
+            case UUID:
+            case STRING:
+                doWritePrimitive(columnType, value.getFieldType(), stream, value.getObject());
+                break;
+            case Date:
+            case Date32:
+            case DateTime:
+            case DateTime64:
+                doWriteDates(columnType, stream, value, col.getPrecision());
+                break;
+            case Decimal:
+                if (value.getObject() == null) {
+                    BinaryStreamUtils.writeNull(stream);
+                    return;
+                } else {
+                    BigDecimal decimal = (BigDecimal) value.getObject();
+                    BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
+                }
+                break;
+            case MAP:
+                Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
+                int mapSize = mapTmp.size();
+                BinaryStreamUtils.writeVarInt(stream, mapSize);
+                mapTmp.forEach((key, mapValue) -> {
+                    try {
+                        doWritePrimitive(col.getMapKeyType(), value.getMapKeySchema().type(), stream, key);
+                        doWriteColValue(col.getMapValueType(), stream, new Data(value.getNestedValueSchema(), mapValue), defaultsSupport);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+                break;
+            case ARRAY:
+                List<?> arrObject = (List<?>) value.getObject();
+
+                if (arrObject == null) {
+                    if (defaultsSupport) {
+                        BinaryStreamUtils.writeNonNull(stream);
+                    }
+                } else {
+                    int sizeArrObject = arrObject.size();
+                    BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
+                    arrObject.forEach(v -> {
+                        try {
+                            if (col.getSubType().isNullable() && v != null) {
+                                BinaryStreamUtils.writeNonNull(stream);
+                            }
+                            doWriteColValue(col.getSubType(), stream, new Data(value.getNestedValueSchema(), v), defaultsSupport);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                }
+                break;
+        }
+    }
+
     private void doWritePrimitive(Type columnType, Schema.Type dataType, ClickHousePipedOutputStream stream, Object value) throws IOException {
         LOGGER.trace("Writing primitive type: {}, value: {}", columnType, value);
 
@@ -393,7 +465,7 @@ public class ClickHouseWriter implements DBWriter {
                     } else if (colType == Type.ARRAY) {//If the column is an array
                         BinaryStreamUtils.writeNonNull(stream);//Then we send nonNull
                     } else {
-                        throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
+                        throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", name));
                     }
                 }
             } else {
@@ -405,78 +477,11 @@ public class ClickHouseWriter implements DBWriter {
                     if (colType == Type.ARRAY)
                         BinaryStreamUtils.writeNonNull(stream);
                     else
-                        throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", col.getName()));
+                        throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", name));
                 }
             }
 
-            switch (colType) {
-                case INT8:
-                case INT16:
-                case INT32:
-                case INT64:
-                case UINT8:
-                case UINT16:
-                case UINT32:
-                case UINT64:
-                case FLOAT32:
-                case FLOAT64:
-                case BOOLEAN:
-                case UUID:
-                case STRING:
-                    doWritePrimitive(colType, value.getFieldType(), stream, value.getObject());
-                    break;
-                case Date:
-                case Date32:
-                case DateTime:
-                case DateTime64:
-                    doWriteDates(colType, stream, value, col.getPrecision());
-                    break;
-                case Decimal:
-                    if (value.getObject() == null) {
-                        BinaryStreamUtils.writeNull(stream);
-                        return;
-                    } else {
-                        BigDecimal decimal = (BigDecimal) value.getObject();
-                        BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
-                    }
-                    break;
-                case MAP:
-                    Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
-                    int mapSize = mapTmp.size();
-                    BinaryStreamUtils.writeVarInt(stream, mapSize);
-                    mapTmp.forEach((key, value1) -> {
-                        try {
-                            doWritePrimitive(col.getMapKeyType(), value.getFieldType(), stream, key);
-                            doWritePrimitive(col.getMapValueType(), value.getFieldType(), stream, value1);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
-                    break;
-                case ARRAY:
-                    List<?> arrObject = (List<?>) value.getObject();
-
-                    if (arrObject == null) {
-                        if (defaultsSupport) {
-                            BinaryStreamUtils.writeNonNull(stream);
-                        }
-                        doWritePrimitive(colType, value.getFieldType(), stream, new ArrayList<>());
-                    } else {
-                        int sizeArrObject = arrObject.size();
-                        BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
-                        arrObject.forEach(v -> {
-                            try {
-                                if (col.getSubType().isNullable() && v != null) {
-                                    BinaryStreamUtils.writeNonNull(stream);
-                                }
-                                doWritePrimitive(col.getSubType().getType(), value.getFieldType(), stream, v);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
-                    }
-                    break;
-            }
+            doWriteColValue(col, stream, value, defaultsSupport);
         } else {
             if (col.hasDefault()) {
                 BinaryStreamUtils.writeNull(stream);
