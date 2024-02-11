@@ -209,4 +209,40 @@ public class ProcessingTest {
         assertEquals(containsRecords.size(), er.size());
     }
 
+    @Test
+    @DisplayName("ProcessPartialOverlappingBeforeProcessingTest")
+    public void ProcessPartialOverlappingBeforeProcessingTest() throws IOException, ExecutionException, InterruptedException {
+        List<Record> records = createRecords("test", 1);
+        int splitPointHigh = 600;
+        int splitPointLow = 350;
+        List<Record> recordsHead = records.subList(0, splitPointHigh);
+        List<Record> recordsTail = records.subList(splitPointLow, records.size());
+        StateProvider stateProvider = new InMemoryState();
+        DBWriter dbWriter = new InMemoryDBWriter();
+        Processing processing = new Processing(stateProvider, dbWriter);
+        processing.doLogic(recordsHead);
+        assertEquals(recordsHead.size(), dbWriter.recordsInserted());
+        StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
+        stateRecord.setState(State.BEFORE_PROCESSING);
+        processing.doLogic(recordsTail);
+        assertEquals(records.size(), dbWriter.recordsInserted());
+    }
+
+    @Test
+    @DisplayName("ProcessPartialOverlappingAfterProcessingTest")
+    public void ProcessPartialOverlappingAfterProcessingTest() throws IOException, ExecutionException, InterruptedException {
+        List<Record> records = createRecords("test", 1);
+        int splitPointHigh = 600;
+        int splitPointLow = 350;
+        List<Record> recordsHead = records.subList(0, splitPointHigh);
+        List<Record> recordsTail = records.subList(splitPointLow, records.size());
+        StateProvider stateProvider = new InMemoryState();
+        DBWriter dbWriter = new InMemoryDBWriter();
+        Processing processing = new Processing(stateProvider, dbWriter);
+        processing.doLogic(recordsHead);
+        assertEquals(recordsHead.size(), dbWriter.recordsInserted());
+        processing.doLogic(recordsTail);
+        assertEquals(records.size(), dbWriter.recordsInserted());
+    }
+
 }
