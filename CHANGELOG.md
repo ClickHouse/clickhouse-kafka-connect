@@ -1,3 +1,6 @@
+## 1.0.12 2024-02-08
+* Add support for configuring JDBC properties in connection URL (i.e. `?auto_discovery=true`)
+
 ## 1.0.11 2024-01-29
 * Added support for RowBinaryWithDefaults
 * Updated dependencies

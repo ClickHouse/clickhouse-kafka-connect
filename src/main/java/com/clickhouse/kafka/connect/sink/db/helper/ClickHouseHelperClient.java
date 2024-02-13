@@ -10,7 +10,6 @@ import com.clickhouse.data.ClickHouseValue;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
-import com.clickhouse.kafka.connect.util.Mask;
 import com.clickhouse.kafka.connect.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +30,7 @@ public class ClickHouseHelperClient {
     private final String database;
     private final String password;
     private final boolean sslEnabled;
+    private final String jdbcConnectionProperties;
     private final int timeout;
     private ClickHouseNode server = null;
     private final int retry;
@@ -45,6 +45,7 @@ public class ClickHouseHelperClient {
         this.password = builder.password;
         this.database = builder.database;
         this.sslEnabled = builder.sslEnabled;
+        this.jdbcConnectionProperties = builder.jdbcConnectionProperties;
         this.timeout = builder.timeout;
         this.retry = builder.retry;
         this.proxyType = builder.proxyType;
@@ -69,7 +70,13 @@ public class ClickHouseHelperClient {
         if (this.sslEnabled)
             protocol += "s";
 
-        String url = String.format("%s://%s:%d/%s", protocol, hostname, port, database);
+        String url = String.format("%s://%s:%d/%s%s", 
+                protocol, 
+                hostname, 
+                port, 
+                database,
+                jdbcConnectionProperties
+        );
 
         LOGGER.info("ClickHouse URL: " + url);
 
@@ -226,7 +233,7 @@ public class ClickHouseHelperClient {
         return tableList;
     }
 
-    public static class ClickHouseClientBuilder{
+    public static class ClickHouseClientBuilder {
         private ClickHouseSinkConfig config = null;
         private String hostname = null;
         private int port = -1;
@@ -234,6 +241,7 @@ public class ClickHouseHelperClient {
         private String database = "default";
         private String password = "";
         private boolean sslEnabled = false;
+        private String jdbcConnectionProperties = "";
         private int timeout = ClickHouseSinkConfig.timeoutSecondsDefault * ClickHouseSinkConfig.MILLI_IN_A_SEC;
         private int retry = ClickHouseSinkConfig.retryCountDefault;
 
@@ -267,6 +275,11 @@ public class ClickHouseHelperClient {
 
         public ClickHouseClientBuilder sslEnable(boolean sslEnabled) {
             this.sslEnabled = sslEnabled;
+            return this;
+        }
+
+        public ClickHouseClientBuilder setJdbcConnectionProperties(String jdbcConnectionProperties) {
+            this.jdbcConnectionProperties = jdbcConnectionProperties;
             return this;
         }
 
