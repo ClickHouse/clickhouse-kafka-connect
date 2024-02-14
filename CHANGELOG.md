@@ -1,8 +1,11 @@
-## 1.0.11 2024-02-01
+## 1.0.12 2024-02-08
+* Add support for configuring JDBC properties in connection URL (i.e. `?auto_discovery=true`)
+* Added minimum version check for ClickHouse
+
+## 1.0.11 2024-01-29
 * Added support for RowBinaryWithDefaults
 * Updated dependencies
 * Adjusting default values for some settings (like insert_quorum)
-* Added minimum version check for ClickHouse
 * Added string support for DateTime64
 
 ## 1.0.10 2023-12-11

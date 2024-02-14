@@ -75,22 +75,22 @@ dependencies {
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
-    implementation("io.lettuce:lettuce-core:6.3.0.RELEASE")
+    implementation("io.lettuce:lettuce-core:6.3.1.RELEASE")
     implementation("com.google.code.gson:gson:2.10.1")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
-    implementation("org.apache.httpcomponents.client5:httpclient5:5.3")
+    implementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:2.0.11")
     implementation("org.junit.jupiter:junit-jupiter-api:5.10.1")
-    implementation("org.testcontainers:testcontainers:1.19.3")
-    implementation("org.testcontainers:toxiproxy:1.19.3")
+    implementation("org.testcontainers:testcontainers:1.19.5")
+    implementation("org.testcontainers:toxiproxy:1.19.5")
 
     /*
         Will in side the Confluent Archive
      */
-    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.3")
-    clickhouseDependencies("io.lettuce:lettuce-core:6.3.0.RELEASE")
+    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.3.1")
+    clickhouseDependencies("io.lettuce:lettuce-core:6.3.1.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.google.code.gson:gson:2.10.1")
@@ -104,12 +104,12 @@ dependencies {
     testImplementation("org.mockito:mockito-junit-jupiter:${project.extra["mockitoVersion"]}")
 
     // IntegrationTests
-    testImplementation("org.testcontainers:clickhouse:1.19.3")
-    testImplementation("org.testcontainers:kafka:1.19.3")
+    testImplementation("org.testcontainers:clickhouse:1.19.4")
+    testImplementation("org.testcontainers:kafka:1.19.5")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("org.json:json:20231013")
-    testImplementation("org.testcontainers:toxiproxy:1.19.3")
-    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.3")
+    testImplementation("org.testcontainers:toxiproxy:1.19.5")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
