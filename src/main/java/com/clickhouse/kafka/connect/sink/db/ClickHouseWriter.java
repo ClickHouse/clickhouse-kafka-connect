@@ -73,6 +73,28 @@ public class ClickHouseWriter implements DBWriter {
             return false;
         }
 
+        try {
+            String chVersion = chc.version();
+            LOGGER.info("Connected to ClickHouse version: {}", chVersion);
+            String[] versionParts = chVersion.split("\\.");
+            if (versionParts.length < 2) {
+                LOGGER.error("Unable to determine ClickHouse server version.");
+                return false;
+            }
+
+            int majorVersion = Integer.parseInt(versionParts[0]);
+            int minorVersion = Integer.parseInt(versionParts[1]);
+            if (majorVersion < 23 || (majorVersion == 23 && minorVersion < 3)) {
+                LOGGER.error("ClickHouse server version is too old to use this connector. Please upgrade to version 23.3 or newer.");
+                return false;
+            }
+        } catch (Exception e) {
+            LOGGER.error("Unable to determine ClickHouse server version.", e);
+            return false;
+        }
+
+
+
         LOGGER.debug("Ping was successful.");
 
         this.updateMapping();

@@ -114,6 +114,21 @@ public class ClickHouseHelperClient {
         return false;
     }
 
+    public String version() {
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(server)
+                     .query("SELECT VERSION()")
+                     .executeAndWait()) {
+            return response.firstRecord().getValue(0).asString();
+        } catch (ClickHouseException e) {
+            LOGGER.error("Exception when trying to retrieve VERSION()", e);
+            return null;
+        }
+    }
+
     public ClickHouseNode getServer() {
         return this.server;
     }
