@@ -4,6 +4,7 @@ import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 
 public class ClickHouseTestHelpers {
+    public static final String CLICKHOUSE_DOCKER_IMAGE = "clickhouse/clickhouse-server:23.8";
     public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.builder()

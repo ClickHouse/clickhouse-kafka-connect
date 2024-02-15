@@ -35,7 +35,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
     @BeforeAll
     public static void setup() throws IOException {
         Network network = Network.newNetwork();
-        db = new org.testcontainers.clickhouse.ClickHouseContainer("clickhouse/clickhouse-server:23.9").withNetwork(network).withNetworkAliases("clickhouse");
+        db = new org.testcontainers.clickhouse.ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
         db.start();
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
