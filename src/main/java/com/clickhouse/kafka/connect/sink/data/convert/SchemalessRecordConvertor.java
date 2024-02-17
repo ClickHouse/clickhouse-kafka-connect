@@ -18,8 +18,16 @@ import java.util.Map;
 public class SchemalessRecordConvertor implements RecordConvertor {
 
     @Override
-    public Record convert(SinkRecord sinkRecord) {
+    public Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String configurationDatabase) {
+        String database = configurationDatabase;
         String topic = sinkRecord.topic();
+        if (splitDBTopic) {
+            String[] parts = topic.split(dbTopicSeparatorChar);
+            if (parts.length == 2) {
+                database = parts[0];
+                topic = parts[1];
+            }
+        }
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         List<Field> fields = new ArrayList<>();
@@ -30,6 +38,6 @@ public class SchemalessRecordConvertor implements RecordConvertor {
                     fields.add(new Field(key.toString(), index, Schema.STRING_SCHEMA));
                     data.put(key.toString(), new Data(Schema.Type.STRING, val == null ? null : val.toString()));
                 });
-        return new Record(SchemaType.SCHEMA_LESS, new OffsetContainer(topic, partition, offset), fields, data, sinkRecord);
+        return new Record(SchemaType.SCHEMA_LESS, new OffsetContainer(topic, partition, offset), fields, data, database, sinkRecord);
     }
 }

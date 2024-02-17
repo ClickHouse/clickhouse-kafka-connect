@@ -8,13 +8,22 @@ import org.apache.kafka.connect.sink.SinkRecord;
 
 public class StringRecordConvertor implements RecordConvertor {
     @Override
-    public Record convert(SinkRecord sinkRecord) {
+    public Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String configurationDatabase) {
+        String database = configurationDatabase;
+        String topic = sinkRecord.topic();
+        if (splitDBTopic) {
+            String[] parts = topic.split(dbTopicSeparatorChar);
+            if (parts.length == 2) {
+                database = parts[0];
+                topic = parts[1];
+            }
+        }
         if (sinkRecord.value() == null) {
             throw new DataException("Value was null for JSON conversion");
         }
-        String topic = sinkRecord.topic();
+
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
-        return new Record(SchemaType.STRING_SCHEMA, new OffsetContainer(topic, partition, offset), null, null, sinkRecord);
+        return new Record(SchemaType.STRING_SCHEMA, new OffsetContainer(topic, partition, offset), null, null, database, sinkRecord);
     }
 }

@@ -15,11 +15,12 @@ import java.util.Map;
 
 public class EmptyRecordConvertor implements RecordConvertor {
     @Override
-    public Record convert(SinkRecord sinkRecord) {
+    public Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String configurationDatabase) {
+        String database = configurationDatabase;
         String topic = sinkRecord.topic();
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         List<Field> fields = new ArrayList<>();
-        return new Record(SchemaType.SCHEMA_LESS, new OffsetContainer(topic, partition, offset), fields, null, sinkRecord);
+        return new Record(SchemaType.SCHEMA_LESS, new OffsetContainer(topic, partition, offset), fields, null, database, sinkRecord);
     }
 }

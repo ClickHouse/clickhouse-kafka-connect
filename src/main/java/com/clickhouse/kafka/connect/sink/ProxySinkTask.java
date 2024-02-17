@@ -32,12 +32,14 @@ public class ProxySinkTask {
     private Processing processing = null;
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
+    private ClickHouseSinkConfig clickHouseSinkConfig = null;
 
 
     private final SinkTaskStatistics statistics;
     private int id = NEXT_ID.getAndAdd(1);
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
+        this.clickHouseSinkConfig = clickHouseSinkConfig;
         LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.getExactlyOnce());
         if ( clickHouseSinkConfig.getExactlyOnce() ) {
             this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
@@ -82,8 +84,12 @@ public class ProxySinkTask {
         statistics.receivedRecords(records.size());
         LOGGER.trace(String.format("Got %d records from put API.", records.size()));
         ExecutionTimer processingTime = ExecutionTimer.start();
+
         Map<String, List<Record>> dataRecords = records.stream()
-                .map(v -> Record.convert(v))
+                .map(v -> Record.convert(v,
+                        clickHouseSinkConfig.getEnableDbTopicSplit(),
+                        clickHouseSinkConfig.getDbTopicSplitChar(),
+                        clickHouseSinkConfig.getDatabase() ))
                 .collect(Collectors.groupingBy(Record::getTopicAndPartition));
         statistics.recordProcessingTime(processingTime);
         // TODO - Multi process???

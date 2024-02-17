@@ -5,5 +5,5 @@ import com.clickhouse.kafka.connect.sink.data.Record;
 import org.apache.kafka.connect.sink.SinkRecord;
 
 public interface RecordConvertor {
-    Record convert(SinkRecord sinkRecord);
+    Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String configurationDatabase);
 }

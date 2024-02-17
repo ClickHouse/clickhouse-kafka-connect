@@ -15,12 +15,20 @@ import java.util.Map;
 public class SchemaRecordConvertor implements RecordConvertor{
 
     @Override
-    public Record convert(SinkRecord sinkRecord) {
+    public Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String configurationDatabase) {
+        String database = configurationDatabase;
         String topic = sinkRecord.topic();
+        if (splitDBTopic) {
+            String[] parts = topic.split(dbTopicSeparatorChar);
+            if (parts.length == 2) {
+                database = parts[0];
+                topic = parts[1];
+            }
+        }
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         Struct struct = (Struct) sinkRecord.value();
         Map<String, Data> data = StructToJsonMap.toJsonMap((Struct) sinkRecord.value());
-        return new Record(SchemaType.SCHEMA, new OffsetContainer(topic, partition, offset), struct.schema().fields(), data, sinkRecord);
+        return new Record(SchemaType.SCHEMA, new OffsetContainer(topic, partition, offset), struct.schema().fields(), data, database, sinkRecord);
     }
 }

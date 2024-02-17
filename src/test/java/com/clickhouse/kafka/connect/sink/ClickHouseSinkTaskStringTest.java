@@ -36,7 +36,6 @@ public class ClickHouseSinkTaskStringTest {
     public static void setup() {
         db = new ClickHouseContainer("clickhouse/clickhouse-server:23.9");
         db.start();
-
     }
 
     private ClickHouseHelperClient createClient(Map<String,String> props) {
