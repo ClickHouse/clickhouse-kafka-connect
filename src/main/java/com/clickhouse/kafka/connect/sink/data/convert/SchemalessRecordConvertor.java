@@ -15,19 +15,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class SchemalessRecordConvertor implements RecordConvertor {
+public class SchemalessRecordConvertor extends RecordConvertor {
 
     @Override
-    public Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String configurationDatabase) {
+    public Record doConvert(SinkRecord sinkRecord, String topic,String configurationDatabase) {
         String database = configurationDatabase;
-        String topic = sinkRecord.topic();
-        if (splitDBTopic) {
-            String[] parts = topic.split(dbTopicSeparatorChar);
-            if (parts.length == 2) {
-                database = parts[0];
-                topic = parts[1];
-            }
-        }
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         List<Field> fields = new ArrayList<>();

@@ -13,11 +13,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class EmptyRecordConvertor implements RecordConvertor {
+public class EmptyRecordConvertor extends RecordConvertor {
     @Override
-    public Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String configurationDatabase) {
+    public Record doConvert(SinkRecord sinkRecord, String topic, String configurationDatabase) {
         String database = configurationDatabase;
-        String topic = sinkRecord.topic();
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         List<Field> fields = new ArrayList<>();
