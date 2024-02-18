@@ -1,4 +1,5 @@
 ## 1.0.12 2024-02-08
+* Added support for multiple databases in single stream using a virtual topic  #41
 * Add support for configuring JDBC properties in connection URL (i.e. `?auto_discovery=true`)
 * Added minimum version check for ClickHouse
 
