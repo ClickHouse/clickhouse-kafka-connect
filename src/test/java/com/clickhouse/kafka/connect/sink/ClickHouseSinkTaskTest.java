@@ -23,12 +23,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
+    public static final int DEFAULT_TOTAL_RECORDS = 1000;
     public Collection<SinkRecord> createDBTopicSplit(int dbRange, String topic, int partition, String splitChar) {
         Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String newTopic = i + splitChar + topic  ;
-            LongStream.range(0, 1000).forEachOrdered(n -> {
+            LongStream.range(0, DEFAULT_TOTAL_RECORDS).forEachOrdered(n -> {
                 Map<String, Object> value_struct = new HashMap<>();
                 value_struct.put("str", "num" + n);
                 value_struct.put("off16", (short)n);
@@ -90,7 +91,6 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         int dbRange = 10;
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String tmpTableName = String.format("%d.%s", i, tableName);
-            System.out.println(tmpTableName);
             createDatabase(String.valueOf(i));
             createTable(chc, tmpTableName, "CREATE TABLE `%s` ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         });
@@ -106,7 +106,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             int count = countRows(chc, String.valueOf(i), tableName);
-            assertEquals(1000, countRows(chc, String.valueOf(i), tableName));
+            assertEquals(DEFAULT_TOTAL_RECORDS, count);
         });
     }
 }
