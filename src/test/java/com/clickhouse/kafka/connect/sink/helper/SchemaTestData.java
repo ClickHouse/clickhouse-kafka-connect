@@ -175,7 +175,8 @@ public class SchemaTestData {
         Schema ARRAY_FLOAT64_SCHEMA = SchemaBuilder.array(Schema.FLOAT64_SCHEMA).build();
         Schema ARRAY_BOOLEAN_SCHEMA = SchemaBuilder.array(Schema.BOOLEAN_SCHEMA).build();
         Schema ARRAY_STRING_ARRAY_SCHEMA = SchemaBuilder.array(ARRAY_SCHEMA).build();
-        Schema ARRAY_MAP_ARRAY_SCHEMA = SchemaBuilder.array(SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA));
+        Schema ARRAY_ARRAY_STRING_ARRAY_SCHEMA = SchemaBuilder.array(SchemaBuilder.array(ARRAY_SCHEMA)).build();
+        Schema ARRAY_MAP_SCHEMA = SchemaBuilder.array(SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA));
 
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
@@ -190,7 +191,8 @@ public class SchemaTestData {
                 .field("arr_float64", ARRAY_FLOAT64_SCHEMA)
                 .field("arr_bool", ARRAY_BOOLEAN_SCHEMA)
                 .field("arr_str_arr", ARRAY_STRING_ARRAY_SCHEMA)
-                .field("arr_map_arr", ARRAY_MAP_ARRAY_SCHEMA)
+                .field("arr_arr_str_arr", ARRAY_ARRAY_STRING_ARRAY_SCHEMA)
+                .field("arr_map", ARRAY_MAP_SCHEMA)
                 .build();
 
 
@@ -207,7 +209,8 @@ public class SchemaTestData {
             List<Double> arrayFloat64Tmp = Arrays.asList((double)1,(double)2);
             List<Boolean> arrayBoolTmp = Arrays.asList(true,false);
             List<List<String>> arrayStrArray = Arrays.asList(arrayTmp, arrayTmp);
-            List<Map<String, String>> arrayMapArray = Arrays.asList(Map.of("k1", "v1", "k2", "v2"));
+            List<List<List<String>>> arrayArrayStrArray = Arrays.asList(Arrays.asList(arrayTmp, arrayTmp));
+            List<Map<String, String>> arrayMap = Arrays.asList(Map.of("k1", "v1", "k2", "v2"));
 
 
             Struct value_struct = new Struct(NESTED_SCHEMA)
@@ -222,7 +225,8 @@ public class SchemaTestData {
                     .put("arr_float64", arrayFloat64Tmp)
                     .put("arr_bool", arrayBoolTmp)
                     .put("arr_str_arr", arrayStrArray)
-                    .put("arr_map_arr", arrayMapArray)
+                    .put("arr_arr_str_arr", arrayArrayStrArray)
+                    .put("arr_map", arrayMap)
                     ;
 
 
@@ -321,6 +325,7 @@ public class SchemaTestData {
         Schema MAP_SCHEMA_INT64_STRING = SchemaBuilder.map(Schema.INT64_SCHEMA, Schema.STRING_SCHEMA);
         Schema MAP_SCHEMA_STRING_MAP = SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.INT64_SCHEMA));
         Schema MAP_SCHEMA_STRING_ARRAY = SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.array(Schema.STRING_SCHEMA));
+        Schema MAP_MAP_MAP_SCHEMA = SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA)));
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
@@ -329,6 +334,7 @@ public class SchemaTestData {
                 .field("map_int64_string", MAP_SCHEMA_INT64_STRING)
                 .field("map_string_map", MAP_SCHEMA_STRING_MAP)
                 .field("map_string_array", MAP_SCHEMA_STRING_ARRAY)
+                .field("map_map_map", MAP_MAP_MAP_SCHEMA)
                 .build();
 
 
@@ -359,6 +365,10 @@ public class SchemaTestData {
                     "k1", Arrays.asList("v1", "v2"),
                     "k2", Arrays.asList("v3", "v4")
             );
+            Map<String, Map<String, Map<String, String>>> mapMapMap = Map.of(
+                    "k1", Map.of("nk1", Map.of("nk2", "v1")),
+                    "k2", Map.of("nk1", Map.of("nk2", "v2"))
+            );
 
 
             Struct value_struct = new Struct(NESTED_SCHEMA)
@@ -368,6 +378,7 @@ public class SchemaTestData {
                     .put("map_int64_string", mapLongString)
                     .put("map_string_map", mapStringMap)
                     .put("map_string_array", mapStringArray)
+                    .put("map_map_map", mapMapMap)
                     ;
 
 
