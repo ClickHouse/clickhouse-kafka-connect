@@ -38,9 +38,8 @@ public class ClickHouseSinkConfig {
     public static final String PROXY_PORT = "proxyPort";
     public static final String ZK_PATH = "zkPath";
     public static final String ZK_DATABASE = "zkDatabase";
-
-
-    
+    public static final String ENABLE_DB_TOPIC_SPLIT = "enableDbTopicSplit";
+    public static final String DB_TOPIC_SPLIT_CHAR = "dbTopicSplitChar";
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
     public static final int portDefault = 8443;
@@ -81,6 +80,8 @@ public class ClickHouseSinkConfig {
     private final int proxyPort;
     private final String zkPath;
     private final String zkDatabase;
+    private final boolean enableDbTopicSplit;
+    private final String dbTopicSplitChar;
 
     public enum InsertFormats {
         NONE,
@@ -135,6 +136,17 @@ public class ClickHouseSinkConfig {
         @Override
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
             return List.of((Object[]) ClickHouseProxyType.values());
+        }
+        @Override
+        public boolean visible(String name, Map<String, Object> parsedConfig) {
+            return true;
+        }
+    }
+
+    public static final class DbTopicSplitCharValidatorAndRecommender implements ConfigDef.Recommender {
+        @Override
+        public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
+            return List.of("_", "-", ".");
         }
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
@@ -222,6 +234,8 @@ public class ClickHouseSinkConfig {
         this.proxyPort = Integer.parseInt(props.getOrDefault(PROXY_PORT, "-1"));
         this.zkPath = props.getOrDefault(ZK_PATH, "/kafka-connect");
         this.zkDatabase = props.getOrDefault(ZK_DATABASE, "connect_state");
+        this.enableDbTopicSplit = Boolean.parseBoolean(props.getOrDefault(ENABLE_DB_TOPIC_SPLIT, "false"));
+        this.dbTopicSplitChar = props.getOrDefault(DB_TOPIC_SPLIT_CHAR, "");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -459,7 +473,26 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.MEDIUM,
                 "State store database"
         );
-
+        configDef.define(ENABLE_DB_TOPIC_SPLIT,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "enable database topic split from topic name. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "enable database topic split from topic name.");
+        configDef.define(DB_TOPIC_SPLIT_CHAR,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "Database topic split character. Default: none",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Database topic split character",
+                new DbTopicSplitCharValidatorAndRecommender()
+        );
         return configDef;
     }
 
@@ -519,4 +552,6 @@ public class ClickHouseSinkConfig {
     public String getZkDatabase() {
         return zkDatabase;
     }
+    public boolean getEnableDbTopicSplit() { return enableDbTopicSplit; }
+    public String getDbTopicSplitChar() { return dbTopicSplitChar; }
 }
