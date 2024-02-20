@@ -81,6 +81,22 @@ class ColumnTest {
     }
 
     @Test
+    public void extractArrayOfArrayOfArrayOfString() {
+        Column col = Column.extractColumn("columnName", "Array(Array(Array(String)))", true, false);
+        assertEquals(Type.ARRAY, col.getType());
+
+        Column subType = col.getSubType();
+        assertEquals(Type.ARRAY, subType.getType());
+
+        Column subSubType = subType.getSubType();
+        assertEquals(Type.ARRAY, subSubType.getType());
+
+        Column subSubSubType = subSubType.getSubType();
+        assertEquals(Type.STRING, subSubSubType.getType());
+        assertNull(subSubSubType.getSubType());
+    }
+
+    @Test
     public void extractMapOfPrimitives() {
         Column col = Column.extractColumn("columnName", "Map(String, Decimal(5))", true, false);
         assertEquals(Type.MAP, col.getType());
@@ -108,6 +124,23 @@ class ColumnTest {
         Column nestedMapValue = mapValueType.getMapValueType();
         assertEquals(Type.Decimal, nestedMapValue.getType());
         assertEquals(5, nestedMapValue.getPrecision());
+    }
 
+    @Test
+    public void extractMapOfMapOfMapOfString() {
+        Column col = Column.extractColumn("columnName", "Map(String, Map(String, Map(String, String)))", true, false);
+        assertEquals(Type.MAP, col.getType());
+        assertEquals(Type.STRING, col.getMapKeyType());
+        assertNull(col.getSubType());
+
+        Column subType = col.getMapValueType();
+        assertEquals(Type.MAP, subType.getType());
+        assertEquals(Type.STRING, subType.getMapKeyType());
+        assertNull(col.getSubType());
+
+        Column subSubType = subType.getMapValueType();
+        assertEquals(Type.MAP, subSubType.getType());
+        assertEquals(Type.STRING, subSubType.getMapKeyType());
+        assertNull(col.getSubType());
     }
 }
