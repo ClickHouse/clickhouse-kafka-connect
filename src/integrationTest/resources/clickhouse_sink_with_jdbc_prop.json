@@ -1,0 +1,20 @@
+{
+  "name": "%s",
+  "config": {
+    "name": "%s",
+    "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "tasks.max": "%d",
+    "topics": "%s",
+    "hostname": "%s",
+    "port": "%s",
+    "database": "default",
+    "username": "default",
+    "password": "%s",
+    "ssl": "false",
+    "exactlyOnce" : "false",
+    "proxyType": "http",
+    "proxyHost": "%s",
+    "proxyPort": "%s",
+    "jdbcConnectionProperties": "?load_balancing_policy=random&health_check_interval=5000&failover=2"
+  }
+}

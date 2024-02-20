@@ -63,6 +63,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setUsername(csc.getUsername())
                 .setPassword(csc.getPassword())
                 .sslEnable(csc.isSslEnabled())
+                .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .build();
@@ -71,6 +72,28 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error("Unable to ping Clickhouse server.");
             return false;
         }
+
+        try {
+            String chVersion = chc.version();
+            LOGGER.info("Connected to ClickHouse version: {}", chVersion);
+            String[] versionParts = chVersion.split("\\.");
+            if (versionParts.length < 2) {
+                LOGGER.error("Unable to determine ClickHouse server version.");
+                return false;
+            }
+
+            int majorVersion = Integer.parseInt(versionParts[0]);
+            int minorVersion = Integer.parseInt(versionParts[1]);
+            if (majorVersion < 23 || (majorVersion == 23 && minorVersion < 3)) {
+                LOGGER.error("ClickHouse server version is too old to use this connector. Please upgrade to version 23.3 or newer.");
+                return false;
+            }
+        } catch (Exception e) {
+            LOGGER.error("Unable to determine ClickHouse server version.", e);
+            return false;
+        }
+
+
 
         LOGGER.debug("Ping was successful.");
 
@@ -506,6 +529,7 @@ public class ClickHouseWriter implements DBWriter {
         long s3 = 0;
 
         Record first = records.get(0);
+        String database = first.getDatabase();
 
         if (!validateDataSchema(table, first, false))
             throw new RuntimeException();
@@ -516,9 +540,9 @@ public class ClickHouseWriter implements DBWriter {
         try (ClickHouseClient client = getClient()) {
             ClickHouseRequest.Mutation request;
             if (supportDefaults) {
-                request = getMutationRequest(client, ClickHouseFormat.RowBinaryWithDefaults, table.getName(), queryId);
+                request = getMutationRequest(client, ClickHouseFormat.RowBinaryWithDefaults, table.getName(), database, queryId);
             } else {
-                request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), queryId);
+                request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), database, queryId);
             }
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
@@ -550,6 +574,9 @@ public class ClickHouseWriter implements DBWriter {
 
     protected void doInsertJson(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         //https://devqa.io/how-to-convert-java-map-to-json/
+        boolean enableDbTopicSplit = csc.getEnableDbTopicSplit();
+        String dbTopicSplitChar = csc.getDbTopicSplitChar();
+        System.out.println("enableDbTopicSplit: " + enableDbTopicSplit);
         Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
         long s2 = 0;
@@ -557,13 +584,14 @@ public class ClickHouseWriter implements DBWriter {
 
 
         Record first = records.get(0);
+        String database = first.getDatabase();
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
 
 
         try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.JSONEachRow, table.getName(), queryId);
+            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.JSONEachRow, table.getName(), database, queryId);
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -619,6 +647,7 @@ public class ClickHouseWriter implements DBWriter {
         long s3 = 0;
 
         Record first = records.get(0);
+        String database = first.getDatabase();
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
@@ -637,7 +666,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, clickHouseFormat, table.getName(), queryId);
+            ClickHouseRequest.Mutation request = getMutationRequest(client, clickHouseFormat, table.getName(), database, queryId);
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -687,8 +716,19 @@ public class ClickHouseWriter implements DBWriter {
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
     }
-    private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, QueryIdentifier queryId) {
-        ClickHouseRequest.Mutation request = client.read(chc.getServer())
+    private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String database, QueryIdentifier queryId) {
+
+        ClickHouseHelperClient chcTmp = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+                .setDatabase(database)
+                .setUsername(csc.getUsername())
+                .setPassword(csc.getPassword())
+                .sslEnable(csc.isSslEnabled())
+                .setTimeout(csc.getTimeout())
+                .setRetry(csc.getRetry())
+                .build();
+
+        ClickHouseNode server = chcTmp.getServer();
+        ClickHouseRequest.Mutation request = client.read(server)
                 .write()
                 .table(tableName, queryId.getQueryId())
                 .format(format)
