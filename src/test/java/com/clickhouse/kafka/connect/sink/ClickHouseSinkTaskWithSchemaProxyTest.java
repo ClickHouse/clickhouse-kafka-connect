@@ -343,27 +343,6 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
-    @Test
-    public void schemaWithFixedStringTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
-
-        String topic = "fixed-string-value-table-test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
-                "`fixed_string_8` FixedString(8)," +
-                "`fixed_string_16` FixedString(16)," +
-                "`fixed_string_32` FixedString(32)," +
-                "`fixed_string_64` FixedString(64) ) Engine = MergeTree ORDER BY off16");
-
-        Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1);
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
 
     @AfterAll
     protected static void tearDown() {

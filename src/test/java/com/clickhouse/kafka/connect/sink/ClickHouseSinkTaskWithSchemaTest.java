@@ -12,6 +12,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.clickhouse.ClickHouseContainer;
+import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.util.*;
 
@@ -278,7 +279,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         try {
             chst.put(sr);
         } catch (RuntimeException e) {
-            assertTrue(Utils.getRootCause(e) instanceof DataException, "Did not detect wrong date conversion ");
+            assertInstanceOf(DataException.class, Utils.getRootCause(e), "Did not detect wrong date conversion ");
         }
         chst.stop();
     }
@@ -418,20 +419,40 @@ public class ClickHouseSinkTaskWithSchemaTest {
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "fixed-string-value-table-test";
+        int fixedStringSize = RandomUtils.nextInt(1, 100);
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
-                "`fixed_string_8` FixedString(8)," +
-                "`fixed_string_16` FixedString(16)," +
-                "`fixed_string_32` FixedString(32)," +
-                "`fixed_string_64` FixedString(64) ) Engine = MergeTree ORDER BY off16");
+                "`fixed_string` FixedString("+fixedStringSize+") ) Engine = MergeTree ORDER BY off16");
 
-        Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1);
+        Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    public void schemaWithFixedStringMismatchTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "fixed-string-mismatch-table-test";
+        int fixedStringSize = RandomUtils.nextInt(1, 100);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
+                "`fixed_string` FixedString(" + (fixedStringSize + 1 ) + ") ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        try {
+            chst.put(sr);
+        } catch (RuntimeException e) {
+            assertInstanceOf(DataException.class, Utils.getRootCause(e), "Size mismatch for FixedString");
+        }
+        chst.stop();
     }
 
     @Test

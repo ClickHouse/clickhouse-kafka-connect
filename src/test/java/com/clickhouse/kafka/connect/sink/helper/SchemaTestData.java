@@ -479,6 +479,7 @@ public class SchemaTestData {
                 .field("off16", Schema.INT16_SCHEMA)
                 .field("date_number", Schema.OPTIONAL_INT32_SCHEMA)
                 .field("date32_number", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("datetime_int", Schema.INT32_SCHEMA)
                 .field("datetime_number", Schema.INT64_SCHEMA)
                 .field("datetime64_number", Schema.INT64_SCHEMA)
                 .field("timestamp_int64",  Timestamp.SCHEMA)
@@ -501,11 +502,13 @@ public class SchemaTestData {
 
             LocalDateTime localDateTime = LocalDateTime.now();
             long localDateTimeLong = localDateTime.toEpochSecond(ZoneOffset.UTC);
+            int localDateTimeInt = (int)localDateTime.toEpochSecond(ZoneOffset.UTC);
 
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("date_number", localDateInt)
                     .put("date32_number", localDateInt)
+                    .put("datetime_int", localDateTimeInt)
                     .put("datetime_number", localDateTimeLong)
                     .put("datetime64_number", currentTime)
                     .put("timestamp_int64", new Date(System.currentTimeMillis()))
@@ -725,17 +728,14 @@ public class SchemaTestData {
 
 
 
-    public static Collection<SinkRecord> createFixedStringData(String topic, int partition) {
-        return createFixedStringData(topic, partition, DEFAULT_TOTAL_RECORDS);
+    public static Collection<SinkRecord> createFixedStringData(String topic, int partition, int fixedSize) {
+        return createFixedStringData(topic, partition, DEFAULT_TOTAL_RECORDS, fixedSize);
     }
-    public static Collection<SinkRecord> createFixedStringData(String topic, int partition, int totalRecords) {
+    public static Collection<SinkRecord> createFixedStringData(String topic, int partition, int totalRecords, int fixedSize) {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
-                .field("fixed_string_8", Schema.BYTES_SCHEMA)
-                .field("fixed_string_16", Schema.BYTES_SCHEMA)
-                .field("fixed_string_32", Schema.BYTES_SCHEMA)
-                .field("fixed_string_64", Schema.BYTES_SCHEMA)
+                .field("fixed_string", Schema.BYTES_SCHEMA)
                 .build();
 
 
@@ -743,10 +743,7 @@ public class SchemaTestData {
         LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
-                    .put("fixed_string_8", RandomStringUtils.random(8, true, true).getBytes())
-                    .put("fixed_string_16", RandomStringUtils.random(16, true, true).getBytes())
-                    .put("fixed_string_32", RandomStringUtils.random(32, true, true).getBytes())
-                    .put("fixed_string_64", RandomStringUtils.random(64, true, true).getBytes());
+                    .put("fixed_string", RandomStringUtils.random(fixedSize, true, true).getBytes());
 
 
             SinkRecord sr = new SinkRecord(
