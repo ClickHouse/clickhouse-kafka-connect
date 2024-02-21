@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
+    public static final String CLICKHOUSE_DOCKER_IMAGE = "clickhouse/clickhouse-server:23.8";
     public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.builder()

@@ -26,7 +26,7 @@ public class ClickHouseSinkTaskSchemalessTest {
 
     @BeforeAll
     public static void setup() {
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:23.9");
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         db.start();
 
     }
