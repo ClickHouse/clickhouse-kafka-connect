@@ -2,6 +2,7 @@
 * Added support for multiple databases in single stream using a virtual topic  #41
 * Add support for configuring JDBC properties in connection URL (i.e. `?auto_discovery=true`)
 * Added minimum version check for ClickHouse
+* Added support for fixed_string type
 
 ## 1.0.11 2024-01-29
 * Added support for RowBinaryWithDefaults
