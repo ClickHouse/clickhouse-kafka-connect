@@ -204,7 +204,8 @@ public class ClickHouseWriter implements DBWriter {
                             break;//I notice we just break here, rather than actually validate the type
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
-                                if (!(colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))) {
+                                if (!((colTypeName.equals("STRING") || colTypeName.equalsIgnoreCase("FIXED_STRING")) && dataTypeName.equals("BYTES"))) {
+                                    LOGGER.debug("Data schema name: {}", objSchema.name());
                                     if (!("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal"))) {
                                         validSchema = false;
                                         LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
@@ -256,10 +257,9 @@ public class ClickHouseWriter implements DBWriter {
                 if (value.getFieldType().equals(Schema.Type.INT32) || value.getFieldType().equals(Schema.Type.INT64)) {
                     if (value.getObject().getClass().getName().endsWith(".Date")) {
                         Date date = (Date) value.getObject();
-                        long epochSecond = date.toInstant().getEpochSecond();
-                        BinaryStreamUtils.writeUnsignedInt32(stream, epochSecond);
+                        BinaryStreamUtils.writeUnsignedInt32(stream, date.toInstant().getEpochSecond());
                     } else {
-                        BinaryStreamUtils.writeUnsignedInt32(stream, (Long) value.getObject());
+                        BinaryStreamUtils.writeUnsignedInt32(stream, Long.parseLong(String.valueOf(value.getObject())));
                     }
                 } else if (value.getFieldType().equals(Schema.Type.STRING)) {
                     try {
@@ -339,6 +339,9 @@ public class ClickHouseWriter implements DBWriter {
             case STRING:
                 doWritePrimitive(columnType, value.getFieldType(), stream, value.getObject());
                 break;
+            case FIXED_STRING:
+                doWriteFixedString(columnType, stream, value.getObject(), col.getPrecision());
+                break;
             case Date:
             case Date32:
             case DateTime:
@@ -389,6 +392,29 @@ public class ClickHouseWriter implements DBWriter {
                     });
                 }
                 break;
+        }
+    }
+
+    private void doWriteFixedString(Type columnType, ClickHousePipedOutputStream stream, Object value, int length) throws IOException {
+        LOGGER.trace("Writing fixed string type: {}, value: {}", columnType, value);
+
+        if (value == null) {
+            BinaryStreamUtils.writeNull(stream);
+            return;
+        }
+
+        if (Objects.requireNonNull(columnType) == Type.FIXED_STRING) {
+            if (value instanceof byte[]) {
+                byte[] bytes = (byte[]) value;
+                if (bytes.length != length) {
+                    throw new DataException(String.format("Fixed string length mismatch: expected %d, got %d", length, bytes.length));
+                }
+                BinaryStreamUtils.writeFixedString(stream, new String(bytes, StandardCharsets.UTF_8), length, StandardCharsets.UTF_8);
+            } else {
+                String msg = String.format("Not implemented conversion from %s to %s", value.getClass(), columnType);
+                LOGGER.error(msg);
+                throw new DataException(msg);
+            }
         }
     }
 

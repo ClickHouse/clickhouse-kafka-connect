@@ -162,10 +162,11 @@ public class Column {
                     type = Type.DateTime64;
                 } else if (valueType.startsWith("Decimal")) {
                     type = Type.Decimal;
+                } else if (valueType.startsWith("FixedString")) {
+                    type = Type.FIXED_STRING;
                 }
 
                 break;
-
         }
         return type;
     }
@@ -190,6 +191,9 @@ public class Column {
             return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue);
         } else if (valueType.startsWith("Nullable")) {
             return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true, hasDefaultValue);
+        } else if (type == Type.FIXED_STRING) {
+            int length = Integer.parseInt(valueType.substring("FixedString".length() + 1, valueType.length() - 1).trim());
+            return new Column(name, type, isNull, hasDefaultValue, length, 0);
         } else if (type == Type.DateTime64) {
             String[] scaleAndTimezone = valueType.substring("DateTime64".length() + 1, valueType.length() - 1).split(",");
             int precision = Integer.parseInt(scaleAndTimezone[0].trim());
