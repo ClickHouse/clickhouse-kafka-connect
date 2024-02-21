@@ -735,7 +735,8 @@ public class SchemaTestData {
 
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
-                .field("fixed_string", Schema.BYTES_SCHEMA)
+                .field("fixed_string_string", Schema.STRING_SCHEMA)
+                .field("fixed_string_bytes", Schema.BYTES_SCHEMA)
                 .build();
 
 
@@ -743,7 +744,8 @@ public class SchemaTestData {
         LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
-                    .put("fixed_string", RandomStringUtils.random(fixedSize, true, true).getBytes());
+                    .put("fixed_string_string", RandomStringUtils.random(fixedSize, true, true))
+                    .put("fixed_string_bytes", RandomStringUtils.random(fixedSize, true, true).getBytes());
 
 
             SinkRecord sr = new SinkRecord(

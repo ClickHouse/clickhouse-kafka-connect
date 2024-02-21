@@ -422,7 +422,9 @@ public class ClickHouseSinkTaskWithSchemaTest {
         int fixedStringSize = RandomUtils.nextInt(1, 100);
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
-                "`fixed_string` FixedString("+fixedStringSize+") ) Engine = MergeTree ORDER BY off16");
+                "`fixed_string_string` FixedString("+fixedStringSize+"), " +
+                "`fixed_string_bytes` FixedString("+fixedStringSize+")" +
+                ") Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -439,10 +441,10 @@ public class ClickHouseSinkTaskWithSchemaTest {
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "fixed-string-mismatch-table-test";
-        int fixedStringSize = RandomUtils.nextInt(1, 100);
+        int fixedStringSize = RandomUtils.nextInt(2, 100);
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
-                "`fixed_string` FixedString(" + (fixedStringSize + 1 ) + ") ) Engine = MergeTree ORDER BY off16");
+                "`fixed_string_string` FixedString(" + (fixedStringSize - 1 ) + ") ) Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -450,7 +452,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         try {
             chst.put(sr);
         } catch (RuntimeException e) {
-            assertInstanceOf(DataException.class, Utils.getRootCause(e), "Size mismatch for FixedString");
+            assertInstanceOf(IllegalArgumentException.class, Utils.getRootCause(e), "Could not detect size mismatch for FixedString");
         }
         chst.stop();
     }
