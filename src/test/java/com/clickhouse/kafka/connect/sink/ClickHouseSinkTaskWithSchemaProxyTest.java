@@ -343,6 +343,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
+
     @AfterAll
     protected static void tearDown() {
         db.stop();

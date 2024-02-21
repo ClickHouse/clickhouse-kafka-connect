@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink.helper;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.*;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.testcontainers.shaded.org.apache.commons.lang3.RandomStringUtils;
 
 import java.math.BigDecimal;
 import java.time.*;
@@ -478,6 +479,7 @@ public class SchemaTestData {
                 .field("off16", Schema.INT16_SCHEMA)
                 .field("date_number", Schema.OPTIONAL_INT32_SCHEMA)
                 .field("date32_number", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("datetime_int", Schema.INT32_SCHEMA)
                 .field("datetime_number", Schema.INT64_SCHEMA)
                 .field("datetime64_number", Schema.INT64_SCHEMA)
                 .field("timestamp_int64",  Timestamp.SCHEMA)
@@ -500,11 +502,13 @@ public class SchemaTestData {
 
             LocalDateTime localDateTime = LocalDateTime.now();
             long localDateTimeLong = localDateTime.toEpochSecond(ZoneOffset.UTC);
+            int localDateTimeInt = (int)localDateTime.toEpochSecond(ZoneOffset.UTC);
 
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("date_number", localDateInt)
                     .put("date32_number", localDateInt)
+                    .put("datetime_int", localDateTimeInt)
                     .put("datetime_number", localDateTimeLong)
                     .put("datetime64_number", currentTime)
                     .put("timestamp_int64", new Date(System.currentTimeMillis()))
@@ -721,4 +725,43 @@ public class SchemaTestData {
         });
         return array;
     }
+
+
+
+    public static Collection<SinkRecord> createFixedStringData(String topic, int partition, int fixedSize) {
+        return createFixedStringData(topic, partition, DEFAULT_TOTAL_RECORDS, fixedSize);
+    }
+    public static Collection<SinkRecord> createFixedStringData(String topic, int partition, int totalRecords, int fixedSize) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("fixed_string", Schema.BYTES_SCHEMA)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("fixed_string", RandomStringUtils.random(fixedSize, true, true).getBytes());
+
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+
+
 }

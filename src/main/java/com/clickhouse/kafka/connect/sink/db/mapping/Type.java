@@ -25,5 +25,6 @@ public enum Type {
     UINT64,
     UINT128,
     UINT256,
-    Decimal
+    Decimal,
+    FIXED_STRING
 }
