@@ -44,7 +44,7 @@ public class ProcessingTest {
                     null,
                     null,
                     0);
-            Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, null, Collections.singletonMap("off", new Data(Schema.Type.INT8, n)), database, sr);
+            Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, null, Collections.singletonMap("off", new Data(Schema.INT8_SCHEMA, n)), database, sr);
             records.add(record);
         });
         return records;

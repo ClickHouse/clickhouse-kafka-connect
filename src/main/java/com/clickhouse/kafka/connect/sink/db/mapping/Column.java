@@ -20,7 +20,7 @@ public class Column {
     private boolean hasDefaultValue;
     private Column subType = null;
     private Type mapKeyType = Type.NONE;
-    private Type mapValueType = Type.NONE;
+    private Column mapValueType = null;
     private int precision;
     private int scale;
 
@@ -33,7 +33,7 @@ public class Column {
         this.precision = 0;
     }
 
-    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Type mapKeyType, Type mapValueType) {
+    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Type mapKeyType, Column mapValueType) {
         this.name = name;
         this.type = type;
         this.isNullable = isNullable;
@@ -90,7 +90,7 @@ public class Column {
     public Type getMapKeyType() {
         return mapKeyType;
     }
-    public  Type getMapValueType() {
+    public  Column getMapValueType() {
         return mapValueType;
     }
     private static Type dispatchPrimitive(String valueType) {
@@ -181,10 +181,11 @@ public class Column {
         } else if(valueType.startsWith("Map")) {
             type = Type.MAP;
             String value = valueType.substring("Map".length() + 1, valueType.length() - 1);
-            String[] val = value.split(",");
+            String[] val = value.split(",", 2);
             String mapKey = val[0].trim();
             String mapValue = val[1].trim();
-            return new Column(name, type, false, hasDefaultValue, dispatchPrimitive(mapKey), dispatchPrimitive(mapValue));
+            Column mapValueType = extractColumn(name, mapValue, false, hasDefaultValue);
+            return new Column(name, type, false, hasDefaultValue, dispatchPrimitive(mapKey), mapValueType);
         } else if (valueType.startsWith("LowCardinality")) {
             return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue);
         } else if (valueType.startsWith("Nullable")) {
