@@ -11,6 +11,8 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
@@ -19,6 +21,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ClickHouseSinkTaskWithSchemaTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaTest.class);
 
     private static ClickHouseContainer db = null;
     private static ClickHouseHelperClient chc = null;
@@ -420,9 +423,12 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "fixed-string-value-table-test";
         int fixedStringSize = RandomUtils.nextInt(1, 100);
+        LOGGER.info("FixedString size: " + fixedStringSize);
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
-                "`fixed_string` FixedString("+fixedStringSize+") ) Engine = MergeTree ORDER BY off16");
+                "`fixed_string_string` FixedString("+fixedStringSize+"), " +
+                "`fixed_string_bytes` FixedString("+fixedStringSize+")" +
+                ") Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -439,10 +445,11 @@ public class ClickHouseSinkTaskWithSchemaTest {
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "fixed-string-mismatch-table-test";
-        int fixedStringSize = RandomUtils.nextInt(1, 100);
+        int fixedStringSize = RandomUtils.nextInt(2, 100);
+        LOGGER.info("FixedString size: " + fixedStringSize);
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
-                "`fixed_string` FixedString(" + (fixedStringSize + 1 ) + ") ) Engine = MergeTree ORDER BY off16");
+                "`fixed_string_string` FixedString(" + (fixedStringSize - 1 ) + ") ) Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -450,7 +457,7 @@ public class ClickHouseSinkTaskWithSchemaTest {
         try {
             chst.put(sr);
         } catch (RuntimeException e) {
-            assertInstanceOf(DataException.class, Utils.getRootCause(e), "Size mismatch for FixedString");
+            assertInstanceOf(IllegalArgumentException.class, Utils.getRootCause(e), "Could not detect size mismatch for FixedString");
         }
         chst.stop();
     }

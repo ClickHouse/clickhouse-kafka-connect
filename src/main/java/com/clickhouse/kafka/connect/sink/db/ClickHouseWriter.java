@@ -201,10 +201,11 @@ public class ClickHouseWriter implements DBWriter {
                         case "DateTime":
                         case "DateTime64":
                         case "UUID":
+                        case "FIXED_STRING":
                             break;//I notice we just break here, rather than actually validate the type
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
-                                if (!((colTypeName.equals("STRING") || colTypeName.equalsIgnoreCase("FIXED_STRING")) && dataTypeName.equals("BYTES"))) {
+                                if (!(colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))) {
                                     LOGGER.debug("Data schema name: {}", objSchema.name());
                                     if (!("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal"))) {
                                         validSchema = false;
@@ -404,11 +405,10 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         if (Objects.requireNonNull(columnType) == Type.FIXED_STRING) {
-            if (value instanceof byte[]) {
+            if (value instanceof String) {
+                BinaryStreamUtils.writeFixedString(stream, (String) value, length, StandardCharsets.UTF_8);
+            } else if (value instanceof byte[]) {
                 byte[] bytes = (byte[]) value;
-                if (bytes.length != length) {
-                    throw new DataException(String.format("Fixed string length mismatch: expected %d, got %d", length, bytes.length));
-                }
                 BinaryStreamUtils.writeFixedString(stream, new String(bytes, StandardCharsets.UTF_8), length, StandardCharsets.UTF_8);
             } else {
                 String msg = String.format("Not implemented conversion from %s to %s", value.getClass(), columnType);
