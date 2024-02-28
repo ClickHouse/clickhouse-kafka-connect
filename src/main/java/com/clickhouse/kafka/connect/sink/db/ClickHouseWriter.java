@@ -602,7 +602,7 @@ public class ClickHouseWriter implements DBWriter {
         //https://devqa.io/how-to-convert-java-map-to-json/
         boolean enableDbTopicSplit = csc.getEnableDbTopicSplit();
         String dbTopicSplitChar = csc.getDbTopicSplitChar();
-        System.out.println("enableDbTopicSplit: " + enableDbTopicSplit);
+        LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
         Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
         long s2 = 0;
