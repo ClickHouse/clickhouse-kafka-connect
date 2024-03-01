@@ -1,5 +1,6 @@
 ## 1.0.13 2024-02-23
 * Fix missing jdbcConnectionProperties setup in ClickHouseWriter.getMutationRequest
+* Fix bug in overlap logic
 
 ## 1.0.12 2024-02-08
 * Added support for multiple databases in single stream using a virtual topic  #41
