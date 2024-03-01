@@ -1,20 +1,16 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.*;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
-import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 
-import java.math.BigDecimal;
 import java.util.*;
-import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -233,6 +229,34 @@ public class ClickHouseSinkTaskSchemalessTest {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertEquals(450180, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
+    }
+
+    @Test
+    public void overlappingDataTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "schemaless_primitive_types_table_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        Collection<SinkRecord> smallerCollection = new ArrayList<>();
+
+        int i = 0;
+        Iterator<SinkRecord> it = sr.iterator();
+        while (it.hasNext() && i++ < 100) {
+            SinkRecord record = it.next();
+            smallerCollection.add(record);
+        }
+        System.out.println("sr.size() = " + sr.size());
+        System.out.println("smallerCollection.size() = " + smallerCollection.size());
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(smallerCollection);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @AfterAll
