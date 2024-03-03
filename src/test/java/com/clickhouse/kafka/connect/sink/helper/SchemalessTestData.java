@@ -10,10 +10,10 @@ import java.util.stream.LongStream;
 public class SchemalessTestData {
     public static final int DEFAULT_TOTAL_RECORDS = 1000;
 
-    public static Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
+    public static List<SinkRecord> createPrimitiveTypes(String topic, int partition) {
         return createPrimitiveTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
     }
-    public static Collection<SinkRecord> createPrimitiveTypes(String topic, int partition, int totalRecords) {
+    public static List<SinkRecord> createPrimitiveTypes(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();

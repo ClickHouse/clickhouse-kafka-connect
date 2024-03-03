@@ -239,17 +239,8 @@ public class ClickHouseSinkTaskSchemalessTest {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
                 "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
-        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
-        Collection<SinkRecord> smallerCollection = new ArrayList<>();
-
-        int i = 0;
-        Iterator<SinkRecord> it = sr.iterator();
-        while (it.hasNext() && i++ < 100) {
-            SinkRecord record = it.next();
-            smallerCollection.add(record);
-        }
-        System.out.println("sr.size() = " + sr.size());
-        System.out.println("smallerCollection.size() = " + smallerCollection.size());
+        List<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        List<SinkRecord> smallerCollection = sr.subList(0, sr.size() / 2);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
