@@ -75,4 +75,7 @@ public class RangeContainer extends TopicPartitionContainer {
         return this;
     }
 
+    public String toString() {
+        return "Topic: " + getTopic() + " Partition: " + getPartition() + " MinOffset: " + minOffset + " MaxOffset: " + maxOffset;
+    }
 }
