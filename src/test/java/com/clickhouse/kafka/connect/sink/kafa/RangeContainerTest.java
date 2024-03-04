@@ -61,16 +61,18 @@ public class RangeContainerTest {
     @Test
     @DisplayName("overlapRangeTest")
     public void overlapRangeTest() {
-        RangeContainer rangeContainerFirst = new RangeContainer(topic, partition, 10, 1);
+        RangeContainer rangeContainerFirst = new RangeContainer(topic, partition, 10, 2);
         RangeContainer rangeContainerSecond01 = new RangeContainer(topic, partition, 19, 10);
         RangeContainer rangeContainerSecond02 = new RangeContainer(topic, partition, 19, 3);
         RangeContainer rangeContainerSecond03 = new RangeContainer(topic, partition, 20, 6);
         RangeContainer rangeContainerSecond04 = new RangeContainer(topic, partition, 11, 0);
+        RangeContainer rangeContainerSecond05 = new RangeContainer(topic, partition, 11, 1);
 
         assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond01));
         assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond02));
         assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond03));
         assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond04));
+        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond05));
 
     }
 
