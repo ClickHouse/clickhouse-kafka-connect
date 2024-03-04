@@ -82,7 +82,9 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void stop() {
-        this.proxySinkTask.stop();
+        if (this.proxySinkTask != null) {
+            this.proxySinkTask.stop();
+        }
     }
 
 
