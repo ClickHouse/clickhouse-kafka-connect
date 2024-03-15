@@ -1,3 +1,6 @@
+## 1.0.15 2024-03-18
+* Added code 107 to the exception list and added more DLQ logging
+
 ## 1.0.13 2024-02-23
 * Fix missing jdbcConnectionProperties setup in ClickHouseWriter.getMutationRequest
 * Fix bug in overlap logic
