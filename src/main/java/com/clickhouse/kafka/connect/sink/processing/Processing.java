@@ -49,7 +49,7 @@ public class Processing {
      */
     private void doInsert(List<Record> records, RangeContainer rangeContainer) {
         if (records == null || records.isEmpty()) {
-            LOGGER.info("doInsert - No records to insert.");
+            LOGGER.debug("doInsert - No records to insert.");
             return;
         }
         QueryIdentifier queryId = new QueryIdentifier(records.get(0).getRecordOffsetContainer().getTopic(), records.get(0).getRecordOffsetContainer().getPartition(),
@@ -57,7 +57,7 @@ public class Processing {
                 UUID.randomUUID().toString());
 
         try {
-            LOGGER.info("doInsert - Records: [{}] - {}", records.size(), queryId);
+            LOGGER.debug("doInsert - Records: [{}] - {}", records.size(), queryId);
             dbWriter.doInsert(records, queryId, errorReporter);
         } catch (Exception e) {
             throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
