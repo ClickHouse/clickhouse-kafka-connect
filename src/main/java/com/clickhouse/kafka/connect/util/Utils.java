@@ -67,6 +67,7 @@ public class Utils {
             LOGGER.warn("ClickHouseException code: {}", clickHouseException.getErrorCode());
             switch (clickHouseException.getErrorCode()) {
                 case 3: // UNEXPECTED_END_OF_FILE
+                case 107: // FILE_DOESNT_EXIST
                 case 159: // TIMEOUT_EXCEEDED
                 case 164: // READONLY
                 case 202: // TOO_MANY_SIMULTANEOUS_QUERIES

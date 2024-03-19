@@ -67,7 +67,7 @@ public class ClickHouseSinkTask extends SinkTask {
             boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.getErrorsTolerance();
             Utils.handleException(e, errorTolerance, records);
             if (errorTolerance && errorReporter != null) {
-                LOGGER.debug("Sending records to DLQ.");
+                LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
                 records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
             }
         }

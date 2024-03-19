@@ -142,6 +142,8 @@ public class Processing {
                     case CONTAINS: // The state contains the given records
                         LOGGER.warn(String.format("Records seemingly missing compared to prior batch for topic [%s] partition [%s].", topic, partition));
                         // Do nothing - write to dead letter queue
+                        LOGGER.warn("Due to CONTAINS state, sending [{}] records to DLQ for topic: {}, partition: {}, minOffset: {}, maxOffset: {}",
+                                records.size(), topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset());
                         records.forEach( r ->
                                 Utils.sendTODlq(errorReporter, r, new DuplicateException(String.format(record.getTopicAndPartition())))
                         );
