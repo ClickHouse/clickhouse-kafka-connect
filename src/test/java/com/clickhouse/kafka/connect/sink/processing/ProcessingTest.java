@@ -31,6 +31,9 @@ public class ProcessingTest {
 
 
     private List<Record> createRecords(String topic, int partition) {
+        return createRecords("default", topic, partition);
+    }
+    private List<Record> createRecords(String database, String topic, int partition) {
         // create records
         List<Record> records = new ArrayList<>(1000);
         LongStream.range(0, 1000).forEachOrdered(n -> {
@@ -41,7 +44,7 @@ public class ProcessingTest {
                     null,
                     null,
                     0);
-            Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, null, Collections.singletonMap("off", new Data(Schema.Type.INT8, n)), sr);
+            Record record = Record.newRecord(SchemaType.SCHEMA, topic, partition, n, null, Collections.singletonMap("off", new Data(Schema.INT8_SCHEMA, n)), database, sr);
             records.add(record);
         });
         return records;

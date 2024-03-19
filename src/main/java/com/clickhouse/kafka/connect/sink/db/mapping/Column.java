@@ -17,39 +17,47 @@ public class Column {
     private String name;
     private Type type;
     private boolean isNullable;
+    private boolean hasDefaultValue;
     private Column subType = null;
     private Type mapKeyType = Type.NONE;
-    private Type mapValueType = Type.NONE;
+    private Column mapValueType = null;
     private int precision;
     private int scale;
 
-    private Column(String name, Type type, boolean isNullable) {
+    private Column(String name, Type type, boolean isNullable,  boolean hasDefaultValue) {
         this.name = name;
         this.type = type;
         this.isNullable = isNullable;
+        this.hasDefaultValue = hasDefaultValue;
         this.subType = null;
+        this.precision = 0;
     }
 
-    private Column(String name, Type type, boolean isNullable, Type mapKeyType, Type mapValueType) {
+    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Type mapKeyType, Column mapValueType) {
         this.name = name;
         this.type = type;
         this.isNullable = isNullable;
+        this.hasDefaultValue = hasDefaultValue;
         this.subType = null;
         this.mapKeyType = mapKeyType;
         this.mapValueType = mapValueType;
+        this.precision = 0;
     }
 
-    private Column(String name, Type type, boolean isNullable, Column subType) {
+    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Column subType) {
         this.name = name;
         this.type = type;
         this.isNullable = isNullable;
+        this.hasDefaultValue = hasDefaultValue;
         this.subType = subType;
+        this.precision = 0;
     }
 
-    private Column(String name, Type type, boolean isNullable, int precision, int scale) {
+    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, int precision, int scale) {
         this.name = name;
         this.type = type;
         this.isNullable = isNullable;
+        this.hasDefaultValue = hasDefaultValue;
         this.precision = precision;
         this.scale = scale;
     }
@@ -69,6 +77,9 @@ public class Column {
     public boolean isNullable() {
         return isNullable;
     }
+    public boolean hasDefault() {
+        return hasDefaultValue;
+    }
 
     public int getPrecision() {
         return precision;
@@ -79,7 +90,7 @@ public class Column {
     public Type getMapKeyType() {
         return mapKeyType;
     }
-    public  Type getMapValueType() {
+    public  Column getMapValueType() {
         return mapValueType;
     }
     private static Type dispatchPrimitive(String valueType) {
@@ -151,33 +162,43 @@ public class Column {
                     type = Type.DateTime64;
                 } else if (valueType.startsWith("Decimal")) {
                     type = Type.Decimal;
+                } else if (valueType.startsWith("FixedString")) {
+                    type = Type.FIXED_STRING;
                 }
 
                 break;
-
         }
         return type;
     }
 
-    public static Column extractColumn(String name, String valueType, boolean isNull) {
+    public static Column extractColumn(String name, String valueType, boolean isNull, boolean hasDefaultValue) {
         LOGGER.trace("Extracting column {} with type {}", name, valueType);
 
         Type type = dispatchPrimitive(valueType);
         if (valueType.startsWith("Array")) {
             type = Type.ARRAY;
-            Column subType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false);
-            return new Column(name, type, false, subType);
+            Column subType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false, hasDefaultValue);
+            return new Column(name, type, false, hasDefaultValue, subType);
         } else if(valueType.startsWith("Map")) {
             type = Type.MAP;
             String value = valueType.substring("Map".length() + 1, valueType.length() - 1);
-            String val[] = value.split(",");
+            String[] val = value.split(",", 2);
             String mapKey = val[0].trim();
             String mapValue = val[1].trim();
-            return new Column(name, type, false, dispatchPrimitive(mapKey), dispatchPrimitive(mapValue));
+            Column mapValueType = extractColumn(name, mapValue, false, hasDefaultValue);
+            return new Column(name, type, false, hasDefaultValue, dispatchPrimitive(mapKey), mapValueType);
         } else if (valueType.startsWith("LowCardinality")) {
-            return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull);
+            return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue);
         } else if (valueType.startsWith("Nullable")) {
-            return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true);
+            return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true, hasDefaultValue);
+        } else if (type == Type.FIXED_STRING) {
+            int length = Integer.parseInt(valueType.substring("FixedString".length() + 1, valueType.length() - 1).trim());
+            return new Column(name, type, isNull, hasDefaultValue, length, 0);
+        } else if (type == Type.DateTime64) {
+            String[] scaleAndTimezone = valueType.substring("DateTime64".length() + 1, valueType.length() - 1).split(",");
+            int precision = Integer.parseInt(scaleAndTimezone[0].trim());
+            LOGGER.trace("Precision is {}", precision);
+            return new Column(name, type, isNull, hasDefaultValue, precision, 0);
         } else if (type == Type.Decimal) {
             final Pattern patter = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
             Matcher match = patter.matcher(valueType);
@@ -200,16 +221,21 @@ public class Column {
                     default: throw new RuntimeException("Not supported precision");
                 }
 
-                return new Column(name, type, isNull, precision, arg1.orElseThrow());
+                return new Column(name, type, isNull, hasDefaultValue, precision, arg1.orElseThrow());
             } else if (arg2.isPresent()) {
-                return new Column(name, type, isNull, arg1.orElseThrow(), arg2.orElseThrow());
+                return new Column(name, type, isNull, hasDefaultValue, arg1.orElseThrow(), arg2.orElseThrow());
             } else if (arg1.isPresent()) {
-                return new Column(name, type, isNull, arg1.orElseThrow(), 0);
+                return new Column(name, type, isNull, hasDefaultValue, arg1.orElseThrow(), 0);
             } else {
-                return new Column(name, type, isNull, 10, 0);
+                return new Column(name, type, isNull, hasDefaultValue, 10, 0);
             }
         }
 
-        return new Column(name, type, isNull);
+        return new Column(name, type, isNull, hasDefaultValue);
+    }
+
+    public String toString() {
+        return String.format("Column{name=%s, type=%s, isNullable=%s, hasDefaultValue=%s, subType=%s, mapKeyType=%s, mapValueType=%s, precision=%s, scale=%s}",
+                name, type, isNullable, hasDefaultValue, subType, mapKeyType, mapValueType, precision, scale);
     }
 }

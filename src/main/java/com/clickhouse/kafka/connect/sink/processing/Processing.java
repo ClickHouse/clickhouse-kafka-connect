@@ -50,7 +50,7 @@ public class Processing {
      */
     private void doInsert(List<Record> records, RangeContainer rangeContainer) {
         if (records == null || records.isEmpty()) {
-            LOGGER.info("doInsert - No records to insert.");
+            LOGGER.debug("doInsert - No records to insert.");
             return;
         }
         QueryIdentifier queryId = new QueryIdentifier(records.get(0).getRecordOffsetContainer().getTopic(), records.get(0).getRecordOffsetContainer().getPartition(),
@@ -58,7 +58,7 @@ public class Processing {
                 UUID.randomUUID().toString());
 
         try {
-            LOGGER.info("doInsert - Records: [{}] - {}", records.size(), queryId);
+            LOGGER.debug("doInsert - Records: [{}] - {}", records.size(), queryId);
             dbWriter.doInsert(records, queryId, errorReporter);
         } catch (Exception e) {
             throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
@@ -90,7 +90,7 @@ public class Processing {
         return new ArrayList<>(
                 records.stream()
                         .filter(record -> record.getRecordOffsetContainer().getOffset() >= minOffset)
-                        .collect(Collectors.partitioningBy(record -> record.getRecordOffsetContainer().getOffset() <= offset))
+                        .collect(Collectors.partitioningBy(record -> record.getRecordOffsetContainer().getOffset() > offset))
                         .values()
         );
     }
@@ -118,6 +118,7 @@ public class Processing {
         switch (stateRecord.getState()) {
             case NONE:
                 // this is the first time we see this topic and partition; or we had a previous failure setting the state.
+                LOGGER.debug("NONE - First time seeing {}", stateRecord);
                 stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.BEFORE_PROCESSING));
                 doInsert(records, rangeContainer);
                 stateProvider.setStateRecord(new StateRecord(topic, partition, rangeContainer.getMaxOffset(), rangeContainer.getMinOffset(), State.AFTER_PROCESSING));
@@ -126,7 +127,7 @@ public class Processing {
                 int bpBeforeDrop = records.size();
                 trimmedRecords = dropRecords(stateRecord.getMinOffset(), records);
                 int bpAfterDrop = trimmedRecords.size();
-                LOGGER.debug(String.format("before drop %d after drop %d state %s",  bpBeforeDrop, bpAfterDrop, stateRecord.getOverLappingState(rangeContainer)));
+                LOGGER.debug("BEFORE_PROCESSING - Before drop total {} After drop total {} state {}", bpBeforeDrop, bpAfterDrop, stateRecord.getOverLappingState(rangeContainer));
                 // Here there are several options
                 switch (stateRecord.getOverLappingState(rangeContainer)) {
                     case ZERO: // Reset if we're at a 0 state
@@ -178,7 +179,7 @@ public class Processing {
                 int apBeforeDrop = records.size();
                 trimmedRecords = dropRecords(stateRecord.getMinOffset(), records);
                 int apAfterDrop = trimmedRecords.size();
-                LOGGER.debug(String.format("before drop %d after drop %d state %s",  apBeforeDrop, apAfterDrop, stateRecord.getOverLappingState(rangeContainer)));
+                LOGGER.debug("AFTER_PROCESSING - Before drop total {} After drop total {} state {}", apBeforeDrop, apAfterDrop, stateRecord.getOverLappingState(rangeContainer));
                 switch (stateRecord.getOverLappingState(rangeContainer)) {
                     case SAME:
                     case CONTAINS:

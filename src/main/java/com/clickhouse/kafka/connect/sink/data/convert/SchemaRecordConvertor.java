@@ -12,15 +12,15 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
-public class SchemaRecordConvertor implements RecordConvertor{
+public class SchemaRecordConvertor extends RecordConvertor{
 
     @Override
-    public Record convert(SinkRecord sinkRecord) {
-        String topic = sinkRecord.topic();
+    public Record doConvert(SinkRecord sinkRecord, String topic,String configurationDatabase) {
+        String database = configurationDatabase;
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         Struct struct = (Struct) sinkRecord.value();
         Map<String, Data> data = StructToJsonMap.toJsonMap((Struct) sinkRecord.value());
-        return new Record(SchemaType.SCHEMA, new OffsetContainer(topic, partition, offset), struct.schema().fields(), data, sinkRecord);
+        return new Record(SchemaType.SCHEMA, new OffsetContainer(topic, partition, offset), struct.schema().fields(), data, database, sinkRecord);
     }
 }

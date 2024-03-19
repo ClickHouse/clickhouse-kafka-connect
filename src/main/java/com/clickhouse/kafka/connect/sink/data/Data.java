@@ -3,16 +3,24 @@ package com.clickhouse.kafka.connect.sink.data;
 import org.apache.kafka.connect.data.Schema;
 
 public class Data {
-    private Schema.Type fieldType;
+    private Schema schema;
     private Object object;
 
-    public Data(Schema.Type fieldType, Object object) {
-        this.fieldType = fieldType;
+    public Data(Schema schema, Object object) {
+        this.schema = schema;
         this.object = object;
     }
 
     public Schema.Type getFieldType() {
-        return fieldType;
+        return schema.type();
+    }
+
+    public Schema getMapKeySchema() {
+        return schema.keySchema();
+    }
+
+    public Schema getNestedValueSchema() {
+        return schema.valueSchema();
     }
 
     public Object getObject() {

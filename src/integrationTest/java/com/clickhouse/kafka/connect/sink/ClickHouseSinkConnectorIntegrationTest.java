@@ -4,6 +4,7 @@ import com.clickhouse.client.*;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.junit.jupiter.api.*;
@@ -40,7 +41,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:22.5").withNetwork(network).withNetworkAliases("clickhouse");
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
         db.start();
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
@@ -107,7 +108,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        createTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
@@ -120,9 +121,23 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         dropTable(chcNoProxy, topicName);
-        createTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
+        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
+
+        confluentPlatform.createConnect(jsonString);
+        Thread.sleep(1000);
+    }
+
+    private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
+        LOGGER.info("Setting up connector with jdbc properties...");
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+        dropTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName);
+
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
                 "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
 
@@ -153,6 +168,16 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
         setupConnector(topicName, 1);
+        waitWhileCounting(chcNoProxy, topicName, 3);
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+
+    @Test
+    public void stockGenWithJdbcPropSingleTaskTest() throws IOException, InterruptedException {
+        String topicName = "stockGenWithJdbcPropSingleTaskTest";
+        confluentPlatform.createTopic(topicName, 1);
+        int dataCount = generateData(topicName, 1, 100);
+        setupConnectorWithJdbcProperties(topicName, 1);
         waitWhileCounting(chcNoProxy, topicName, 3);
         assertTrue(dataCount <= countRows(chcNoProxy, topicName));
     }

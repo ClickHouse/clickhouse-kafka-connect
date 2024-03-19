@@ -3,9 +3,7 @@ package com.clickhouse.kafka.connect.sink.state.provider;
 import com.clickhouse.client.*;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
-import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
@@ -13,10 +11,6 @@ import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 
 public class KeeperStateProvider implements StateProvider {
 
@@ -37,6 +31,7 @@ public class KeeperStateProvider implements StateProvider {
         String username = csc.getUsername();
         String password = csc.getPassword();
         boolean sslEnabled = csc.isSslEnabled();
+        String jdbcConnectionProperties = csc.getJdbcConnectionProperties();
         int timeout = csc.getTimeout();
 
         LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, Mask.passwordMask(password), sslEnabled, timeout));
@@ -46,6 +41,7 @@ public class KeeperStateProvider implements StateProvider {
                 .setUsername(username)
                 .setPassword(password)
                 .sslEnable(sslEnabled)
+                .setJdbcConnectionProperties(jdbcConnectionProperties)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .build();
@@ -109,7 +105,7 @@ public class KeeperStateProvider implements StateProvider {
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
         String state = stateRecord.getState().toString();
-        String insertStr = String.format("INSERT INTO `%s` values ('%s', %d, %d, '%s');", csc.getZkDatabase() ,key, minOffset, maxOffset, state);
+        String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase() ,key, minOffset, maxOffset, state);
         ClickHouseResponse response = this.chc.query(insertStr);
         LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
         LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));

@@ -11,20 +11,24 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
+import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ClickHouseSinkTaskWithSchemaTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaTest.class);
 
     private static ClickHouseContainer db = null;
     private static ClickHouseHelperClient chc = null;
 
     @BeforeAll
     public static void setup() {
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:22.5");
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         db.start();
     }
 
@@ -70,7 +74,10 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), " +
+                "`arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), " +
+                "`arr_float64` Array(Float64), `arr_bool` Array(Bool), `arr_str_arr` Array(Array(String)), `arr_arr_str_arr` Array(Array(Array(String))), " +
+                "`arr_map` Array(Map(String, String))  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
@@ -107,9 +114,29 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "map_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), " +
+                "map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String), map_string_map Map(String, Map(String, Int64))," +
+                "map_string_array Map(String, Array(String)), map_map_map Map(String, Map(String, Map(String, String)))  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    public void nullArrayTypeTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "nullable_array_string_table_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String)  ) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -126,13 +153,15 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "nullable_array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(Nullable(String))  ) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
-        assertThrowsExactly(RuntimeException.class, () -> chst.put(sr), "An attempt to write null into not nullable column 'arr'");
+        chst.put(sr);
         chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -163,7 +192,10 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         String topic = "special-char-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
+                "map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String), " +
+                "map_string_map Map(String, Map(String, Int64)), map_string_array Map(String, Array(String))," +
+                "map_map_map Map(String, Map(String, Map(String, String)))  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
 
@@ -250,10 +282,31 @@ public class ClickHouseSinkTaskWithSchemaTest {
         try {
             chst.put(sr);
         } catch (RuntimeException e) {
-            assertTrue(Utils.getRootCause(e) instanceof DataException, "Did not detect wrong date conversion ");
+            assertInstanceOf(DataException.class, Utils.getRootCause(e), "Did not detect wrong date conversion ");
         }
         chst.stop();
     }
+
+
+    @Test
+    public void supportZonedDatesStringTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "support-dates-string-test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, zoned_date DateTime64, offset_date DateTime64) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemaTestData.createZonedTimestampConversions(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+
 
     @Test
     public void withEmptyDataRecordsTest() {
@@ -326,6 +379,25 @@ public class ClickHouseSinkTaskWithSchemaTest {
     }
 
     @Test
+    public void schemaWithDefaultsAndNullableTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "default-value-table-test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, null_value_data Nullable(DateTime), default_value_data DateTime DEFAULT now() ) Engine = MergeTree ORDER BY off16");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
     public void schemaWithDecimalTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
@@ -342,6 +414,52 @@ public class ClickHouseSinkTaskWithSchemaTest {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
+    }
+
+    @Test
+    public void schemaWithFixedStringTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "fixed-string-value-table-test";
+        int fixedStringSize = RandomUtils.nextInt(1, 100);
+        LOGGER.info("FixedString size: " + fixedStringSize);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
+                "`fixed_string_string` FixedString("+fixedStringSize+"), " +
+                "`fixed_string_bytes` FixedString("+fixedStringSize+")" +
+                ") Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    public void schemaWithFixedStringMismatchTest() {
+        Map<String, String> props = getTestProperties();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "fixed-string-mismatch-table-test";
+        int fixedStringSize = RandomUtils.nextInt(2, 100);
+        LOGGER.info("FixedString size: " + fixedStringSize);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
+                "`fixed_string_string` FixedString(" + (fixedStringSize - 1 ) + ") ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        try {
+            chst.put(sr);
+        } catch (RuntimeException e) {
+            assertInstanceOf(IllegalArgumentException.class, Utils.getRootCause(e), "Could not detect size mismatch for FixedString");
+        }
+        chst.stop();
     }
 
     @Test

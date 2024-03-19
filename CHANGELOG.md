@@ -1,3 +1,27 @@
+## 1.0.15 2024-03-18
+* Added ExtractTopic transform to our source so that it would work on MSK
+
+## 1.0.14 2024-03-07
+* Fixed print vs log bug
+* Fixed bug in overlap logic, added more tests to support this
+* Fixed null-pointer bug in stop() method
+* Updated dependencies
+
+## 1.0.13 2024-02-23
+* Fix missing jdbcConnectionProperties setup in ClickHouseWriter.getMutationRequest
+
+## 1.0.12 2024-02-08
+* Added support for multiple databases in single stream using a virtual topic  #41
+* Add support for configuring JDBC properties in connection URL (i.e. `?auto_discovery=true`)
+* Added minimum version check for ClickHouse
+* Added support for fixed_string type
+
+## 1.0.11 2024-01-29
+* Added support for RowBinaryWithDefaults
+* Updated dependencies
+* Adjusting default values for some settings (like insert_quorum)
+* Added string support for DateTime64
+
 ## 1.0.10 2023-12-11
 * Fixed writing into nullable Decimal column by @mlivirov in #276
 * Adjusting the deduplication token hash by @Paultagoras in #280

@@ -10,10 +10,10 @@ import java.util.stream.LongStream;
 public class SchemalessTestData {
     public static final int DEFAULT_TOTAL_RECORDS = 1000;
 
-    public static Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
+    public static List<SinkRecord> createPrimitiveTypes(String topic, int partition) {
         return createPrimitiveTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
     }
-    public static Collection<SinkRecord> createPrimitiveTypes(String topic, int partition, int totalRecords) {
+    public static List<SinkRecord> createPrimitiveTypes(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Map<String, Object> value_struct = new HashMap<>();
@@ -119,6 +119,9 @@ public class SchemalessTestData {
             List<Float> arrayFloat32Tmp = Arrays.asList((float)1.0,(float)2.0);
             List<Double> arrayFloat64Tmp = Arrays.asList((double)1.1,(double)2.1);
             List<Boolean> arrayBoolTmp = Arrays.asList(true,false);
+            List<List<String>> arrayStrArray = Arrays.asList(arrayTmp, arrayTmp);
+            List<List<List<String>>> arrayArrayStrArray = Arrays.asList(Arrays.asList(arrayTmp, arrayTmp));
+            List<Map<String, String>> arrayMap = Arrays.asList(Map.of("k1", "v1", "k2", "v2"));
 
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("arr", arrayTmp);
@@ -131,6 +134,9 @@ public class SchemalessTestData {
             value_struct.put("arr_float32", arrayFloat32Tmp);
             value_struct.put("arr_float64", arrayFloat64Tmp);
             value_struct.put("arr_bool", arrayBoolTmp);
+            value_struct.put("arr_str_arr", arrayStrArray);
+            value_struct.put("arr_arr_str_arr", arrayArrayStrArray);
+            value_struct.put("arr_map", arrayMap);
 
             SinkRecord sr = new SinkRecord(
                     topic,
@@ -170,6 +176,20 @@ public class SchemalessTestData {
                     (long)2, "v2"
             );
 
+            Map<String,Map<String, Long>> mapStringMap = Map.of(
+                    "k1", Map.of("nk1", (long)1, "nk2", (long)2),
+                    "k2", Map.of("nk1", (long)3, "nk2", (long)4)
+            );
+
+            Map<String, List<String>> mapStringArray = Map.of(
+                    "k1", Arrays.asList("v1", "v2"),
+                    "k2", Arrays.asList("v3", "v4")
+            );
+            Map<String, Map<String, Map<String, String>>> mapMapMap = Map.of(
+                    "k1", Map.of("nk1", Map.of("nk2", "v1")),
+                    "k2", Map.of("nk1", Map.of("nk2", "v2"))
+            );
+
 
 
             Map<String, Object> value_struct = new HashMap<>();
@@ -177,6 +197,9 @@ public class SchemalessTestData {
             value_struct.put("map_string_string", mapStringString);
             value_struct.put("map_string_int64", mapStringLong);
             value_struct.put("map_int64_string", mapLongString);
+            value_struct.put("map_string_map", mapStringMap);
+            value_struct.put("map_string_array", mapStringArray);
+            value_struct.put("map_map_map", mapMapMap);
 
             SinkRecord sr = new SinkRecord(
                     topic,

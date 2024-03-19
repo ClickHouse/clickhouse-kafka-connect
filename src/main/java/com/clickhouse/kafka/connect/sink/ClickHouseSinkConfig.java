@@ -12,8 +12,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.clickhouse.data.ClickHouseDataType.Array;
-
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
 
@@ -24,6 +22,7 @@ public class ClickHouseSinkConfig {
     public static final String USERNAME = "username";
     public static final String PASSWORD = "password";
     public static final String SSL_ENABLED = "ssl";
+    public static final String JDBC_CONNECTION_PROPERTIES = "jdbcConnectionProperties";
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
@@ -39,15 +38,15 @@ public class ClickHouseSinkConfig {
     public static final String PROXY_PORT = "proxyPort";
     public static final String ZK_PATH = "zkPath";
     public static final String ZK_DATABASE = "zkDatabase";
-
-
-    
+    public static final String ENABLE_DB_TOPIC_SPLIT = "enableDbTopicSplit";
+    public static final String DB_TOPIC_SPLIT_CHAR = "dbTopicSplitChar";
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
     public static final int portDefault = 8443;
     public static final String usernameDefault = "default";
     public static final String passwordDefault = "";
     public static final Boolean sslDefault = Boolean.TRUE;
+    public static final String jdbcConnectionPropertiesDefault = "";
     public static final Integer timeoutSecondsDefault = 30;
     public static final Integer retryCountDefault = 3;
     public static final Integer tableRefreshIntervalDefault = 0;
@@ -66,6 +65,7 @@ public class ClickHouseSinkConfig {
     private final String username;
     private final String password;
     private final boolean sslEnabled;
+    private final String jdbcConnectionProperties;
     private final boolean exactlyOnce;
     private final int timeout;
     private final int retry;
@@ -80,6 +80,8 @@ public class ClickHouseSinkConfig {
     private final int proxyPort;
     private final String zkPath;
     private final String zkDatabase;
+    private final boolean enableDbTopicSplit;
+    private final String dbTopicSplitChar;
 
     public enum InsertFormats {
         NONE,
@@ -141,6 +143,17 @@ public class ClickHouseSinkConfig {
         }
     }
 
+    public static final class DbTopicSplitCharValidatorAndRecommender implements ConfigDef.Recommender {
+        @Override
+        public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
+            return List.of("_", "-", ".");
+        }
+        @Override
+        public boolean visible(String name, Map<String, Object> parsedConfig) {
+            return true;
+        }
+    }
+
     public ClickHouseSinkConfig(Map<String, String> props) {
         // Extracting configuration
         hostname = props.get(HOSTNAME);
@@ -149,6 +162,7 @@ public class ClickHouseSinkConfig {
         username = props.getOrDefault(USERNAME, usernameDefault);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
         sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
+        jdbcConnectionProperties = props.getOrDefault(JDBC_CONNECTION_PROPERTIES,jdbcConnectionPropertiesDefault).trim();
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         tableRefreshInterval = Long.parseLong(props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
@@ -170,7 +184,6 @@ public class ClickHouseSinkConfig {
             }
         }
         this.clickhouseSettings = clickhouseSettings;
-        this.addClickHouseSetting("insert_quorum", "2", false);
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
         this.addClickHouseSetting("wait_end_of_query", "1", false);
         //We set this so our ResponseSummary has actual data in it
@@ -221,6 +234,8 @@ public class ClickHouseSinkConfig {
         this.proxyPort = Integer.parseInt(props.getOrDefault(PROXY_PORT, "-1"));
         this.zkPath = props.getOrDefault(ZK_PATH, "/kafka-connect");
         this.zkDatabase = props.getOrDefault(ZK_DATABASE, "connect_state");
+        this.enableDbTopicSplit = Boolean.parseBoolean(props.getOrDefault(ENABLE_DB_TOPIC_SPLIT, "false"));
+        this.dbTopicSplitChar = props.getOrDefault(DB_TOPIC_SPLIT_CHAR, "");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -302,6 +317,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "enable SSL.");
+        configDef.define(JDBC_CONNECTION_PROPERTIES,
+                ConfigDef.Type.STRING,
+                jdbcConnectionPropertiesDefault,
+                ConfigDef.Importance.LOW,
+                "Clickhouse JDBC connection properties. default: empty",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "JDBC properties for Clickhouse connection.");
         configDef.define(TIMEOUT_SECONDS,
                 ConfigDef.Type.INT,
                 timeoutSecondsDefault,
@@ -449,7 +473,26 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.MEDIUM,
                 "State store database"
         );
-
+        configDef.define(ENABLE_DB_TOPIC_SPLIT,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "enable database topic split from topic name. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "enable database topic split from topic name.");
+        configDef.define(DB_TOPIC_SPLIT_CHAR,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "Database topic split character. Default: none",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Database topic split character",
+                new DbTopicSplitCharValidatorAndRecommender()
+        );
         return configDef;
     }
 
@@ -475,6 +518,9 @@ public class ClickHouseSinkConfig {
 
     public boolean isSslEnabled() {
         return sslEnabled;
+    }
+    public String getJdbcConnectionProperties() {
+        return jdbcConnectionProperties;
     }
     public int getTimeout() {
         return timeout;
@@ -506,4 +552,6 @@ public class ClickHouseSinkConfig {
     public String getZkDatabase() {
         return zkDatabase;
     }
+    public boolean getEnableDbTopicSplit() { return enableDbTopicSplit; }
+    public String getDbTopicSplitChar() { return dbTopicSplitChar; }
 }
