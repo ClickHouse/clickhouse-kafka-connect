@@ -151,7 +151,7 @@ public class Processing {
                     case OVER_LAPPING:
                         // spit it to 2 inserts
                         List<List<Record>> rightAndLeft = splitRecordsByOffset(trimmedRecords, stateRecord.getMaxOffset(), stateRecord.getMinOffset());
-                        List<Record> leftRecords = rightAndLeft.get(1);
+                        List<Record> leftRecords = rightAndLeft.get(0);
                         RangeContainer leftRangeContainer = extractRange(leftRecords, topic, partition);
                         // (Re-)Insert the first chunk only if the boundaries are the same
                         if (stateRecord.getOverLappingState(leftRangeContainer) == RangeState.SAME) {
