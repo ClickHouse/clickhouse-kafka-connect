@@ -164,7 +164,7 @@ public class Processing {
                                     Utils.sendTODlq(errorReporter, r, new DuplicateException(String.format(record.getTopicAndPartition())))
                             );
                         }
-                        List<Record> rightRecords = rightAndLeft.get(0);
+                        List<Record> rightRecords = rightAndLeft.get(1);
                         RangeContainer rightRangeContainer = extractRange(rightRecords, topic, partition);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.BEFORE_PROCESSING));
                         doInsert(rightRecords, rightRangeContainer);
@@ -198,7 +198,7 @@ public class Processing {
                     case OVER_LAPPING:
                         // spit it to 2 inserts we will ignore one and insert the other
                         List<List<Record>> rightAndLeft = splitRecordsByOffset(trimmedRecords, stateRecord.getMaxOffset(), stateRecord.getMinOffset());
-                        List<Record> rightRecords = rightAndLeft.get(0);
+                        List<Record> rightRecords = rightAndLeft.get(1);
                         RangeContainer rightRangeContainer = extractRange(rightRecords, topic, partition);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.BEFORE_PROCESSING));
                         doInsert(rightRecords, rightRangeContainer);
