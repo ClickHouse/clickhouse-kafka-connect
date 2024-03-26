@@ -7,6 +7,7 @@ import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -203,6 +204,27 @@ public class ClickHouseSinkTaskStringTest {
                     null,
                     null, null,
                     dataAsTSV,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public Collection<SinkRecord> createCode25(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            String dataAsJSON = "{\"str\":\"\\\\\\\\ \\ud83d\",\"off16\":0}";
+            dataAsJSON += "\n";
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    dataAsJSON,
                     n,
                     System.currentTimeMillis(),
                     TimestampType.CREATE_TIME
@@ -667,6 +689,32 @@ public class ClickHouseSinkTaskStringTest {
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size(), countRows(chc, topic));
+    }
+    @Test
+    public void clickHouseErrorCode25() {
+        InMemoryDLQ er = new InMemoryDLQ();
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConfig.INSERT_FORMAT, "json");
+        props.put("errors.tolerance", "all");
+
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "code_25_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createCode25(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.setErrorReporter(er);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), er.size());
     }
 
     @AfterAll
