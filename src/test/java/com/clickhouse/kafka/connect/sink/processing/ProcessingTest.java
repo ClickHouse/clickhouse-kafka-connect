@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink.processing;
 
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Data;
@@ -121,9 +122,7 @@ public class ProcessingTest {
         assertEquals(records.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
         stateRecord.setState(State.BEFORE_PROCESSING);
-        processing.doLogic(containsRecords);
-        assertEquals(records.size(), dbWriter.recordsInserted());
-
+        assertThrows(RuntimeException.class, () -> processing.doLogic(containsRecords));
     }
 
     @Test
@@ -188,9 +187,7 @@ public class ProcessingTest {
         assertEquals(records.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
         stateRecord.setState(State.BEFORE_PROCESSING);
-        processing.doLogic(containsRecords);
-        assertEquals(records.size(), dbWriter.recordsInserted());
-
+        assertThrows(RuntimeException.class, () -> processing.doLogic(containsRecords));
     }
 
     @Test
@@ -206,10 +203,7 @@ public class ProcessingTest {
         assertEquals(records.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
         stateRecord.setState(State.BEFORE_PROCESSING);
-        processing.doLogic(containsRecords);
-        assertEquals(records.size(), dbWriter.recordsInserted());
-        // Check that we send the correct amount of records to DLQ
-        assertEquals(containsRecords.size(), er.size());
+        assertThrows(RuntimeException.class, () -> processing.doLogic(containsRecords));
     }
 
 }
