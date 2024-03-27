@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
+import com.clickhouse.kafka.connect.sink.kafka.RangeState;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
@@ -104,11 +105,12 @@ public class Processing {
         RangeContainer rangeContainer = extractRange(records, topic, partition);
         LOGGER.info("doLogic - Topic: [{}], Partition: [{}], MinOffset: [{}], MaxOffset: [{}], Records: [{}]",
                 topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset(), records.size());
-        // State                  Actual
-        // [10 , 19]              [10, 19] ==> same
-        // [10 , 19]              [10, 30] ==> overlapping [10,19], [20, 30]
-        // [10 , 19]              [15, 30] ==> exception
-        // [10 , 19]              [10, 15] ==> contains
+        // State                 Actual
+        // [10, 19]              [10, 19] ==> same
+        // [10, 19]              [09, 30] ==> overlapping [10, 19], [20, 30]
+        // [10, 19]              [15, 30] ==> partial overlapping x, [20, 30]
+        // [10, 19]              [15, 18] ==> exception
+        // [10, 19]              [10, 15] ==> contains
 
 
         // first, let get last topic partition range & state
@@ -146,10 +148,19 @@ public class Processing {
                     case OVER_LAPPING:
                         // spit it to 2 inserts
                         List<List<Record>> rightAndLeft = splitRecordsByOffset(trimmedRecords, stateRecord.getMaxOffset(), stateRecord.getMinOffset());
-                        doInsert(rightAndLeft.get(0), stateRecord.getRangeContainer());
-                        stateProvider.setStateRecord(new StateRecord(
-                                topic, partition, stateRecord.getRangeContainer().getMaxOffset(),
-                                stateRecord.getRangeContainer().getMinOffset(), State.AFTER_PROCESSING));
+                        List<Record> leftRecords = rightAndLeft.get(0);
+                        RangeContainer leftRangeContainer = extractRange(leftRecords, topic, partition);
+                        // (Re-)Insert the first chunk only if the boundaries are the same
+                        if (stateRecord.getOverLappingState(leftRangeContainer) == RangeState.SAME) {
+                            doInsert(leftRecords, leftRangeContainer);
+                            stateProvider.setStateRecord(new StateRecord(topic, partition, leftRangeContainer.getMaxOffset(), leftRangeContainer.getMinOffset(), State.AFTER_PROCESSING));
+                        } else {
+                            LOGGER.warn(String.format("Records seemingly missing compared to prior batch for topic [%s] partition [%s].", topic, partition));
+                            // Do nothing - write to dead letter queue
+                            leftRecords.forEach( r ->
+                                    Utils.sendTODlq(errorReporter, r, new DuplicateException(String.format(record.getTopicAndPartition())))
+                            );
+                        }
                         List<Record> rightRecords = rightAndLeft.get(1);
                         RangeContainer rightRangeContainer = extractRange(rightRecords, topic, partition);
                         stateProvider.setStateRecord(new StateRecord(topic, partition, rightRangeContainer.getMaxOffset(), rightRangeContainer.getMinOffset(), State.BEFORE_PROCESSING));
@@ -160,6 +171,7 @@ public class Processing {
                         throw new RuntimeException(String.format("State MISMATCH given [%s] records for topic: [%s], partition: [%s], minOffset: [%s], maxOffset: [%s]",
                                 records.size(), topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset()));
                 }
+                break;
             case AFTER_PROCESSING:
                 int apBeforeDrop = records.size();
                 trimmedRecords = dropRecords(stateRecord.getMinOffset(), records);
