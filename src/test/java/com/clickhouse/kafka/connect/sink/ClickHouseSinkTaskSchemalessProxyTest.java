@@ -28,7 +28,8 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     @BeforeAll
     public static void setup() throws IOException {
         Network network = Network.newNetwork();
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
+        // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
         db.start();
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
