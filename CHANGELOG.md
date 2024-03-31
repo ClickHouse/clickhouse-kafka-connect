@@ -1,3 +1,6 @@
+## 1.0.16
+* Change Java Client to 0.6.0-patch3 and switch tests to use same Base class
+
 ## 1.0.15
 * Added code 107 to the exception list and added more DLQ logging
 * Added ExtractTopic transform to our source so that it would work on MSK
