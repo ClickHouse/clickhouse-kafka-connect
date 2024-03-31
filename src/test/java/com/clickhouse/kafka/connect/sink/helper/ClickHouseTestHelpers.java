@@ -6,10 +6,17 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 public class ClickHouseTestHelpers {
 
     public static final String CLICKHOUSE_VERSION_DEFAULT = "24.3";
-
     public static final String CLICKHOUSE_PROXY_VERSION_DEFAULT = "23.8";
-    public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_VERSION_DEFAULT);
+    public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
     public static final String CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_PROXY_VERSION_DEFAULT);
+
+    public static final String getClickhouseVersion() {
+        String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
+        if (clickHouseVersion == null) {
+            clickHouseVersion = CLICKHOUSE_VERSION_DEFAULT;
+        }
+        return clickHouseVersion;
+    }
     public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.builder()
