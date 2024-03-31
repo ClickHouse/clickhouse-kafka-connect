@@ -25,9 +25,6 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     private static ToxiproxyContainer toxiproxy = null;
     private static Proxy proxy = null;
-
-    private static ClickHouseHelperClient chc = null;
-
     @BeforeAll
     public static void setup() throws IOException {
         Network network = Network.newNetwork();
