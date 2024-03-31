@@ -7,20 +7,22 @@ import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 public class ClickHouseBase {
     protected static ClickHouseHelperClient chc = null;
-    private static ClickHouseContainer db = null;
+    protected static ClickHouseContainer db = null;
 
     @BeforeAll
-    public static void setup() {
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:23.9");
+    public static void setup() throws IOException  {
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         db.start();
     }
 

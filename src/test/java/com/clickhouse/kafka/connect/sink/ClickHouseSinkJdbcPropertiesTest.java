@@ -26,42 +26,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 
-public class ClickHouseSinkJdbcPropertiesTest {
-
-    private static ClickHouseContainer db = null;
-
-    private static ClickHouseHelperClient chc = null;
-
-    @BeforeAll
-    public static void setup() {
-        db = new ClickHouseContainer("clickhouse/clickhouse-server:23.9");
-        db.start();
-
-    }
-
-    private ClickHouseHelperClient createClient(Map<String,String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-
-        String hostname = csc.getHostname();
-        int port = csc.getPort();
-        String database = csc.getDatabase();
-        String username = csc.getUsername();
-        String password = csc.getPassword();
-        boolean sslEnabled = csc.isSslEnabled();
-        int timeout = csc.getTimeout();
-
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(username)
-                .setPassword(password)
-                .sslEnable(sslEnabled)
-                .setTimeout(timeout)
-                .setRetry(csc.getRetry())
-                .build();
-        return chc;
-    }
-
+public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
 
     private void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
@@ -78,24 +43,6 @@ public class ClickHouseSinkJdbcPropertiesTest {
             e.printStackTrace();
             throw new RuntimeException(e);
         }
-    }
-
-    private void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(createTableQueryTmp)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-
     }
 
     private int countRows(ClickHouseHelperClient chc, String topic) {
@@ -320,8 +267,4 @@ public class ClickHouseSinkJdbcPropertiesTest {
         assertThrows(RuntimeException.class, () -> chst.start(props));
     }
 
-    @AfterAll
-    protected static void tearDown() {
-        db.stop();
-    }
 }
