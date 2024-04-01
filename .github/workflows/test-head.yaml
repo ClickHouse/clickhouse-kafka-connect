@@ -13,5 +13,5 @@ env:
   CLICKHOUSE_TEST_VERSIONS: '["head"]'
 
 extends:
-  - .github/workflow/test-template.yml
+  - .github/workflows/test-template.yaml
 
