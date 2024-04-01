@@ -51,7 +51,7 @@ repositories {
 
 extra.apply {
 
-    set("clickHouseDriverVersion", "0.6.0")
+    set("clickHouseDriverVersion", "0.6.0-patch3")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 

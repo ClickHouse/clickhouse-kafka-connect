@@ -28,41 +28,7 @@ import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class ClickHouseSinkTaskStringTest {
-
-    private static ClickHouseContainer db = null;
-
-    private static ClickHouseHelperClient chc = null;
-
-    @BeforeAll
-    public static void setup() {
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
-        db.start();
-    }
-
-    private ClickHouseHelperClient createClient(Map<String,String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-
-        String hostname = csc.getHostname();
-        int port = csc.getPort();
-        String database = csc.getDatabase();
-        String username = csc.getUsername();
-        String password = csc.getPassword();
-        boolean sslEnabled = csc.isSslEnabled();
-        int timeout = csc.getTimeout();
-
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(username)
-                .setPassword(password)
-                .sslEnable(sslEnabled)
-                .setTimeout(timeout)
-                .setRetry(csc.getRetry())
-                .build();
-        return chc;
-    }
-
+public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     private void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
@@ -80,25 +46,6 @@ public class ClickHouseSinkTaskStringTest {
             throw new RuntimeException(e);
         }
     }
-
-    private void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(createTableQueryTmp)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
 
     private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
         String queryCount = "select count(*) from emojis_table_test where str LIKE '%\uD83D\uDE00%'";
@@ -717,8 +664,4 @@ public class ClickHouseSinkTaskStringTest {
         assertEquals(sr.size(), er.size());
     }
 
-    @AfterAll
-    protected static void tearDown() {
-        db.stop();
-    }
 }
