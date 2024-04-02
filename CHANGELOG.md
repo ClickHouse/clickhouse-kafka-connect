@@ -1,3 +1,6 @@
+## 1.0.16
+* Removed 1002 from the retriable exceptions list as it's a catch-all for all other exceptions
+
 ## 1.0.15
 * Added code 107 to the exception list and added more DLQ logging
 * Added ExtractTopic transform to our source so that it would work on MSK
