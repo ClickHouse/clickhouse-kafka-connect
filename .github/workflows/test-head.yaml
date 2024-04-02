@@ -1,13 +1,20 @@
-name: ClickHouse Kafka Connect Tests CI
+name: Build Against ClickHouse Head
 
-on: [push]
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        clickhouse: [ "23.7", "24.3", "latest" ]
+        clickhouse: [ "head" ]
     name: ClickHouse ${{ matrix.clickhouse }} tests
     steps:
       - uses: actions/checkout@v3
@@ -23,3 +30,4 @@ jobs:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
         with:
           arguments: test
+

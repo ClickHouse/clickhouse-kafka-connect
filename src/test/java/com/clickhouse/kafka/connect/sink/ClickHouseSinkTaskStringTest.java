@@ -7,6 +7,7 @@ import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -27,41 +28,7 @@ import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class ClickHouseSinkTaskStringTest {
-
-    private static ClickHouseContainer db = null;
-
-    private static ClickHouseHelperClient chc = null;
-
-    @BeforeAll
-    public static void setup() {
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
-        db.start();
-    }
-
-    private ClickHouseHelperClient createClient(Map<String,String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-
-        String hostname = csc.getHostname();
-        int port = csc.getPort();
-        String database = csc.getDatabase();
-        String username = csc.getUsername();
-        String password = csc.getPassword();
-        boolean sslEnabled = csc.isSslEnabled();
-        int timeout = csc.getTimeout();
-
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(username)
-                .setPassword(password)
-                .sslEnable(sslEnabled)
-                .setTimeout(timeout)
-                .setRetry(csc.getRetry())
-                .build();
-        return chc;
-    }
-
+public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     private void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
@@ -79,25 +46,6 @@ public class ClickHouseSinkTaskStringTest {
             throw new RuntimeException(e);
         }
     }
-
-    private void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(createTableQueryTmp)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
 
     private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
         String queryCount = "select count(*) from emojis_table_test where str LIKE '%\uD83D\uDE00%'";
@@ -203,6 +151,27 @@ public class ClickHouseSinkTaskStringTest {
                     null,
                     null, null,
                     dataAsTSV,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public Collection<SinkRecord> createCode25(String topic, int partition) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, 1000).forEachOrdered(n -> {
+            String dataAsJSON = "{\"str\":\"\\\\\\\\ \\ud83d\",\"off16\":0}";
+            dataAsJSON += "\n";
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    dataAsJSON,
                     n,
                     System.currentTimeMillis(),
                     TimestampType.CREATE_TIME
@@ -668,9 +637,31 @@ public class ClickHouseSinkTaskStringTest {
         chst.stop();
         assertEquals(sr.size(), countRows(chc, topic));
     }
+    @Test
+    public void clickHouseErrorCode25() {
+        InMemoryDLQ er = new InMemoryDLQ();
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+        props.put(ClickHouseSinkConnector.DATABASE, "default");
+        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConfig.INSERT_FORMAT, "json");
+        props.put("errors.tolerance", "all");
 
-    @AfterAll
-    protected static void tearDown() {
-        db.stop();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "code_25_table_test";
+        dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createCode25(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.setErrorReporter(er);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), er.size());
     }
+
 }

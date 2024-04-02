@@ -87,6 +87,10 @@ public class ClickHouseSinkTask extends SinkTask {
         }
     }
 
+    public void setErrorReporter(ErrorReporter errorReporter) {
+        this.errorReporter = errorReporter;
+    }
+
 
     private ErrorReporter createErrorReporter() {
         ErrorReporter result = devNullErrorReporter();

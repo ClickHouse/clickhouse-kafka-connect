@@ -24,18 +24,15 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-public class ClickHouseSinkTaskWithSchemaProxyTest {
-
-    private static ClickHouseContainer db = null;
+public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     private static ToxiproxyContainer toxiproxy = null;
     private static Proxy proxy = null;
-
-    private static ClickHouseHelperClient chc = null;
 
     @BeforeAll
     public static void setup() throws IOException {
         Network network = Network.newNetwork();
-        db = new org.testcontainers.clickhouse.ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
+        // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
+        db = new org.testcontainers.clickhouse.ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
         db.start();
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
@@ -43,29 +40,6 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
 
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
         proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
-    }
-
-    private ClickHouseHelperClient createClient(Map<String,String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-
-        String hostname = csc.getHostname();
-        int port = csc.getPort();
-        String database = csc.getDatabase();
-        String username = csc.getUsername();
-        String password = csc.getPassword();
-        boolean sslEnabled = csc.isSslEnabled();
-        int timeout = csc.getTimeout();
-
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(username)
-                .setPassword(password)
-                .sslEnable(sslEnabled)
-                .setTimeout(timeout)
-                .setRetry(csc.getRetry())
-                .build();
-        return chc;
     }
 
     private Map<String, String> getTestProperties() {
@@ -341,12 +315,5 @@ public class ClickHouseSinkTaskWithSchemaProxyTest {
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
-
-
-    @AfterAll
-    protected static void tearDown() {
-        db.stop();
-        toxiproxy.stop();
     }
 }

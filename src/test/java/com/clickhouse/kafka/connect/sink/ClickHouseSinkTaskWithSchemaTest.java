@@ -20,40 +20,8 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ClickHouseSinkTaskWithSchemaTest {
+public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaTest.class);
-
-    private static ClickHouseContainer db = null;
-    private static ClickHouseHelperClient chc = null;
-
-    @BeforeAll
-    public static void setup() {
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
-        db.start();
-    }
-
-    private ClickHouseHelperClient createClient(Map<String,String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-
-        String hostname = csc.getHostname();
-        int port = csc.getPort();
-        String database = csc.getDatabase();
-        String username = csc.getUsername();
-        String password = csc.getPassword();
-        boolean sslEnabled = csc.isSslEnabled();
-        int timeout = csc.getTimeout();
-
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(username)
-                .setPassword(password)
-                .sslEnable(sslEnabled)
-                .setTimeout(timeout)
-                .setRetry(csc.getRetry())
-                .build();
-        return chc;
-    }
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
@@ -497,11 +465,5 @@ public class ClickHouseSinkTaskWithSchemaTest {
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
-
-
-    @AfterAll
-    protected static void tearDown() {
-        db.stop();
     }
 }
