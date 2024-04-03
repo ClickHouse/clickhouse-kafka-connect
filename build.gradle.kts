@@ -135,6 +135,7 @@ tasks.create("integrationTest", Test::class.java) {
 
 
 tasks.withType<Test> {
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1
     tasks.getByName("check").dependsOn(this)
     systemProperty("file.encoding", "windows-1252") // run tests with different encoding
     useJUnitPlatform()
