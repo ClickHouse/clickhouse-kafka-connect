@@ -123,6 +123,7 @@ public class ClickHouseBase {
             props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
             props.put(ClickHouseSinkConnector.PASSWORD, System.getenv("CLICKHOUSE_CLOUD_PASSWORD"));
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
+            props.put("clickhouseSettings", "insert_quorum=3");
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
             props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
