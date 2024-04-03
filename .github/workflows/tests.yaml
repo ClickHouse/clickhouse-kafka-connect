@@ -2,10 +2,6 @@ name: ClickHouse Kafka Connect Tests CI
 
 on: [push]
 
-env:
-  CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST }}
-  CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD }}
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,5 +21,7 @@ jobs:
         uses: gradle/gradle-build-action@v2
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
+          CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST }}
+          CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD }}
         with:
           arguments: test
