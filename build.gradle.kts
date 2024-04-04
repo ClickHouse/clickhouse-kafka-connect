@@ -11,7 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 val defaultJdkVersion = 17
 java {
@@ -142,7 +142,7 @@ tasks.withType<Test> {
     testLogging {
         events("passed", "skipped", "failed")
     }
-
+    testLogging.exceptionFormat = TestExceptionFormat.FULL
     val javaVersion: Int = (project.findProperty("javaVersion") as String? ?: defaultJdkVersion.toString()).toInt()
     logger.info("Running tests using JDK$javaVersion")
     javaLauncher.set(javaToolchains.launcherFor {

@@ -1,5 +1,10 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.clickhouse.client.ClickHouseClient;
+import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.ClickHouseResponse;
+import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -24,6 +29,23 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     public static final int DEFAULT_TOTAL_RECORDS = 1000;
+    private void dropTable(ClickHouseHelperClient chc, String tableName) {
+        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+
+
+                     .query(dropTable)
+                     .executeAndWait()) {
+            ClickHouseResponseSummary summary = response.getSummary();
+
+        } catch (ClickHouseException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+
     public Collection<SinkRecord> createDBTopicSplit(int dbRange, String topic, int partition, String splitChar) {
         Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
@@ -91,6 +113,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         int dbRange = 10;
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String tmpTableName = String.format("%d.%s", i, tableName);
+            dropTable(chc, tmpTableName);
             createDatabase(String.valueOf(i));
             createTable(chc, tmpTableName, "CREATE TABLE `%s` ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         });
