@@ -123,10 +123,10 @@ A sample REST call you could use to create the connector (POST to `localhost:808
 
 
 ## Proposing code changes
-This is a relatively straightfoward process:
+This is a relatively straightforward process:
 * Ensure there's unit test coverage for the changes (and that prior tests work still, of course).
 * Update VERSION to the next logical version number
-* Add changes to CHANGELOG in a human readable way
+* Add changes to CHANGELOG in a human-readable way
 * Submit a PR
 
 ## Releasing a new version
