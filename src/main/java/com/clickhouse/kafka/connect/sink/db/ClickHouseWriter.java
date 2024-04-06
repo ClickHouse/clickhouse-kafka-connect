@@ -9,6 +9,7 @@ import com.clickhouse.data.format.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.StructToJsonMap;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
@@ -32,6 +33,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.google.common.collect.Streams;
+import reactor.util.function.Tuples;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -178,7 +181,7 @@ public class ClickHouseWriter implements DBWriter {
 
     private boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
         boolean validSchema = true;
-        for (Column col : table.getColumns()) {
+        for (Column col : table.getRootColumnsList()) {
             String colName = col.getName();
             Type type = col.getType();
             boolean isNullable = col.isNullable();
@@ -207,13 +210,19 @@ public class ClickHouseWriter implements DBWriter {
                             break;//I notice we just break here, rather than actually validate the type
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
-                                if (!(colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))) {
-                                    LOGGER.debug("Data schema name: {}", objSchema.name());
-                                    if (!("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal"))) {
-                                        validSchema = false;
-                                        LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
-                                    }
-                                }
+                                LOGGER.debug("Data schema name: {}", objSchema.name());
+
+                                if (colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))
+                                    continue;
+
+                                if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
+                                    continue;
+
+                                if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
+                                    continue;
+
+                                validSchema = false;
+                                LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
                             }
                     }
                 }
@@ -387,16 +396,80 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
                     arrObject.forEach(v -> {
                         try {
-                            if (col.getSubType().isNullable() && v != null) {
+                            if (col.getArrayType().isNullable() && v != null) {
                                 BinaryStreamUtils.writeNonNull(stream);
                             }
-                            doWriteColValue(col.getSubType(), stream, new Data(value.getNestedValueSchema(), v), defaultsSupport);
+                            doWriteColValue(col.getArrayType(), stream, new Data(value.getNestedValueSchema(), v), defaultsSupport);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
                     });
                 }
                 break;
+            case TUPLE:
+                Map<?, ?> jsonMapValues;
+
+                Object underlyingObject = value.getObject();
+                if (underlyingObject.getClass() != Struct.class) {
+                    // Tuples in the root structure are parsed using StructToJsonMap
+                    jsonMapValues = (Map<?, ?>) underlyingObject;
+                } else {
+                    jsonMapValues = StructToJsonMap.toJsonMap((Struct) underlyingObject);
+                }
+
+                Streams.zip(
+                        col.getTupleFields().stream(), value.getFields().stream(), Tuples::of
+                ).forEach((fields) -> {
+                    Column column = fields.getT1();
+                    Field field = fields.getT2();
+
+                    Data innerData = (Data) jsonMapValues.get(field.name());
+                    try {
+                        doWriteColValue(column, stream, innerData, defaultsSupport);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+                break;
+            case VARIANT:
+                // https://github.com/ClickHouse/ClickHouse/pull/58047/files#diff-f56b7f61d5a82c440bb1a078ea8e5dcf2679dc92adbbc28bd89638cbe499363dR368-R384
+                // https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L10-L56
+                mapTmp = (Map<?, ?>) value.getObject();
+                Optional<Data> variantValueOption = mapTmp.values().stream()
+                        .map(o -> (Data) o)
+                        .filter(data -> data.getObject() != null)
+                        .findFirst();
+
+                // Null Discriminator (https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L65)
+                int nullDiscriminator = 255;
+                if (variantValueOption.isEmpty()) {
+                    BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
+                } else {
+                    Data variantValue = variantValueOption.get();
+
+                    String fieldTypeName = variantValue.getFieldType().getName();
+                    Optional<Integer> globalDiscriminator = col.getVariantGlobalDiscriminator(fieldTypeName);
+                    if (globalDiscriminator.isEmpty()) {
+                        LOGGER.error("Unable to determine the global discriminator of {} variant! Writing NULL variant instead.", fieldTypeName);
+                        BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
+                        return;
+                    }
+                    BinaryStreamUtils.writeUnsignedInt8(stream, globalDiscriminator.get());
+
+                    // Variants support parametrized types, such as Decimal(x, y). Because of that, we can't use
+                    // the doWritePrimitive method.
+                    doWriteColValue(
+                            col.getVariantGlobalDiscriminators().get(globalDiscriminator.get()).getT1(),
+                            stream,
+                            variantValue,
+                            defaultsSupport
+                    );
+                }
+                break;
+            default:
+                // If you wonder, how NESTED works in JDBC:
+                // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
+                LOGGER.error("Cannot serialize unsupported type {}", columnType);
         }
     }
 
@@ -590,7 +663,7 @@ public class ClickHouseWriter implements DBWriter {
                 // write bytes into the piped stream
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
-                        for (Column col : table.getColumns()) {
+                        for (Column col : table.getRootColumnsList()) {
                             long beforePushStream = System.currentTimeMillis();
                             doWriteCol(record, col, stream, supportDefaults);
                             pushStreamTime += System.currentTimeMillis() - beforePushStream;

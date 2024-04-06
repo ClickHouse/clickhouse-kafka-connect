@@ -1,25 +1,27 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.config.ClickHouseProxyType;
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
+import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
+import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
+import java.math.BigDecimal;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaTest.class);
     @Test
@@ -467,5 +469,130 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    @SinceClickHouseVersion("24.1")
+    public void schemaWithTupleOfMapsWithVariantTest() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "tuple-array-map-variant-table-test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        String simpleTuple = "Tuple(" +
+                "    `variant_with_string` Variant(Double, String)," +
+                "    `variant_with_double` Variant(Double, String)," +
+                "    `variant_array` Array(Variant(Double, String))," +
+                "    `variant_map` Map(String, Variant(Double, String))" +
+                "  )";
+
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`tuple` Tuple(" +
+                "  `array` Array(String)," +
+                "  `map` Map(String, String)," +
+                "  `array_array` Array(Array(String))," +
+                "  `map_map` Map(String, Map(String, Int64))," +
+                "  `array_map` Array(Map(String, String))," +
+                "  `map_array` Map(String, Array(String))," +
+                "  `array_array_array` Array(Array(Array(String)))," +
+                "  `map_map_map` Map(String, Map(String, Map(String, String)))," +
+                "  `tuple` " + simpleTuple + "," +
+                "  `array_tuple` Array(" + simpleTuple + ")," +
+                "  `map_tuple` Map(String, " + simpleTuple + ")," +
+                "  `array_array_tuple` Array(Array(" + simpleTuple + "))," +
+                "  `map_map_tuple` Map(String, Map(String, " + simpleTuple + "))," +
+                "  `array_map_tuple` Array(Map(String, " + simpleTuple + "))," +
+                "  `map_array_tuple` Map(String, Array(" + simpleTuple + "))" +
+                ")) Engine = MergeTree ORDER BY `off16`",
+                Map.of(
+                        "allow_experimental_variant_type", 1
+                ));
+        Collection<SinkRecord> sr = SchemaTestData.createTupleType(topic, 1, 5);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+
+        List<JSONObject> allRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        for (int i = 0; i < sr.size(); i++) {
+            JSONObject row = allRows.get(i);
+
+            assertEquals(i, row.getInt("off16"));
+            JSONObject tuple = row.getJSONObject("tuple");
+            JSONObject nestedTuple = tuple.getJSONObject("tuple");
+            assertEquals(1 / (double) 3, nestedTuple.getDouble("variant_with_double"));
+        }
+    }
+
+    @Test
+    @SinceClickHouseVersion("24.1")
+    public void schemaWithNestedTupleMapArrayAndVariant() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = "nested-tuple-map-array-and-variant-table-test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`nested` Nested(" +
+                "  `string` String," +
+                "  `decimal` Decimal(14, 2)," +
+                "  `tuple` Tuple(" +
+                "    `map` Map(String, String)," +
+                "    `variant` Variant(Boolean, String)" +
+                "))) Engine = MergeTree ORDER BY `off16`",
+                Map.of(
+                        "allow_experimental_variant_type", 1
+                ));
+        Collection<SinkRecord> sr = SchemaTestData.createNestedType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+
+        List<JSONObject> allRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        for (int i = 0; i < allRows.size(); i++) {
+            JSONObject row = allRows.get(i);
+
+            assertEquals(i, row.getInt("off16"));
+
+            String expectedString = String.format("v%d", i);
+
+            int expectedNestedSize = i % 4;
+            assertEquals(expectedNestedSize, row.getJSONArray("nested.string").length());
+            assertEquals(expectedNestedSize, row.getJSONArray("nested.decimal").length());
+            assertEquals(expectedNestedSize, row.getJSONArray("nested.tuple").length());
+
+            BigDecimal expectedDecimal = new BigDecimal(String.format("%d.%d", i, 2));
+
+            assertEquals(
+                    expectedDecimal.multiply(new BigDecimal(expectedNestedSize)).doubleValue(),
+                    row.getJSONArray("nested.decimal").toList().stream()
+                            .map(object -> (BigDecimal) object)
+                            .reduce(BigDecimal::add)
+                            .orElseGet(() -> new BigDecimal(0)).doubleValue()
+            );
+
+            final int n = i;
+            row.getJSONArray("nested.tuple").toList().forEach(object -> {
+                Map<?, ?> tuple = (Map<?, ?>) object;
+                if (n % 2 == 0) {
+                    assertEquals(n % 8 >= 4, tuple.get("variant"));
+                } else {
+                    assertEquals(expectedString, tuple.get("variant"));
+                }
+            });
+
+            row.getJSONArray("nested.string").toList().forEach(object ->
+                    assertEquals(expectedString, object)
+            );
+        }
     }
 }

@@ -11,6 +11,8 @@ import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,6 +34,7 @@ public class ClickHouseHelperClient {
     private final boolean sslEnabled;
     private final String jdbcConnectionProperties;
     private final int timeout;
+    @Getter
     private ClickHouseNode server = null;
     private final int retry;
     private ClickHouseProxyType proxyType = null;
@@ -86,7 +89,7 @@ public class ClickHouseHelperClient {
                 tmpJdbcConnectionProperties
         );
 
-        LOGGER.info("ClickHouse URL: " + url);
+        LOGGER.info("ClickHouse URL: {}", url);
 
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
@@ -137,10 +140,6 @@ public class ClickHouseHelperClient {
         }
     }
 
-    public ClickHouseNode getServer() {
-        return this.server;
-    }
-
     public ClickHouseResponse query(String query) {
         return query(query, null);
     }
@@ -166,7 +165,6 @@ public class ClickHouseHelperClient {
         }
         throw new RuntimeException(ce);
     }
-
 
     public List<String> showTables() {
         List<String> tablesNames = new ArrayList<>();
@@ -200,32 +198,30 @@ public class ClickHouseHelperClient {
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
              ClickHouseResponse response = client.read(server)
+                     .set("describe_include_subcolumns", true)
+                     .format(ClickHouseFormat.JSONEachRow)
                      .query(describeQuery)
                      .executeAndWait()) {
+
             Table table = new Table(tableName);
             for (ClickHouseRecord r : response.records()) {
-                boolean hasDefault = false;
                 ClickHouseValue v = r.getValue(0);
-                String value = v.asString();
-                String[] cols = value.split("\t");
-                if (cols.length > 2) {
-                    String defaultKind = cols[2];
-                    if ("ALIAS".equals(defaultKind) || "MATERIALIZED".equals(defaultKind)) {
-                        LOGGER.debug("Skipping column {} as it is an alias or materialized view", cols[0]);
-                        // Only insert into "real" columns
-                        continue;
-                    } else if("DEFAULT".equals(defaultKind)) {
-                        table.setHasDefaults(true);
-                        hasDefault = true;
-                    }
+
+                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(v.asString());
+                if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
+                    LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
+                    continue;
                 }
-                String name = cols[0];
-                String type = cols[1];
-                Column column = Column.extractColumn(name, type, false, hasDefault);
+
+                if (fieldDescriptor.hasDefault()) {
+                    table.hasDefaults(true);
+                }
+
+                Column column = Column.extractColumn(fieldDescriptor);
                 table.addColumn(column);
             }
             return table;
-        } catch (ClickHouseException e) {
+        } catch (ClickHouseException | JsonProcessingException e) {
             LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
             return null;
         }
