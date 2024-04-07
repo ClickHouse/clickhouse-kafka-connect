@@ -29,24 +29,6 @@ import java.util.stream.LongStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
-
-    private void dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(dropTable)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
-    }
-
     private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
         String queryCount = "select count(*) from emojis_table_test where str LIKE '%\uD83D\uDE00%'";
 
@@ -397,8 +379,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
-        String topic = "schemaless_primitive_types_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_primitive_types_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
@@ -414,8 +396,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
-        String topic = "schemaless_empty_records_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_empty_records_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 
@@ -431,8 +413,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
-        String topic = "schemaless_nullable_values_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_nullable_values_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `null_str` Nullable(String), `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createPrimitiveTypesWithNulls(topic, 1);
 
@@ -448,8 +430,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
-        String topic = "schemaless_array_string_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_array_string_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createArrayType(topic, 1);
@@ -466,8 +448,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
-        String topic = "schemaless_map_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_map_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
@@ -485,8 +467,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
-        String topic = "special-char-table-test";
-        dropTable(chc, topic);
+        String topic = createTopicName("special-char-table-test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
@@ -503,8 +485,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
-        String topic = "emojis_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("emojis_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createDataWithEmojis(topic, 1);
 
@@ -524,7 +506,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
-        dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName);
         createTable(chc, tableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
@@ -541,8 +523,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "csv");
 
         ClickHouseHelperClient chc = createClient(props);
-        String topic = "csv_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("csv_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createCSV(topic, 1);
 
@@ -559,8 +541,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "tsv");
 
         ClickHouseHelperClient chc = createClient(props);
-        String topic = "tsv_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("tsv_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createTSV(topic, 1);
 
@@ -578,8 +560,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         props.put("errors.tolerance", "all");
 
         ClickHouseHelperClient chc = createClient(props);
-        String topic = "code_25_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("code_25_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createCode25(topic, 1);
 

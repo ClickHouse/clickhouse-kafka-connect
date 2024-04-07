@@ -134,4 +134,8 @@ public class ClickHouseBase {
         }
         return props;
     }
+
+    protected String createTopicName(String name) {
+        return String.format("%s_%d", name, System.currentTimeMillis());
+    }
 }
