@@ -17,15 +17,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ClickHouseBase {
-
-
-
     protected static ClickHouseHelperClient chc = null;
     protected static ClickHouseContainer db = null;
     protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
-
+    protected static String database = null;
     @BeforeAll
     public static void setup() throws IOException  {
+        if (database == null) {
+            database = String.format("kafka_connect_test_%s", System.currentTimeMillis());
+        }
         if (isCloud == true) {
             return;
         }
@@ -40,6 +40,9 @@ public class ClickHouseBase {
     }
 
     protected ClickHouseHelperClient createClient(Map<String,String> props) {
+        return createClient(props, true);
+    }
+    protected ClickHouseHelperClient createClient(Map<String,String> props, boolean withDatabase) {
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
 
         String hostname = csc.getHostname();
@@ -50,8 +53,7 @@ public class ClickHouseBase {
         boolean sslEnabled = csc.isSslEnabled();
         int timeout = csc.getTimeout();
 
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+        ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(database)
                 .setUsername(username)
                 .setPassword(password)
@@ -59,11 +61,29 @@ public class ClickHouseBase {
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .build();
+
+
+        if (withDatabase) {
+            createDatabase(this.database, tmpChc);
+            props.put(ClickHouseSinkConnector.DATABASE, this.database);
+            ClickHouseHelperClient chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+                    .setDatabase(this.database)
+                    .setUsername(username)
+                    .setPassword(password)
+                    .sslEnable(sslEnabled)
+                    .setTimeout(timeout)
+                    .setRetry(csc.getRetry())
+                    .build();
+                return chc;
+            }
+        chc = tmpChc;
         return chc;
     }
 
-
     protected void createDatabase(String database) {
+        createDatabase(database, chc);
+    }
+    protected void createDatabase(String database, ClickHouseHelperClient chc) {
         String createDatabaseQuery = String.format("CREATE DATABASE IF NOT EXISTS `%s`", database);
         System.out.println(createDatabaseQuery);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);

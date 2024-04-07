@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from %s where str LIKE '%\uD83D\uDE00%'", topic);
+        String queryCount = "select count(*) from " + topic + " where str LIKE '%\uD83D\uDE00%'";
 
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
              ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
