@@ -7,17 +7,30 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        clickhouse: [ "23.7", "24.3", "latest", "cloud" ]
+        clickhouse: ["23.7", "24.3", "latest", "cloud"]
     name: ClickHouse ${{ matrix.clickhouse }} tests
     steps:
+      - name: Check for Cloud Credentials
+        id: check-cloud-credentials
+        run: |
+          if [[ "${{ matrix.clickhouse }}" == "cloud" && (-z "${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}" || -z "${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}") ]]; then
+            echo "SKIP_STEP=true" >> $GITHUB_ENV
+          else
+            echo "SKIP_STEP=false" >> $GITHUB_ENV
+          fi
+        shell: bash
+
       - uses: actions/checkout@v3
+        if: env.SKIP_STEP != 'true'
       - name: Set up JDK 17
+        if: env.SKIP_STEP != 'true'
         uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'adopt'
           architecture: x64
       - name: Setup and execute Gradle 'test' task
+        if: env.SKIP_STEP != 'true'
         uses: gradle/gradle-build-action@v2
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
