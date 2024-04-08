@@ -10,6 +10,7 @@ import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import java.util.ArrayList;
@@ -27,40 +28,6 @@ import org.junit.jupiter.api.Test;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 
 public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
-
-    private void dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(dropTable)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
-    }
-
-    private int countRows(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from `%s`", topic);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
         Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
@@ -194,19 +161,13 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
 
     @Test
     public void primitiveTypesTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?load_balancing_policy=random&health_check_interval=5000&failover=2");
 
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
-        String topic = "schemaless_primitive_types_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_primitive_types_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
@@ -214,24 +175,21 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     public void withEmptyDataRecordsTest() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-        props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=false&sslmode=none");
-
+        Map<String, String> props = createProps();
+        if (isCloud) {
+            props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=true&sslmode=none");
+        } else {
+            props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=false&sslmode=none");
+        }
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
-        String topic = "schemaless_empty_records_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_empty_records_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 
@@ -239,25 +197,23 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRows(chc, topic));
+        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
     public void emptyDataRecordsTestFailedWithSslProp() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-        // this will fail connection because the test container do not configured with SSL-TLS
-        props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=true&sslmode=strict");
-
+        Map<String, String> props = createProps();
+        if (isCloud) {
+            // this will fail connection because the test container do not configured with SSL-TLS
+            props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=false&sslmode=strict");
+        } else {
+            // this will fail connection because the test container do not configured with SSL-TLS
+            props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=true&sslmode=strict");
+        }
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
-        String topic = "schemaless_empty_records_table_test";
-        dropTable(chc, topic);
+        String topic = createTopicName("schemaless_empty_records_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
         createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 

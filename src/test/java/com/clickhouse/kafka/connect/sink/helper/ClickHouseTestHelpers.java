@@ -10,12 +10,23 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
     public static final String CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_PROXY_VERSION_DEFAULT);
 
+    public static final String HTTPS_PORT = "8443";
+    public static final String DATABASE_DEFAULT = "default";
+    public static final String USERNAME_DEFAULT = "default";
     public static final String getClickhouseVersion() {
         String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
         if (clickHouseVersion == null) {
             clickHouseVersion = CLICKHOUSE_VERSION_DEFAULT;
         }
         return clickHouseVersion;
+    }
+    public static boolean isCloud() {
+        String version = System.getenv("CLICKHOUSE_VERSION");
+        System.out.println("version: " + version);
+        if ( version != null && version.equalsIgnoreCase("cloud")) {
+            return true;
+        }
+        return false;
     }
     public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);

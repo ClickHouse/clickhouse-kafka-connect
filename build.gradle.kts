@@ -11,7 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 val defaultJdkVersion = 17
 java {
@@ -135,13 +135,14 @@ tasks.create("integrationTest", Test::class.java) {
 
 
 tasks.withType<Test> {
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1
     tasks.getByName("check").dependsOn(this)
     systemProperty("file.encoding", "windows-1252") // run tests with different encoding
     useJUnitPlatform()
     testLogging {
         events("passed", "skipped", "failed")
     }
-
+    testLogging.exceptionFormat = TestExceptionFormat.FULL
     val javaVersion: Int = (project.findProperty("javaVersion") as String? ?: defaultJdkVersion.toString()).toInt()
     logger.info("Running tests using JDK$javaVersion")
     javaLauncher.set(javaToolchains.launcherFor {

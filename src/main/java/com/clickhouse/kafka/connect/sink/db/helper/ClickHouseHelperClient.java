@@ -54,6 +54,9 @@ public class ClickHouseHelperClient {
         this.server = create();
     }
 
+    public String getDatabase() {
+        return database;
+    }
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
         options.put(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion());
