@@ -6,6 +6,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         clickhouse: ["23.7", "24.3", "latest", "cloud"]
     name: ClickHouse ${{ matrix.clickhouse }} tests
