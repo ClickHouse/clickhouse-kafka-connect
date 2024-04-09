@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
@@ -23,6 +25,7 @@ public class Column {
     private Column mapValueType = null;
     private int precision;
     private int scale;
+    private Map<String, Integer> enumValues = null;
 
     private Column(String name, Type type, boolean isNullable,  boolean hasDefaultValue) {
         this.name = name;
@@ -33,6 +36,14 @@ public class Column {
         this.precision = 0;
     }
 
+    private Column(String name, Type type, boolean isNullable,  Map<String, Integer> enumValues) {
+        this.name = name;
+        this.type = type;
+        this.isNullable = isNullable;
+        this.subType = null;
+        this.precision = 0;
+        this.enumValues = enumValues;
+    }
     private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Type mapKeyType, Column mapValueType) {
         this.name = name;
         this.type = type;
@@ -175,7 +186,16 @@ public class Column {
         LOGGER.trace("Extracting column {} with type {}", name, valueType);
 
         Type type = dispatchPrimitive(valueType);
-        if (valueType.startsWith("Array")) {
+        if (valueType.startsWith("Enum")) {
+            if (valueType.startsWith("Enum16")) {
+                type = Type.Enum16;
+
+            } else {
+                type = Type.Enum8;
+            }
+            Map<String, Integer> enumValues = extractEnumValues(valueType);
+            return new Column(name, type, false, enumValues);
+        } else if (valueType.startsWith("Array")) {
             type = Type.ARRAY;
             Column subType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false, hasDefaultValue);
             return new Column(name, type, false, hasDefaultValue, subType);
@@ -232,6 +252,24 @@ public class Column {
         }
 
         return new Column(name, type, isNull, hasDefaultValue);
+    }
+
+    private static Map<String, Integer> extractEnumValues(String valueType) {
+        Map <String, Integer> data = new HashMap<>();
+        String[] values = valueType.substring(valueType.indexOf("(") + 1, valueType.indexOf(")")).split(",");
+        for (String value : values) {
+            String[] val = value.split("=", 2);
+            String key = val[0].trim();
+            data.put(key.substring(1, key.length() - 1), Integer.parseInt(val[1].trim()));
+        }
+        return data;
+    }
+
+    public Integer convertEnumValues(String value) {
+        if ( this.enumValues != null ) {
+            return enumValues.get(value);
+        }
+        throw new RuntimeException(String.format("No content in enum %s", value));
     }
 
     public String toString() {

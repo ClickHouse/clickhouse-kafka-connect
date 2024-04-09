@@ -765,5 +765,38 @@ public class SchemaTestData {
     }
 
 
+    public static Collection<SinkRecord> createEnumValueData(String topic, int i) {
+        return createEnumValueData(topic, i, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createEnumValueData(String topic, int partition, int totalRecords) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("enum8_type", Schema.STRING_SCHEMA)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("enum8_type", "A");
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
 
 }
