@@ -460,7 +460,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("enum-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (`off16` Int16, `enum8_type` Enum8('A' = 1, 'B' = 2, 'C' = 3), ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (`off16` Int16, `enum8_type` Enum8('A' = 1, 'B' = 2, 'C' = 3), `enum16_type` Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemaTestData.createEnumValueData(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
