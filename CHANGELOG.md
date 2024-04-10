@@ -1,5 +1,6 @@
 ## 1.0.17
 * Added support for ClickHouse Enum type #370
+* Added extra break down of time measurement for insert operations 
 
 ## 1.0.16
 * Removed 1002 from the retriable exceptions list as it's a catch-all for all other exceptions

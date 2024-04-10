@@ -562,6 +562,7 @@ public class ClickHouseWriter implements DBWriter {
         long s1 = System.currentTimeMillis();
         long s2 = 0;
         long s3 = 0;
+        long pushStreamTime = 0;
 
         Record first = records.get(0);
         String database = first.getDatabase();
@@ -589,8 +590,11 @@ public class ClickHouseWriter implements DBWriter {
                 // write bytes into the piped stream
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
-                        for (Column col : table.getColumns())
+                        for (Column col : table.getColumns()) {
+                            long beforePushStream = System.currentTimeMillis();
                             doWriteCol(record, col, stream, supportDefaults);
+                            pushStreamTime += System.currentTimeMillis() - beforePushStream;
+                        }
                     }
                 }
                 // We need to close the stream before getting a response
@@ -603,7 +607,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
 
@@ -616,6 +620,7 @@ public class ClickHouseWriter implements DBWriter {
         long s1 = System.currentTimeMillis();
         long s2 = 0;
         long s3 = 0;
+        long dataSerializeTime = 0;
 
 
         Record first = records.get(0);
@@ -650,8 +655,9 @@ public class ClickHouseWriter implements DBWriter {
                                 data = (Map<String, Object>) record.getSinkRecord().value();
                                 break;
                         }
-
+                        long beforeSerialize = System.currentTimeMillis();
                         String gsonString = gson.toJson(data, gsonType);
+                        dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
                         LOGGER.trace("topic {} partition {} offset {} payload {}",
                                 record.getTopic(),
                                 record.getRecordOffsetContainer().getPartition(),
@@ -672,7 +678,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
     protected void doInsertString(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
@@ -680,6 +686,7 @@ public class ClickHouseWriter implements DBWriter {
         long s1 = System.currentTimeMillis();
         long s2 = 0;
         long s3 = 0;
+        long pushStreamTime = 0;
 
         Record first = records.get(0);
         String database = first.getDatabase();
@@ -714,7 +721,9 @@ public class ClickHouseWriter implements DBWriter {
                         String data = (String)record.getSinkRecord().value();
                         LOGGER.debug(String.format("data: %s", data));
                         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                        long beforePushStream = System.currentTimeMillis();
                         BinaryStreamUtils.writeBytes(stream, bytes);
+                        pushStreamTime += System.currentTimeMillis() - beforePushStream;
                         switch (csc.getInsertFormat()) {
                             case CSV:
                             case TSV:
@@ -737,7 +746,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
 
