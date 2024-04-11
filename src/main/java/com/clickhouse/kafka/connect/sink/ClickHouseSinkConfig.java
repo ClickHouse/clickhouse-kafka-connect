@@ -23,6 +23,7 @@ public class ClickHouseSinkConfig {
     public static final String PASSWORD = "password";
     public static final String SSL_ENABLED = "ssl";
     public static final String JDBC_CONNECTION_PROPERTIES = "jdbcConnectionProperties";
+    public static final String CLIENT_SETTINGS = "clientSettings";
     public static final String TIMEOUT_SECONDS = "timeoutSeconds";
     public static final String RETRY_COUNT = "retryCount";
     public static final String EXACTLY_ONCE = "exactlyOnce";
@@ -47,6 +48,7 @@ public class ClickHouseSinkConfig {
     public static final String passwordDefault = "";
     public static final Boolean sslDefault = Boolean.TRUE;
     public static final String jdbcConnectionPropertiesDefault = "";
+    public static final String clientSettingsDefault = "";
     public static final Integer timeoutSecondsDefault = 30;
     public static final Integer retryCountDefault = 3;
     public static final Integer tableRefreshIntervalDefault = 0;
@@ -66,14 +68,15 @@ public class ClickHouseSinkConfig {
     private final String password;
     private final boolean sslEnabled;
     private final String jdbcConnectionProperties;
+    private final String clientSettingsString;
     private final boolean exactlyOnce;
     private final int timeout;
     private final int retry;
     private final long tableRefreshInterval;
     private final boolean suppressTableExistenceException;
     private final boolean errorsTolerance;
-
     private final Map<String, String> clickhouseSettings;
+    private final Map<String, String> clientSettings;
     private final Map<String, String> topicToTableMap;
     private final ClickHouseProxyType proxyType;
     private final String proxyHost;
@@ -153,7 +156,6 @@ public class ClickHouseSinkConfig {
             return true;
         }
     }
-
     public ClickHouseSinkConfig(Map<String, String> props) {
         // Extracting configuration
         hostname = props.get(HOSTNAME);
@@ -163,6 +165,7 @@ public class ClickHouseSinkConfig {
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
         sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
         jdbcConnectionProperties = props.getOrDefault(JDBC_CONNECTION_PROPERTIES,jdbcConnectionPropertiesDefault).trim();
+        clientSettingsString = props.getOrDefault(CLIENT_SETTINGS, clientSettingsDefault).trim();
         timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
         tableRefreshInterval = Long.parseLong(props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
@@ -172,17 +175,12 @@ public class ClickHouseSinkConfig {
         String errorsToleranceString = props.getOrDefault("errors.tolerance", "none").trim();
         errorsTolerance = errorsToleranceString.equalsIgnoreCase("all");
 
-        Map<String, String> clickhouseSettings = new HashMap<>();
+        Map<String, String> clientSettings = extractSettings(clientSettingsString);
+
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
-        if (!clickhouseSettingsString.isBlank()) {
-            String [] stringSplit = clickhouseSettingsString.split(",");
-            for (String clickProp: stringSplit) {
-                String [] propSplit = clickProp.trim().split("=");
-                if ( propSplit.length == 2 ) {
-                    clickhouseSettings.put(propSplit[0].trim(), propSplit[1].trim());
-                }
-            }
-        }
+        Map<String, String> clickhouseSettings = extractSettings(clickhouseSettingsString);
+
+        this.clientSettings = clientSettings;
         this.clickhouseSettings = clickhouseSettings;
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
         this.addClickHouseSetting("wait_end_of_query", "1", false);
@@ -242,6 +240,21 @@ public class ClickHouseSinkConfig {
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
         LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
     }
+    private Map<String,String> extractSettings(String settingsString) {
+        Map<String, String> settings = new HashMap<>();
+        if (settingsString != null && !settingsString.isBlank()) {
+            String[] stringSplit = settingsString.split(",");
+            for (String settingsProp : stringSplit) {
+                String[] propSplit = settingsProp.trim().split("=");
+                if (propSplit.length == 2) {
+                    settings.put(propSplit[0].trim(), propSplit[1].trim());
+                }
+            }
+
+        }
+        return settings;
+    }
+
 
     public void addClickHouseSetting(String key, String value, boolean override) {
         if (clickhouseSettings.containsKey(key)) {
@@ -252,7 +265,6 @@ public class ClickHouseSinkConfig {
             clickhouseSettings.put(key, value);
         }
     }
-
     public static final ConfigDef CONFIG = createConfigDef();
 
     private static ConfigDef createConfigDef() {
@@ -493,6 +505,15 @@ public class ClickHouseSinkConfig {
                 "Database topic split character",
                 new DbTopicSplitCharValidatorAndRecommender()
         );
+        configDef.define(CLIENT_SETTINGS,
+                ConfigDef.Type.STRING,
+                clientSettingsDefault,
+                ConfigDef.Importance.LOW,
+                "Client settings. default: empty",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "Client settings.");
         return configDef;
     }
 
@@ -534,6 +555,7 @@ public class ClickHouseSinkConfig {
         return suppressTableExistenceException;
     }
     public Map<String, String> getClickhouseSettings() {return clickhouseSettings;}
+    public Map<String, String> getClientSettings() {return clientSettings;}
     public Map<String, String> getTopicToTableMap() {return topicToTableMap;}
     public boolean getErrorsTolerance() { return errorsTolerance; }
     public InsertFormats getInsertFormat() { return insertFormat; }

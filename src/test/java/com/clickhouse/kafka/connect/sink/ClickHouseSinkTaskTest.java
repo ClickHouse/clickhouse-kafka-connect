@@ -8,6 +8,7 @@ import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
@@ -134,5 +135,21 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             int count = countRows(chc, String.valueOf(i), tableName);
             assertEquals(DEFAULT_TOTAL_RECORDS, count);
         });
+    }
+
+    @Test
+    public void testExposeClientSettings() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.CLIENT_SETTINGS, "socket_sndbuf=10485760");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("client-expose-settings-table-test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (`off16` Int16, `enum8_type` Enum8('A' = 1, 'B' = 2, 'C' = 3), `enum16_type` Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemaTestData.createEnumValueData(topic, 1);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 }

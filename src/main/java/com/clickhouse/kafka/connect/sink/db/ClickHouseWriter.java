@@ -66,6 +66,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
+                .setClientSettings(csc.getClientSettings())
                 .build();
 
         if (!chc.ping()) {
@@ -759,6 +760,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setPassword(csc.getPassword())
                 .sslEnable(csc.isSslEnabled())
                 .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
+                .setClientSettings(csc.getClientSettings())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .build();
@@ -773,9 +775,6 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-
-        request.option(ClickHouseClientOption.WRITE_BUFFER_SIZE, 8192);
-
         return request;
     }
     private Table getTable(String topic) {

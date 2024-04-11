@@ -37,6 +37,7 @@ public class ClickHouseHelperClient {
     private ClickHouseProxyType proxyType = null;
     private String proxyHost = null;
     private int proxyPort = -1;
+    private Map<String, String> clientSettings = new HashMap<>();
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -51,6 +52,7 @@ public class ClickHouseHelperClient {
         this.proxyType = builder.proxyType;
         this.proxyHost = builder.proxyHost;
         this.proxyPort = builder.proxyPort;
+        this.clientSettings = builder.clientSettings;
         this.server = create();
     }
 
@@ -83,15 +85,17 @@ public class ClickHouseHelperClient {
 
         LOGGER.info("ClickHouse URL: " + url);
 
+        Map<String, String> options = new HashMap<>();
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
-            Map<String, String> options = new HashMap<>();
             options.put("user", username);
             options.put("password", password);
-            server = ClickHouseNode.of(url, options);
-        } else {
-            server = ClickHouseNode.of(url);
+
         }
+        if (clientSettings != null && !clientSettings.isEmpty()) {
+            options.putAll(clientSettings);
+        }
+        server = ClickHouseNode.of(url, options);
         return server;
     }
 
@@ -266,6 +270,7 @@ public class ClickHouseHelperClient {
         private ClickHouseProxyType proxyType = null;
         private String proxyHost = null;
         private int proxyPort = -1;
+        private Map<String, String> clientSettings = new HashMap<>();
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -308,6 +313,11 @@ public class ClickHouseHelperClient {
 
         public ClickHouseClientBuilder setRetry(int retry) {
             this.retry = retry;
+            return this;
+        }
+
+        public ClickHouseClientBuilder setClientSettings(Map<String, String> clientSettings) {
+            this.clientSettings = clientSettings;
             return this;
         }
 
