@@ -73,12 +73,17 @@ public class ClickHouseHelperClient {
         if (this.sslEnabled)
             protocol += "s";
 
+        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
+        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("")) {
+            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
+        }
+
         String url = String.format("%s://%s:%d/%s%s", 
                 protocol, 
                 hostname, 
                 port, 
                 database,
-                jdbcConnectionProperties
+                tmpJdbcConnectionProperties
         );
 
         LOGGER.info("ClickHouse URL: " + url);
