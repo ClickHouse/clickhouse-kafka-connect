@@ -74,7 +74,7 @@ public class ClickHouseHelperClient {
             protocol += "s";
 
         String tmpJdbcConnectionProperties = jdbcConnectionProperties;
-        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("")) {
+        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
             tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
         }
 
