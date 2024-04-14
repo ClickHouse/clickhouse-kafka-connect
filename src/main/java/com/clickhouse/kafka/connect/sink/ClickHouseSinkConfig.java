@@ -186,6 +186,7 @@ public class ClickHouseSinkConfig {
         this.clickhouseSettings = clickhouseSettings;
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
         this.addClickHouseSetting("wait_end_of_query", "1", false);
+        this.addClickHouseSetting("async_insert", "0", false);
         //We set this so our ResponseSummary has actual data in it
         this.addClickHouseSetting("send_progress_in_http_headers", "1", false);
 

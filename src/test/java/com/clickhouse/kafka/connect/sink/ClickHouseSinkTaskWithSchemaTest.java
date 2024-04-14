@@ -315,7 +315,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
-    //@Test
+    @Test
     public void schemaWithDefaultsTest() {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
@@ -334,7 +334,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
-    //@Test
+    @Test
     public void schemaWithDefaultsAndNullableTest() {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
