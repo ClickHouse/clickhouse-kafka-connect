@@ -64,7 +64,7 @@ public class KeeperStateProvider implements StateProvider {
     private void init() {
         String createTable = String.format("CREATE TABLE IF NOT EXISTS `%s` " +
                 "(`key` String, minOffset BIGINT, maxOffset BIGINT, state String) " +
-                "ENGINE=KeeperMap('%s') PRIMARY KEY `key`;",
+                "ON CLUSTER ENGINE=KeeperMap('%s') PRIMARY KEY `key`;",
                 csc.getZkDatabase(),
                 csc.getZkPath());
         ClickHouseResponse r = chc.query(createTable);
