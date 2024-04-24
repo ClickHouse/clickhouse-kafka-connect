@@ -1,3 +1,7 @@
+## 1.0.18
+* Updated java-client to 0.6.0-patch4
+* Added config 'keeperOnCluster' to help self-hosted use exactly-once
+
 ## 1.0.17
 * Added support for ClickHouse Enum type #370
 * Added extra break down of time measurement for insert operations 
