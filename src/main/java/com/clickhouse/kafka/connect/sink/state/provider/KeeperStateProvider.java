@@ -66,7 +66,7 @@ public class KeeperStateProvider implements StateProvider {
                 "(`key` String, minOffset BIGINT, maxOffset BIGINT, state String)" +
                 "%s ENGINE=KeeperMap('%s') PRIMARY KEY `key`;",
                 csc.getZkDatabase(),
-                csc.getKeeperOnCluster().isEmpty() ? " ON CLUSTER " + csc.getKeeperOnCluster() : "",
+                csc.getKeeperOnCluster().isEmpty() ? "" : " ON CLUSTER " + csc.getKeeperOnCluster(),
                 csc.getZkPath());
         ClickHouseResponse r = chc.query(createTable);
         r.close();
