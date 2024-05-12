@@ -1,111 +1,78 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
-import com.clickhouse.kafka.connect.util.Utils;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.util.function.Tuple2;
+import reactor.util.function.Tuple3;
+import reactor.util.function.Tuples;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.regex.MatchResult;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
+@Builder
+@Getter
 public class Column {
     private static final Logger LOGGER = LoggerFactory.getLogger(Column.class);
+
     private String name;
     private Type type;
+
+    @Accessors(fluent = true)
+    private boolean hasDefault;
     private boolean isNullable;
-    private boolean hasDefaultValue;
-    private Column subType = null;
-    private Type mapKeyType = Type.NONE;
-    private Column mapValueType = null;
+    private boolean isSubColumn;
+
+
     private int precision;
     private int scale;
-    private Map<String, Integer> enumValues = null;
+    private Map<String, Integer> enumValues;
 
-    private Column(String name, Type type, boolean isNullable,  boolean hasDefaultValue) {
-        this.name = name;
-        this.type = type;
-        this.isNullable = isNullable;
-        this.hasDefaultValue = hasDefaultValue;
-        this.subType = null;
-        this.precision = 0;
-    }
+    private Type mapKeyType;
+    @Setter private Column mapValueType;
+    @Setter private Column arrayType;
+    private List<Column> tupleFields;
+    private List<Tuple2<Column, String>> variantTypes;
 
-    private Column(String name, Type type, boolean isNullable,  Map<String, Integer> enumValues) {
-        this.name = name;
-        this.type = type;
-        this.isNullable = isNullable;
-        this.subType = null;
-        this.precision = 0;
-        this.enumValues = enumValues;
-    }
-    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Type mapKeyType, Column mapValueType) {
-        this.name = name;
-        this.type = type;
-        this.isNullable = isNullable;
-        this.hasDefaultValue = hasDefaultValue;
-        this.subType = null;
-        this.mapKeyType = mapKeyType;
-        this.mapValueType = mapValueType;
-        this.precision = 0;
-    }
+    @Setter private int mapDepth;
+    private int arrayDepth;
 
-    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, Column subType) {
-        this.name = name;
-        this.type = type;
-        this.isNullable = isNullable;
-        this.hasDefaultValue = hasDefaultValue;
-        this.subType = subType;
-        this.precision = 0;
-    }
+    @Setter
+    private Column parent;
 
-    private Column(String name, Type type, boolean isNullable, boolean hasDefaultValue, int precision, int scale) {
-        this.name = name;
-        this.type = type;
-        this.isNullable = isNullable;
-        this.hasDefaultValue = hasDefaultValue;
-        this.precision = precision;
-        this.scale = scale;
+    /**
+     * The Variant Global Discriminators are used to mark which variant is serialized on the wire.
+     * See <a href="https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L10-L56">Columns/ColumnVariant.h</a>
+     */
+    @Getter(lazy = true)
+    private final List<Tuple2<Column, String>> variantGlobalDiscriminators = variantTypes.stream()
+            .sorted(Comparator.comparing(Tuple2::getT2))
+            .collect(Collectors.toList());
+
+    /**
+     * We need to map Kafka Connect type to ClickHouse type. This is tricky and might not work as expected for
+     * parametrized types, such as Decimal(x, y). But this is a problem only when the Variant holds multiple types of
+     * the same type, but with different parameters.
+     */
+    public Optional<Integer> getVariantGlobalDiscriminator(String clickHouseType) {
+        int index = this.getVariantGlobalDiscriminators().stream()
+                .map(Tuple2::getT2)
+                .map(String::toUpperCase)
+                .collect(Collectors.toList())
+                .indexOf(clickHouseType.toUpperCase());
+
+        if (index < 0) return Optional.empty();
+        else return Optional.of(index);
     }
 
-
-    public String getName() {
-        return name;
-    }
-
-    public Type getType() {
-        return type;
-    }
-
-    public Column getSubType() {
-        return subType;
-    }
-    public boolean isNullable() {
-        return isNullable;
-    }
-    public boolean hasDefault() {
-        return hasDefaultValue;
-    }
-
-    public int getPrecision() {
-        return precision;
-    }
-    public int getScale() {
-        return scale;
-    }
-    public Type getMapKeyType() {
-        return mapKeyType;
-    }
-    public  Column getMapValueType() {
-        return mapValueType;
-    }
     private static Type dispatchPrimitive(String valueType) {
-        Type type = Type.NONE;
+        Type type = Type.UNKNOWN;
         switch (valueType) {
             case "Int8":
                 type = Type.INT8;
@@ -172,6 +139,8 @@ public class Column {
                     // Need to understand why DateTime64(3)
                     type = Type.DateTime64;
                 } else if (valueType.startsWith("Decimal")) {
+                    // FIXME: Map keys doesn't support Decimal:
+                    //        Type of Map key must be a type, that can be represented by integer or String or FixedString (possibly LowCardinality) or UUID or IPv6, but Decimal(5, 0) given.
                     type = Type.Decimal;
                 } else if (valueType.startsWith("FixedString")) {
                     type = Type.FIXED_STRING;
@@ -182,43 +151,117 @@ public class Column {
         return type;
     }
 
-    public static Column extractColumn(String name, String valueType, boolean isNull, boolean hasDefaultValue) {
+    public static Column extractColumn(ClickHouseFieldDescriptor fieldDescriptor) {
+        return Column.extractColumn(fieldDescriptor.getName(), fieldDescriptor.getType(), false, fieldDescriptor.hasDefault(), fieldDescriptor.isSubcolumn());
+    }
+
+    public static Column extractColumn(String name, String valueType, boolean isNull, boolean hasDefaultValue, boolean isSubColumn) {
+        return extractColumn(name, valueType, isNull, hasDefaultValue, isSubColumn, 0);
+    }
+
+    public static Column extractColumn(String name, String valueType, boolean isNull, boolean hasDefaultValue, boolean isSubColumn, int arrayDepth) {
         LOGGER.trace("Extracting column {} with type {}", name, valueType);
 
-        Type type = dispatchPrimitive(valueType);
+        ColumnBuilder builder = Column.builder()
+                .name(name)
+                .arrayDepth(arrayDepth)
+                .hasDefault(hasDefaultValue)
+                .isSubColumn(isSubColumn);
+
         if (valueType.startsWith("Enum")) {
+            Type type;
             if (valueType.startsWith("Enum16")) {
                 type = Type.Enum16;
-
             } else {
                 type = Type.Enum8;
             }
-            Map<String, Integer> enumValues = extractEnumValues(valueType);
-            return new Column(name, type, false, enumValues);
+            return builder.type(type)
+                    .enumValues(extractEnumValues(valueType))
+                    .build();
         } else if (valueType.startsWith("Array")) {
-            type = Type.ARRAY;
-            Column subType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false, hasDefaultValue);
-            return new Column(name, type, false, hasDefaultValue, subType);
-        } else if(valueType.startsWith("Map")) {
-            type = Type.MAP;
-            String value = valueType.substring("Map".length() + 1, valueType.length() - 1);
-            String[] val = value.split(",", 2);
-            String mapKey = val[0].trim();
-            String mapValue = val[1].trim();
-            Column mapValueType = extractColumn(name, mapValue, false, hasDefaultValue);
-            return new Column(name, type, false, hasDefaultValue, dispatchPrimitive(mapKey), mapValueType);
+            Column arrayType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false, isSubColumn, hasDefaultValue, arrayDepth + 1);
+
+            Column array = builder.type(Type.ARRAY)
+                    .arrayType(arrayType)
+                    .build();
+
+            arrayType.setParent(array);
+            return array;
+        } else if (valueType.startsWith("Map")) {
+            String mapDefinition = valueType.substring("Map".length() + 1, valueType.length() - 1);
+            String mapKey = mapDefinition.split(",", 2)[0].trim();
+
+            // We will fill the map value type later (since the describe_include_subcolumns option prints the details later).
+            return builder.type(Type.MAP)
+                    .mapKeyType(dispatchPrimitive(mapKey))
+                    .build();
+        } else if (valueType.startsWith("Tuple")) {
+            // We will fill the columns inside the tuple later (since the describe_include_subcolumns option prints the details later).
+            return builder.type(Type.TUPLE)
+                    .tupleFields(new ArrayList<>())
+                    .build();
+        } else if (valueType.startsWith("Nested")) {
+            throw new IllegalArgumentException("DESCRIBE TABLE is never supposed to return Nested type. It should always yield its Array fields directly.");
+        } else if (valueType.startsWith("Variant")) {
+            String rawVariantTypes = valueType.substring("Variant".length() + 1, valueType.length() - 1);
+            List<Tuple2<Column, String>> variantTypes = splitUnlessInBrackets(rawVariantTypes, ',').stream().map(
+                    t -> {
+                        String definition = t.trim();
+
+                        // Variants support parametrized types, such as Decimal(x, y), which has to be described
+                        // including their parameters for proper serialization. We use Column just as a container
+                        // for those parameters. Variant types doesn't hold any names, just types.
+                        Tuple3<Type, Integer, Integer> typePrecisionAndScale = dispatchPrimitiveWithPrecisionAndScale(definition);
+
+                        ColumnBuilder variantTypeBuilder = Column.builder().type(typePrecisionAndScale.getT1());
+
+                        if (Pattern.compile(".+\\(.+\\)").asMatchPredicate().test(definition)) {
+                            variantTypeBuilder = variantTypeBuilder
+                                    .precision(typePrecisionAndScale.getT2())
+                                    .scale(typePrecisionAndScale.getT3());
+                        }
+
+                        if (definition.equalsIgnoreCase("bool")) {
+                            // So that we can match it from the Kafka Connect type
+                            definition = "Boolean";
+                        }
+
+                        return Tuples.of(variantTypeBuilder.build(), definition);
+                    }
+            ).collect(Collectors.toList());
+
+            return builder.type(Type.VARIANT)
+                    .variantTypes(variantTypes)
+                    .build();
         } else if (valueType.startsWith("LowCardinality")) {
-            return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue);
+            return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue, isSubColumn);
         } else if (valueType.startsWith("Nullable")) {
-            return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true, hasDefaultValue);
-        } else if (type == Type.FIXED_STRING) {
-            int length = Integer.parseInt(valueType.substring("FixedString".length() + 1, valueType.length() - 1).trim());
-            return new Column(name, type, isNull, hasDefaultValue, length, 0);
+            return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true, hasDefaultValue, isSubColumn);
+        }
+
+        // We're dealing with a primitive type here
+        Tuple3<Type, Integer, Integer> typePrecisionAndScale = dispatchPrimitiveWithPrecisionAndScale(valueType);
+
+        return builder
+                .type(typePrecisionAndScale.getT1())
+                .isNullable(isNull)
+                .precision(typePrecisionAndScale.getT2())
+                .scale(typePrecisionAndScale.getT3())
+                .build();
+    }
+
+    private static Tuple3<Type, Integer, Integer> dispatchPrimitiveWithPrecisionAndScale(String valueType) {
+        Type type = dispatchPrimitive(valueType);
+
+        int precision = 0;
+        int scale = 0;
+
+        if (type == Type.FIXED_STRING) {
+            precision = Integer.parseInt(valueType.substring("FixedString".length() + 1, valueType.length() - 1).trim());
         } else if (type == Type.DateTime64) {
             String[] scaleAndTimezone = valueType.substring("DateTime64".length() + 1, valueType.length() - 1).split(",");
-            int precision = Integer.parseInt(scaleAndTimezone[0].trim());
-            LOGGER.trace("Precision is {}", precision);
-            return new Column(name, type, isNull, hasDefaultValue, precision, 0);
+            precision = Integer.parseInt(scaleAndTimezone[0].trim());
+            LOGGER.trace("Parsed precision of DateTime64 is {}", precision);
         } else if (type == Type.Decimal) {
             final Pattern patter = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
             Matcher match = patter.matcher(valueType);
@@ -232,7 +275,6 @@ public class Column {
             Optional<Integer> arg2 = Optional.ofNullable(match.group("a2")).map(Integer::parseInt);
 
             if (size.isPresent()) {
-                int precision;
                 switch (size.get()) {
                     case 32: precision = 9; break;
                     case 64: precision = 18; break;
@@ -241,17 +283,45 @@ public class Column {
                     default: throw new RuntimeException("Not supported precision");
                 }
 
-                return new Column(name, type, isNull, hasDefaultValue, precision, arg1.orElseThrow());
+                scale = arg1.orElseThrow();
             } else if (arg2.isPresent()) {
-                return new Column(name, type, isNull, hasDefaultValue, arg1.orElseThrow(), arg2.orElseThrow());
+                precision = arg1.orElseThrow();
+                scale = arg2.orElseThrow();
             } else if (arg1.isPresent()) {
-                return new Column(name, type, isNull, hasDefaultValue, arg1.orElseThrow(), 0);
+                precision = arg1.orElseThrow();
             } else {
-                return new Column(name, type, isNull, hasDefaultValue, 10, 0);
+                precision = 10;
             }
         }
 
-        return new Column(name, type, isNull, hasDefaultValue);
+        return Tuples.of(type, precision, scale);
+    }
+
+    public static List<String> splitUnlessInBrackets(String input, char delimiter) {
+        List<String> parts = new ArrayList<>();
+        int bracketCounter = 0; // To keep track of whether we are inside brackets
+        StringBuilder part = new StringBuilder();
+
+        for (char ch : input.toCharArray()) {
+            if (ch == '(') {
+                bracketCounter++;
+            } else if (ch == ')') {
+                bracketCounter--;
+            }
+
+            if (ch == delimiter && bracketCounter == 0) {
+                // We've reached a comma outside of brackets, add the part to the list and reset the part builder
+                parts.add(part.toString());
+                part = new StringBuilder();
+            } else {
+                part.append(ch); // Add the character to the current part
+            }
+        }
+
+        // Add the last part after the final comma, or the full string if no comma was found
+        parts.add(part.toString());
+
+        return parts;
     }
 
     private static Map<String, Integer> extractEnumValues(String valueType) {
@@ -273,7 +343,29 @@ public class Column {
     }
 
     public String toString() {
-        return String.format("Column{name=%s, type=%s, isNullable=%s, hasDefaultValue=%s, subType=%s, mapKeyType=%s, mapValueType=%s, precision=%s, scale=%s}",
-                name, type, isNullable, hasDefaultValue, subType, mapKeyType, mapValueType, precision, scale);
+        return String.format(
+                "%s{name=%s",
+                type, name
+        ) + (!isNullable ? "" :
+                String.format(", isNullable=%s", isNullable)
+        ) + (!hasDefault ? "" :
+                String.format(", hasDefault=%s", hasDefault)
+        ) + (precision == 0 && type != Type.Decimal ? "" :
+                String.format(", precision=%s", precision)
+        ) + (scale == 0 && type != Type.Decimal ? "" :
+                String.format(", scale=%s", scale)
+        ) + (enumValues == null ? "" :
+                String.format(", enumValues=%s", enumValues)
+        ) + (arrayType == null ? "" :
+                String.format(", arrayType=%s", arrayType)
+        ) + (mapKeyType == null ? "" :
+                String.format(", mapKeyType=%s", mapKeyType)
+        ) + (mapValueType == null ? "" :
+                String.format(", mapValueType=%s", mapValueType)
+        ) + (tupleFields == null ? "" :
+                String.format(", tupleFields=%s", tupleFields.stream().map(Column::toString).collect(Collectors.joining(", ", "[", "]")))
+        ) + (variantTypes == null ? "" :
+                String.format(", variantTypes=%s", variantTypes.stream().map(Tuple2::getT2).collect(Collectors.joining(", ", "[", "]")))
+        ) + "}";
     }
 }

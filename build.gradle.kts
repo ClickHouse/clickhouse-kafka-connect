@@ -79,6 +79,17 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
     implementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
+    // https://mvnrepository.com/artifact/com.google.guava/guava
+    implementation("com.google.guava:guava:33.1.0-jre")
+
+
+    // Avoid telescoping constructors problem with the builder pattern using Lombok
+    compileOnly("org.projectlombok:lombok:1.18.32")
+    annotationProcessor("org.projectlombok:lombok:1.18.32")
+
+    // To parse JSON response from ClickHouse to parse complex data types correctly
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
+
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:2.0.11")

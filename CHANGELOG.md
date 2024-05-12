@@ -1,3 +1,10 @@
+## 1.1.0
+* Added support for Tuple type
+* Added support for Variant type
+* Added support for Nested type
+* Refactored Column class so that we use Builder pattern using Lombok
+* Refactored recursive Map type parsing to iterative approach using describe_include_subcolumns=1
+
 ## 1.0.17
 * Added support for ClickHouse Enum type #370
 * Added extra break down of time measurement for insert operations 
