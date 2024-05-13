@@ -398,6 +398,132 @@ public class SchemaTestData {
         });
         return array;
     }
+    public static Collection<SinkRecord> createTupleType(String topic, int partition) {
+        return createTupleType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createTupleType(String topic, int partition, int totalRecords) {
+
+        Schema ARRAY_SCHEMA = SchemaBuilder.array(Schema.STRING_SCHEMA);
+        Schema MAP_SCHEMA = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA);
+
+        Schema ARRAY_ARRAY_SCHEMA = SchemaBuilder.array(SchemaBuilder.array(Schema.STRING_SCHEMA));
+        Schema MAP_MAP_SCHEMA = SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.INT64_SCHEMA));
+
+        Schema ARRAY_MAP_SCHEMA = SchemaBuilder.array(SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA));
+        Schema MAP_ARRAY_SCHEMA = SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.array(Schema.STRING_SCHEMA));
+
+        Schema ARRAY_ARRAY_ARRAY_SCHEMA = SchemaBuilder.array(SchemaBuilder.array(SchemaBuilder.array(Schema.STRING_SCHEMA)));
+        Schema MAP_MAP_MAP_SCHEMA = SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA)));
+
+        Schema VARIANT_SCHEMA = SchemaBuilder.struct()
+                .field("double", Schema.OPTIONAL_FLOAT64_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema VARIANT_TUPLE_SCHEMA = SchemaBuilder.struct()
+                .field("variant_with_string", VARIANT_SCHEMA)
+                .field("variant_with_double", VARIANT_SCHEMA)
+                .field("variant_array", SchemaBuilder.array(VARIANT_SCHEMA).build())
+                .field("variant_map", SchemaBuilder.map(Schema.STRING_SCHEMA, VARIANT_SCHEMA).build())
+                .build();
+
+        Schema TUPLE_SCHEMA = SchemaBuilder.struct()
+                .field("array", ARRAY_SCHEMA)
+                .field("map", MAP_SCHEMA)
+                .field("array_array", ARRAY_ARRAY_SCHEMA)
+                .field("map_map", MAP_MAP_SCHEMA)
+                .field("array_map", ARRAY_MAP_SCHEMA)
+                .field("map_array", MAP_ARRAY_SCHEMA)
+                .field("array_array_array", ARRAY_ARRAY_ARRAY_SCHEMA)
+                .field("map_map_map", MAP_MAP_MAP_SCHEMA)
+                .field("tuple", VARIANT_TUPLE_SCHEMA)
+                .field("array_tuple", SchemaBuilder.array(VARIANT_TUPLE_SCHEMA).build())
+                .field("map_tuple", SchemaBuilder.map(Schema.STRING_SCHEMA, VARIANT_TUPLE_SCHEMA).build())
+                .field("array_array_tuple", SchemaBuilder.array(SchemaBuilder.array(VARIANT_TUPLE_SCHEMA)).build())
+                .field("map_map_tuple", SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.map(Schema.STRING_SCHEMA, VARIANT_TUPLE_SCHEMA)).build())
+                .field("array_map_tuple", SchemaBuilder.array(SchemaBuilder.map(Schema.STRING_SCHEMA, VARIANT_TUPLE_SCHEMA)).build())
+                .field("map_array_tuple", SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.array(VARIANT_TUPLE_SCHEMA)).build())
+                .build();
+
+        Schema ROOT_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("tuple", TUPLE_SCHEMA)
+                .build();
+
+        List<SinkRecord> result = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            List<String> array = Arrays.asList("1", "2");
+            List<List<String>> arrayArray = Arrays.asList(array, array);
+            List<List<List<String>>> arrayArrayArray = Arrays.asList(arrayArray, arrayArray);
+
+            Map<String, String> map = Map.of("k1", "v1", "k2", "v2");
+            Map<String, Map<String, Long>> mapMap = Map.of(
+                    "k1", Map.of("nk1", (long) 1),
+                    "k2", Map.of("nk1", (long) 2)
+            );
+            Map<String, Map<String, Map<String, String>>> mapMapMap = Map.of(
+                    "k1", Map.of("nk1", Map.of("nk2", "v1")),
+                    "k2", Map.of("nk1", Map.of("nk2", "v2"))
+            );
+
+            List<Map<String, String>> arrayMap = Arrays.asList(map, map);
+            Map<String, List<String>> mapArray = Map.of(
+                    "k1", array,
+                    "k2", array
+            );
+
+            Struct stringVariant = new Struct(VARIANT_SCHEMA).put("string", "v1");
+            Struct doubleVariant = new Struct(VARIANT_SCHEMA).put("double", (double) 1 / 3);
+
+            List<Struct> variantArray = Arrays.asList(stringVariant, doubleVariant);
+
+            Struct nestedTuple = new Struct(VARIANT_TUPLE_SCHEMA)
+                    .put("variant_with_string", stringVariant)
+                    .put("variant_with_double", doubleVariant)
+                    .put("variant_array", variantArray)
+                    .put("variant_map", Map.of("s1", stringVariant, "d1", doubleVariant));
+
+            List<Struct> arrayTuple = Arrays.asList(nestedTuple, nestedTuple);
+            Map<String, Struct> mapTuple = Map.of("k1", nestedTuple, "k2", nestedTuple);
+
+            Struct tupleStruct = new Struct(TUPLE_SCHEMA)
+                    .put("array", array)
+                    .put("map", map)
+                    .put("array_array", arrayArray)
+                    .put("map_map", mapMap)
+                    .put("array_map", arrayMap)
+                    .put("map_array", mapArray)
+                    .put("array_array_array", arrayArrayArray)
+                    .put("map_map_map", mapMapMap)
+                    .put("tuple", nestedTuple)
+                    .put("array_tuple", arrayTuple)
+                    .put("map_tuple", mapTuple)
+                    .put("array_array_tuple", Arrays.asList(arrayTuple, arrayTuple))
+                    .put("map_map_tuple", Map.of("r1", mapTuple, "r2", mapTuple))
+                    .put("array_map_tuple", Arrays.asList(mapTuple, mapTuple))
+                    .put("map_array_tuple", Map.of("r1", arrayTuple, "r2", arrayTuple));
+
+
+            Struct rootStruct = new Struct(ROOT_SCHEMA)
+                    .put("off16", (short) n)
+                    .put("tuple", tupleStruct);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, ROOT_SCHEMA,
+                    rootStruct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            result.add(sr);
+        });
+        return result;
+    }
 
     public static Collection<SinkRecord> createNullValueData(String topic, int partition) {
         return createNullValueData(topic, partition, DEFAULT_TOTAL_RECORDS);
@@ -460,6 +586,61 @@ public class SchemaTestData {
                     null,
                     null, NESTED_SCHEMA,
                     value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public static Collection<SinkRecord> createTupleLikeInfluxValueData(String topic, int partition) {
+        return createTupleLikeInfluxValueData(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createTupleLikeInfluxValueData(String topic, int partition, int totalRecords) {
+
+        Schema variantSchema = SchemaBuilder.struct()
+                .field("float64", Schema.OPTIONAL_FLOAT64_SCHEMA)
+                .field("int64", Schema.OPTIONAL_INT64_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema payloadSchema = SchemaBuilder.struct()
+                .field("fields", SchemaBuilder.map(Schema.STRING_SCHEMA, variantSchema))
+                .field("tags", SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA))
+                .build();
+
+        Schema nestedSchema = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("payload", payloadSchema)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Struct payload = new Struct(payloadSchema)
+                    .put("fields", Map.of(
+                            "field1", new Struct(variantSchema).put("float64", 1 / (float) (n + 1)),
+                            "field2", new Struct(variantSchema).put("int64", n),
+                            "field3", new Struct(variantSchema).put("string", String.format("Value '%d'", n))
+                    ))
+                    .put("tags", Map.of(
+                            "tag1", "tag1",
+                            "tag2", "tag2"
+                    ));
+
+            Struct valueStruct = new Struct(nestedSchema)
+                    .put("off16", (short) n)
+                    .put("payload", payload);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, nestedSchema,
+                    valueStruct,
                     n,
                     System.currentTimeMillis(),
                     TimestampType.CREATE_TIME
@@ -764,7 +945,6 @@ public class SchemaTestData {
         return array;
     }
 
-
     public static Collection<SinkRecord> createEnumValueData(String topic, int i) {
         return createEnumValueData(topic, i, DEFAULT_TOTAL_RECORDS);
     }
@@ -799,6 +979,65 @@ public class SchemaTestData {
             array.add(sr);
         });
         return array;
+    }
+
+    public static Collection<SinkRecord> createNestedType(String topic, int partition) {
+        return createNestedType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createNestedType(String topic, int partition, int totalRecords) {
+
+        Schema VARIANT_SCHEMA = SchemaBuilder.struct()
+                .field("boolean", Schema.OPTIONAL_BOOLEAN_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema TUPLE_SCHEMA = SchemaBuilder.struct()
+                .field("map", SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA))
+                .field("variant", VARIANT_SCHEMA)
+                .build();
+
+        Schema ROOT_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("nested.string", SchemaBuilder.array(Schema.STRING_SCHEMA))
+                .field("nested.decimal", SchemaBuilder.array(Decimal.schema(2)))
+                .field("nested.tuple", SchemaBuilder.array(TUPLE_SCHEMA))
+                .build();
+
+        List<SinkRecord> result = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            String currentStringKey = String.format("k%d", n);
+            String currentStringValue = String.format("v%d", n);
+
+            Struct booleanVariant = new Struct(VARIANT_SCHEMA).put("boolean", n % 8 >= 4);
+            Struct stringVariant = new Struct(VARIANT_SCHEMA).put("string", currentStringValue);
+
+            Struct tupleStruct = new Struct(TUPLE_SCHEMA)
+                    .put("map", Map.of(currentStringKey, currentStringValue))
+                    .put("variant", n % 2 == 0 ? booleanVariant : stringVariant);
+
+            int nestedSize = (int) n % 4;
+
+            Struct rootStruct = new Struct(ROOT_SCHEMA)
+                    .put("off16", (short) n)
+                    .put("nested.string", new ArrayList<>(Collections.nCopies(nestedSize, currentStringValue)))
+                    .put("nested.decimal", new ArrayList<>(Collections.nCopies(nestedSize, new BigDecimal(String.format("%d.%d", n, 2)))))
+                    .put("nested.tuple", new ArrayList<>(Collections.nCopies(nestedSize, tupleStruct)));
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, ROOT_SCHEMA,
+                    rootStruct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            result.add(sr);
+        });
+        return result;
     }
 
 }

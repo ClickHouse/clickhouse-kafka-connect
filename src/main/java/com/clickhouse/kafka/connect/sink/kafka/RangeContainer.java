@@ -51,23 +51,23 @@ public class RangeContainer extends TopicPartitionContainer {
         long actualMinOffset = rangeContainer.getMinOffset();
         long actualMaxOffset = rangeContainer.getMaxOffset();
 
-        // SAME State [0,10] Actual [0,10]
-        if (maxOffset == actualMaxOffset && minOffset == actualMinOffset)
+        // SAME State [0, 10] Actual [0, 10]
+        if (actualMaxOffset == maxOffset && actualMinOffset <= minOffset)
             return RangeState.SAME;
-        // NEW State [0,10] Actual [11,20]
+        // NEW State [0, 10] Actual [11, 20]
         if (actualMinOffset > maxOffset)
             return RangeState.NEW;
-        // CONTAINS [0,10] Actual [1, 10]
+        // CONTAINS [0, 10] Actual [1, 10]
         if (actualMaxOffset <= maxOffset && actualMinOffset >= minOffset)
             return RangeState.CONTAINS;
-        // ZEROED [10, 20] Actual [0, 10]
-        if (actualMinOffset < minOffset && actualMinOffset == 0)
-            return RangeState.ZERO;
-        // ERROR [10,20] Actual [8, X]
-        if (actualMinOffset < minOffset)
-            return RangeState.ERROR;
         // OVER_LAPPING
-        return RangeState.OVER_LAPPING;
+        if (actualMaxOffset > maxOffset)
+            return RangeState.OVER_LAPPING;
+        // ZEROED [10, 20] Actual [0, 10]
+        if (actualMinOffset == 0)
+            return RangeState.ZERO;
+        // ERROR [10, 20] Actual [8, 19]
+        return RangeState.ERROR;
     }
 
 

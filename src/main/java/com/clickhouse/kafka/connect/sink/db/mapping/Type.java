@@ -1,7 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
 public enum Type {
-    NONE,
+    UNKNOWN,
     INT8,
     INT16,
     INT32,
@@ -14,6 +14,8 @@ public enum Type {
     BOOLEAN,
     ARRAY,
     MAP,
+    TUPLE,
+    VARIANT,
     Date,
     Date32,
     DateTime,

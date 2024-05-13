@@ -1,6 +1,9 @@
 package com.clickhouse.kafka.connect.sink.data;
 
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
+
+import java.util.List;
 
 public class Data {
     private Schema schema;
@@ -9,6 +12,10 @@ public class Data {
     public Data(Schema schema, Object object) {
         this.schema = schema;
         this.object = object;
+    }
+
+    public List<Field> getFields() {
+        return schema.fields();
     }
 
     public Schema.Type getFieldType() {
