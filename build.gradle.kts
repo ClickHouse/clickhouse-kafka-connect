@@ -92,7 +92,7 @@ dependencies {
 
 
     // TODO: need to remove ???
-    implementation("org.slf4j:slf4j-reload4j:2.0.11")
+    implementation("org.slf4j:slf4j-reload4j:2.0.13")
     implementation("org.junit.jupiter:junit-jupiter-api:5.10.1")
     implementation("org.testcontainers:testcontainers:1.19.7")
     implementation("org.testcontainers:toxiproxy:1.19.7")
