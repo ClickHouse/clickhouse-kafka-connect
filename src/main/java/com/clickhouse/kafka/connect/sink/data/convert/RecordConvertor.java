@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.data.convert;
 
+import java.util.regex.Pattern;
 import org.apache.kafka.connect.data.Schema;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -9,7 +10,7 @@ public abstract class RecordConvertor {
         String database = configurationDatabase;
         String topic = sinkRecord.topic();
         if (splitDBTopic) {
-            String[] parts = topic.split(dbTopicSeparatorChar);
+            String[] parts = topic.split(Pattern.quote(dbTopicSeparatorChar));
             if (parts.length == 2) {
                 database = parts[0];
                 topic = parts[1];
