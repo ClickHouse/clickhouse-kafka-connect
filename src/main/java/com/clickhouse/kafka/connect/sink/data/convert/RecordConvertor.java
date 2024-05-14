@@ -15,7 +15,7 @@ public abstract class RecordConvertor {
                 topic = parts[1];
             }
         }
-        return doConvert(sinkRecord, topic, configurationDatabase);
+        return doConvert(sinkRecord, topic, database);
     }
     public abstract Record doConvert(SinkRecord sinkRecord, String topic,String database);
 }
