@@ -5,11 +5,14 @@ import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 
 import java.io.IOException;
@@ -17,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ClickHouseBase {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected static ClickHouseHelperClient chc = null;
     protected static ClickHouseContainer db = null;
     protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
@@ -26,7 +30,7 @@ public class ClickHouseBase {
         if (database == null) {
             database = String.format("kafka_connect_test_%s", System.currentTimeMillis());
         }
-        if (isCloud == true) {
+        if (isCloud) {
             return;
         }
         db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
@@ -35,6 +39,15 @@ public class ClickHouseBase {
 
     @AfterAll
     protected static void tearDown() {
+        if (isCloud) {//We need to clean up databases in the cloud, we can ignore the local database
+            if (database != null) {
+                try {
+                    dropDatabase(database);
+                } catch (Exception e) {
+                    LOGGER.error("Error dropping database", e);
+                }
+            }
+        }
         if (db != null)
             db.stop();
     }
@@ -101,6 +114,39 @@ public class ClickHouseBase {
 
     }
 
+    protected static void dropDatabase(String database) {
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(new ClickHouseBase().createProps());
+
+        String hostname = csc.getHostname();
+        int port = csc.getPort();
+        String username = csc.getUsername();
+        String password = csc.getPassword();
+        boolean sslEnabled = csc.isSslEnabled();
+        int timeout = csc.getTimeout();
+
+        ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+                .setDatabase(database)
+                .setUsername(username)
+                .setPassword(password)
+                .sslEnable(sslEnabled)
+                .setTimeout(timeout)
+                .setRetry(csc.getRetry())
+                .build();
+
+        dropDatabase(database, tmpChc);
+    }
+    protected static void dropDatabase(String database, ClickHouseHelperClient chc) {
+        String dropDatabaseQuery = String.format("DROP DATABASE IF EXISTS `%s`", database);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer())
+                     .query(dropDatabaseQuery)
+                     .executeAndWait()) {
+            ClickHouseResponseSummary summary = response.getSummary();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
         String createTableQueryTmp = String.format(createTableQuery, topic);
 
@@ -143,6 +189,7 @@ public class ClickHouseBase {
             props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
             props.put(ClickHouseSinkConnector.PASSWORD, System.getenv("CLICKHOUSE_CLOUD_PASSWORD"));
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
+            props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
