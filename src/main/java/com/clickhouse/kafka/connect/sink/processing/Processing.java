@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.processing;
 
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
@@ -28,6 +29,8 @@ public class Processing {
     private static final Logger LOGGER = LoggerFactory.getLogger(Processing.class);
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
+    private ClickHouseSinkConfig clickHouseSinkConfig;
+
 
     private ErrorReporter errorReporter = null;
 
@@ -37,10 +40,11 @@ public class Processing {
         this.errorReporter = null;
     }
 
-    public Processing(StateProvider stateProvider, DBWriter dbWriter, ErrorReporter errorReporter) {
+    public Processing(StateProvider stateProvider, DBWriter dbWriter, ErrorReporter errorReporter, ClickHouseSinkConfig clickHouseSinkConfig) {
         this.stateProvider = stateProvider;
         this.dbWriter = dbWriter;
         this.errorReporter = errorReporter;
+        this.clickHouseSinkConfig = clickHouseSinkConfig;
     }
     /**
      * the logic is only for topic partition scoop
@@ -100,7 +104,13 @@ public class Processing {
         List<Record> trimmedRecords;
         Record record = records.get(0);
 
+        String database = records.get(0).getDatabase();
         String topic = record.getRecordOffsetContainer().getTopic();
+
+        if (clickHouseSinkConfig.getEnableDbTopicSplit()) {
+            topic = database + "_" + topic;
+        }
+
         int partition = record.getRecordOffsetContainer().getPartition();
         RangeContainer rangeContainer = extractRange(records, topic, partition);
         LOGGER.info("doLogic - Topic: [{}], Partition: [{}], MinOffset: [{}], MaxOffset: [{}], Records: [{}]",
