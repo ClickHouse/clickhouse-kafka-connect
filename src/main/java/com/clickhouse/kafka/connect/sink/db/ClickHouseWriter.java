@@ -164,7 +164,7 @@ public class ClickHouseWriter implements DBWriter {
         String topic = first.getTopic();
         Table table = getTable(topic);
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
-        LOGGER.info("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
+        LOGGER.debug("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
 
         switch (first.getSchemaType()) {
             case SCHEMA:
@@ -674,7 +674,7 @@ public class ClickHouseWriter implements DBWriter {
                 stream.close();
                 try (ClickHouseResponse response = future.get()) {
                     ClickHouseResponseSummary summary = response.getSummary();
-                    LOGGER.info("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
+                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
                 }
             }
         }
@@ -746,7 +746,7 @@ public class ClickHouseWriter implements DBWriter {
                 s2 = System.currentTimeMillis();
                 try (ClickHouseResponse response = future.get()) {
                     ClickHouseResponseSummary summary = response.getSummary();
-                    LOGGER.info("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
+                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
                 }
             }
         }
@@ -814,7 +814,7 @@ public class ClickHouseWriter implements DBWriter {
                 s2 = System.currentTimeMillis();
                 try (ClickHouseResponse response = future.get()) {
                     ClickHouseResponseSummary summary = response.getSummary();
-                    LOGGER.info("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
+                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
                 }
             }
         }
