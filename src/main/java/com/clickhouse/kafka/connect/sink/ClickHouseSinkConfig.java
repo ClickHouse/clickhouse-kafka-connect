@@ -40,6 +40,8 @@ public class ClickHouseSinkConfig {
     public static final String ZK_DATABASE = "zkDatabase";
     public static final String ENABLE_DB_TOPIC_SPLIT = "enableDbTopicSplit";
     public static final String DB_TOPIC_SPLIT_CHAR = "dbTopicSplitChar";
+    public static final String KEEPER_ON_CLUSTER = "keeperOnCluster";
+
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
     public static final int portDefault = 8443;
@@ -82,6 +84,7 @@ public class ClickHouseSinkConfig {
     private final String zkDatabase;
     private final boolean enableDbTopicSplit;
     private final String dbTopicSplitChar;
+    private final String keeperOnCluster;
 
     public enum InsertFormats {
         NONE,
@@ -237,6 +240,7 @@ public class ClickHouseSinkConfig {
         this.zkDatabase = props.getOrDefault(ZK_DATABASE, "connect_state");
         this.enableDbTopicSplit = Boolean.parseBoolean(props.getOrDefault(ENABLE_DB_TOPIC_SPLIT, "false"));
         this.dbTopicSplitChar = props.getOrDefault(DB_TOPIC_SPLIT_CHAR, "");
+        this.keeperOnCluster = props.getOrDefault(KEEPER_ON_CLUSTER, "");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -494,29 +498,34 @@ public class ClickHouseSinkConfig {
                 "Database topic split character",
                 new DbTopicSplitCharValidatorAndRecommender()
         );
+        configDef.define(KEEPER_ON_CLUSTER,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "Which cluster keeper is on. Only needed for self-hosted clusters using exactly-once. Default: ''",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Keeper on cluster"
+        );
         return configDef;
     }
 
     public String getHostname() {
         return hostname;
     }
-
     public int getPort() {
         return port;
     }
-
     public String getDatabase() {
         return database;
     }
-
     public String getUsername() {
         return username;
     }
-
     public String getPassword() {
         return password;
     }
-
     public boolean isSslEnabled() {
         return sslEnabled;
     }
@@ -555,4 +564,5 @@ public class ClickHouseSinkConfig {
     }
     public boolean getEnableDbTopicSplit() { return enableDbTopicSplit; }
     public String getDbTopicSplitChar() { return dbTopicSplitChar; }
+    public String getKeeperOnCluster() { return keeperOnCluster; }
 }
