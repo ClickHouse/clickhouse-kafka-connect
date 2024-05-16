@@ -6,6 +6,8 @@
 * Added support for Nested type
 * Refactored Column class so that we use Builder pattern using Lombok
 * Refactored recursive Map type parsing to iterative approach using describe_include_subcolumns=1
+* Adjusted logging to reduce volume while keeping important information
+* Adjusted tests to be more reliable and self cleaning
 
 ## 1.0.17
 * Added support for ClickHouse Enum type #370
