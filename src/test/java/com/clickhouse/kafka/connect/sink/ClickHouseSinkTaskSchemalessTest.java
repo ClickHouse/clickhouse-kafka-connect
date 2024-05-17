@@ -13,6 +13,7 @@ import org.testcontainers.clickhouse.ClickHouseContainer;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
@@ -32,6 +33,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
     }
 
     @Test
