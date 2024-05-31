@@ -104,7 +104,7 @@ public class Processing {
         List<Record> trimmedRecords;
         Record record = records.get(0);
 
-        String database = records.get(0).getDatabase();
+        String database = record.getDatabase();
         String topic = record.getRecordOffsetContainer().getTopic();
 
         if (this.clickHouseSinkConfig != null && clickHouseSinkConfig.getEnableDbTopicSplit()) {
