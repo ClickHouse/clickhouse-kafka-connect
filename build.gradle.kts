@@ -76,7 +76,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.google.code.gson:gson:2.11.0")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
     implementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
     // https://mvnrepository.com/artifact/com.google.guava/guava
@@ -106,7 +106,7 @@ dependencies {
     clickhouseDependencies("io.lettuce:lettuce-core:6.3.2.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
-    clickhouseDependencies("com.google.code.gson:gson:2.10.1")
+    clickhouseDependencies("com.google.code.gson:gson:2.11.0")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:2.17.1")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-databind:2.17.1")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:2.17.1")
