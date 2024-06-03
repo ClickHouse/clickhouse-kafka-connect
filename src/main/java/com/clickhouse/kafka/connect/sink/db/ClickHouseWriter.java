@@ -552,7 +552,7 @@ public class ClickHouseWriter implements DBWriter {
                 if (Schema.Type.BYTES.equals(dataType)) {
                     BinaryStreamUtils.writeString(stream, (byte[]) value);
                 } else {
-                    BinaryStreamUtils.writeString(stream, ((String) value).getBytes());
+                    BinaryStreamUtils.writeString(stream, ((String) value).getBytes(StandardCharsets.UTF_8));
                 }
                 break;
             case UUID:
