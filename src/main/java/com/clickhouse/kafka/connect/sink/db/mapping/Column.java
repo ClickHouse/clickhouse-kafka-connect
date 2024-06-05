@@ -201,7 +201,9 @@ public class Column {
                     .tupleFields(new ArrayList<>())
                     .build();
         } else if (valueType.startsWith("Nested")) {
-            throw new IllegalArgumentException("DESCRIBE TABLE is never supposed to return Nested type. It should always yield its Array fields directly.");
+            LOGGER.warn("DESCRIBE TABLE is never supposed to return Nested type - it should always yield its Array fields directly. " +
+                    "This is likely caused by a different table in the same database using 'flatten_nested=0', so we'll ignore that table...");
+            return null;//This is a special case where we don't want to create a column
         } else if (valueType.startsWith("Variant")) {
             String rawVariantTypes = valueType.substring("Variant".length() + 1, valueType.length() - 1);
             List<Tuple2<Column, String>> variantTypes = splitUnlessInBrackets(rawVariantTypes, ',').stream().map(
