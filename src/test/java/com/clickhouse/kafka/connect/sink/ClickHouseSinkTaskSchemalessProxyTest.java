@@ -41,6 +41,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
+//        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
         props.put(ClickHouseSinkConnector.DATABASE, "default");
         props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
         props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());

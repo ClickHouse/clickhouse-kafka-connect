@@ -1,6 +1,11 @@
 package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.Client;
+import com.clickhouse.client.api.OperationStatistics;
+import com.clickhouse.client.api.Protocol;
+import com.clickhouse.client.api.insert.InsertResponse;
+import com.clickhouse.client.api.insert.InsertSettings;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.data.ClickHouseDataStreamFactory;
 import com.clickhouse.data.ClickHouseFormat;
@@ -21,6 +26,10 @@ import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoField;
@@ -49,7 +58,6 @@ public class ClickHouseWriter implements DBWriter {
 
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
-
     private Map<String, Table> mapping = null;
     private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
 
@@ -147,9 +155,9 @@ public class ClickHouseWriter implements DBWriter {
 
 
 
-    public ClickHouseNode getServer() {
-        return chc.getServer();
-    }
+//    public ClickHouseNode getServer() {
+//        return chc.getServer();
+//    }
 
     public void doInsert(List<Record> records, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         doInsert(records, queryId, null);
@@ -231,7 +239,7 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
-    private void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision) throws IOException {
+    private void doWriteDates(Type type, OutputStream stream, Data value, int precision) throws IOException {
         // TODO: develop more specific tests to have better coverage
         if (value.getObject() == null) {
             BinaryStreamUtils.writeNull(stream);
@@ -332,7 +340,7 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private void doWriteColValue(Column col, ClickHousePipedOutputStream stream, Data value, boolean defaultsSupport) throws IOException {
+    private void doWriteColValue(Column col, OutputStream stream, Data value, boolean defaultsSupport) throws IOException {
         Type columnType = col.getType();
 
         switch (columnType) {
@@ -473,7 +481,7 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private void doWriteFixedString(Type columnType, ClickHousePipedOutputStream stream, Object value, int length) throws IOException {
+    private void doWriteFixedString(Type columnType, OutputStream stream, Object value, int length) throws IOException {
         LOGGER.trace("Writing fixed string type: {}, value: {}", columnType, value);
 
         if (value == null) {
@@ -494,7 +502,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
     }
-    private void doWritePrimitive(Type columnType, Schema.Type dataType, ClickHousePipedOutputStream stream, Object value, Column col) throws IOException {
+    private void doWritePrimitive(Type columnType, Schema.Type dataType, OutputStream stream, Object value, Column col) throws IOException {
         LOGGER.trace("Writing primitive type: {}, value: {}", columnType, value);
 
         if (value == null) {
@@ -568,7 +576,7 @@ public class ClickHouseWriter implements DBWriter {
     }
 
 
-    private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream, boolean defaultsSupport) throws IOException {
+    private void doWriteCol(Record record, Column col, OutputStream stream, boolean defaultsSupport) throws IOException {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
         String name = col.getName();
@@ -646,38 +654,77 @@ public class ClickHouseWriter implements DBWriter {
         // Do we have all elements from the table inside the record
 
         s2 = System.currentTimeMillis();
-        try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request;
-            if (supportDefaults) {
-                request = getMutationRequest(client, ClickHouseFormat.RowBinaryWithDefaults, table.getName(), database, queryId);
-            } else {
-                request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), database, queryId);
-            }
-            ClickHouseConfig config = request.getConfig();
-            CompletableFuture<ClickHouseResponse> future;
 
-            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance()
-                    .createPipedOutputStream(config)) {
-                // start the worker thread which transfer data from the input into ClickHouse
-                future = request.data(stream.getInputStream()).execute();
-                // write bytes into the piped stream
-                for (Record record : records) {
-                    if (record.getSinkRecord().value() != null) {
-                        for (Column col : table.getRootColumnsList()) {
-                            long beforePushStream = System.currentTimeMillis();
-                            doWriteCol(record, col, stream, supportDefaults);
-                            pushStreamTime += System.currentTimeMillis() - beforePushStream;
-                        }
-                    }
-                }
-                // We need to close the stream before getting a response
-                stream.close();
-                try (ClickHouseResponse response = future.get()) {
-                    ClickHouseResponseSummary summary = response.getSummary();
-                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
+        // get or create client
+        Client client = chc.getClient();
+
+        InsertSettings insertSettings = new InsertSettings();
+        insertSettings.setDatabase(database);
+        insertSettings.setDeduplicationToken(queryId.getDeduplicationToken());
+        insertSettings.setQueryId(queryId.getQueryId());
+
+        for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
+            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+        }
+        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        for (Record record : records) {
+            if (record.getSinkRecord().value() != null) {
+                for (Column col : table.getRootColumnsList()) {
+                    long beforePushStream = System.currentTimeMillis();
+                    doWriteCol(record, col, stream, supportDefaults);
+                    pushStreamTime += System.currentTimeMillis() - beforePushStream;
                 }
             }
         }
+
+        InputStream data = new ByteArrayInputStream(stream.toByteArray());
+
+        ClickHouseFormat format = ClickHouseFormat.RowBinary;
+        if (supportDefaults) {
+            format = ClickHouseFormat.RowBinaryWithDefaults;
+        }
+
+        try (InsertResponse insertResponse = client.insert(table.getName(), data, format, insertSettings).get()) {
+            OperationStatistics op = insertResponse.getOperationStatistics();
+            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", op.getServerStatistics().numBytesWritten, op.getServerStatistics().numRowsWritten, queryId.getQueryId());
+        }
+
+
+
+//        try (ClickHouseClient client = getClient()) {
+//            ClickHouseRequest.Mutation request;
+//            if (supportDefaults) {
+//                request = getMutationRequest(client, ClickHouseFormat.RowBinaryWithDefaults, table.getName(), database, queryId);
+//            } else {
+//                request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), database, queryId);
+//            }
+//            ClickHouseConfig config = request.getConfig();
+//            CompletableFuture<ClickHouseResponse> future;
+//
+//            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance()
+//                    .createPipedOutputStream(config)) {
+//                // start the worker thread which transfer data from the input into ClickHouse
+//                future = request.data(stream.getInputStream()).execute();
+//                // write bytes into the piped stream
+//                for (Record record : records) {
+//                    if (record.getSinkRecord().value() != null) {
+//                        for (Column col : table.getRootColumnsList()) {
+//                            long beforePushStream = System.currentTimeMillis();
+//                            doWriteCol(record, col, stream, supportDefaults);
+//                            pushStreamTime += System.currentTimeMillis() - beforePushStream;
+//                        }
+//                    }
+//                }
+//                // We need to close the stream before getting a response
+//                stream.close();
+//                try (ClickHouseResponse response = future.get()) {
+//                    ClickHouseResponseSummary summary = response.getSummary();
+//                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
+//                }
+//            }
+//        }
 
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
@@ -702,54 +749,103 @@ public class ClickHouseWriter implements DBWriter {
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
 
+        Client client = chc.getClient();
 
-        try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.JSONEachRow, table.getName(), database, queryId);
-            ClickHouseConfig config = request.getConfig();
-            CompletableFuture<ClickHouseResponse> future;
+        InsertSettings insertSettings = new InsertSettings();
+        insertSettings.setDatabase(database);
+        insertSettings.setDeduplicationToken(queryId.getDeduplicationToken());
+        insertSettings.setQueryId(queryId.getQueryId());
 
-            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance().createPipedOutputStream(config)) {
-                // start the worker thread which transfer data from the input into ClickHouse
-                future = request.data(stream.getInputStream()).execute();
-                // write bytes into the piped stream
-                java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
-                for (Record record : records) {
-                    if (record.getSinkRecord().value() != null) {
-                        Map<String, Object> data;
-                        switch (record.getSchemaType()) {
-                            case SCHEMA:
-                                data = new HashMap<>(16);
-                                Struct struct = (Struct) record.getSinkRecord().value();
-                                for (Field field : struct.schema().fields()) {
-                                    data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
-                                }
-                                break;
-                            default:
-                                data = (Map<String, Object>) record.getSinkRecord().value();
-                                break;
+        for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
+            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+        }
+        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
+        for (Record record : records) {
+            if (record.getSinkRecord().value() != null) {
+                Map<String, Object> data;
+                switch (record.getSchemaType()) {
+                    case SCHEMA:
+                        data = new HashMap<>(16);
+                        Struct struct = (Struct) record.getSinkRecord().value();
+                        for (Field field : struct.schema().fields()) {
+                            data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
                         }
-                        long beforeSerialize = System.currentTimeMillis();
-                        String gsonString = gson.toJson(data, gsonType);
-                        dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
-                        LOGGER.trace("topic {} partition {} offset {} payload {}",
-                                record.getTopic(),
-                                record.getRecordOffsetContainer().getPartition(),
-                                record.getRecordOffsetContainer().getOffset(),
-                                gsonString);
-                        BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
-                    } else {
-                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
-                    }
+                        break;
+                    default:
+                        data = (Map<String, Object>) record.getSinkRecord().value();
+                        break;
                 }
-
-                stream.close();
-                s2 = System.currentTimeMillis();
-                try (ClickHouseResponse response = future.get()) {
-                    ClickHouseResponseSummary summary = response.getSummary();
-                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
-                }
+                long beforeSerialize = System.currentTimeMillis();
+                String gsonString = gson.toJson(data, gsonType);
+                dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
+                LOGGER.trace("topic {} partition {} offset {} payload {}",
+                        record.getTopic(),
+                        record.getRecordOffsetContainer().getPartition(),
+                        record.getRecordOffsetContainer().getOffset(),
+                        gsonString);
+                BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+            } else {
+                LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
             }
         }
+
+        InputStream data = new ByteArrayInputStream(stream.toByteArray());
+
+        try (InsertResponse insertResponse = client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings).get()) {
+            OperationStatistics op = insertResponse.getOperationStatistics();
+            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", op.getServerStatistics().numBytesWritten, op.getServerStatistics().numRowsWritten, queryId.getQueryId());
+        }
+
+//        try (ClickHouseClient client = getClient()) {
+//            ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.JSONEachRow, table.getName(), database, queryId);
+//            ClickHouseConfig config = request.getConfig();
+//            CompletableFuture<ClickHouseResponse> future;
+//
+//            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance().createPipedOutputStream(config)) {
+//                // start the worker thread which transfer data from the input into ClickHouse
+//                future = request.data(stream.getInputStream()).execute();
+//                // write bytes into the piped stream
+//                java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
+//                for (Record record : records) {
+//                    if (record.getSinkRecord().value() != null) {
+//                        Map<String, Object> data;
+//                        switch (record.getSchemaType()) {
+//                            case SCHEMA:
+//                                data = new HashMap<>(16);
+//                                Struct struct = (Struct) record.getSinkRecord().value();
+//                                for (Field field : struct.schema().fields()) {
+//                                    data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
+//                                }
+//                                break;
+//                            default:
+//                                data = (Map<String, Object>) record.getSinkRecord().value();
+//                                break;
+//                        }
+//                        long beforeSerialize = System.currentTimeMillis();
+//                        String gsonString = gson.toJson(data, gsonType);
+//                        dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
+//                        LOGGER.trace("topic {} partition {} offset {} payload {}",
+//                                record.getTopic(),
+//                                record.getRecordOffsetContainer().getPartition(),
+//                                record.getRecordOffsetContainer().getOffset(),
+//                                gsonString);
+//                        BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+//                    } else {
+//                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
+//                    }
+//                }
+//
+//                stream.close();
+//                s2 = System.currentTimeMillis();
+//                try (ClickHouseResponse response = future.get()) {
+//                    ClickHouseResponseSummary summary = response.getSummary();
+//                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
+//                }
+//            }
+//        }
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
@@ -763,6 +859,20 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String database = first.getDatabase();
+
+        Client client = chc.getClient();
+
+        InsertSettings insertSettings = new InsertSettings();
+        insertSettings.setDatabase(database);
+        insertSettings.setDeduplicationToken(queryId.getDeduplicationToken());
+        insertSettings.setQueryId(queryId.getQueryId());
+
+        for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
+            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+        }
+        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
@@ -780,44 +890,71 @@ public class ClickHouseWriter implements DBWriter {
                 clickHouseFormat = ClickHouseFormat.JSONEachRow;
         }
 
-        try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request = getMutationRequest(client, clickHouseFormat, table.getName(), database, queryId);
-            ClickHouseConfig config = request.getConfig();
-            CompletableFuture<ClickHouseResponse> future;
-
-            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance().createPipedOutputStream(config)) {
-                // start the worker thread which transfer data from the input into ClickHouse
-                future = request.data(stream.getInputStream()).execute();
-                // write bytes into the piped stream
-                for (Record record : records) {
-                    if (record.getSinkRecord().value() != null) {
-                        String data = (String)record.getSinkRecord().value();
-                        LOGGER.debug(String.format("data: %s", data));
-                        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
-                        long beforePushStream = System.currentTimeMillis();
-                        BinaryStreamUtils.writeBytes(stream, bytes);
-                        pushStreamTime += System.currentTimeMillis() - beforePushStream;
-                        switch (csc.getInsertFormat()) {
-                            case CSV:
-                            case TSV:
-                                if (bytes[bytes.length-1] != '\n')
-                                    BinaryStreamUtils.writeBytes(stream, endingLine);
-                                break;
-                        }
-
-                    } else {
-                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
-                    }
+        for (Record record : records) {
+            if (record.getSinkRecord().value() != null) {
+                String data = (String)record.getSinkRecord().value();
+                LOGGER.debug(String.format("data: %s", data));
+                byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                long beforePushStream = System.currentTimeMillis();
+                BinaryStreamUtils.writeBytes(stream, bytes);
+                pushStreamTime += System.currentTimeMillis() - beforePushStream;
+                switch (csc.getInsertFormat()) {
+                    case CSV:
+                    case TSV:
+                        if (bytes[bytes.length-1] != '\n')
+                            BinaryStreamUtils.writeBytes(stream, endingLine);
+                        break;
                 }
 
-                stream.close();
-                s2 = System.currentTimeMillis();
-                try (ClickHouseResponse response = future.get()) {
-                    ClickHouseResponseSummary summary = response.getSummary();
-                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
-                }
+            } else {
+                LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
             }
         }
+
+        try (InsertResponse insertResponse = client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), ClickHouseFormat.JSONEachRow, insertSettings).get()) {
+            OperationStatistics op = insertResponse.getOperationStatistics();
+            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", op.getServerStatistics().numBytesWritten, op.getServerStatistics().numRowsWritten, queryId.getQueryId());
+        }
+
+
+//        try (ClickHouseClient client = getClient()) {
+//            ClickHouseRequest.Mutation request = getMutationRequest(client, clickHouseFormat, table.getName(), database, queryId);
+//            ClickHouseConfig config = request.getConfig();
+//            CompletableFuture<ClickHouseResponse> future;
+//
+//            try (ClickHousePipedOutputStream stream = ClickHouseDataStreamFactory.getInstance().createPipedOutputStream(config)) {
+//                // start the worker thread which transfer data from the input into ClickHouse
+//                future = request.data(stream.getInputStream()).execute();
+//                // write bytes into the piped stream
+//                for (Record record : records) {
+//                    if (record.getSinkRecord().value() != null) {
+//                        String data = (String)record.getSinkRecord().value();
+//                        LOGGER.debug(String.format("data: %s", data));
+//                        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+//                        long beforePushStream = System.currentTimeMillis();
+//                        BinaryStreamUtils.writeBytes(stream, bytes);
+//                        pushStreamTime += System.currentTimeMillis() - beforePushStream;
+//                        switch (csc.getInsertFormat()) {
+//                            case CSV:
+//                            case TSV:
+//                                if (bytes[bytes.length-1] != '\n')
+//                                    BinaryStreamUtils.writeBytes(stream, endingLine);
+//                                break;
+//                        }
+//
+//                    } else {
+//                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
+//                    }
+//                }
+//
+//                stream.close();
+//                s2 = System.currentTimeMillis();
+//                try (ClickHouseResponse response = future.get()) {
+//                    ClickHouseResponseSummary summary = response.getSummary();
+//                    LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", summary.getWrittenBytes(), summary.getWrittenRows(), queryId.getQueryId());
+//                }
+//            }
+//        }
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
@@ -833,33 +970,33 @@ public class ClickHouseWriter implements DBWriter {
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
     }
-    private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String database, QueryIdentifier queryId) {
-
-        ClickHouseHelperClient chcTmp = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(csc.getUsername())
-                .setPassword(csc.getPassword())
-                .sslEnable(csc.isSslEnabled())
-                .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
-                .setTimeout(csc.getTimeout())
-                .setRetry(csc.getRetry())
-                .build();
-
-        ClickHouseNode server = chcTmp.getServer();
-        ClickHouseRequest.Mutation request = client.read(server)
-                .write()
-                .table(tableName, queryId.getQueryId())
-                .format(format)
-                .set("insert_deduplication_token", queryId.getDeduplicationToken());
-
-        for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
-            request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
-        }
-
-        request.option(ClickHouseClientOption.WRITE_BUFFER_SIZE, 8192);
-
-        return request;
-    }
+//    private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String database, QueryIdentifier queryId) {
+//
+//        ClickHouseHelperClient chcTmp = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+//                .setDatabase(database)
+//                .setUsername(csc.getUsername())
+//                .setPassword(csc.getPassword())
+//                .sslEnable(csc.isSslEnabled())
+//                .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
+//                .setTimeout(csc.getTimeout())
+//                .setRetry(csc.getRetry())
+//                .build();
+//
+//        ClickHouseNode server = chcTmp.getServer();
+//        ClickHouseRequest.Mutation request = client.read(server)
+//                .write()
+//                .table(tableName, queryId.getQueryId())
+//                .format(format)
+//                .set("insert_deduplication_token", queryId.getDeduplicationToken());
+//
+//        for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
+//            request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+//        }
+//
+//        request.option(ClickHouseClientOption.WRITE_BUFFER_SIZE, 8192);
+//
+//        return request;
+//    }
     private Table getTable(String topic) {
         String tableName = Utils.getTableName(topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);

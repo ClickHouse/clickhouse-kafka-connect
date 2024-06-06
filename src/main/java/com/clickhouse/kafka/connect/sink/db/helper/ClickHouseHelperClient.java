@@ -1,6 +1,14 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.Client;
+import com.clickhouse.client.api.Protocol;
+import com.clickhouse.client.api.data_formats.ClickHouseBinaryFormatReader;
+import com.clickhouse.client.api.data_formats.RowBinaryWithNamesAndTypesFormatReader;
+import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.api.query.QueryResponse;
+import com.clickhouse.client.api.query.QuerySettings;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.config.ClickHouseOption;
@@ -21,6 +29,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 public class ClickHouseHelperClient {
 
@@ -34,8 +45,10 @@ public class ClickHouseHelperClient {
     private final boolean sslEnabled;
     private final String jdbcConnectionProperties;
     private final int timeout;
+//    @Getter
+    //private ClickHouseNode server = null;
     @Getter
-    private ClickHouseNode server = null;
+    private Client client;
     private final int retry;
     private ClickHouseProxyType proxyType = null;
     private String proxyHost = null;
@@ -54,7 +67,7 @@ public class ClickHouseHelperClient {
         this.proxyType = builder.proxyType;
         this.proxyHost = builder.proxyHost;
         this.proxyPort = builder.proxyPort;
-        this.server = create();
+        this.client = create();
     }
 
     public String getDatabase() {
@@ -71,61 +84,65 @@ public class ClickHouseHelperClient {
         return options;
     }
 
-    private ClickHouseNode create() {
-        String protocol = "http";
-        if (this.sslEnabled)
-            protocol += "s";
-
-        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
-        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
-            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
-        }
-
-        String url = String.format("%s://%s:%d/%s%s", 
-                protocol, 
-                hostname, 
-                port, 
-                database,
-                tmpJdbcConnectionProperties
-        );
-
-        LOGGER.info("ClickHouse URL: {}", url);
-
-        if (username != null && password != null) {
-            LOGGER.debug(String.format("Adding username [%s]", username));
-            Map<String, String> options = new HashMap<>();
-            options.put("user", username);
-            options.put("password", password);
-            server = ClickHouseNode.of(url, options);
+    private Client create() {
+        if (this.sslEnabled) {
+            client = new Client.Builder()
+                    .addEndpoint(Protocol.HTTPS, this.hostname, this.port)
+                    .setUsername(this.username)
+                    .setPassword(this.password)
+                    .build();
         } else {
-            server = ClickHouseNode.of(url);
+            System.out.println(hostname + " " + port + " " + username + " " + password);
+            client = new Client.Builder()
+                    .addEndpoint(Protocol.HTTP, this.hostname, this.port)
+                    .setUsername(this.username)
+                    .setPassword(this.password)
+                    .build();
         }
-        return server;
+
+//        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
+//        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
+//            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
+//        }
+
+//        LOGGER.info("ClickHouse URL: {}", url);
+
+        return client;
     }
 
     public boolean ping() {
-        ClickHouseClient clientPing = ClickHouseClient.builder()
-                .options(getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-        LOGGER.debug(String.format("Server [%s] , Timeout [%d]", server, timeout));
+        //LOGGER.debug(String.format("Server [%s] , Timeout [%d]", server, timeout));
         int retryCount = 0;
 
         while (retryCount < retry) {
-            if (clientPing.ping(server, timeout)) {
+            if (client.ping(timeout)) {
                 LOGGER.info("Ping was successful.");
-                clientPing.close();
                 return true;
             }
             retryCount++;
             LOGGER.warn(String.format("Ping retry %d out of %d", retryCount, retry));
         }
         LOGGER.error("Unable to ping ClickHouse instance.");
-        clientPing.close();
         return false;
     }
 
     public String version() {
+        QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.RowBinaryWithNamesAndTypes);
+        CompletableFuture<Records> futureRecords = client.queryRecords("SELECT VERSION()", settings);
+        try {
+            Records records = futureRecords.get();
+            for (GenericRecord record : records) {
+                return record.getString(0); // string column col3
+            }
+        } catch (InterruptedException e) {
+            LOGGER.error("Exception when trying to retrieve VERSION()", e);
+            return null;
+        } catch (ExecutionException e) {
+            LOGGER.error("Exception when trying to retrieve VERSION()", e);
+            return null;
+        }
+        /*
+
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
@@ -138,76 +155,90 @@ public class ClickHouseHelperClient {
             LOGGER.error("Exception when trying to retrieve VERSION()", e);
             return null;
         }
+        */
+        return null;
     }
 
-    public ClickHouseResponse query(String query) {
+    public Records query(String query) {
         return query(query, null);
     }
 
-    public ClickHouseResponse query(String query, ClickHouseFormat clickHouseFormat) {
+    public Records query(String query, ClickHouseFormat clickHouseFormat) {
         int retryCount = 0;
-        ClickHouseException ce = null;
+        Exception ce = null;
+        QuerySettings settings = new QuerySettings();
+        if (clickHouseFormat != null)
+            settings.setFormat(clickHouseFormat);
+
         while (retryCount < retry) {
-            try (ClickHouseClient client = ClickHouseClient.builder()
-                    .options(getDefaultClientOptions())
-                    .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                    .build();
-                 ClickHouseResponse response = client.read(server)
-                         .format(clickHouseFormat)
-                         .query(query)
-                         .executeAndWait()) {
-                return response;
-            } catch (ClickHouseException e) {
+            System.out.println("retryCount " + retryCount);
+            CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
+            try {
+                Records records = futureRecords.get();
+                return records;
+            } catch (ExecutionException e) {
+                retryCount++;
+                LOGGER.warn(String.format("Query retry %d out of %d", retryCount, retry), e);
+                ce = e;
+            } catch (InterruptedException e) {
                 retryCount++;
                 LOGGER.warn(String.format("Query retry %d out of %d", retryCount, retry), e);
                 ce = e;
             }
+//            try (ClickHouseClient client = ClickHouseClient.builder()
+//                    .options(getDefaultClientOptions())
+//                    .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                    .build();
+//                 ClickHouseResponse response = client.read(server)
+//                         .format(clickHouseFormat)
+//                         .query(query)
+//                         .executeAndWait()) {
+//                return response;
+//            } catch (ClickHouseException e) {
+//                retryCount++;
+//                LOGGER.warn(String.format("Query retry %d out of %d", retryCount, retry), e);
+//                ce = e;
+//            }
         }
         throw new RuntimeException(ce);
     }
 
     public List<String> showTables() {
         List<String> tablesNames = new ArrayList<>();
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(server)
-                     .query("SHOW TABLES")
-                     .executeAndWait()) {
-            for (ClickHouseRecord r : response.records()) {
-                ClickHouseValue v = r.getValue(0);
-                String tableName = v.asString();
-                tablesNames.add(tableName);
-            }
-
-        } catch (ClickHouseException e) {
-            LOGGER.error("Failed in show tables", e);
+        Records records = query("SHOW TABLES");
+        for (GenericRecord record : records) {
+            tablesNames.add(record.getString(0));
         }
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(server)
+//                     .query("SHOW TABLES")
+//                     .executeAndWait()) {
+//            for (ClickHouseRecord r : response.records()) {
+//                ClickHouseValue v = r.getValue(0);
+//                String tableName = v.asString();
+//                tablesNames.add(tableName);
+//            }
+//
+//        } catch (ClickHouseException e) {
+//            LOGGER.error("Failed in show tables", e);
+//        }
         return tablesNames;
     }
 
-    public Table describeTable(String tableName) {
+    public Table describeTable(String tableName)  {
         if (tableName.startsWith(".inner"))
             return null;
         String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
         LOGGER.debug(describeQuery);
 
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(server)
-                     .set("describe_include_subcolumns", true)
-                     .format(ClickHouseFormat.JSONEachRow)
-                     .query(describeQuery)
-                     .executeAndWait()) {
-
-            Table table = new Table(tableName);
-            for (ClickHouseRecord r : response.records()) {
-                ClickHouseValue v = r.getValue(0);
-
-                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(v.asString());
+        Table table = new Table(tableName);
+        try {
+            Records records = query(describeQuery);
+            for (GenericRecord record : records) {
+                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(record.getString(0));
                 if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
                     LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
                     continue;
@@ -219,12 +250,45 @@ public class ClickHouseHelperClient {
 
                 Column column = Column.extractColumn(fieldDescriptor);
                 table.addColumn(column);
+
             }
             return table;
-        } catch (ClickHouseException | JsonProcessingException e) {
+        } catch (Exception e) {
             LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
             return null;
         }
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(server)
+//                     .set("describe_include_subcolumns", true)
+//                     .format(ClickHouseFormat.JSONEachRow)
+//                     .query(describeQuery)
+//                     .executeAndWait()) {
+//
+//            Table table = new Table(tableName);
+//            for (ClickHouseRecord r : response.records()) {
+//                ClickHouseValue v = r.getValue(0);
+//
+//                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(v.asString());
+//                if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
+//                    LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
+//                    continue;
+//                }
+//
+//                if (fieldDescriptor.hasDefault()) {
+//                    table.hasDefaults(true);
+//                }
+//
+//                Column column = Column.extractColumn(fieldDescriptor);
+//                table.addColumn(column);
+//            }
+//            return table;
+//        } catch (ClickHouseException | JsonProcessingException e) {
+//            LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
+//            return null;
+//        }
     }
     
     public List<Table> extractTablesMapping() {

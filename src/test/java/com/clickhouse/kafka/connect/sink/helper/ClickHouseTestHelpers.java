@@ -1,6 +1,8 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseColumn;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
@@ -19,6 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -44,176 +47,215 @@ public class ClickHouseTestHelpers {
         LOGGER.info("Version: {}", version);
         return version != null && version.equalsIgnoreCase("cloud");
     }
-    public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
+    public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropTable)
-                     .executeAndWait()) {
-            return response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+        chc.getClient().queryRecords(dropTable);
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(dropTable)
+//                     .executeAndWait()) {
+//            return response.getSummary();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
-    public static ClickHouseResponseSummary createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
-        return createTable(chc, tableName, createTableQuery, new HashMap<>());
+    public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
+        createTable(chc, tableName, createTableQuery, new HashMap<>());
     }
 
-    public static ClickHouseResponseSummary createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
+    public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
         String createTableQueryTmp = String.format(createTableQuery, tableName);
-
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .settings(clientSettings)
-                     .query(createTableQueryTmp)
-                     .executeAndWait()) {
-            return response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+        chc.getClient().queryRecords(createTableQueryTmp);
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .settings(clientSettings)
+//                     .query(createTableQueryTmp)
+//                     .executeAndWait()) {
+//            return response.getSummary();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
-    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName) {
-        String query = String.format("SELECT * FROM `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(query)
-                     .format(ClickHouseFormat.JSONEachRow)
-                     .executeAndWait()) {
-
-            return StreamSupport.stream(response.records().spliterator(), false)
-                    .map(record -> record.getValue(0).asString())
-                    .map(JSONObject::new)
-                    .collect(Collectors.toList());
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
+//    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName) {
+//        String query = String.format("SELECT * FROM `%s`", tableName);
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(query)
+//                     .format(ClickHouseFormat.JSONEachRow)
+//                     .executeAndWait()) {
+//
+//            return StreamSupport.stream(response.records().spliterator(), false)
+//                    .map(record -> record.getValue(0).asString())
+//                    .map(JSONObject::new)
+//                    .collect(Collectors.toList());
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
+//    }
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
+
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get();
+            return records.iterator().next().getInteger(0);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
+
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(queryCount)
+//                     .executeAndWait()) {
+//            return response.firstRecord().getValue(0).asInteger();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
     public static int sumRows(ClickHouseHelperClient chc, String tableName, String column) {
         String queryCount = String.format("SELECT SUM(`%s`) FROM `%s`", column, tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get();
+            return records.iterator().next().getInteger(0);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
+
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(queryCount)
+//                     .executeAndWait()) {
+//            return response.firstRecord().getValue(0).asInteger();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
     public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
         String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%'";
-
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get();
+            return records.iterator().next().getInteger(0);
+        } catch (InterruptedException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords) {
-        boolean match = false;
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(String.format("SELECT * FROM `%s`", topic))
-                     .format(ClickHouseFormat.JSONStringsEachRow)
-                     .executeAndWait()) {
-            Gson gson = new Gson();
-            ClickHouseResponseSummary summary = response.getSummary();
-
-            List<String> records = new ArrayList<>();
-            for (SinkRecord record : sinkRecords) {
-                Map<String, String> recordMap = new TreeMap<>();
-                if (record.value() instanceof HashMap) {
-                    for (Map.Entry<String, Object> entry : ((HashMap<String, Object>) record.value()).entrySet()) {
-                        recordMap.put(entry.getKey(), entry.getValue().toString());
-                    }
-                } else if (record.value() instanceof Struct) {
-                    ((Struct) record.value()).schema().fields().forEach(f -> {
-                        recordMap.put(f.name(), ((Struct) record.value()).get(f).toString());
-                    });
-                }
-
-                String gsonString = gson.toJson(recordMap);
-                records.add(gsonString.replace(".0", "").replace(" ","").replace("'","").replace("\\u003d",":"));
-            }
-
-            List<String> results = new ArrayList<>();
-            LOGGER.info(response.records().toString());
-            response.records().forEach(r -> {
-                String gsonString = r.getValue(0).asString().replace("'","").replace(" ","").replace("\\u003d",":");
-                Map<String, String> resultMap = new TreeMap<>((Map<String, String>) gson.fromJson(gsonString, new TypeToken<Map<String, String>>() {}.getType()));
-                results.add(gson.toJson(resultMap));
-            });
-
-            for (String record : records) {
-                if (results.get(0).equals(record)) {
-                    match = true;
-                    LOGGER.info("Matched record: {}", record);
-                    LOGGER.info("Matched result: {}", results.get(0));
-                    break;
-                }
-            }
-
-            LOGGER.info("Match? {}", match);
-        } catch (ClickHouseException e) {
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
 
-        return match;
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+//                     .query(queryCount)
+//                     .executeAndWait()) {
+//            return response.firstRecord().getValue(0).asInteger();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
+
+//    public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords) {
+//        boolean match = false;
+//        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(String.format("SELECT * FROM `%s`", topic))
+//                     .format(ClickHouseFormat.JSONStringsEachRow)
+//                     .executeAndWait()) {
+//            Gson gson = new Gson();
+//            ClickHouseResponseSummary summary = response.getSummary();
+//
+//            List<String> records = new ArrayList<>();
+//            for (SinkRecord record : sinkRecords) {
+//                Map<String, String> recordMap = new TreeMap<>();
+//                if (record.value() instanceof HashMap) {
+//                    for (Map.Entry<String, Object> entry : ((HashMap<String, Object>) record.value()).entrySet()) {
+//                        recordMap.put(entry.getKey(), entry.getValue().toString());
+//                    }
+//                } else if (record.value() instanceof Struct) {
+//                    ((Struct) record.value()).schema().fields().forEach(f -> {
+//                        recordMap.put(f.name(), ((Struct) record.value()).get(f).toString());
+//                    });
+//                }
+//
+//                String gsonString = gson.toJson(recordMap);
+//                records.add(gsonString.replace(".0", "").replace(" ","").replace("'","").replace("\\u003d",":"));
+//            }
+//
+//            List<String> results = new ArrayList<>();
+//            LOGGER.info(response.records().toString());
+//            response.records().forEach(r -> {
+//                String gsonString = r.getValue(0).asString().replace("'","").replace(" ","").replace("\\u003d",":");
+//                Map<String, String> resultMap = new TreeMap<>((Map<String, String>) gson.fromJson(gsonString, new TypeToken<Map<String, String>>() {}.getType()));
+//                results.add(gson.toJson(resultMap));
+//            });
+//
+//            for (String record : records) {
+//                if (results.get(0).equals(record)) {
+//                    match = true;
+//                    LOGGER.info("Matched record: {}", record);
+//                    LOGGER.info("Matched result: {}", results.get(0));
+//                    break;
+//                }
+//            }
+//
+//            LOGGER.info("Match? {}", match);
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
+//
+//        return match;
+//    }
 
     @Deprecated(since = "for debug purposes only")
     public static void showRows(ClickHouseHelperClient chc, String topic) {
         String queryCount = String.format("select * from `%s`", topic);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            response.records().forEach(r -> {
-                //int colsCount = r.size();
-                System.out.println(r.getValue(0));
-            });
-        } catch (ClickHouseException e) {
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get();
+            for (GenericRecord r : records) {
+                System.out.println(r.getString(0));
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
+
+//        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+//             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+//                     // you'll have to parse response manually if using a different format
+//                     .query(queryCount)
+//                     .executeAndWait()) {
+//            ClickHouseResponseSummary summary = response.getSummary();
+//            response.records().forEach(r -> {
+//                //int colsCount = r.size();
+//                System.out.println(r.getValue(0));
+//            });
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
     public static ClickHouseFieldDescriptor newDescriptor(String name, String valueType) {

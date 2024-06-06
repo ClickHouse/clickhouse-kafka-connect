@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.slf4j.Logger;
@@ -56,47 +57,52 @@ public class ClickHouseAPI {
 
     public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("DROP TABLE IF EXISTS %s", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            LOGGER.info("Drop: {}", clickHouseResponse.getSummary());
-        }
+        Records records = chc.query(queryString);
+//        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
+//            LOGGER.info("Drop: {}", clickHouseResponse.getSummary());
+//        }
     }
 
     public static void createMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
                 "Engine = MergeTree ORDER BY symbol", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            LOGGER.info("Create: {}", clickHouseResponse.getSummary());
-        }
+        Records records = chc.query(queryString);
+//        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
+//            LOGGER.info("Create: {}", clickHouseResponse.getSummary());
+//        }
     }
 
     public static void createReplicatedMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
                 "Engine = ReplicatedMergeTree ORDER BY symbol", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            LOGGER.info("Create: {}", clickHouseResponse.getSummary());
-        }
+        Records records = chc.query(queryString);
+//        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
+//            LOGGER.info("Create: {}", clickHouseResponse.getSummary());
+//        }
     }
 
-    public static Iterable<ClickHouseRecord> selectDuplicates(ClickHouseHelperClient chc, String tableName) {
-        String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
-                "FROM %s " +
-                "GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` " +
-                "HAVING COUNT(*) > 1", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            return clickHouseResponse.records();
-        }
-    }
+//    public static Iterable<ClickHouseRecord> selectDuplicates(ClickHouseHelperClient chc, String tableName) {
+//        String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
+//                "FROM %s " +
+//                "GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` " +
+//                "HAVING COUNT(*) > 1", tableName);
+//        Records records = chc.query(queryString);
+//        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
+//            return clickHouseResponse.records();
+//        }
+//    }
 
 
 
     public static void clearTable(ClickHouseHelperClient chc, String tableName) {
         String sql = "TRUNCATE TABLE " + tableName;
         LOGGER.info("Clear table: " + sql);
-        try(ClickHouseResponse clickHouseResponse = chc.query(sql)) {
-            LOGGER.info("Clear table: " + clickHouseResponse.getSummary().toString());
-        } catch (Exception e) {
-            LOGGER.error("Error: {}", e.getMessage());
-        }
+        Records records = chc.query(sql);
+//        try(ClickHouseResponse clickHouseResponse = chc.query(sql)) {
+//            LOGGER.info("Clear table: " + clickHouseResponse.getSummary().toString());
+//        } catch (Exception e) {
+//            LOGGER.error("Error: {}", e.getMessage());
+//        }
     }
 
     public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {

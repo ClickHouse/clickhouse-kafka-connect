@@ -44,6 +44,7 @@ version = file("VERSION").readText().trim()
 description = "The official ClickHouse Apache Kafka Connect Connector."
 
 repositories {
+    mavenLocal()
     mavenCentral()
     maven("https://packages.confluent.io/maven/")
     maven("https://jitpack.io")
@@ -51,7 +52,7 @@ repositories {
 
 extra.apply {
 
-    set("clickHouseDriverVersion", "0.6.0-patch4")
+    set("clickHouseDriverVersion", "0.6.0-SNAPSHOT")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 
@@ -75,6 +76,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
+    implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("com.google.code.gson:gson:2.10.1")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5

@@ -5,6 +5,7 @@ import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
@@ -102,24 +103,25 @@ public class ClickHouseBase {
     protected void createDatabase(String database, ClickHouseHelperClient chc) {
         String createDatabaseQuery = String.format("CREATE DATABASE IF NOT EXISTS `%s`", database);
         System.out.println(createDatabaseQuery);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
+        Records records = chc.query(createDatabaseQuery);
 
-
-                     .query(createDatabaseQuery)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+//        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+//             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+//                     // you'll have to parse response manually if using a different format
+//
+//
+//                     .query(createDatabaseQuery)
+//                     .executeAndWait()) {
+//            ClickHouseResponseSummary summary = response.getSummary();
+//
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
 
     }
 
     protected static void dropDatabase(String database) {
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(new ClickHouseBase().createProps());
-
         String hostname = csc.getHostname();
         int port = csc.getPort();
         String username = csc.getUsername();
@@ -140,48 +142,52 @@ public class ClickHouseBase {
     }
     protected static void dropDatabase(String database, ClickHouseHelperClient chc) {
         String dropDatabaseQuery = String.format("DROP DATABASE IF EXISTS `%s`", database);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropDatabaseQuery)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+        Records records = chc.query(dropDatabaseQuery);
+//        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(dropDatabaseQuery)
+//                     .executeAndWait()) {
+//            ClickHouseResponseSummary summary = response.getSummary();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
     protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
         String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(createTableQueryTmp)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+        Records records = chc.query(createTableQueryTmp);
+//        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+//             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+//                     // you'll have to parse response manually if using a different format
+//
+//
+//                     .query(createTableQueryTmp)
+//                     .executeAndWait()) {
+//            ClickHouseResponseSummary summary = response.getSummary();
+//
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
 
     }
 
     protected int countRows(ClickHouseHelperClient chc, String database, String topic) {
         String queryCount = String.format("select count(*) from `%s.%s`", database, topic);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
+        Records records = chc.query(queryCount);
+        return records.iterator().next().getInteger(0);
 
-
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+//        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+//             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+//                     // you'll have to parse response manually if using a different format
+//
+//
+//                     .query(queryCount)
+//                     .executeAndWait()) {
+//            ClickHouseResponseSummary summary = response.getSummary();
+//            return response.firstRecord().getValue(0).asInteger();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
     protected Map<String,String> createProps() {

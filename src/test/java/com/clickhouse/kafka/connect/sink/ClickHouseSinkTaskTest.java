@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -88,19 +89,26 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    public ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
+    public void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropTable)
-                     .executeAndWait()) {
-            return response.getSummary();
-        } catch (ClickHouseException e) {
+        try {
+            chc.getClient().queryRecords(dropTable).get();
+        } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
+
+
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(dropTable)
+//                     .executeAndWait()) {
+//            return response.getSummary();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
 //    @Test TODO: Fix this test
