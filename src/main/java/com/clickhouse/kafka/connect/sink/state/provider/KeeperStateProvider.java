@@ -62,9 +62,9 @@ public class KeeperStateProvider implements StateProvider {
     }
 
     private void init() {
-        String createTable = String.format("CREATE TABLE IF NOT EXISTS `%s` " +
+        String createTable = String.format("CREATE TABLE IF NOT EXISTS `%s`%s " +
                 "(`key` String, minOffset BIGINT, maxOffset BIGINT, state String)" +
-                "%s ENGINE=KeeperMap('%s') PRIMARY KEY `key`;",
+                " ENGINE=KeeperMap('%s') PRIMARY KEY `key`;",
                 csc.getZkDatabase(),
                 csc.getKeeperOnCluster().isEmpty() ? "" : " ON CLUSTER " + csc.getKeeperOnCluster(),
                 csc.getZkPath());
