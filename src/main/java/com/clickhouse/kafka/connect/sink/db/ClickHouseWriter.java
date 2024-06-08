@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
-import com.clickhouse.client.api.OperationStatistics;
 import com.clickhouse.client.api.Protocol;
 import com.clickhouse.client.api.insert.InsertResponse;
 import com.clickhouse.client.api.insert.InsertSettings;
@@ -687,8 +686,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         try (InsertResponse insertResponse = client.insert(table.getName(), data, format, insertSettings).get()) {
-            OperationStatistics op = insertResponse.getOperationStatistics();
-            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", op.getServerStatistics().numBytesWritten, op.getServerStatistics().numRowsWritten, queryId.getQueryId());
+            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
 
 
@@ -795,8 +793,7 @@ public class ClickHouseWriter implements DBWriter {
         InputStream data = new ByteArrayInputStream(stream.toByteArray());
 
         try (InsertResponse insertResponse = client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings).get()) {
-            OperationStatistics op = insertResponse.getOperationStatistics();
-            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", op.getServerStatistics().numBytesWritten, op.getServerStatistics().numRowsWritten, queryId.getQueryId());
+            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
 
 //        try (ClickHouseClient client = getClient()) {
@@ -912,8 +909,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         try (InsertResponse insertResponse = client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), ClickHouseFormat.JSONEachRow, insertSettings).get()) {
-            OperationStatistics op = insertResponse.getOperationStatistics();
-            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", op.getServerStatistics().numBytesWritten, op.getServerStatistics().numRowsWritten, queryId.getQueryId());
+            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
 
 

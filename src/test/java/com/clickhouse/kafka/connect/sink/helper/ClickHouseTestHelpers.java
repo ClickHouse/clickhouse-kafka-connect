@@ -25,6 +25,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+import static java.lang.Thread.sleep;
+
 public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
     public static final String CLICKHOUSE_VERSION_DEFAULT = "24.3";
@@ -49,6 +51,7 @@ public class ClickHouseTestHelpers {
     }
     public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
+        System.out.println(dropTable);
         chc.getClient().queryRecords(dropTable);
 //        try (ClickHouseClient client = ClickHouseClient.builder()
 //                .options(chc.getDefaultClientOptions())
@@ -63,12 +66,19 @@ public class ClickHouseTestHelpers {
 //        }
     }
 
-    public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
+    public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery)  {
         createTable(chc, tableName, createTableQuery, new HashMap<>());
+
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
         String createTableQueryTmp = String.format(createTableQuery, tableName);
+        System.out.println(createTableQueryTmp);
         chc.getClient().queryRecords(createTableQueryTmp);
 //        try (ClickHouseClient client = ClickHouseClient.builder()
 //                .options(chc.getDefaultClientOptions())

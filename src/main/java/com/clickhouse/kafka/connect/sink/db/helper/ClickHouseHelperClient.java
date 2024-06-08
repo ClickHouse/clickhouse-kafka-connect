@@ -24,6 +24,7 @@ import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.desktop.SystemSleepEvent;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -132,7 +133,7 @@ public class ClickHouseHelperClient {
         try {
             Records records = futureRecords.get();
             for (GenericRecord record : records) {
-                return record.getString(0); // string column col3
+                return record.getString(1); // string column col3
             }
         } catch (InterruptedException e) {
             LOGGER.error("Exception when trying to retrieve VERSION()", e);
@@ -171,7 +172,7 @@ public class ClickHouseHelperClient {
             settings.setFormat(clickHouseFormat);
 
         while (retryCount < retry) {
-            System.out.println("retryCount " + retryCount);
+            System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
             CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
             try {
                 Records records = futureRecords.get();
@@ -207,7 +208,9 @@ public class ClickHouseHelperClient {
         List<String> tablesNames = new ArrayList<>();
         Records records = query("SHOW TABLES");
         for (GenericRecord record : records) {
-            tablesNames.add(record.getString(0));
+            String tableName = record.getString(1);
+            System.out.println("table name " + tableName);
+            tablesNames.add(tableName);
         }
 //        try (ClickHouseClient client = ClickHouseClient.builder()
 //                .options(getDefaultClientOptions())
