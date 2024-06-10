@@ -665,12 +665,13 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+//        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
                 for (Column col : table.getRootColumnsList()) {
+                    System.out.println("Writing column: " + col.getName());
                     long beforePushStream = System.currentTimeMillis();
                     doWriteCol(record, col, stream, supportDefaults);
                     pushStreamTime += System.currentTimeMillis() - beforePushStream;
@@ -757,7 +758,7 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+        //insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
@@ -867,7 +868,7 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+//        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
 
@@ -908,7 +909,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
 
-        try (InsertResponse insertResponse = client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), ClickHouseFormat.JSONEachRow, insertSettings).get()) {
+        try (InsertResponse insertResponse = client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), clickHouseFormat, insertSettings).get()) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
 

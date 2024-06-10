@@ -86,28 +86,48 @@ public class ClickHouseHelperClient {
     }
 
     private Client create() {
-        if (this.sslEnabled) {
-            client = new Client.Builder()
-                    .addEndpoint(Protocol.HTTPS, this.hostname, this.port)
-                    .setUsername(this.username)
-                    .setPassword(this.password)
-                    .build();
-        } else {
-            System.out.println(hostname + " " + port + " " + username + " " + password);
-            client = new Client.Builder()
-                    .addEndpoint(Protocol.HTTP, this.hostname, this.port)
-                    .setUsername(this.username)
-                    .setPassword(this.password)
-                    .build();
-        }
-
-//        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
-//        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
-//            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
+//        if (this.sslEnabled) {
+//            client = new Client.Builder()
+//                    .addEndpoint(Protocol.HTTPS, this.hostname, this.port)
+//                    .setUsername(this.username)
+//                    .setPassword(this.password)
+//                    .setDefaultDatabase(this.database)
+//                    .build();
+//        } else {
+//            System.out.println(hostname + " " + port + " " + username + " " + password);
+//            client = new Client.Builder()
+//                    .addEndpoint(Protocol.HTTP, this.hostname, this.port)
+//                    .setUsername(this.username)
+//                    .setPassword(this.password)
+//                    .setDefaultDatabase(this.database)
+//                    .build();
 //        }
 
-//        LOGGER.info("ClickHouse URL: {}", url);
+        String protocol = "http";
+        if (this.sslEnabled)
+            protocol += "s";
 
+        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
+        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
+            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
+        }
+
+        String url = String.format("%s://%s:%d/%s%s",
+                protocol,
+                hostname,
+                port,
+                database,
+                tmpJdbcConnectionProperties
+        );
+
+        LOGGER.info("ClickHouse URL: {}", url);
+
+        client = new Client.Builder()
+                .addEndpoint(url)
+                .setUsername(this.username)
+                .setPassword(this.password)
+                .setDefaultDatabase(this.database)
+                .build();
         return client;
     }
 
@@ -241,7 +261,17 @@ public class ClickHouseHelperClient {
         try {
             Records records = query(describeQuery);
             for (GenericRecord record : records) {
-                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(record.getString(0));
+                String name = record.getString(1);
+                String type = record.getString(2);
+                String defaultType = record.getString(3);
+                String defaultExpression = record.getString(4);
+                String comment = record.getString(5);
+                String codecExpression = record.getString(6);
+                String ttlExpression = record.getString(7);
+                boolean isSubcolumn = false;
+                System.out.println(name + " " + type + " " + defaultType + " " + defaultExpression + " " + comment + " " + codecExpression + " " + ttlExpression + " " + isSubcolumn);
+//                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(value);
+                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromValues(name, type, defaultType, defaultExpression, comment, codecExpression, ttlExpression, isSubcolumn);
                 if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
                     LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
                     continue;

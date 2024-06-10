@@ -119,7 +119,9 @@ public class ClickHouseTestHelpers {
 
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
-            return records.iterator().next().getInteger(0);
+            // Note we probrbly need asInteger() here
+            String value = records.iterator().next().getString(1);
+            return Integer.parseInt(value);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
@@ -143,7 +145,8 @@ public class ClickHouseTestHelpers {
         String queryCount = String.format("SELECT SUM(`%s`) FROM `%s`", column, tableName);
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
-            return records.iterator().next().getInteger(0);
+            String value = records.iterator().next().getString(1);
+            return (int)(Float.parseFloat(value));
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
@@ -167,7 +170,8 @@ public class ClickHouseTestHelpers {
         String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%'";
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
-            return records.iterator().next().getInteger(0);
+            String value = records.iterator().next().getString(1);
+            return (int)(Float.parseFloat(value));
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {

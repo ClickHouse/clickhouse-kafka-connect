@@ -29,29 +29,29 @@ public class ClickHouseAPI {
     }
 
 
-    public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds) throws InterruptedException {
-        int count = countRows(chc, tableName);
-        int lastCount = 0;
-        int loopCount = 0;
+//    public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds) throws InterruptedException {
+//        int count = countRows(chc, tableName);
+//        int lastCount = 0;
+//        int loopCount = 0;
+//
+//        while(count != lastCount || loopCount < 5) {
+//            Thread.sleep(sleepInSeconds * 1000L);
+//            count = countRows(chc, tableName);
+//            if (lastCount == count) {
+//                loopCount++;
+//            } else {
+//                loopCount = 0;
+//            }
+//
+//            lastCount = count;
+//        }
+//    }
 
-        while(count != lastCount || loopCount < 5) {
-            Thread.sleep(sleepInSeconds * 1000L);
-            count = countRows(chc, tableName);
-            if (lastCount == count) {
-                loopCount++;
-            } else {
-                loopCount = 0;
-            }
-
-            lastCount = count;
-        }
-    }
-
-    public static int countRows(ClickHouseHelperClient chc, String tableName) {
-        int[] counts = getCounts(chc, tableName);
-        System.out.println("Total: " + counts[0] + " Unique: " + counts[1] + " Difference: " + counts[2]);
-        return counts[0];
-    }
+//    public static int countRows(ClickHouseHelperClient chc, String tableName) {
+//        int[] counts = getCounts(chc, tableName);
+//        System.out.println("Total: " + counts[0] + " Unique: " + counts[1] + " Difference: " + counts[2]);
+//        return counts[0];
+//    }
 
 
 
@@ -105,20 +105,20 @@ public class ClickHouseAPI {
 //        }
     }
 
-    public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = String.format("SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return Arrays.stream(response.firstRecord().getValue(0).asString().split("\t")).mapToInt(Integer::parseInt).toArray();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
+//    public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
+//        String queryCount = String.format("SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM `%s`", tableName);
+//        try (ClickHouseClient client = ClickHouseClient.builder()
+//                .options(chc.getDefaultClientOptions())
+//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+//                .build();
+//             ClickHouseResponse response = client.read(chc.getServer())
+//                     .query(queryCount)
+//                     .executeAndWait()) {
+//            return Arrays.stream(response.firstRecord().getValue(0).asString().split("\t")).mapToInt(Integer::parseInt).toArray();
+//        } catch (ClickHouseException e) {
+//            throw new RuntimeException(e);
+//        }
+//    }
 
 
     public HttpResponse<String> stopInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {

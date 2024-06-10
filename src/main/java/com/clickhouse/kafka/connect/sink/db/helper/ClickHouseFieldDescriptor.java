@@ -28,6 +28,16 @@ public class ClickHouseFieldDescriptor {
     private String ttlExpression;
     private boolean isSubcolumn;
 
+    private ClickHouseFieldDescriptor(String name, String type, String defaultType, String defaultExpression, String comment, String codecExpression, String ttlExpression, boolean isSubcolumn) {
+        this.name = name;
+        this.type = type;
+        this.defaultType = defaultType;
+        this.defaultExpression = defaultExpression;
+        this.comment = comment;
+        this.codecExpression = codecExpression;
+        this.ttlExpression = ttlExpression;
+        this.isSubcolumn = isSubcolumn;
+    }
     public boolean isAlias() {
         return "ALIAS".equals(defaultType);
     }
@@ -42,5 +52,9 @@ public class ClickHouseFieldDescriptor {
 
     public static ClickHouseFieldDescriptor fromJsonRow(String json) throws JsonProcessingException {
         return OBJECT_MAPPER.readValue(json.replace("\n", "\\n"), ClickHouseFieldDescriptor.class);
+    }
+
+    public static ClickHouseFieldDescriptor fromValues(String name, String type, String defaultType, String defaultExpression, String comment, String codecExpression, String ttlExpression, boolean isSubcolumn) {
+        return new ClickHouseFieldDescriptor(name, type, defaultType, defaultExpression, comment, codecExpression, ttlExpression, isSubcolumn);
     }
 }

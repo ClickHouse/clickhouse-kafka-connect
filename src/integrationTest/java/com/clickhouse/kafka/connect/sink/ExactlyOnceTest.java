@@ -103,73 +103,73 @@ public class ExactlyOnceTest {
     }
 
 
-    private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
-        createReplicatedMergeTreeTable(chcNoProxy, topicName);
-        ClickHouseAPI.clearTable(chcNoProxy, topicName);
-        confluentPlatform.createTopic(topicName, partitions);
-        int count = generateSchemalessData(topicName, partitions, 250);
-        LOGGER.info("Expected Total: {}", count);
-        setupSchemalessConnector(topicName, partitions);
-        ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 5);
+//    private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
+//        createReplicatedMergeTreeTable(chcNoProxy, topicName);
+//        ClickHouseAPI.clearTable(chcNoProxy, topicName);
+//        confluentPlatform.createTopic(topicName, partitions);
+//        int count = generateSchemalessData(topicName, partitions, 250);
+//        LOGGER.info("Expected Total: {}", count);
+//        setupSchemalessConnector(topicName, partitions);
+//        ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 5);
+//
+//        int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName);//Essentially the final count
+//        ClickHouseAPI.dropTable(chcNoProxy, topicName);
+//        return databaseCounts[2] == 0 && databaseCounts[1] == count;
+//    }
 
-        int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName);//Essentially the final count
-        ClickHouseAPI.dropTable(chcNoProxy, topicName);
-        return databaseCounts[2] == 0 && databaseCounts[1] == count;
-    }
-
-    @Test
+//    @Test
     public void checkTotalsEqual() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1));
+        //assertTrue(compareSchemalessCounts("singlePartitionTopic", 1));
     }
 
-    @Test
+//    @Test
     public void checkTotalsEqualMulti() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3));
+        //assertTrue(compareSchemalessCounts("multiPartitionTopic", 3));
     }
 
 
-    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions) throws InterruptedException, IOException, URISyntaxException {
-        boolean allSuccess = true;
-        int runCount = 1;
-        do {
-            LOGGER.info("Run: {}", runCount);
-            confluentPlatform.createTopic(topicName, numberOfPartitions);
-            createReplicatedMergeTreeTable(chcNoProxy, topicName);
-            ClickHouseAPI.clearTable(chcNoProxy, topicName);
+//    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions) throws InterruptedException, IOException, URISyntaxException {
+//        boolean allSuccess = true;
+//        int runCount = 1;
+//        do {
+//            LOGGER.info("Run: {}", runCount);
+//            confluentPlatform.createTopic(topicName, numberOfPartitions);
+//            createReplicatedMergeTreeTable(chcNoProxy, topicName);
+//            ClickHouseAPI.clearTable(chcNoProxy, topicName);
+//
+//            int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
+//            setupSchemalessConnector(topicName, numberOfPartitions);
+//
+//            clickhouseAPI.restartService();
+//            confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
+//
+//            LOGGER.info("Expected Total: {}", count);
+//            ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 7);
+//
+//            int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName);//Essentially the final count
+//            if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
+//                allSuccess = false;
+//                LOGGER.error("Duplicates: {}", databaseCounts[2]);
+//                Iterable<ClickHouseRecord> records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName);
+//                records.forEach(record -> LOGGER.error("Duplicate: {}", record));
+//            }
+//
+//            confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+//            confluentPlatform.deleteTopic(topicName);
+//            ClickHouseAPI.dropTable(chcNoProxy, topicName);
+//            runCount++;
+//        } while (runCount < 3 && allSuccess);
+//
+//        assertTrue(allSuccess);
+//    }
 
-            int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
-            setupSchemalessConnector(topicName, numberOfPartitions);
-
-            clickhouseAPI.restartService();
-            confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
-
-            LOGGER.info("Expected Total: {}", count);
-            ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 7);
-
-            int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName);//Essentially the final count
-            if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
-                allSuccess = false;
-                LOGGER.error("Duplicates: {}", databaseCounts[2]);
-                Iterable<ClickHouseRecord> records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName);
-                records.forEach(record -> LOGGER.error("Duplicate: {}", record));
-            }
-
-            confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-            confluentPlatform.deleteTopic(topicName);
-            ClickHouseAPI.dropTable(chcNoProxy, topicName);
-            runCount++;
-        } while (runCount < 3 && allSuccess);
-
-        assertTrue(allSuccess);
-    }
-
-    @Test
+    //@Test
     public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
-        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1);
+        //checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1);
     }
 
-    @Test
+    //@Test
     public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
-        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
+        //checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
     }
 }

@@ -35,7 +35,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         String queryCount = "select count(*) from " + topic + " where str LIKE '%\uD83D\uDE00%'";
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
-            return records.iterator().next().getInteger(0);
+            String value = records.iterator().next().getString(1);
+            return Integer.parseInt(value);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
@@ -59,7 +60,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         String queryCount = String.format("select count(*) from `%s`", topic);
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
-            return records.iterator().next().getInteger(0);
+            String value = records.iterator().next().getString(1);
+            return Integer.parseInt(value);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
