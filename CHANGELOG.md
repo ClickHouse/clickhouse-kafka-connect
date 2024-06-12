@@ -1,9 +1,16 @@
+## 1.1.1
+* Bugfix to address string encoding issue
+
 ## 1.1.0
+* Updated java-client to 0.6.0-patch4
+* Added config 'keeperOnCluster' to help self-hosted use exactly-once
 * Added support for Tuple type
 * Added support for Variant type
 * Added support for Nested type
 * Refactored Column class so that we use Builder pattern using Lombok
 * Refactored recursive Map type parsing to iterative approach using describe_include_subcolumns=1
+* Adjusted logging to reduce volume while keeping important information
+* Adjusted tests to be more reliable and self cleaning
 
 ## 1.0.17
 * Added support for ClickHouse Enum type #370
@@ -84,9 +91,9 @@
 
 ## 1.0.0
 * Additional tests for ExactlyOnce
-* Allows customized ClickHouse settings using `clickhouse.settings' property
+* Allows customized ClickHouse settings using `clickhouse.settings` property
 * Tweaked deduplication behavior to account for dynamic fields
-* Added support for `errors.tolerance' and the DLQ
+* Added support for `errors.tolerance` and the DLQ
 
 ## 0.0.18
 * Support inline schema with org.apache.kafka.connect.data.Timestamp type 

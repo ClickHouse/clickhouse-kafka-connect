@@ -1,22 +1,29 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.data.ClickHouseColumn;
 import com.clickhouse.data.ClickHouseFormat;
+import com.clickhouse.data.ClickHouseRecord;
+import com.clickhouse.data.ClickHouseValue;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 public class ClickHouseTestHelpers {
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
     public static final String CLICKHOUSE_VERSION_DEFAULT = "24.3";
     public static final String CLICKHOUSE_PROXY_VERSION_DEFAULT = "23.8";
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
@@ -25,7 +32,7 @@ public class ClickHouseTestHelpers {
     public static final String HTTPS_PORT = "8443";
     public static final String DATABASE_DEFAULT = "default";
     public static final String USERNAME_DEFAULT = "default";
-    public static final String getClickhouseVersion() {
+    public static String getClickhouseVersion() {
         String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
         if (clickHouseVersion == null) {
             clickHouseVersion = CLICKHOUSE_VERSION_DEFAULT;
@@ -34,11 +41,8 @@ public class ClickHouseTestHelpers {
     }
     public static boolean isCloud() {
         String version = System.getenv("CLICKHOUSE_VERSION");
-        System.out.println("version: " + version);
-        if ( version != null && version.equalsIgnoreCase("cloud")) {
-            return true;
-        }
-        return false;
+        LOGGER.info("Version: {}", version);
+        return version != null && version.equalsIgnoreCase("cloud");
     }
     public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
@@ -140,6 +144,58 @@ public class ClickHouseTestHelpers {
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords) {
+        boolean match = false;
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer())
+                     .query(String.format("SELECT * FROM `%s`", topic))
+                     .format(ClickHouseFormat.JSONStringsEachRow)
+                     .executeAndWait()) {
+            Gson gson = new Gson();
+            ClickHouseResponseSummary summary = response.getSummary();
+
+            List<String> records = new ArrayList<>();
+            for (SinkRecord record : sinkRecords) {
+                Map<String, String> recordMap = new TreeMap<>();
+                if (record.value() instanceof HashMap) {
+                    for (Map.Entry<String, Object> entry : ((HashMap<String, Object>) record.value()).entrySet()) {
+                        recordMap.put(entry.getKey(), entry.getValue().toString());
+                    }
+                } else if (record.value() instanceof Struct) {
+                    ((Struct) record.value()).schema().fields().forEach(f -> {
+                        recordMap.put(f.name(), ((Struct) record.value()).get(f).toString());
+                    });
+                }
+
+                String gsonString = gson.toJson(recordMap);
+                records.add(gsonString.replace(".0", "").replace(" ","").replace("'","").replace("\\u003d",":"));
+            }
+
+            List<String> results = new ArrayList<>();
+            LOGGER.info(response.records().toString());
+            response.records().forEach(r -> {
+                String gsonString = r.getValue(0).asString().replace("'","").replace(" ","").replace("\\u003d",":");
+                Map<String, String> resultMap = new TreeMap<>((Map<String, String>) gson.fromJson(gsonString, new TypeToken<Map<String, String>>() {}.getType()));
+                results.add(gson.toJson(resultMap));
+            });
+
+            for (String record : records) {
+                if (results.get(0).equals(record)) {
+                    match = true;
+                    LOGGER.info("Matched record: {}", record);
+                    LOGGER.info("Matched result: {}", results.get(0));
+                    break;
+                }
+            }
+
+            LOGGER.info("Match? {}", match);
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+
+        return match;
     }
 
     @Deprecated(since = "for debug purposes only")
