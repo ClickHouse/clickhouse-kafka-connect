@@ -74,6 +74,7 @@ public class Utils {
                 case 203: // NO_FREE_CONNECTION
                 case 209: // SOCKET_TIMEOUT
                 case 210: // NETWORK_ERROR
+                case 241: // MEMORY_LIMIT_EXCEEDED
                 case 242: // TABLE_IS_READ_ONLY
                 case 252: // TOO_MANY_PARTS
                 case 285: // TOO_FEW_LIVE_REPLICAS
