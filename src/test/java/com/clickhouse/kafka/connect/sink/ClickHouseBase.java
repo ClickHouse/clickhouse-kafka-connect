@@ -156,6 +156,7 @@ public class ClickHouseBase {
     protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
         String createTableQueryTmp = String.format(createTableQuery, topic);
         Records records = chc.query(createTableQueryTmp);
+
 //        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
 //             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
 //                     // you'll have to parse response manually if using a different format

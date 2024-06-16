@@ -193,7 +193,6 @@ public class ClickHouseHelperClient {
         QuerySettings settings = new QuerySettings();
         if (clickHouseFormat != null)
             settings.setFormat(clickHouseFormat);
-        settings.setOption("describe_include_subcolumns", true);
         while (retryCount < retry) {
             System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
             CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
