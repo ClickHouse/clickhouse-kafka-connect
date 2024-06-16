@@ -2,9 +2,9 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
-import com.clickhouse.client.api.Protocol;
 import com.clickhouse.client.api.data_formats.ClickHouseBinaryFormatReader;
 import com.clickhouse.client.api.data_formats.RowBinaryWithNamesAndTypesFormatReader;
+import com.clickhouse.client.api.metadata.TableSchema;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
@@ -25,6 +25,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.desktop.SystemSleepEvent;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -190,7 +193,7 @@ public class ClickHouseHelperClient {
         QuerySettings settings = new QuerySettings();
         if (clickHouseFormat != null)
             settings.setFormat(clickHouseFormat);
-
+        settings.setOption("describe_include_subcolumns", true);
         while (retryCount < retry) {
             System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
             CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
@@ -259,37 +262,64 @@ public class ClickHouseHelperClient {
 
         Table table = new Table(tableName);
         try {
-            Records records = query(describeQuery);
-            for (GenericRecord record : records) {
-                String name = record.getString(1);
-                String type = record.getString(2);
-                String defaultType = record.getString(3);
-                String defaultExpression = record.getString(4);
-                String comment = record.getString(5);
-                String codecExpression = record.getString(6);
-                String ttlExpression = record.getString(7);
-                boolean isSubcolumn = false;
-                System.out.println(name + " " + type + " " + defaultType + " " + defaultExpression + " " + comment + " " + codecExpression + " " + ttlExpression + " " + isSubcolumn);
-//                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(value);
-                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromValues(name, type, defaultType, defaultExpression, comment, codecExpression, ttlExpression, isSubcolumn);
-                if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
-                    LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
-                    continue;
+            QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.JSONEachRow);
+            settings.setOption("describe_include_subcolumns", true);
+            QueryResponse queryResponse = client.query(describeQuery, settings).get();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
+                String line = null;
+                while ((line = br.readLine()) != null) {
+                    System.out.println(line);
+                    ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(line);
+                    if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
+                        LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
+                        continue;
+                    }
+
+                    if (fieldDescriptor.hasDefault()) {
+                        table.hasDefaults(true);
+                    }
+
+                    Column column = Column.extractColumn(fieldDescriptor);
+                    table.addColumn(column);
                 }
 
-                if (fieldDescriptor.hasDefault()) {
-                    table.hasDefaults(true);
                 }
-
-                Column column = Column.extractColumn(fieldDescriptor);
-                table.addColumn(column);
-
+            } catch (Exception e) {
+                System.out.println(e);
+                return null;
             }
-            return table;
-        } catch (Exception e) {
-            LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
-            return null;
-        }
+
+//            Records records = query(describeQuery);
+//            for (GenericRecord record : records) {
+//                String name = record.getString(1);
+//                String type = record.getString(2);
+//                String defaultType = record.getString(3);
+//                String defaultExpression = record.getString(4);
+//                String comment = record.getString(5);
+//                String codecExpression = record.getString(6);
+//                String ttlExpression = record.getString(7);
+//                boolean isSubcolumn = false;
+//                System.out.println(name + " " + type + " " + defaultType + " " + defaultExpression + " " + comment + " " + codecExpression + " " + ttlExpression + " " + isSubcolumn);
+////                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(value);
+//                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromValues(name, type, defaultType, defaultExpression, comment, codecExpression, ttlExpression, isSubcolumn);
+//                if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
+//                    LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
+//                    continue;
+//                }
+//
+//                if (fieldDescriptor.hasDefault()) {
+//                    table.hasDefaults(true);
+//                }
+//
+//                Column column = Column.extractColumn(fieldDescriptor);
+//                table.addColumn(column);
+//
+//            }
+//            return table;
+//        } catch (Exception e) {
+//            LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
+//            return null;
+//        }
 //        try (ClickHouseClient client = ClickHouseClient.builder()
 //                .options(getDefaultClientOptions())
 //                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
@@ -322,6 +352,7 @@ public class ClickHouseHelperClient {
 //            LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
 //            return null;
 //        }
+        return table;
     }
     
     public List<Table> extractTablesMapping() {

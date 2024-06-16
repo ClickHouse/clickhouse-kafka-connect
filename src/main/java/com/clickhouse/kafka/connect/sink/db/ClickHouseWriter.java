@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
-import com.clickhouse.client.api.Protocol;
 import com.clickhouse.client.api.insert.InsertResponse;
 import com.clickhouse.client.api.insert.InsertSettings;
 import com.clickhouse.client.config.ClickHouseClientOption;
