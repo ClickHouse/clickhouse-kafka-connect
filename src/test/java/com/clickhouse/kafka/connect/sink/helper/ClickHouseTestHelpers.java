@@ -22,6 +22,8 @@ import org.slf4j.LoggerFactory;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -52,7 +54,15 @@ public class ClickHouseTestHelpers {
     public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         System.out.println(dropTable);
-        chc.getClient().queryRecords(dropTable);
+        try {
+            chc.getClient().queryRecords(dropTable).get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (TimeoutException e) {
+            throw new RuntimeException(e);
+        }
 //        try (ClickHouseClient client = ClickHouseClient.builder()
 //                .options(chc.getDefaultClientOptions())
 //                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
@@ -77,9 +87,14 @@ public class ClickHouseTestHelpers {
     }
 
     public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
-        String createTableQueryTmp = String.format(createTableQuery, tableName);
+        final String createTableQueryTmp = String.format(createTableQuery, tableName);
         System.out.println(createTableQueryTmp);
-        chc.getClient().queryRecords(createTableQueryTmp);
+
+        try {
+            chc.getClient().queryRecords(createTableQueryTmp).get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 //        try (ClickHouseClient client = ClickHouseClient.builder()
 //                .options(chc.getDefaultClientOptions())
 //                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
@@ -118,13 +133,15 @@ public class ClickHouseTestHelpers {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get();
+            Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
 

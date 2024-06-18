@@ -4,6 +4,7 @@ import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.data_formats.ClickHouseBinaryFormatReader;
 import com.clickhouse.client.api.data_formats.RowBinaryWithNamesAndTypesFormatReader;
+import com.clickhouse.client.api.enums.ProxyType;
 import com.clickhouse.client.api.metadata.TableSchema;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.QueryResponse;
@@ -125,12 +126,18 @@ public class ClickHouseHelperClient {
 
         LOGGER.info("ClickHouse URL: {}", url);
 
-        client = new Client.Builder()
+
+
+        Client.Builder clientBuilder = new Client.Builder()
                 .addEndpoint(url)
                 .setUsername(this.username)
                 .setPassword(this.password)
-                .setDefaultDatabase(this.database)
-                .build();
+                .setDefaultDatabase(this.database);
+
+        if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
+                clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
+        }
+        client = clientBuilder.build();
         return client;
     }
 
