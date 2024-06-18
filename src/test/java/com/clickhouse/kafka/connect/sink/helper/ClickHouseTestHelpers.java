@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
 import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseColumn;
 import com.clickhouse.data.ClickHouseFormat;
@@ -88,25 +89,15 @@ public class ClickHouseTestHelpers {
 
     public static void createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
         final String createTableQueryTmp = String.format(createTableQuery, tableName);
-        System.out.println(createTableQueryTmp);
-
+        QuerySettings settings = new QuerySettings();
+        for (Map.Entry<String, Serializable> entry : clientSettings.entrySet()) {
+            settings.setOption(entry.getKey(), entry.getValue());
+        }
         try {
-            chc.getClient().queryRecords(createTableQueryTmp).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            chc.getClient().queryRecords(createTableQueryTmp, settings).get(10, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-//        try (ClickHouseClient client = ClickHouseClient.builder()
-//                .options(chc.getDefaultClientOptions())
-//                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-//                .build();
-//             ClickHouseResponse response = client.read(chc.getServer())
-//                     .settings(clientSettings)
-//                     .query(createTableQueryTmp)
-//                     .executeAndWait()) {
-//            return response.getSummary();
-//        } catch (ClickHouseException e) {
-//            throw new RuntimeException(e);
-//        }
     }
 
 //    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName) {
