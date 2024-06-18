@@ -44,9 +44,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        //assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+//        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
     }
-
     @Test
     public void arrayNullableSubtypesTest() {
         Map<String, String> props = createProps();
@@ -64,7 +63,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-    
     @Test
     public void mapTypesTest() {
         Map<String, String> props = createProps();
@@ -85,7 +83,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void nullArrayTypeTest() {
         Map<String, String> props = createProps();
@@ -103,7 +100,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void nullableArrayTypeTest() {
         Map<String, String> props = createProps();
@@ -121,7 +117,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
     public void materializedViewsBug() {
@@ -142,7 +137,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest() {
@@ -165,7 +159,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
     public void nullValueDataTest() {
@@ -186,7 +179,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
 
     }
-
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
     public void supportDatesTest() {
@@ -206,7 +198,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void supportArrayDateTime64Test() {
         Map<String, String> props = createProps();
@@ -224,7 +215,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-    
     @Test
     public void detectUnsupportedDataConversions() {
         Map<String, String> props = createProps();
@@ -245,8 +235,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
         chst.stop();
     }
-
-
     @Test
     public void supportZonedDatesStringTest() {
         Map<String, String> props = createProps();
@@ -264,9 +252,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
-
-
     @Test
     public void withEmptyDataRecordsTest() {
         Map<String, String> props = createProps();
@@ -283,7 +268,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void withLowCardinalityTest() {
         Map<String, String> props = createProps();
@@ -300,7 +284,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void withUUIDTest() {
         Map<String, String> props = createProps();
@@ -317,7 +300,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void schemaWithDefaultsTest() {
         Map<String, String> props = createProps();
@@ -336,7 +318,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void schemaWithDefaultsAndNullableTest() {
         Map<String, String> props = createProps();
@@ -355,7 +336,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void schemaWithDecimalTest() {
         Map<String, String> props = createProps();
@@ -374,7 +354,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
     }
-
     @Test
     public void schemaWithFixedStringTest() {
         Map<String, String> props = createProps();
@@ -397,7 +376,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     public void schemaWithFixedStringMismatchTest() {
         Map<String, String> props = createProps();
@@ -420,7 +398,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
         chst.stop();
     }
-
     @Test
     public void schemaWithNullableDecimalTest() {
         Map<String, String> props = createProps();
@@ -439,7 +416,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertEquals(450180, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
     }
-
     @Test
     public void schemaWithBytesTest() {
         Map<String, String> props = createProps();
@@ -471,7 +447,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-
     @Test
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleOfMapsWithVariantTest() {
@@ -518,15 +493,15 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
 
-//        List<JSONObject> allRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-//        for (int i = 0; i < sr.size(); i++) {
-//            JSONObject row = allRows.get(i);
-//
-//            assertEquals(i, row.getInt("off16"));
-//            JSONObject tuple = row.getJSONObject("tuple");
-//            JSONObject nestedTuple = tuple.getJSONObject("tuple");
-//            assertEquals(1 / (double) 3, nestedTuple.getDouble("variant_with_double"));
-//        }
+        List<JSONObject> allRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        for (int i = 0; i < sr.size(); i++) {
+            JSONObject row = allRows.get(i);
+
+            assertEquals(i, row.getInt("off16"));
+            JSONObject tuple = row.getJSONObject("tuple");
+            JSONObject nestedTuple = tuple.getJSONObject("tuple");
+            assertEquals(1 / (double) 3, nestedTuple.getDouble("variant_with_double"));
+        }
     }
 
     @Test
@@ -558,42 +533,42 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
 
-//        List<JSONObject> allRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-//        for (int i = 0; i < allRows.size(); i++) {
-//            JSONObject row = allRows.get(i);
-//
-//            assertEquals(i, row.getInt("off16"));
-//
-//            String expectedString = String.format("v%d", i);
-//
-//            int expectedNestedSize = i % 4;
-//            assertEquals(expectedNestedSize, row.getJSONArray("nested.string").length());
-//            assertEquals(expectedNestedSize, row.getJSONArray("nested.decimal").length());
-//            assertEquals(expectedNestedSize, row.getJSONArray("nested.tuple").length());
-//
-//            BigDecimal expectedDecimal = new BigDecimal(String.format("%d.%d", i, 2));
-//
-//            assertEquals(
-//                    expectedDecimal.multiply(new BigDecimal(expectedNestedSize)).doubleValue(),
-//                    row.getJSONArray("nested.decimal").toList().stream()
-//                            .map(object -> (BigDecimal) object)
-//                            .reduce(BigDecimal::add)
-//                            .orElseGet(() -> new BigDecimal(0)).doubleValue()
-//            );
-//
-//            final int n = i;
-//            row.getJSONArray("nested.tuple").toList().forEach(object -> {
-//                Map<?, ?> tuple = (Map<?, ?>) object;
-//                if (n % 2 == 0) {
-//                    assertEquals(n % 8 >= 4, tuple.get("variant"));
-//                } else {
-//                    assertEquals(expectedString, tuple.get("variant"));
-//                }
-//            });
-//
-//            row.getJSONArray("nested.string").toList().forEach(object ->
-//                    assertEquals(expectedString, object)
-//            );
-//        }
+        List<JSONObject> allRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        for (int i = 0; i < allRows.size(); i++) {
+            JSONObject row = allRows.get(i);
+
+            assertEquals(i, row.getInt("off16"));
+
+            String expectedString = String.format("v%d", i);
+
+            int expectedNestedSize = i % 4;
+            assertEquals(expectedNestedSize, row.getJSONArray("nested.string").length());
+            assertEquals(expectedNestedSize, row.getJSONArray("nested.decimal").length());
+            assertEquals(expectedNestedSize, row.getJSONArray("nested.tuple").length());
+
+            BigDecimal expectedDecimal = new BigDecimal(String.format("%d.%d", i, 2));
+
+            assertEquals(
+                    expectedDecimal.multiply(new BigDecimal(expectedNestedSize)).doubleValue(),
+                    row.getJSONArray("nested.decimal").toList().stream()
+                            .map(object -> (BigDecimal) object)
+                            .reduce(BigDecimal::add)
+                            .orElseGet(() -> new BigDecimal(0)).doubleValue()
+            );
+
+            final int n = i;
+            row.getJSONArray("nested.tuple").toList().forEach(object -> {
+                Map<?, ?> tuple = (Map<?, ?>) object;
+                if (n % 2 == 0) {
+                    assertEquals(n % 8 >= 4, tuple.get("variant"));
+                } else {
+                    assertEquals(expectedString, tuple.get("variant"));
+                }
+            });
+
+            row.getJSONArray("nested.string").toList().forEach(object ->
+                    assertEquals(expectedString, object)
+            );
+        }
     }
 }

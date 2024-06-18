@@ -347,23 +347,23 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-//        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-//
-//        LongStream.range(0, sr.size()).forEachOrdered(n -> {
-//            JSONObject row = rows.get((int) n);
-//
-//            assertEquals(n, row.getInt("off16"));
-//
-//            JSONObject payload = row.getJSONObject("payload");
-//            JSONObject fields = payload.getJSONObject("fields");
-//
-//            assertEquals(1 / (float) (n + 1), fields.getFloat("field1"));
-//            assertEquals(n, fields.getBigInteger("field2").longValue());
-//            assertEquals(String.format("Value: '%d'", n), fields.getString("field3"));
-//
-//            JSONObject tags = payload.getJSONObject("tags");
-//            assertEquals("tag1", tags.getString("tag1"));
-//            assertEquals("tag2", tags.getString("tag2"));
-//        });
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+
+        LongStream.range(0, sr.size()).forEachOrdered(n -> {
+            JSONObject row = rows.get((int) n);
+
+            assertEquals(n, row.getInt("off16"));
+
+            JSONObject payload = row.getJSONObject("payload");
+            JSONObject fields = payload.getJSONObject("fields");
+
+            assertEquals(1 / (float) (n + 1), fields.getFloat("field1"));
+            assertEquals(n, fields.getBigInteger("field2").longValue());
+            assertEquals(String.format("Value: '%d'", n), fields.getString("field3"));
+
+            JSONObject tags = payload.getJSONObject("tags");
+            assertEquals("tag1", tags.getString("tag1"));
+            assertEquals("tag2", tags.getString("tag2"));
+        });
     }
 }
