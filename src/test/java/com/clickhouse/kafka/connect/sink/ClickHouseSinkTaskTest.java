@@ -124,9 +124,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
             System.out.println("tmpTableName: " + tmpTableName);
-            dropTable(chc, tmpTableName);
+            dropTable(chc(), tmpTableName);
             createDatabase(databaseName);
-            createTable(chc, tmpTableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+            createTable(chc(), tmpTableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         });
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
@@ -139,7 +139,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             fail("Exception should not be thrown");
         }
         LongStream.range(0, dbRange).forEachOrdered(i -> {
-            int count = countRows(chc, String.valueOf(i), tableName);
+            int count = countRows(chc(), String.valueOf(i), tableName);
             assertEquals(DEFAULT_TOTAL_RECORDS, count);
         });
     }

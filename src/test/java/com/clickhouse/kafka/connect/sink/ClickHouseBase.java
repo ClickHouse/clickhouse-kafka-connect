@@ -1,17 +1,10 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.ClickHouseClient;
-import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
-import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.slf4j.Logger;
@@ -19,41 +12,64 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
-    protected static ClickHouseHelperClient chc = null;
-    protected static ClickHouseContainer db = null;
-    protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
-    protected static String database = null;
+
+    protected static ThreadLocal<TestEnv> testEnv = ThreadLocal.withInitial(TestEnv::new);
+
+    protected static class TestEnv {
+        public  ClickHouseHelperClient chc = null;
+        public  ClickHouseContainer db = null;
+        public  boolean isCloud = ClickHouseTestHelpers.isCloud();
+        public  String database = null;
+
+    }
     @BeforeAll
     public static void setup() throws IOException  {
-        if (database == null) {
-            database = String.format("kafka_connect_test_%s", System.currentTimeMillis());
+        if (testEnv.get().database == null) {
+            testEnv.get().database = String.format("kafka_connect_test_%s", System.currentTimeMillis());
         }
-        if (isCloud) {
+        if (testEnv.get().isCloud) {
             return;
         }
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
-        db.start();
+        testEnv.get().db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
+        db().start();
     }
 
     @AfterAll
     protected static void tearDown() {
-        if (isCloud) {//We need to clean up databases in the cloud, we can ignore the local database
-            if (database != null) {
+        if (isCloud()) {//We need to clean up databases in the cloud, we can ignore the local database
+            if (database() != null) {
                 try {
-                    dropDatabase(database);
+                    dropDatabase(database());
                 } catch (Exception e) {
                     LOGGER.error("Error dropping database", e);
                 }
             }
         }
-        if (db != null)
-            db.stop();
+        if (db() != null) {
+            db().stop();
+        }
+    }
+
+    protected static ClickHouseHelperClient chc() {
+        return testEnv.get().chc;
+    }
+
+    protected static ClickHouseContainer db() {
+        return testEnv.get().db;
+    }
+
+    protected static boolean isCloud() {
+        return testEnv.get().isCloud;
+
+    }
+
+    protected static String database() {
+        return testEnv.get().database;
     }
 
     protected ClickHouseHelperClient createClient(Map<String,String> props) {
@@ -81,10 +97,10 @@ public class ClickHouseBase {
 
 
         if (withDatabase) {
-            createDatabase(this.database, tmpChc);
-            props.put(ClickHouseSinkConnector.DATABASE, this.database);
+            createDatabase(database(), tmpChc);
+            props.put(ClickHouseSinkConnector.DATABASE, database());
             ClickHouseHelperClient chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                    .setDatabase(this.database)
+                    .setDatabase(database())
                     .setUsername(username)
                     .setPassword(password)
                     .sslEnable(sslEnabled)
@@ -93,12 +109,12 @@ public class ClickHouseBase {
                     .build();
                 return chc;
             }
-        chc = tmpChc;
-        return chc;
+        testEnv.get().chc = tmpChc;
+        return chc();
     }
 
     protected void createDatabase(String database) {
-        createDatabase(database, chc);
+        createDatabase(database, chc());
     }
     protected void createDatabase(String database, ClickHouseHelperClient chc) {
         String createDatabaseQuery = String.format("CREATE DATABASE IF NOT EXISTS `%s`", database);
@@ -193,7 +209,7 @@ public class ClickHouseBase {
 
     protected Map<String,String> createProps() {
         Map<String, String> props = new HashMap<>();
-        if (isCloud) {
+        if (isCloud()) {
             props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv("CLICKHOUSE_CLOUD_HOST"));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);
             props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
@@ -203,11 +219,11 @@ public class ClickHouseBase {
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
         } else {
-            props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-            props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+            props.put(ClickHouseSinkConnector.HOSTNAME, db().getHost());
+            props.put(ClickHouseSinkConnector.PORT, db().getFirstMappedPort().toString());
             props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
-            props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-            props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+            props.put(ClickHouseSinkConnector.USERNAME, db().getUsername());
+            props.put(ClickHouseSinkConnector.PASSWORD, db().getPassword());
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         }
         return props;

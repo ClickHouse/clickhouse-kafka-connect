@@ -181,7 +181,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
     @Test
     public void withEmptyDataRecordsTest() {
         Map<String, String> props = createProps();
-        if (isCloud) {
+        if (isCloud()) {
             props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=true&sslmode=none");
         } else {
             props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=false&sslmode=none");
@@ -203,7 +203,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
     @Test
     public void emptyDataRecordsTestFailedWithSslProp() {
         Map<String, String> props = createProps();
-        if (isCloud) {
+        if (isCloud()) {
             // this will fail connection because the test container do not configured with SSL-TLS
             props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "ssl=false&sslmode=strict");
         } else {
