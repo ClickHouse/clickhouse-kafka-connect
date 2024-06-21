@@ -53,11 +53,12 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void describeNestedUnFlattenedTable() {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
-        ClickHouseTestHelpers.query(chc, "CREATE USER unflatten IDENTIFIED BY '' SETTINGS flatten_nested=0");
+        ClickHouseTestHelpers.query(chc, "CREATE USER unflatten IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0");
         ClickHouseTestHelpers.query(chc, "GRANT CURRENT GRANTS ON *.* TO unflatten");
 
         Map<String, String> props = createProps();
         props.put("username", "unflatten");
+        props.put("password", "123FOURfive^&*91011");
         chc = createClient(props);
 
         ClickHouseTestHelpers.createTable(chc, nestedTopic,
