@@ -107,7 +107,7 @@ public class Processing {
         String database = record.getDatabase();
         String topic = record.getRecordOffsetContainer().getTopic();
 
-        if (this.clickHouseSinkConfig != null && clickHouseSinkConfig.getEnableDbTopicSplit()) {
+        if (this.clickHouseSinkConfig != null && clickHouseSinkConfig.isEnableDbTopicSplit()) {
             topic = database + clickHouseSinkConfig.getDbTopicSplitChar() + topic;
         }
 
