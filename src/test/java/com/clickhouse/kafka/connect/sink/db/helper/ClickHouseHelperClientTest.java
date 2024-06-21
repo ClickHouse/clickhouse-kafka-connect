@@ -53,7 +53,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void describeNestedUnFlattenedTable() {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
-        ClickHouseTestHelpers.query(chc, "CREATE USER unflatten IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0");
+        ClickHouseTestHelpers.query(chc, "CREATE USER IF NOT EXISTS unflatten IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0");
         ClickHouseTestHelpers.query(chc, "GRANT CURRENT GRANTS ON *.* TO unflatten");
 
         Map<String, String> props = createProps();
@@ -78,6 +78,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         } finally {
             ClickHouseTestHelpers.dropTable(chc, nestedTopic);
             ClickHouseTestHelpers.dropTable(chc, normalTopic);
+            ClickHouseTestHelpers.query(chc, "DROP USER IF EXISTS unflatten");
         }
     }
 }
