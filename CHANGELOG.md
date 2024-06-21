@@ -1,5 +1,6 @@
 ## 1.1.1
 * Bugfix to address string encoding issue
+* Bugfix to address issue with nested types and flatten_nested setting conflict
 * Bugfix to avoid storing keeper state in same column name if virtual topic is enabled
 
 ## 1.1.0

@@ -686,7 +686,7 @@ public class ClickHouseWriter implements DBWriter {
 
     protected void doInsertJson(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         //https://devqa.io/how-to-convert-java-map-to-json/
-        boolean enableDbTopicSplit = csc.getEnableDbTopicSplit();
+        boolean enableDbTopicSplit = csc.isEnableDbTopicSplit();
         String dbTopicSplitChar = csc.getDbTopicSplitChar();
         LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
         Gson gson = new Gson();
@@ -864,7 +864,7 @@ public class ClickHouseWriter implements DBWriter {
         String tableName = Utils.getTableName(topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);
         if (table == null) {
-            if (csc.getSuppressTableExistenceException()) {
+            if (csc.isSuppressTableExistenceException()) {
                 LOGGER.warn("Table [{}] does not exist, but error was suppressed.", tableName);
             } else {
                 //TODO to pick the correct exception here

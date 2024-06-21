@@ -13,6 +13,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +30,7 @@ public class ClickHouseHelperClient {
     private final String hostname;
     private final int port;
     private final String username;
+    @Getter
     private final String database;
     private final String password;
     private final boolean sslEnabled;
@@ -57,9 +59,6 @@ public class ClickHouseHelperClient {
         this.server = create();
     }
 
-    public String getDatabase() {
-        return database;
-    }
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
         options.put(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion());
@@ -218,6 +217,11 @@ public class ClickHouseHelperClient {
                 }
 
                 Column column = Column.extractColumn(fieldDescriptor);
+                //If we run into a rare column we can't handle, just ignore the table and warn the user
+                if (column == null) {
+                    LOGGER.warn("Unable to handle column: {}", fieldDescriptor.getName());
+                    return null;
+                }
                 table.addColumn(column);
             }
             return table;
