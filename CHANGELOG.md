@@ -1,5 +1,6 @@
 ## 1.1.1
 * Bugfix to address string encoding issue
+* Bugfix to address issue with nested types and flatten_nested setting conflict
 
 ## 1.1.0
 * Updated java-client to 0.6.0-patch4
