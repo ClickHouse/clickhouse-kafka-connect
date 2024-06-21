@@ -2,6 +2,8 @@
 * Bugfix to address string encoding issue
 * Bugfix to address issue with nested types and flatten_nested setting conflict
 * Bugfix to avoid storing keeper state in same column name if virtual topic is enabled
+* Updated java-client to 0.6.1
+* Bugfix to let create missing KeeperMap entries if there are some records present already
 
 ## 1.1.0
 * Updated java-client to 0.6.0-patch4
