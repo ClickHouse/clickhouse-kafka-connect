@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.config.ClickHouseProxyType;
+import lombok.Getter;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Getter
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
 
@@ -74,7 +76,6 @@ public class ClickHouseSinkConfig {
     private final long tableRefreshInterval;
     private final boolean suppressTableExistenceException;
     private final boolean errorsTolerance;
-
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
     private final ClickHouseProxyType proxyType;
@@ -510,59 +511,4 @@ public class ClickHouseSinkConfig {
         );
         return configDef;
     }
-
-    public String getHostname() {
-        return hostname;
-    }
-    public int getPort() {
-        return port;
-    }
-    public String getDatabase() {
-        return database;
-    }
-    public String getUsername() {
-        return username;
-    }
-    public String getPassword() {
-        return password;
-    }
-    public boolean isSslEnabled() {
-        return sslEnabled;
-    }
-    public String getJdbcConnectionProperties() {
-        return jdbcConnectionProperties;
-    }
-    public int getTimeout() {
-        return timeout;
-    }
-    public int getRetry() { return retry; }
-    public long getTableRefreshInterval() { 
-        return tableRefreshInterval;
-    }
-    public boolean getExactlyOnce() { return exactlyOnce; }
-    public boolean getSuppressTableExistenceException() {
-        return suppressTableExistenceException;
-    }
-    public Map<String, String> getClickhouseSettings() {return clickhouseSettings;}
-    public Map<String, String> getTopicToTableMap() {return topicToTableMap;}
-    public boolean getErrorsTolerance() { return errorsTolerance; }
-    public InsertFormats getInsertFormat() { return insertFormat; }
-    public ClickHouseProxyType getProxyType() {
-        return proxyType;
-    }
-    public String getProxyHost() {
-        return proxyHost;
-    }
-    public int getProxyPort() {
-        return proxyPort;
-    }
-    public String getZkPath() {
-        return zkPath;
-    }
-    public String getZkDatabase() {
-        return zkDatabase;
-    }
-    public boolean getEnableDbTopicSplit() { return enableDbTopicSplit; }
-    public String getDbTopicSplitChar() { return dbTopicSplitChar; }
-    public String getKeeperOnCluster() { return keeperOnCluster; }
 }

@@ -40,8 +40,8 @@ public class ProxySinkTask {
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
         this.clickHouseSinkConfig = clickHouseSinkConfig;
-        LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.getExactlyOnce());
-        if ( clickHouseSinkConfig.getExactlyOnce() ) {
+        LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.isExactlyOnce());
+        if ( clickHouseSinkConfig.isExactlyOnce() ) {
             this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
         } else {
             this.stateProvider = new InMemoryState();
@@ -87,7 +87,7 @@ public class ProxySinkTask {
 
         Map<String, List<Record>> dataRecords = records.stream()
                 .map(v -> Record.convert(v,
-                        clickHouseSinkConfig.getEnableDbTopicSplit(),
+                        clickHouseSinkConfig.isEnableDbTopicSplit(),
                         clickHouseSinkConfig.getDbTopicSplitChar(),
                         clickHouseSinkConfig.getDatabase() ))
                 .collect(Collectors.groupingBy(Record::getTopicAndPartition));

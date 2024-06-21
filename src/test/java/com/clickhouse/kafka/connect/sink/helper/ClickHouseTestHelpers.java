@@ -44,19 +44,39 @@ public class ClickHouseTestHelpers {
         LOGGER.info("Version: {}", version);
         return version != null && version.equalsIgnoreCase("cloud");
     }
-    public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
+
+    public static ClickHouseResponseSummary query(ClickHouseHelperClient chc, String query) {
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
              ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropTable)
+                     .query(query)
                      .executeAndWait()) {
             return response.getSummary();
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static ClickHouseResponseSummary query(ClickHouseHelperClient chc, String query, ClickHouseFormat format) {
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(chc.getServer())
+                     .query(query)
+                     .format(format)
+                     .executeAndWait()) {
+            return response.getSummary();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
+        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
+        return query(chc, dropTable);
     }
 
     public static ClickHouseResponseSummary createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
