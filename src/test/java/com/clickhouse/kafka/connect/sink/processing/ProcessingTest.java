@@ -1,5 +1,5 @@
 package com.clickhouse.kafka.connect.sink.processing;
-
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
@@ -198,7 +199,8 @@ public class ProcessingTest {
         List<Record> containsRecords = records.subList(345,850);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter, er);
+        ClickHouseSinkConfig clickHouseSinkConfig = new ClickHouseSinkConfig(new HashMap<>());
+        Processing processing = new Processing(stateProvider, dbWriter, er, clickHouseSinkConfig);
         processing.doLogic(records);
         assertEquals(records.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);

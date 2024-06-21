@@ -61,7 +61,7 @@ public class ProxySinkTask {
         boolean isStarted = dbWriter.start(clickHouseSinkConfig);
         if (!isStarted)
             throw new RuntimeException("Connection to ClickHouse is not active.");
-        processing = new Processing(stateProvider, dbWriter, errorReporter);
+        processing = new Processing(stateProvider, dbWriter, errorReporter, clickHouseSinkConfig);
 
         this.statistics = MBeanServerUtils.registerMBean(new SinkTaskStatistics(), getMBeanNAme());
     }
