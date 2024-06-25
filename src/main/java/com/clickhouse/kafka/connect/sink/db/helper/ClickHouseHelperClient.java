@@ -211,6 +211,11 @@ public class ClickHouseHelperClient {
                     continue;
                 }
 
+                if (fieldDescriptor.isSubcolumn() && fieldDescriptor.getName().endsWith(".null")) {
+                    LOGGER.debug("Skipping column {} as it is a subcolumn from a Nullable", fieldDescriptor.getName());
+                    continue;
+                }
+
                 if (fieldDescriptor.hasDefault()) {
                     table.hasDefaults(true);
                 }
