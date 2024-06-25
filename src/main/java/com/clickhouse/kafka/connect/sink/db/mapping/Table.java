@@ -151,7 +151,11 @@ public class Table {
                 parent.getTupleFields().add(child);
                 return;
             default:
-                LOGGER.error("Unsupported complex parent type: {}", parent.getType());
+                if (child.getName().endsWith(".null")) {
+                    LOGGER.debug("Ignoring complex column: {}", child);
+                } else {
+                    LOGGER.warn("Unsupported complex parent type: {}", parent.getType());
+                }
         }
     }
 
