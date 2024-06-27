@@ -171,14 +171,13 @@ public class ClickHouseHelperClient {
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
              ClickHouseResponse response = client.read(server)
-                     .query("SHOW TABLES")
+                     .query(String.format("SHOW TABLES FROM `%s`", this.database))
                      .executeAndWait()) {
             for (ClickHouseRecord r : response.records()) {
                 ClickHouseValue v = r.getValue(0);
                 String tableName = v.asString();
                 tablesNames.add(tableName);
             }
-
         } catch (ClickHouseException e) {
             LOGGER.error("Failed in show tables", e);
         }
