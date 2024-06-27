@@ -13,7 +13,6 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
-import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

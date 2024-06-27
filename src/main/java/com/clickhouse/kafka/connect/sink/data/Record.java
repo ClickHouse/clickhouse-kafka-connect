@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.data.convert.SchemalessRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemaRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.StringRecordConvertor;
 import com.clickhouse.kafka.connect.sink.kafka.OffsetContainer;
+import lombok.Getter;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -18,12 +19,18 @@ import java.util.List;
 import java.util.Map;
 
 public class Record {
+    @Getter
     private OffsetContainer recordOffsetContainer = null;
     private Object value;
+    @Getter
     private Map<String, Data> jsonMap = null;
+    @Getter
     private List<Field> fields = null;
+    @Getter
     private SchemaType schemaType;
+    @Getter
     private SinkRecord sinkRecord = null;
+    @Getter
     private String database = null;
 
     public Record(SchemaType schemaType, OffsetContainer recordOffsetContainer, List<Field> fields, Map<String, Data> jsonMap, String database, SinkRecord sinkRecord) {
@@ -39,35 +46,14 @@ public class Record {
         return recordOffsetContainer.getTopicAndPartitionKey();
     }
 
-    public OffsetContainer getRecordOffsetContainer() {
-        return recordOffsetContainer;
-    }
-
-    public Map<String, Data> getJsonMap() {
-        return jsonMap;
-    }
-
-    public List<Field> getFields() {
-        return fields;
-    }
-
-    public SinkRecord getSinkRecord() {
-        return sinkRecord;
-    }
-
     public String getTopic() {
         return recordOffsetContainer.getTopic();
     }
 
-    public SchemaType getSchemaType() {
-        return this.schemaType;
-    }
-    public String getDatabase() { return this.database; }
-
-    private static RecordConvertor schemaRecordConvertor = new SchemaRecordConvertor();
-    private static RecordConvertor schemalessRecordConvertor = new SchemalessRecordConvertor();
-    private static RecordConvertor emptyRecordConvertor = new EmptyRecordConvertor();
-    private static RecordConvertor stringRecordConvertor = new StringRecordConvertor();
+    private static final RecordConvertor schemaRecordConvertor = new SchemaRecordConvertor();
+    private static final RecordConvertor schemalessRecordConvertor = new SchemalessRecordConvertor();
+    private static final RecordConvertor emptyRecordConvertor = new EmptyRecordConvertor();
+    private static final RecordConvertor stringRecordConvertor = new StringRecordConvertor();
     private static RecordConvertor getConvertor(Schema schema, Object data) {
         if (data == null ) {
             return emptyRecordConvertor;

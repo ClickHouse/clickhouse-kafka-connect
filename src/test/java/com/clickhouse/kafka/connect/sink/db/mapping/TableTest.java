@@ -1,20 +1,24 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import com.clickhouse.kafka.connect.sink.ClickHouseBase;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
 import static org.junit.jupiter.api.Assertions.*;
 
-class TableTest {
+class TableTest extends ClickHouseBase {
 
     @Test
     public void extractMapOfPrimitives() {
         Table table = new Table("t");
 
-        Column map = Column.extractColumn(newDescriptor("map", "Map(String, Decimal(5)"));
+        Column map = Column.extractColumn(newDescriptor("map", "Map(String, Decimal(5))"));
         Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Decimal(5))"));
 
         assertEquals(Type.MAP, map.getType());
@@ -26,6 +30,22 @@ class TableTest {
         Column mapValueType = map.getMapValueType();
         assertEquals(Type.Decimal, mapValueType.getType());
         assertEquals(5, mapValueType.getPrecision());
+    }
+
+    @Test
+    public void extractNullables() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String tableName = createTopicName("extract-table-test");
+        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE `%s` (`off16` Int16, date_number Nullable(Date)) Engine = MergeTree ORDER BY off16");
+
+        Table table = chc.describeTable(tableName);
+        assertNotNull(table);
+        assertEquals(table.getRootColumnsList().size(), 2);
+        assertEquals(table.getAllColumnsList().size(), 3);
+        ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 
     @Test

@@ -168,7 +168,11 @@ public class ClickHouseWriter implements DBWriter {
 
         switch (first.getSchemaType()) {
             case SCHEMA:
-                doInsertRawBinary(records, table, queryId, table.hasDefaults());
+                if (csc.isBypassRowBinary()) {
+                    doInsertJson(records, table, queryId);
+                } else {
+                    doInsertRawBinary(records, table, queryId, table.hasDefaults());
+                }
                 break;
             case SCHEMA_LESS:
                 doInsertJson(records, table, queryId);
