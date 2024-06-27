@@ -183,7 +183,7 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
+    protected boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
         boolean validSchema = true;
         for (Column col : table.getRootColumnsList()) {
             String colName = col.getName();
@@ -235,7 +235,7 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
-    private void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision) throws IOException {
+    protected void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision) throws IOException {
         // TODO: develop more specific tests to have better coverage
         if (value.getObject() == null) {
             BinaryStreamUtils.writeNull(stream);
@@ -336,7 +336,7 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private void doWriteColValue(Column col, ClickHousePipedOutputStream stream, Data value, boolean defaultsSupport) throws IOException {
+    protected void doWriteColValue(Column col, ClickHousePipedOutputStream stream, Data value, boolean defaultsSupport) throws IOException {
         Type columnType = col.getType();
 
         switch (columnType) {
@@ -477,7 +477,7 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private void doWriteFixedString(Type columnType, ClickHousePipedOutputStream stream, Object value, int length) throws IOException {
+    protected void doWriteFixedString(Type columnType, ClickHousePipedOutputStream stream, Object value, int length) throws IOException {
         LOGGER.trace("Writing fixed string type: {}, value: {}", columnType, value);
 
         if (value == null) {
@@ -498,7 +498,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
     }
-    private void doWritePrimitive(Type columnType, Schema.Type dataType, ClickHousePipedOutputStream stream, Object value, Column col) throws IOException {
+    protected void doWritePrimitive(Type columnType, Schema.Type dataType, ClickHousePipedOutputStream stream, Object value, Column col) throws IOException {
         LOGGER.trace("Writing primitive type: {}, value: {}", columnType, value);
 
         if (value == null) {
@@ -572,7 +572,7 @@ public class ClickHouseWriter implements DBWriter {
     }
 
 
-    private void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream, boolean defaultsSupport) throws IOException {
+    protected void doWriteCol(Record record, Column col, ClickHousePipedOutputStream stream, boolean defaultsSupport) throws IOException {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
         String name = col.getName();
