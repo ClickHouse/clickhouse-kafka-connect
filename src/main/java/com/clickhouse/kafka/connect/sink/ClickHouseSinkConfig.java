@@ -94,6 +94,8 @@ public class ClickHouseSinkConfig {
         JSON
     }
 
+    private boolean bypassRowBinary = false;
+
     private InsertFormats insertFormat = InsertFormats.NONE;
     public static class UTF8String implements ConfigDef.Validator {
 
@@ -242,6 +244,7 @@ public class ClickHouseSinkConfig {
         this.enableDbTopicSplit = Boolean.parseBoolean(props.getOrDefault(ENABLE_DB_TOPIC_SPLIT, "false"));
         this.dbTopicSplitChar = props.getOrDefault(DB_TOPIC_SPLIT_CHAR, "");
         this.keeperOnCluster = props.getOrDefault(KEEPER_ON_CLUSTER, "");
+        this.bypassRowBinary = Boolean.parseBoolean(props.getOrDefault("bypassRowBinary", "false"));
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -509,6 +512,15 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Keeper on cluster"
         );
+        configDef.define("bypassRowBinary",
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "Bypass RowBinary format, sometimes needed with data gaps. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Bypass RowBinary format.");
         return configDef;
     }
 }

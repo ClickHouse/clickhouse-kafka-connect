@@ -4,6 +4,8 @@
 * Bugfix to avoid storing keeper state in same column name if virtual topic is enabled
 * Updated java-client to 0.6.1
 * Bugfix to let create missing KeeperMap entries if there are some records present already
+* Added a flag to allow bypassing RowBinary and RowBinaryWithDefaults format for schema insertions
+* Bugfix to remove erroneous error messages about complex type handling
 
 ## 1.1.0
 * Updated java-client to 0.6.0-patch4
