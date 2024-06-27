@@ -44,7 +44,7 @@ class TableTest extends ClickHouseBase {
         Table table = chc.describeTable(tableName);
         assertNotNull(table);
         assertEquals(table.getRootColumnsList().size(), 2);
-        assertEquals(table.getAllColumnsList().size(), 2);
+        assertEquals(table.getAllColumnsList().size(), 3);
         ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 
