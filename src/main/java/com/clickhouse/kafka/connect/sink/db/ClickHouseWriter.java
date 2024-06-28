@@ -57,6 +57,16 @@ public class ClickHouseWriter implements DBWriter {
         this.mapping = new HashMap<String, Table>();
     }
 
+    protected void setClient(ClickHouseHelperClient chc) {
+        this.chc = chc;
+    }
+    protected void setSinkConfig(ClickHouseSinkConfig csc) {
+        this.csc = csc;
+    }
+    protected Map<String, Table> getMapping() {
+        return mapping;
+    }
+
     @Override
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
@@ -862,7 +872,7 @@ public class ClickHouseWriter implements DBWriter {
 
         return request;
     }
-    private Table getTable(String database, String topic) {
+    protected Table getTable(String database, String topic) {
         String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);
         if (table == null) {

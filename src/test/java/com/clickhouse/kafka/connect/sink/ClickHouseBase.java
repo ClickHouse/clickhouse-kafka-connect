@@ -55,6 +55,10 @@ public class ClickHouseBase {
             db.stop();
     }
 
+    protected ClickHouseSinkConfig createConfig() {
+        return new ClickHouseSinkConfig(createProps());
+    }
+
     protected ClickHouseHelperClient createClient(Map<String,String> props) {
         return createClient(props, true);
     }
