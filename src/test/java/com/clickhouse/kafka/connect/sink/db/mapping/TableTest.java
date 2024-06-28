@@ -16,7 +16,7 @@ class TableTest extends ClickHouseBase {
 
     @Test
     public void extractMapOfPrimitives() {
-        Table table = new Table("t");
+        Table table = new Table("default", "t");
 
         Column map = Column.extractColumn(newDescriptor("map", "Map(String, Decimal(5))"));
         Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Decimal(5))"));
@@ -41,7 +41,7 @@ class TableTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, tableName);
         ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE `%s` (`off16` Int16, date_number Nullable(Date)) Engine = MergeTree ORDER BY off16");
 
-        Table table = chc.describeTable(tableName);
+        Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
         assertEquals(table.getRootColumnsList().size(), 2);
         assertEquals(table.getAllColumnsList().size(), 3);
@@ -50,7 +50,7 @@ class TableTest extends ClickHouseBase {
 
     @Test
     public void extractMapWithComplexValue() {
-        Table table = new Table("t");
+        Table table = new Table("default", "t");
 
         Column map = Column.extractColumn(newDescriptor("map", "Map(String, Map(String, Decimal(5)))"));
         Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Map(String, Decimal(5)))"));
@@ -74,7 +74,7 @@ class TableTest extends ClickHouseBase {
 
     @Test
     public void extractMapOfMapOfMapOfString() {
-        Table table = new Table("t");
+        Table table = new Table("default", "t");
 
         Column map = Column.extractColumn(newDescriptor("map", "Map(String, Map(String, Map(String, String)))"));
         Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Map(String, Map(String, String)))"));
@@ -103,7 +103,7 @@ class TableTest extends ClickHouseBase {
 
     @Test
     public void extractTupleOfPrimitives() {
-        Table table = new Table("t");
+        Table table = new Table("default", "t");
         Column tuple = Column.extractColumn(newDescriptor("tuple", "Tuple(first String, second Decimal(5))"));
         Column tupleFirst = Column.extractColumn(newDescriptor("tuple.first", "String"));
         Column tupleSecond = Column.extractColumn(newDescriptor("tuple.second", "Decimal(5)"));
@@ -123,7 +123,7 @@ class TableTest extends ClickHouseBase {
 
     @Test
     public void extractTupleOfTupleOfTuple() {
-        Table table = new Table("t");
+        Table table = new Table("default", "t");
         Column tuple = Column.extractColumn(newDescriptor("tuple", "Tuple(tuple Tuple(tuple Tuple(string String)))"));
         Column tupleTuple = Column.extractColumn(newDescriptor("tuple.tuple", "Tuple(tuple Tuple(string String))"));
         Column tupleTupleTuple = Column.extractColumn(newDescriptor("tuple.tuple.tuple", "Tuple(string String)"));
