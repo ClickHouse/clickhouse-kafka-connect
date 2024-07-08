@@ -19,8 +19,13 @@ import java.util.stream.Collectors;
 
 public class Utils {
 
-    public static String escapeTopicName(String topic) {
-        return String.format("`%s`", topic);
+    public static String escapeName(String topic) {
+        String cleanTopic = topic.replace("`", "");
+        return String.format("`%s`", cleanTopic);
+    }
+
+    public static String escapeTableName(String database, String topicName) {
+        return escapeName(database) + "." + escapeName(topicName);
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
@@ -135,14 +140,14 @@ public class Utils {
         }
     }
 
-    public static String getTableName(String topicName, Map<String, String> topicToTableMap) {
+    public static String getTableName(String database, String topicName, Map<String, String> topicToTableMap) {
         String tableName = topicToTableMap.get(topicName);
         LOGGER.debug("Topic name: {}, Table Name: {}", topicName, tableName);
         if (tableName == null) {
             tableName = topicName;
         }
 
-        return escapeTopicName(tableName);
+        return escapeTableName(database, tableName);
     }
 
 

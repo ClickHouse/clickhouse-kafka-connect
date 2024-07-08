@@ -164,31 +164,30 @@ public class ClickHouseHelperClient {
         throw new RuntimeException(ce);
     }
 
-    public List<String> showTables() {
+    public List<String> showTables(String database) {
         List<String> tablesNames = new ArrayList<>();
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
              ClickHouseResponse response = client.read(server)
-                     .query("SHOW TABLES")
+                     .query(String.format("SHOW TABLES FROM `%s`", database))
                      .executeAndWait()) {
             for (ClickHouseRecord r : response.records()) {
                 ClickHouseValue v = r.getValue(0);
                 String tableName = v.asString();
                 tablesNames.add(tableName);
             }
-
         } catch (ClickHouseException e) {
             LOGGER.error("Failed in show tables", e);
         }
         return tablesNames;
     }
 
-    public Table describeTable(String tableName) {
+    public Table describeTable(String database, String tableName) {
         if (tableName.startsWith(".inner"))
             return null;
-        String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
+        String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", database, tableName);
         LOGGER.debug(describeQuery);
 
         try (ClickHouseClient client = ClickHouseClient.builder()
@@ -201,7 +200,7 @@ public class ClickHouseHelperClient {
                      .query(describeQuery)
                      .executeAndWait()) {
 
-            Table table = new Table(tableName);
+            Table table = new Table(database, tableName);
             for (ClickHouseRecord r : response.records()) {
                 ClickHouseValue v = r.getValue(0);
 
@@ -229,17 +228,13 @@ public class ClickHouseHelperClient {
             return null;
         }
     }
-    
-    public List<Table> extractTablesMapping() {
-        HashMap<String, Table> cache = new HashMap<String, Table>();
-        return extractTablesMapping(cache);
-    }
 
-    public List<Table> extractTablesMapping(Map<String, Table> cache) {
+
+    public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
         List<Table> tableList =  new ArrayList<>();
-        for (String tableName : showTables() ) {
-            // Table names are escaped in the cache
-            String escapedTableName = Utils.escapeTopicName(tableName);
+        for (String tableName : showTables(database) ) {
+            // (Full) Table names are escaped in the cache
+            String escapedTableName = Utils.escapeTableName(database, tableName);
 
             // Read from cache if we already described this table before
             // This means we won't pick up edited table configs until the connector is restarted
@@ -248,7 +243,7 @@ public class ClickHouseHelperClient {
                 continue;
             }
 
-            Table table = describeTable(tableName);
+            Table table = describeTable(this.database, tableName);
             if (table != null )
                 tableList.add(table);
         }
