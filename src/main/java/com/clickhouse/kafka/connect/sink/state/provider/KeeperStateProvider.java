@@ -85,7 +85,7 @@ public class KeeperStateProvider implements StateProvider {
                      .query(selectStr)
                      .executeAndWait()) {
             LOGGER.debug("return size: {}", response.getSummary().getReadRows());
-            if ( response.getSummary().getReadRows() == 0) {
+            if ( response.getSummary().getResultRows() == 0) {
                 LOGGER.info(String.format("read state record: topic %s partition %s with NONE state", topic, partition));
                 return new StateRecord(topic, partition, 0, 0, State.NONE);
             }

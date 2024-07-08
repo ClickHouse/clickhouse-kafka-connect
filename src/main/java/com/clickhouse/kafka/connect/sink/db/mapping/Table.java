@@ -19,6 +19,7 @@ public class Table {
     private static final Pattern MULTIPLE_MAP_VALUES_PATTERN = Pattern.compile("(\\.values)(?=((\\.values)+$))");
 
     private final String name;
+    private final String database;
 
     private final List<Column> rootColumnsList;
     private final Map<String, Column> rootColumnsMap;
@@ -29,7 +30,8 @@ public class Table {
     @Accessors(fluent = true)
     private boolean hasDefaults;
 
-    public Table(String name) {
+    public Table(String database, String name) {
+        this.database = database;
         this.name = name;
         this.rootColumnsList = new ArrayList<>();
         this.rootColumnsMap = new HashMap<>();
@@ -39,7 +41,11 @@ public class Table {
     }
 
     public String getName() {
-        return Utils.escapeTopicName(name);
+        return Utils.escapeName(name);
+    }
+
+    public String getFullName() {
+        return Utils.escapeTableName(database, name);
     }
 
     private void registerValidColumn(Column column) {

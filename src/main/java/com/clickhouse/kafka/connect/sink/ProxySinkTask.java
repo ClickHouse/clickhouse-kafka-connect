@@ -52,7 +52,7 @@ public class ProxySinkTask {
 
         // Add table mapping refresher
         if (clickHouseSinkConfig.getTableRefreshInterval() > 0) {
-            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(chWriter);
+            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(clickHouseSinkConfig.getDatabase(), chWriter);
             Timer tableRefreshTimer = new Timer();
             tableRefreshTimer.schedule(tableMappingRefresher, clickHouseSinkConfig.getTableRefreshInterval(), clickHouseSinkConfig.getTableRefreshInterval());
         }

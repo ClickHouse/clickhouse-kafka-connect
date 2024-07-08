@@ -57,6 +57,16 @@ public class ClickHouseWriter implements DBWriter {
         this.mapping = new HashMap<String, Table>();
     }
 
+    protected void setClient(ClickHouseHelperClient chc) {
+        this.chc = chc;
+    }
+    protected void setSinkConfig(ClickHouseSinkConfig csc) {
+        this.csc = csc;
+    }
+    protected Map<String, Table> getMapping() {
+        return mapping;
+    }
+
     @Override
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
@@ -100,7 +110,7 @@ public class ClickHouseWriter implements DBWriter {
 
         LOGGER.debug("Ping was successful.");
 
-        this.updateMapping();
+        this.updateMapping(csc.getDatabase());
         if (mapping.isEmpty()) {
             LOGGER.error("Did not find any tables in destination Please create before running.");
             return false;
@@ -109,7 +119,7 @@ public class ClickHouseWriter implements DBWriter {
         return true;
     }
 
-    public void updateMapping() {
+    public void updateMapping(String database) {
         // Do not start a new update cycle if one is already in progress
         if (this.isUpdateMappingRunning.get()) {
             return;
@@ -120,21 +130,18 @@ public class ClickHouseWriter implements DBWriter {
 
         try {
             // Getting tables from ClickHouse
-            List<Table> tableList = this.chc.extractTablesMapping(this.mapping);
+            List<Table> tableList = this.chc.extractTablesMapping(database, this.mapping);
             if (tableList.isEmpty()) {
                 return;
             }
 
-            HashMap<String, Table> mapping = new HashMap<String, Table>();
 
-            // Adding new tables to mapping
+            // Adding new tables to mapping, or update existing tables
             // TODO: check Kafka Connect's topics name or topics regex config and
             // only add tables to in-memory mapping that matches the topics we consume.
             for (Table table : tableList) {
-                mapping.put(table.getName(), table);
+                mapping.put(table.getFullName(), table);
             }
-
-            this.mapping = mapping;
         } finally {
             this.isUpdateMappingRunning.set(false);
         }
@@ -162,7 +169,8 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String topic = first.getTopic();
-        Table table = getTable(topic);
+        String database = first.getDatabase();
+        Table table = getTable(database, topic);
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
         LOGGER.debug("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
 
@@ -864,10 +872,17 @@ public class ClickHouseWriter implements DBWriter {
 
         return request;
     }
-    private Table getTable(String topic) {
-        String tableName = Utils.getTableName(topic, csc.getTopicToTableMap());
+    protected Table getTable(String database, String topic) {
+        String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);
         if (table == null) {
+            this.updateMapping(database);
+            table = this.mapping.get(tableName);//If null, update then do it again to be sure
+        }
+
+        if (table == null) {
+            this.updateMapping(database);
+
             if (csc.isSuppressTableExistenceException()) {
                 LOGGER.warn("Table [{}] does not exist, but error was suppressed.", tableName);
             } else {

@@ -1,11 +1,11 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
-import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
+import com.clickhouse.kafka.connect.util.Utils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +13,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @ExtendWith(FromVersionConditionExtension.class)
@@ -33,6 +35,19 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     }
 
     @Test
+    public void showTables() {
+        String topic = createTopicName("simple_table_test");
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE %s ( `num` String ) Engine = MergeTree ORDER BY num");
+        try {
+            List<String> tableNames = chc.showTables(chc.getDatabase());
+            Assertions.assertTrue(tableNames.contains(topic));
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    @Test
     public void describeNestedFlattenedTable() {
         String topic = createTopicName("nested_flattened_table_test");
         ClickHouseTestHelpers.createTable(chc, topic,
@@ -41,7 +56,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                         "Engine = MergeTree ORDER BY num");
 
         try {
-            Table table = chc.describeTable(topic);
+            Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertEquals(3, table.getRootColumnsList().size());
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);
@@ -70,10 +85,10 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                         "Engine = MergeTree ORDER BY num");
 
         try {
-            Table nestedTable = chc.describeTable(nestedTopic);
+            Table nestedTable = chc.describeTable(chc.getDatabase(), nestedTopic);
             Assertions.assertNull(nestedTable);
 
-            Table normalTable = chc.describeTable(normalTopic);
+            Table normalTable = chc.describeTable(chc.getDatabase(), normalTopic);
             Assertions.assertEquals(1, normalTable.getRootColumnsList().size());
         } finally {
             ClickHouseTestHelpers.dropTable(chc, nestedTopic);

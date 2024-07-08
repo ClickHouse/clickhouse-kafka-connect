@@ -11,22 +11,26 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
-import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
 import org.apache.kafka.connect.data.Schema;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.clickhouse.kafka.connect.util.Utils;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
 
@@ -93,6 +97,33 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         byte[] originalBytes = "שלום".getBytes(StandardCharsets.UTF_8);
         writer.doWritePrimitive(Type.STRING, Schema.Type.STRING, out,"שלום", column);
         byte[] newBytes = out.toString().getBytes(StandardCharsets.UTF_8);
-        Assertions.assertTrue(Arrays.equals(originalBytes, Arrays.copyOfRange(newBytes, 1, newBytes.length)));//We add a length before the string
+        assertTrue(Arrays.equals(originalBytes, Arrays.copyOfRange(newBytes, 1, newBytes.length)));//We add a length before the string
+    }
+
+    @Test
+    public void updateMapping() {
+        Map<String, String> props = createProps();;
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("missing_table_mapping_test");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+
+        ClickHouseWriter chw = new ClickHouseWriter();
+        chw.setSinkConfig(createConfig());
+        chw.setClient(chc);
+
+        chw.updateMapping("default");
+        Map<String, Table> tables = chw.getMapping();
+        assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+
+        Table table = chw.getTable(chc.getDatabase(), topic);
+        assertNotNull(table);
+        assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
+
+        tables = chw.getMapping();
+        assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
     }
 }
