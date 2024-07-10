@@ -1,3 +1,6 @@
+## 1.1.2
+* Adding a "dateTimeFormat" configuration option to allow for custom date/time formatting with String schema values
+
 ## 1.1.1
 * Bugfix to address string encoding issue
 * Bugfix to address issue with nested types and flatten_nested setting conflict
