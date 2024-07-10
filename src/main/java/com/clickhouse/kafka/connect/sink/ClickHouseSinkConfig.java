@@ -43,6 +43,7 @@ public class ClickHouseSinkConfig {
     public static final String ENABLE_DB_TOPIC_SPLIT = "enableDbTopicSplit";
     public static final String DB_TOPIC_SPLIT_CHAR = "dbTopicSplitChar";
     public static final String KEEPER_ON_CLUSTER = "keeperOnCluster";
+    public static final String DATE_TIME_FORMAT = "dateTimeFormat";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -86,6 +87,7 @@ public class ClickHouseSinkConfig {
     private final boolean enableDbTopicSplit;
     private final String dbTopicSplitChar;
     private final String keeperOnCluster;
+    private final String dateTimeFormat;
 
     public enum InsertFormats {
         NONE,
@@ -245,6 +247,7 @@ public class ClickHouseSinkConfig {
         this.dbTopicSplitChar = props.getOrDefault(DB_TOPIC_SPLIT_CHAR, "");
         this.keeperOnCluster = props.getOrDefault(KEEPER_ON_CLUSTER, "");
         this.bypassRowBinary = Boolean.parseBoolean(props.getOrDefault("bypassRowBinary", "false"));
+        this.dateTimeFormat = props.getOrDefault(DATE_TIME_FORMAT, "");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -521,6 +524,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Bypass RowBinary format.");
+        configDef.define(DATE_TIME_FORMAT,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "Date time format for parsing date time fields. default: ''",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Date time format.");
         return configDef;
     }
 }

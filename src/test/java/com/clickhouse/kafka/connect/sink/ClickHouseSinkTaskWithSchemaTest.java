@@ -8,7 +8,6 @@ import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExt
 import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +17,8 @@ import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -263,6 +264,39 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+
+    @Test
+    public void supportFormattedDatesStringTest() {
+        Map<String, String> props = createProps();
+        props.put("dateTimeFormat", "yyyy-MM-dd HH:mm:ss.SSSSSSSSS");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("support-formatted-dates-string-test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, format_date DateTime64(9)) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemaTestData.createFormattedTimestampConversions(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        List<JSONObject> results = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        AtomicBoolean found = new AtomicBoolean(false);
+        AtomicInteger count = new AtomicInteger(0);
+        sr.forEach(sinkRecord -> {
+            JSONObject row = results.get(0);
+            if (sinkRecord.value().toString().contains(row.get("format_date").toString())) {
+                found.set(true);
+                count.incrementAndGet();
+            }
+        });
+
+        assertTrue(found.get());
+        assertEquals(1, count.get());
     }
 
 
