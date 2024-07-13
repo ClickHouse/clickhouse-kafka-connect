@@ -205,8 +205,8 @@ public class ClickHouseHelperClient {
                 ClickHouseValue v = r.getValue(0);
 
                 ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(v.asString());
-                if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized()) {
-                    LOGGER.debug("Skipping column {} as it is an alias or materialized view", fieldDescriptor.getName());
+                if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized() || fieldDescriptor.isEphemeral()) {
+                    LOGGER.debug("Skipping column {} as it is an alias or materialized view or ephemeral", fieldDescriptor.getName());
                     continue;
                 }
 

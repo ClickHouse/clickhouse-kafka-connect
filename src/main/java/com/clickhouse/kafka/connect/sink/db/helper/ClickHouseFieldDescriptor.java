@@ -36,6 +36,10 @@ public class ClickHouseFieldDescriptor {
         return "MATERIALIZED".equals(defaultType);
     }
 
+    public boolean isEphemeral() {
+        return "EPHEMERAL".equals(defaultType);
+    }
+
     public boolean hasDefault() {
         return "DEFAULT".equals(defaultType);
     }

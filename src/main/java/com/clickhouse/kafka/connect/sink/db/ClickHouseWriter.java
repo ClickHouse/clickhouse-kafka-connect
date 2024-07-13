@@ -653,7 +653,7 @@ public class ClickHouseWriter implements DBWriter {
         String database = first.getDatabase();
 
         if (!validateDataSchema(table, first, false))
-            throw new RuntimeException();
+            throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
 
