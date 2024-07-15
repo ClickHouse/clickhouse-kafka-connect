@@ -528,7 +528,7 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Type.STRING,
                 "",
                 ConfigDef.Importance.LOW,
-                "Date time format for parsing date time fields. default: ''",
+                "Date time format for parsing date time fields (e.g. 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS'). default: ''",
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
