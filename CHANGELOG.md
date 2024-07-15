@@ -1,3 +1,6 @@
+# 1.1.2
+* Adding ephemeral column support and adding an error message
+
 ## 1.1.1
 * Bugfix to address string encoding issue
 * Bugfix to address issue with nested types and flatten_nested setting conflict
