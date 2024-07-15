@@ -1,5 +1,6 @@
 ## 1.1.2
 * Adding a "dateTimeFormat" configuration option to allow for custom date/time formatting with String schema values
+* Adding ephemeral column support and adding an error message
 
 ## 1.1.1
 * Bugfix to address string encoding issue
