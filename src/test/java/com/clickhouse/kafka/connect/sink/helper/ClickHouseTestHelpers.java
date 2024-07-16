@@ -131,10 +131,6 @@ public class ClickHouseTestHelpers {
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
-        if (isCloud()) {
-            queryCount = String.format("SELECT COUNT(*) FROM `%s` FINAL", tableName);
-        }
-
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
