@@ -270,7 +270,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     public void supportFormattedDatesStringTest() {
         Map<String, String> props = createProps();
-        props.put("dateTimeFormat", "yyyy-MM-dd HH:mm:ss.SSSSSSSSS");
+        props.put(ClickHouseSinkConfig.DATE_TIME_FORMAT, "format_date=yyyy-MM-dd HH:mm:ss.SSSSSSSSS");
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("support-formatted-dates-string-test");

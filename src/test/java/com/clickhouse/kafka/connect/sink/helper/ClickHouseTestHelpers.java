@@ -80,7 +80,15 @@ public class ClickHouseTestHelpers {
     }
 
     public static ClickHouseResponseSummary createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
-        return createTable(chc, tableName, createTableQuery, new HashMap<>());
+        ClickHouseResponseSummary summary = createTable(chc, tableName, createTableQuery, new HashMap<>());
+        if (isCloud()) {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                LOGGER.error("Error while sleeping", e);
+            }
+        }
+        return summary;
     }
 
     public static ClickHouseResponseSummary createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
@@ -122,6 +130,11 @@ public class ClickHouseTestHelpers {
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
+
+        if (isCloud()) {
+            queryCount = String.format("SELECT COUNT(*) FROM `%s` FINAL", tableName);
+        }
+
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))

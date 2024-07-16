@@ -246,7 +246,7 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
-    protected void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision) throws IOException {
+    protected void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision, String columnName) throws IOException {
         // TODO: develop more specific tests to have better coverage
         if (value.getObject() == null) {
             BinaryStreamUtils.writeNull(stream);
@@ -317,8 +317,10 @@ public class ClickHouseWriter implements DBWriter {
                         long microSeconds;
                         long nanoSeconds;
 
-                        if (!csc.getDateTimeFormat().isEmpty()) {
-                            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(csc.getDateTimeFormat());
+                        if (!csc.getDateTimeFormats().isEmpty()) {
+                            Map<String, DateTimeFormatter> formats = csc.getDateTimeFormats();
+                            DateTimeFormatter formatter = formats.get(columnName);
+                            LOGGER.trace("Using custom date time format: {}", formatter);
                             LocalDateTime localDateTime = LocalDateTime.from(formatter.parse((String) value.getObject()));
                             seconds = localDateTime.toInstant(ZoneOffset.UTC).getEpochSecond();
                             milliSeconds = localDateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
@@ -389,7 +391,7 @@ public class ClickHouseWriter implements DBWriter {
             case Date32:
             case DateTime:
             case DateTime64:
-                doWriteDates(columnType, stream, value, col.getPrecision());
+                doWriteDates(columnType, stream, value, col.getPrecision(), col.getName());
                 break;
             case Decimal:
                 if (value.getObject() == null) {
