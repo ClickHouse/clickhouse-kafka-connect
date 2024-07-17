@@ -251,7 +251,7 @@ public class ClickHouseSinkConfig {
         this.dateTimeFormats = new HashMap<>();
         String dateTimeFormatsString = props.getOrDefault(DATE_TIME_FORMAT, "").trim();
         if (!dateTimeFormatsString.isBlank()) {
-            String [] stringSplit = dateTimeFormatsString.split(",");
+            String [] stringSplit = dateTimeFormatsString.split(";");
             for (String topicToDateTimeFormat: stringSplit) {
                 String [] propSplit = topicToDateTimeFormat.trim().split("=");
                 if ( propSplit.length == 2 ) {
