@@ -34,6 +34,7 @@ public class ClickHouseBase {
             database = String.format("kafka_connect_test_%s", System.currentTimeMillis());
         }
         if (isCloud) {
+            initialPing();
             return;
         }
         db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
@@ -119,6 +120,45 @@ public class ClickHouseBase {
             throw new RuntimeException(e);
         }
 
+    }
+
+    protected static void initialPing() {
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(new ClickHouseBase().createProps());
+
+        String hostname = csc.getHostname();
+        int port = csc.getPort();
+        String username = csc.getUsername();
+        String password = csc.getPassword();
+        boolean sslEnabled = csc.isSslEnabled();
+        int timeout = csc.getTimeout();
+
+        ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+                .setDatabase("default")
+                .setUsername(username)
+                .setPassword(password)
+                .sslEnable(sslEnabled)
+                .setTimeout(timeout)
+                .setRetry(csc.getRetry())
+                .build();
+
+        boolean ping;
+        int retry = 0;
+        do {
+            LOGGER.info("Pinging ClickHouse server to warm up for tests...");
+            ping = tmpChc.ping();
+            if (!ping) {
+                LOGGER.info("Unable to ping ClickHouse server, retrying... {}", retry);
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        } while (!ping && retry++ < 10);
+
+        if (!ping) {
+            throw new RuntimeException("Unable to ping ClickHouse server...");
+        }
     }
 
     protected static void dropDatabase(String database) {

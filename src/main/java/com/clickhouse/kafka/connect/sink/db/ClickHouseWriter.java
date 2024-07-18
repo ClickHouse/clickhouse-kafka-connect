@@ -22,7 +22,10 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -243,12 +246,14 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
-    protected void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision) throws IOException {
+    protected void doWriteDates(Type type, ClickHousePipedOutputStream stream, Data value, int precision, String columnName) throws IOException {
         // TODO: develop more specific tests to have better coverage
         if (value.getObject() == null) {
             BinaryStreamUtils.writeNull(stream);
             return;
         }
+
+        LOGGER.trace("Writing date type: {}, value: {}, value class: {}", type, value.getObject(), value.getObject().getClass());
         boolean unsupported = false;
         switch (type) {
             case Date:
@@ -288,7 +293,6 @@ public class ClickHouseWriter implements DBWriter {
                 } else if (value.getFieldType().equals(Schema.Type.STRING)) {
                     try {
                         ZonedDateTime zonedDateTime = ZonedDateTime.parse((String) value.getObject());
-                        LOGGER.trace("Writing epoch seconds: {}", zonedDateTime.toInstant().getEpochSecond());
                         BinaryStreamUtils.writeUnsignedInt32(stream, zonedDateTime.toInstant().getEpochSecond());
                     } catch (Exception e) {
                         LOGGER.error("Error parsing date time string: {}", value.getObject());
@@ -302,18 +306,33 @@ public class ClickHouseWriter implements DBWriter {
                 if (value.getFieldType().equals(Schema.Type.INT64)) {
                     if (value.getObject().getClass().getName().endsWith(".Date")) {
                         Date date = (Date) value.getObject();
-                        long time = date.getTime();
-                        BinaryStreamUtils.writeInt64(stream, time);
+                        BinaryStreamUtils.writeInt64(stream, date.getTime());
                     } else {
                         BinaryStreamUtils.writeInt64(stream, (Long) value.getObject());
                     }
                 } else if (value.getFieldType().equals(Schema.Type.STRING)) {
                     try {
-                        ZonedDateTime zonedDateTime = ZonedDateTime.parse((String) value.getObject());
-                        long seconds = zonedDateTime.toInstant().getEpochSecond();
-                        long milliSeconds = zonedDateTime.toInstant().toEpochMilli();
-                        long microSeconds = TimeUnit.MICROSECONDS.convert(seconds, TimeUnit.SECONDS) + zonedDateTime.get(ChronoField.MICRO_OF_SECOND);
-                        long nanoSeconds = TimeUnit.NANOSECONDS.convert(seconds, TimeUnit.SECONDS) + zonedDateTime.getNano();
+                        long seconds;
+                        long milliSeconds;
+                        long microSeconds;
+                        long nanoSeconds;
+
+                        if (!csc.getDateTimeFormats().isEmpty()) {
+                            Map<String, DateTimeFormatter> formats = csc.getDateTimeFormats();
+                            DateTimeFormatter formatter = formats.get(columnName);
+                            LOGGER.trace("Using custom date time format: {}", formatter);
+                            LocalDateTime localDateTime = LocalDateTime.from(formatter.parse((String) value.getObject()));
+                            seconds = localDateTime.toInstant(ZoneOffset.UTC).getEpochSecond();
+                            milliSeconds = localDateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
+                            microSeconds = TimeUnit.MICROSECONDS.convert(seconds, TimeUnit.SECONDS) + localDateTime.get(ChronoField.MICRO_OF_SECOND);
+                            nanoSeconds = TimeUnit.NANOSECONDS.convert(seconds, TimeUnit.SECONDS) + localDateTime.getNano();
+                        } else {
+                            ZonedDateTime zonedDateTime = ZonedDateTime.parse((String) value.getObject());
+                            seconds = zonedDateTime.toInstant().getEpochSecond();
+                            milliSeconds = zonedDateTime.toInstant().toEpochMilli();
+                            microSeconds = TimeUnit.MICROSECONDS.convert(seconds, TimeUnit.SECONDS) + zonedDateTime.get(ChronoField.MICRO_OF_SECOND);
+                            nanoSeconds = TimeUnit.NANOSECONDS.convert(seconds, TimeUnit.SECONDS) + zonedDateTime.getNano();
+                        }
 
                         if (precision == 3) {
                             LOGGER.trace("Writing epoch milliseconds: {}", milliSeconds);
@@ -329,7 +348,7 @@ public class ClickHouseWriter implements DBWriter {
                             BinaryStreamUtils.writeInt64(stream, seconds);
                         }
                     } catch (Exception e) {
-                        LOGGER.error("Error parsing date time string: {}", value.getObject());
+                        LOGGER.error("Error parsing date time string: {}, exception: {}", value.getObject(), e.getMessage());
                         unsupported = true;
                     }
                 } else {
@@ -338,7 +357,7 @@ public class ClickHouseWriter implements DBWriter {
                 break;
         }
         if (unsupported) {
-            String msg = String.format("Not implemented conversion from %s to %s", value.getFieldType(), type);
+            String msg = String.format("(Potentially) Not implemented conversion from %s to %s", value.getFieldType(), type);
             LOGGER.error(msg);
             throw new DataException(msg);
         }
@@ -372,7 +391,7 @@ public class ClickHouseWriter implements DBWriter {
             case Date32:
             case DateTime:
             case DateTime64:
-                doWriteDates(columnType, stream, value, col.getPrecision());
+                doWriteDates(columnType, stream, value, col.getPrecision(), col.getName());
                 break;
             case Decimal:
                 if (value.getObject() == null) {
