@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
+import com.clickhouse.kafka.connect.util.Utils;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -328,7 +329,7 @@ public class Column {
 
     private static Map<String, Integer> extractEnumValues(String valueType) {
         Map <String, Integer> data = new HashMap<>();
-        String[] values = valueType.substring(valueType.indexOf("(") + 1, valueType.indexOf(")")).split(",");
+        List<String> values = Utils.splitIgnoringQuotes(valueType.substring(valueType.indexOf("(") + 1, valueType.indexOf(")")), ',');
         for (String value : values) {
             String[] val = value.split("=", 2);
             String key = val[0].trim();

@@ -156,5 +156,14 @@ class ColumnTest {
             assertEquals(expectedSubtype.getScale(), actualSubtype.getScale());
         }
     }
+
+    @Test
+    public void extractEnumOfPrimitives() {
+        Column col = Column.extractColumn(newDescriptor("Enum8('a, valid' = 1, 'b' = 2)"));
+        assertEquals(Type.Enum8, col.getType());
+        assertEquals(2, col.getEnumValues().size());
+        assertTrue(col.getEnumValues().containsKey("a, valid"));
+        assertTrue(col.getEnumValues().containsKey("b"));
+    }
 }
 
