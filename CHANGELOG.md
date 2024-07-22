@@ -1,3 +1,6 @@
+# 1.1.3
+* Bugfix to address commas in the column name of enums
+
 ## 1.1.2
 * Adding a "dateTimeFormat" configuration option to allow for custom date/time formatting with String schema values
 * Adding ephemeral column support and adding an error message

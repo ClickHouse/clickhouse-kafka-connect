@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -168,5 +169,30 @@ public class Utils {
         }
 
         return String.format("minOffset: %d, maxOffset: %d", minOffset, maxOffset);
+    }
+
+    public static List<String> splitIgnoringQuotes(String input, char separator) {
+        List<String> result = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inSingleQuotes = false;
+        boolean inDoubleQuotes = false;
+
+        for (char c : input.toCharArray()) {
+            if (c == '\'' && !inDoubleQuotes) {
+                inSingleQuotes = !inSingleQuotes;
+                sb.append(c);
+            } else if (c == '"' && !inSingleQuotes) {
+                inDoubleQuotes = !inDoubleQuotes;
+                sb.append(c);
+            } else if (c == separator && !inSingleQuotes && !inDoubleQuotes) {
+                result.add(sb.toString().trim());
+                sb.setLength(0);
+            } else {
+                sb.append(c);
+            }
+        }
+        result.add(sb.toString().trim());
+
+        return result;
     }
 }
