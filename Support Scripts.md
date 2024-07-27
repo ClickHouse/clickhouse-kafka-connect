@@ -457,7 +457,6 @@ Inserting specific test data is easy with a few different options.
 The Kafka plugin is my preferred method: https://www.jetbrains.com/help/idea/big-data-tools-kafka.html
 ### Confluent UI
 Confluent cloud has a UI for creating messages: https://docs.confluent.io/cloud/current/client-apps/topics/messages.html
-![[Confluent-Cloud-New-Message.png]]
 ### kcat
 There's also a command-line program called kcat: https://github.com/edenhill/kcat
 ## Data Generator Source
@@ -489,7 +488,7 @@ Sample data:
   "trigger": "720615b8-4512-41ac-85a4-2c63a47e3137",
   "type": "flow_run",
   "event_time": "2024-07-23T05:48:25.331637",
-  "flow": "Events#create_report.abuse_report.chat#zuNelckaxxKJPFDZObjJFn"
+  "flow": "Events#create_report.bad_report.talking#zuNelckaxxKJPFDZObjJFn"
 }
 ```
 # Logs
