@@ -358,8 +358,11 @@ services:
 ```
 # REST API Templates
 List Connectors: `GET localhost:8083/connectors?expand=status&expand=info`
+
 Delete Connectors: `DELETE localhost:8083/connectors/clickhouse-connect`
+
 Create "Basic" Connector: `POST localhost:8083/connectors`
+
 ```json
 {
 	"name": "clickhouse-connect",
