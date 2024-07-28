@@ -1,4 +1,5 @@
 # 1.1.3
+* Update to java-client 0.6.3
 * Bugfix to address commas in the column name of enums
 
 ## 1.1.2
