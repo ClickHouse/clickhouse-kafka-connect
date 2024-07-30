@@ -448,13 +448,10 @@ public class ClickHouseWriter implements DBWriter {
                     jsonMapValues = StructToJsonMap.toJsonMap((Struct) underlyingObject);
                 }
 
-                Streams.zip(
-                        col.getTupleFields().stream(), value.getFields().stream(), Tuples::of
-                ).forEach((fields) -> {
-                    Column column = fields.getT1();
-                    Field field = fields.getT2();
-
-                    Data innerData = (Data) jsonMapValues.get(field.name());
+                col.getTupleFields().forEach(column -> {
+                    String[] colNameSplit = column.getName().split("\\.");
+                    String fieldName = colNameSplit.length > 0 ? colNameSplit[colNameSplit.length - 1] : column.getName();
+                    Data innerData = (Data) jsonMapValues.get(fieldName);
                     try {
                         doWriteColValue(column, stream, innerData, defaultsSupport);
                     } catch (IOException e) {

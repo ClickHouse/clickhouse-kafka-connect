@@ -1,3 +1,6 @@
+# 1.1.4
+* Bugfix to address field value to column name mapping for Tuples
+
 # 1.1.3
 * Update to java-client 0.6.3
 * Bugfix to address commas in the column name of enums
