@@ -1,6 +1,12 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.Client;
+import com.clickhouse.client.api.enums.ProxyType;
+import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.api.query.QueryResponse;
+import com.clickhouse.client.api.query.QuerySettings;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.config.ClickHouseOption;
@@ -16,11 +22,15 @@ import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 public class ClickHouseHelperClient {
 
@@ -37,10 +47,14 @@ public class ClickHouseHelperClient {
     private final int timeout;
     @Getter
     private ClickHouseNode server = null;
+    @Getter
+    private Client client = null;
     private final int retry;
     private ClickHouseProxyType proxyType = null;
     private String proxyHost = null;
     private int proxyPort = -1;
+    @Getter
+    private boolean useClientV2 = false;
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -55,7 +69,10 @@ public class ClickHouseHelperClient {
         this.proxyType = builder.proxyType;
         this.proxyHost = builder.proxyHost;
         this.proxyPort = builder.proxyPort;
-        this.server = create();
+        this.useClientV2 = builder.useClientV2;
+        // We are creating two clients, one for V1 and one for V2
+        this.client = createClientV2();
+        this.server = createClientV1();
     }
 
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
@@ -69,7 +86,7 @@ public class ClickHouseHelperClient {
         return options;
     }
 
-    private ClickHouseNode create() {
+    private ClickHouseNode createClientV1() {
         String protocol = "http";
         if (this.sslEnabled)
             protocol += "s";
@@ -101,7 +118,49 @@ public class ClickHouseHelperClient {
         return server;
     }
 
+    private Client createClientV2() {
+        String protocol = "http";
+        if (this.sslEnabled)
+            protocol += "s";
+
+        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
+        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
+            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
+        }
+
+        String url = String.format("%s://%s:%d/%s%s",
+                protocol,
+                hostname,
+                port,
+                database,
+                tmpJdbcConnectionProperties
+        );
+
+        LOGGER.info("ClickHouse URL: {}", url);
+
+
+
+        Client.Builder clientBuilder = new Client.Builder()
+                .addEndpoint(url)
+                .setUsername(this.username)
+                .setPassword(this.password)
+                .setDefaultDatabase(this.database);
+
+        if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
+            clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
+        }
+        client = clientBuilder.build();
+        return client;
+    }
+
     public boolean ping() {
+        if (useClientV2) {
+            return pingV2();
+        } else {
+            return pingV1();
+        }
+    }
+    private boolean pingV1() {
         ClickHouseClient clientPing = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
@@ -122,8 +181,28 @@ public class ClickHouseHelperClient {
         clientPing.close();
         return false;
     }
+    private boolean pingV2() {
+        int retryCount = 0;
+        while (retryCount < retry) {
+            if (client.ping(timeout)) {
+                LOGGER.info("Ping was successful.");
+                return true;
+            }
+            retryCount++;
+            LOGGER.warn(String.format("Ping retry %d out of %d", retryCount, retry));
+        }
+        LOGGER.error("Unable to ping ClickHouse instance.");
+        return false;
+    }
 
     public String version() {
+        if (useClientV2) {
+            return versionV2();
+        } else {
+            return versionV1();
+        }
+    }
+    public String versionV1() {
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
@@ -138,13 +217,35 @@ public class ClickHouseHelperClient {
         }
     }
 
-    public ClickHouseResponse query(String query) {
-        return query(query, null);
+    public String versionV2() {
+        QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.RowBinaryWithNamesAndTypes);
+        CompletableFuture<Records> futureRecords = client.queryRecords("SELECT VERSION()", settings);
+        try {
+            Records records = futureRecords.get();
+            for (GenericRecord record : records) {
+                return record.getString(1); // string column col3
+            }
+        } catch (InterruptedException e) {
+            LOGGER.error("Exception when trying to retrieve VERSION()", e);
+            return null;
+        } catch (ExecutionException e) {
+            LOGGER.error("Exception when trying to retrieve VERSION()", e);
+            return null;
+        }
+        return null;
     }
 
-    public ClickHouseResponse query(String query, ClickHouseFormat clickHouseFormat) {
+    public ClickHouseResponse queryV1(String query) {
+        return queryV1(query, null);
+    }
+
+    public Records queryV2(String query) {
+        return queryV2(query, null);
+    }
+
+    public ClickHouseResponse queryV1(String query, ClickHouseFormat clickHouseFormat) {
         int retryCount = 0;
-        ClickHouseException ce = null;
+        Exception ce = null;
         while (retryCount < retry) {
             try (ClickHouseClient client = ClickHouseClient.builder()
                     .options(getDefaultClientOptions())
@@ -163,8 +264,39 @@ public class ClickHouseHelperClient {
         }
         throw new RuntimeException(ce);
     }
+    public Records queryV2(String query, ClickHouseFormat clickHouseFormat) {
+        int retryCount = 0;
+        Exception ce = null;
+        QuerySettings settings = new QuerySettings();
+        if (clickHouseFormat != null)
+            settings.setFormat(clickHouseFormat);
+        while (retryCount < retry) {
+            System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
+            CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
+            try {
+                Records records = futureRecords.get();
+                return records;
+            } catch (ExecutionException e) {
+                retryCount++;
+                LOGGER.warn(String.format("Query retry %d out of %d", retryCount, retry), e);
+                ce = e;
+            } catch (InterruptedException e) {
+                retryCount++;
+                LOGGER.warn(String.format("Query retry %d out of %d", retryCount, retry), e);
+                ce = e;
+            }
+        }
+        throw new RuntimeException(ce);
+    }
 
     public List<String> showTables(String database) {
+        if (useClientV2) {
+            return showTablesV2(database);
+        } else {
+            return showTablesV1(database);
+        }
+    }
+    public List<String> showTablesV1(String database) {
         List<String> tablesNames = new ArrayList<>();
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
@@ -184,7 +316,25 @@ public class ClickHouseHelperClient {
         return tablesNames;
     }
 
+    public List<String> showTablesV2(String database) {
+        List<String> tablesNames = new ArrayList<>();
+        Records records = queryV2(String.format("SHOW TABLES FROM `%s`", database));
+        for (GenericRecord record : records) {
+            String tableName = record.getString(1);
+            System.out.println("table name " + tableName);
+            tablesNames.add(tableName);
+        }
+        return tablesNames;
+    }
+
     public Table describeTable(String database, String tableName) {
+        if (useClientV2) {
+            return describeTableV2(database, tableName);
+        } else {
+            return describeTableV1(database, tableName);
+        }
+    }
+    public Table describeTableV1(String database, String tableName) {
         if (tableName.startsWith(".inner"))
             return null;
         String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", database, tableName);
@@ -229,7 +379,45 @@ public class ClickHouseHelperClient {
         }
     }
 
+    public Table describeTableV2(String database, String tableName)  {
+        if (tableName.startsWith(".inner"))
+            return null;
+        String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
+        LOGGER.debug(describeQuery);
 
+        Table table = new Table(database, tableName);
+        try {
+            QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.JSONEachRow);
+            settings.setOption("describe_include_subcolumns", true);
+            settings.setDatabase(database);
+            QueryResponse queryResponse = client.query(describeQuery, settings).get();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
+                String line = null;
+                while ((line = br.readLine()) != null) {
+                    ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(line);
+                    if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized() || fieldDescriptor.isEphemeral()) {
+                        LOGGER.debug("Skipping column {} as it is an alias or materialized view or ephemeral", fieldDescriptor.getName());
+                        continue;
+                    }
+
+                    if (fieldDescriptor.hasDefault()) {
+                        table.hasDefaults(true);
+                    }
+
+                    Column column = Column.extractColumn(fieldDescriptor);
+                    //If we run into a rare column we can't handle, just ignore the table and warn the user
+                    if (column == null) {
+                        LOGGER.warn("Unable to handle column: {}", fieldDescriptor.getName());
+                        return null;
+                    }
+                    table.addColumn(column);                }
+            }
+        } catch (Exception e) {
+            System.out.println(e);
+            return null;
+        }
+        return table;
+    }
     public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
         List<Table> tableList =  new ArrayList<>();
         for (String tableName : showTables(database) ) {
@@ -265,6 +453,7 @@ public class ClickHouseHelperClient {
         private ClickHouseProxyType proxyType = null;
         private String proxyHost = null;
         private int proxyPort = -1;
+        private boolean useClientV2 = true;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -309,7 +498,10 @@ public class ClickHouseHelperClient {
             this.retry = retry;
             return this;
         }
-
+        public ClickHouseClientBuilder useClientV2(boolean useClientV2) {
+            this.useClientV2 = useClientV2;
+            return this;
+        }
         public ClickHouseHelperClient build(){
             return new ClickHouseHelperClient(this);
         }

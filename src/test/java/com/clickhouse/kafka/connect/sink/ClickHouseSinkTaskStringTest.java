@@ -5,6 +5,7 @@ import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
@@ -24,6 +25,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,33 +33,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
         String queryCount = "select count(*) from " + topic + " where str LIKE '%\uD83D\uDE00%'";
-
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get();
+            String value = records.iterator().next().getString(1);
+            return Integer.parseInt(value);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
-
     }
     private int countRows(ClickHouseHelperClient chc, String topic) {
         String queryCount = String.format("select count(*) from `%s`", topic);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(queryCount)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-            return response.firstRecord().getValue(0).asInteger();
-        } catch (ClickHouseException e) {
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get();
+            String value = records.iterator().next().getString(1);
+            return Integer.parseInt(value);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
     }

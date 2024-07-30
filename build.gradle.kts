@@ -75,6 +75,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
+    implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("com.google.code.gson:gson:2.11.0")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5

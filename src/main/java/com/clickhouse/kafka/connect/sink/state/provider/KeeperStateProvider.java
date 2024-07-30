@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.state.provider;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
@@ -68,8 +69,13 @@ public class KeeperStateProvider implements StateProvider {
                 csc.getZkDatabase(),
                 csc.getKeeperOnCluster().isEmpty() ? "" : " ON CLUSTER " + csc.getKeeperOnCluster(),
                 csc.getZkPath());
-        ClickHouseResponse r = chc.query(createTable);
-        r.close();
+        // TODO: exec instead of query
+        if (chc.isUseClientV2()) {
+            chc.queryV2(createTable);
+        } else {
+            ClickHouseResponse r = chc.queryV1(createTable);
+            r.close();
+        }
     }
 
     @Override
@@ -106,10 +112,14 @@ public class KeeperStateProvider implements StateProvider {
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
         String state = stateRecord.getState().toString();
-        String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase() ,key, minOffset, maxOffset, state);
-        ClickHouseResponse response = this.chc.query(insertStr);
-        LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
-        LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
-        response.close();
+        String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase(), key, minOffset, maxOffset, state);
+        if (chc.isUseClientV2()) {
+            this.chc.queryV2(insertStr);
+        } else {
+            ClickHouseResponse response = this.chc.queryV1(insertStr);
+            LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
+            LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
+            response.close();
+        }
     }
 }

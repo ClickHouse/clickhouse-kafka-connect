@@ -115,7 +115,6 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
-            System.out.println("tmpTableName: " + tmpTableName);
             dropTable(chc, tmpTableName);
             createDatabase(databaseName);
             createTable(chc, tmpTableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
