@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.clickhouse.kafka.connect.ClickHouseSinkConnector.CLIENT_VERSION;
+
 @Getter
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
@@ -89,6 +91,7 @@ public class ClickHouseSinkConfig {
     private final String dbTopicSplitChar;
     private final String keeperOnCluster;
     private final Map<String, DateTimeFormatter> dateTimeFormats;
+    private final String clientVersion;
 
     public enum InsertFormats {
         NONE,
@@ -259,6 +262,7 @@ public class ClickHouseSinkConfig {
                 }
             }
         }
+        this.clientVersion = props.getOrDefault(CLIENT_VERSION, "V2");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -544,6 +548,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Date time formats.");
+        configDef.define(CLIENT_VERSION,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "Client version",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Client version"
+        );
         return configDef;
     }
 }

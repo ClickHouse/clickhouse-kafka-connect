@@ -56,6 +56,14 @@ public class ClickHouseBase {
             db.stop();
     }
 
+    public String extractClientVersion() {
+        String clientVersion = System.getenv("CLIENT_VERSION");
+        if (clientVersion != null && clientVersion.equals("V1")) {
+            return "V1";
+        } else {
+            return "V2";
+        }
+    }
     protected ClickHouseSinkConfig createConfig() {
         return new ClickHouseSinkConfig(createProps());
     }
@@ -202,6 +210,8 @@ public class ClickHouseBase {
 
     protected Map<String,String> createProps() {
         Map<String, String> props = new HashMap<>();
+        String clientVersion = extractClientVersion();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
         if (isCloud) {
             props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv("CLICKHOUSE_CLOUD_HOST"));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);

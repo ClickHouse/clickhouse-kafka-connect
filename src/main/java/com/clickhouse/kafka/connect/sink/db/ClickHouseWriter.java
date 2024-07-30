@@ -81,6 +81,9 @@ public class ClickHouseWriter implements DBWriter {
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
         this.csc = csc;
+        String clientVersion = csc.getClientVersion();
+        boolean useClientV2 = clientVersion.equals("V1") ? false : true;
+
         chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(csc.getDatabase())
                 .setUsername(csc.getUsername())
@@ -89,6 +92,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
+                .useClientV2(useClientV2)
                 .build();
 
         if (!chc.ping()) {

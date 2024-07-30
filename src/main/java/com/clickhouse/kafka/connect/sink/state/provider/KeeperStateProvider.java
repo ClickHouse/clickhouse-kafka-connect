@@ -34,7 +34,8 @@ public class KeeperStateProvider implements StateProvider {
         boolean sslEnabled = csc.isSslEnabled();
         String jdbcConnectionProperties = csc.getJdbcConnectionProperties();
         int timeout = csc.getTimeout();
-
+        String clientVersion = csc.getClientVersion();
+        boolean useClientV2 = clientVersion.equals("V1") ? false : true;
         LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, Mask.passwordMask(password), sslEnabled, timeout));
 
         chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
@@ -45,6 +46,7 @@ public class KeeperStateProvider implements StateProvider {
                 .setJdbcConnectionProperties(jdbcConnectionProperties)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .useClientV2(useClientV2)
                 .build();
 
         if (!chc.ping()) {

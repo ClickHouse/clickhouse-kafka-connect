@@ -33,15 +33,13 @@ public class ClickHouseSinkConnector extends SinkConnector {
     private String sslEnabled;
 
     private int timeout;
-
-
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
     public static final String USERNAME = "username";
     public static final String PASSWORD = "password";
-
     public static final String SSL_ENABLED = "ssl";
+    public static final String CLIENT_VERSION = "client_version";
     private static final ConfigDef CONFIG_DEF = ClickHouseSinkConfig.CONFIG;
 
 
