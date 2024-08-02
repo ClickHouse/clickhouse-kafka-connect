@@ -321,7 +321,7 @@ public class ClickHouseHelperClient {
         Records records = queryV2(String.format("SHOW TABLES FROM `%s`", database));
         for (GenericRecord record : records) {
             String tableName = record.getString(1);
-            System.out.println("table name " + tableName);
+            LOGGER.debug("table name: {}", tableName);
             tablesNames.add(tableName);
         }
         return tablesNames;
