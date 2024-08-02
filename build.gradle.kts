@@ -85,8 +85,8 @@ dependencies {
 
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
-    compileOnly("org.projectlombok:lombok:1.18.32")
-    annotationProcessor("org.projectlombok:lombok:1.18.32")
+    compileOnly("org.projectlombok:lombok:1.18.34")
+    annotationProcessor("org.projectlombok:lombok:1.18.34")
 
     // To parse JSON response from ClickHouse to parse complex data types correctly
     implementation("com.fasterxml.jackson.core:jackson-core:2.17.1")
