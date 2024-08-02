@@ -9,6 +9,7 @@ import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
@@ -529,6 +530,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleOfMapsWithVariantTest() {
+        Assumptions.assumeFalse(isCloud, "Skip test since experimental is not available in cloud");
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "tuple-array-map-variant-table-test";
@@ -586,6 +588,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     @SinceClickHouseVersion("24.1")
     public void schemaWithNestedTupleMapArrayAndVariant() {
+        Assumptions.assumeFalse(isCloud, "Skip test since experimental is not available in cloud");
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "nested-tuple-map-array-and-variant-table-test";

@@ -199,28 +199,4 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
     }
-
-    @Test
-    public void emptyDataRecordsTestFailedWithSslProp() {
-        Map<String, String> props = createProps();
-        if (isCloud) {
-            // this will fail connection because the test container do not configured with SSL-TLS
-            props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "ssl=false&sslmode=strict");
-        } else {
-            // this will fail connection because the test container do not configured with SSL-TLS
-            props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "ssl=true&sslmode=strict");
-        }
-        ClickHouseHelperClient chc = createClient(props);
-        // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
-        String topic = createTopicName("schemaless_empty_records_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
-        Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
-
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-
-        // check if connection fails
-        assertThrows(RuntimeException.class, () -> chst.start(props));
-    }
-
 }

@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -150,7 +151,7 @@ public class ExactlyOnceTest {
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
-                Iterable<ClickHouseRecord> records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName);
+                Records records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName);
                 records.forEach(record -> LOGGER.error("Duplicate: {}", record));
             }
 

@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.state.provider;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
@@ -33,7 +34,8 @@ public class KeeperStateProvider implements StateProvider {
         boolean sslEnabled = csc.isSslEnabled();
         String jdbcConnectionProperties = csc.getJdbcConnectionProperties();
         int timeout = csc.getTimeout();
-
+        String clientVersion = csc.getClientVersion();
+        boolean useClientV2 = clientVersion.equals("V1") ? false : true;
         LOGGER.info(String.format("hostname: [%s] port [%d] database [%s] username [%s] password [%s] sslEnabled [%s] timeout [%d]", hostname, port, database, username, Mask.passwordMask(password), sslEnabled, timeout));
 
         chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
@@ -44,6 +46,7 @@ public class KeeperStateProvider implements StateProvider {
                 .setJdbcConnectionProperties(jdbcConnectionProperties)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .useClientV2(useClientV2)
                 .build();
 
         if (!chc.ping()) {
@@ -68,8 +71,13 @@ public class KeeperStateProvider implements StateProvider {
                 csc.getZkDatabase(),
                 csc.getKeeperOnCluster().isEmpty() ? "" : " ON CLUSTER " + csc.getKeeperOnCluster(),
                 csc.getZkPath());
-        ClickHouseResponse r = chc.query(createTable);
-        r.close();
+        // TODO: exec instead of query
+        if (chc.isUseClientV2()) {
+            chc.queryV2(createTable);
+        } else {
+            ClickHouseResponse r = chc.queryV1(createTable);
+            r.close();
+        }
     }
 
     @Override
@@ -106,10 +114,14 @@ public class KeeperStateProvider implements StateProvider {
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
         String state = stateRecord.getState().toString();
-        String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase() ,key, minOffset, maxOffset, state);
-        ClickHouseResponse response = this.chc.query(insertStr);
-        LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
-        LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
-        response.close();
+        String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase(), key, minOffset, maxOffset, state);
+        if (chc.isUseClientV2()) {
+            this.chc.queryV2(insertStr);
+        } else {
+            ClickHouseResponse response = this.chc.queryV1(insertStr);
+            LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
+            LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
+            response.close();
+        }
     }
 }

@@ -1,6 +1,8 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
+import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.slf4j.Logger;
@@ -15,6 +17,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -55,35 +60,55 @@ public class ClickHouseAPI {
 
 
     public static void dropTable(ClickHouseHelperClient chc, String tableName) {
-        String queryString = String.format("DROP TABLE IF EXISTS %s", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            LOGGER.info("Drop: {}", clickHouseResponse.getSummary());
+        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
+        try {
+            chc.getClient().queryRecords(dropTable).get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public static void createMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
                 "Engine = MergeTree ORDER BY symbol", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            LOGGER.info("Create: {}", clickHouseResponse.getSummary());
+        try {
+            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
+            LOGGER.info("Create: {}", records.getMetrics());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public static void createReplicatedMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
                 "Engine = ReplicatedMergeTree ORDER BY symbol", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            LOGGER.info("Create: {}", clickHouseResponse.getSummary());
-        }
-    }
+        try {
+            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
+            LOGGER.info("Create: {}", records.getMetrics());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new RuntimeException(e);
+        }    }
 
-    public static Iterable<ClickHouseRecord> selectDuplicates(ClickHouseHelperClient chc, String tableName) {
+    public static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
                 "FROM %s " +
                 "GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` " +
                 "HAVING COUNT(*) > 1", tableName);
-        try(ClickHouseResponse clickHouseResponse = chc.query(queryString)) {
-            return clickHouseResponse.records();
+        try {
+            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
+            return records;
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (TimeoutException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -92,10 +117,16 @@ public class ClickHouseAPI {
     public static void clearTable(ClickHouseHelperClient chc, String tableName) {
         String sql = "TRUNCATE TABLE " + tableName;
         LOGGER.info("Clear table: " + sql);
-        try(ClickHouseResponse clickHouseResponse = chc.query(sql)) {
-            LOGGER.info("Clear table: " + clickHouseResponse.getSummary().toString());
-        } catch (Exception e) {
-            LOGGER.error("Error: {}", e.getMessage());
+        Records records = null;
+        try {
+            records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS);
+            LOGGER.info("Create: {}", records.getMetrics());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (TimeoutException e) {
+            throw new RuntimeException(e);
         }
     }
 

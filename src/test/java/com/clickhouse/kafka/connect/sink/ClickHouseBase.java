@@ -56,6 +56,14 @@ public class ClickHouseBase {
             db.stop();
     }
 
+    public String extractClientVersion() {
+        String clientVersion = System.getenv("CLIENT_VERSION");
+        if (clientVersion != null && clientVersion.equals("V1")) {
+            return "V1";
+        } else {
+            return "V2";
+        }
+    }
     protected ClickHouseSinkConfig createConfig() {
         return new ClickHouseSinkConfig(createProps());
     }
@@ -106,20 +114,11 @@ public class ClickHouseBase {
     }
     protected void createDatabase(String database, ClickHouseHelperClient chc) {
         String createDatabaseQuery = String.format("CREATE DATABASE IF NOT EXISTS `%s`", database);
-        System.out.println(createDatabaseQuery);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(createDatabaseQuery)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
+        if (chc.isUseClientV2()) {
+            chc.queryV2(createDatabaseQuery);
+        } else {
+            chc.queryV1(createDatabaseQuery);
         }
-
     }
 
     protected static void initialPing() {
@@ -184,31 +183,12 @@ public class ClickHouseBase {
     }
     protected static void dropDatabase(String database, ClickHouseHelperClient chc) {
         String dropDatabaseQuery = String.format("DROP DATABASE IF EXISTS `%s`", database);
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropDatabaseQuery)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+        chc.queryV2(dropDatabaseQuery);
     }
 
     protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
         String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
-                     // you'll have to parse response manually if using a different format
-
-
-                     .query(createTableQueryTmp)
-                     .executeAndWait()) {
-            ClickHouseResponseSummary summary = response.getSummary();
-
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
+        chc.queryV2(createTableQueryTmp);
 
     }
 
@@ -230,6 +210,8 @@ public class ClickHouseBase {
 
     protected Map<String,String> createProps() {
         Map<String, String> props = new HashMap<>();
+        String clientVersion = extractClientVersion();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
         if (isCloud) {
             props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv("CLICKHOUSE_CLOUD_HOST"));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);
