@@ -106,6 +106,7 @@ dependencies {
     clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.3.1")
     clickhouseDependencies("io.lettuce:lettuce-core:6.3.2.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
+    clickhouseDependencies("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.google.code.gson:gson:2.11.0")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:2.17.1")
@@ -129,6 +130,7 @@ dependencies {
     testImplementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
+    testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
 
 }
