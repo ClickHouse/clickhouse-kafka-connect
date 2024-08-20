@@ -13,3 +13,13 @@ For a full overview of the design and how exactly-once delivery semantics are ac
 
 ## Help
 For additional help, please [file an issue in the repository](https://github.com/ClickHouse/clickhouse-kafka-connect/issues) or raise a question in [ClickHouse public Slack](https://clickhouse.com/slack).
+
+## KeyToValue Transformation
+We've created a transformation that allows you to convert a Kafka message key into a value.
+This is useful when you want to store the key in a separate column in ClickHouse - by default, the column is `_key` and the type is String. Simply add the transformation to your connector configuration:
+    
+```properties
+transforms=keyToValue
+transforms.keyToValue.type=com.clickhouse.kafka.connect.transforms.KeyToValue
+transforms.keyToValue.field=_key
+```
