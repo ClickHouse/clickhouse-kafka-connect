@@ -16,7 +16,20 @@ For additional help, please [file an issue in the repository](https://github.com
 
 ## KeyToValue Transformation
 We've created a transformation that allows you to convert a Kafka message key into a value.
-This is useful when you want to store the key in a separate column in ClickHouse - by default, the column is `_key` and the type is String. Simply add the transformation to your connector configuration:
+This is useful when you want to store the key in a separate column in ClickHouse - by default, the column is `_key` and the type is String.
+
+```sql
+CREATE TABLE your_table_name
+(
+    `your_column_name` String,
+    ...
+    ...
+    ...
+    `_key` String
+) ENGINE = MergeTree()
+```
+
+Simply add the transformation to your connector configuration:
     
 ```properties
 transforms=keyToValue
