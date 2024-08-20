@@ -37,6 +37,10 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     }
 
     private R applySchemaless(R record) {
+        if (!(record.value() instanceof Map)) {
+            throw new IllegalArgumentException("Schemaless record value must be a Map - make sure you're using the JSON Converter for value.");
+        }
+
         final Map<String, Object> value = (Map<String, Object>) record.value();
         value.put(keyFieldName, record.key());
         LOGGER.debug("New schemaless value: {}", value);
@@ -44,23 +48,31 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     }
 
     private R applyWithSchema(R record) {
-        final Struct value = (Struct) record.value();
+        final Struct oldValue = (Struct) record.value();
 
         if (valueSchema == null) {
             final SchemaBuilder builder = SchemaBuilder.struct();
-            builder.name(value.schema().name());
-            builder.version(value.schema().version());
-            builder.doc(value.schema().doc());
-            value.schema().fields().forEach(f -> {
+            builder.name(oldValue.schema().name());
+            builder.version(oldValue.schema().version());
+            builder.doc(oldValue.schema().doc());
+            oldValue.schema().fields().forEach(f -> {
                 builder.field(f.name(), f.schema());
             });
             builder.field(keyFieldName, record.keySchema() == null ? Schema.OPTIONAL_STRING_SCHEMA : record.keySchema());
             valueSchema = builder.build();
+            valueSchema.schema().fields().forEach(f -> LOGGER.debug("Field: {}", f));
         }
 
-        value.put(keyFieldName, record.key());
-        LOGGER.debug("New schema value: {}", value);
-        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), valueSchema, value, record.timestamp());
+        Struct newValue = new Struct(valueSchema);
+        valueSchema.fields().forEach(f -> {
+            if (f.name().equals(keyFieldName)) {
+                newValue.put(f, record.key());
+            } else {
+                newValue.put(f, oldValue.get(f));
+            }
+        });
+        LOGGER.debug("New schema value: {}", newValue);
+        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), valueSchema, newValue, record.timestamp());
     }
 
     @Override
