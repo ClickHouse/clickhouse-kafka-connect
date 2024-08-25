@@ -8,7 +8,6 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
-import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.*;
 import org.testcontainers.clickhouse.ClickHouseContainer;
@@ -16,9 +15,7 @@ import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.util.*;
-import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
