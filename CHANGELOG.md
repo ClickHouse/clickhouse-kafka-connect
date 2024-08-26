@@ -1,6 +1,5 @@
 # 1.2.0
 * Adding a KeyToValue transformation to allow for key to be stored in a separate column in ClickHouse
-* Updating to java-client 0.6.4
 
 # 1.1.4
 * Bugfix to address field value to column name mapping for Tuples
