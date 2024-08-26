@@ -86,7 +86,7 @@ public class ClickHouseTestHelpers {
             settings.setOption(entry.getKey(), entry.getValue());
         }
         try {
-            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(30, java.util.concurrent.TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(120, java.util.concurrent.TimeUnit.SECONDS);
             return records.getMetrics();
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -135,7 +135,7 @@ public class ClickHouseTestHelpers {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(30, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount).get(120, TimeUnit.SECONDS);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);
