@@ -134,7 +134,7 @@ public class ClickHouseTestHelpers {
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
         if (isCloud()) {
-            queryCount = String.format("SELECT COUNT(*) FROM `%s` FINAL", tableName);
+            queryCount = String.format("SELECT DISTINCT COUNT(*) FROM clusterAllReplicas(default, `%s`)", tableName);
         }
 
         try {
