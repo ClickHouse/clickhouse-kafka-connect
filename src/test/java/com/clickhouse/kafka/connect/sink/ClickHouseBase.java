@@ -91,20 +91,19 @@ public class ClickHouseBase {
                 .setRetry(csc.getRetry())
                 .build();
 
-
         if (withDatabase) {
-            createDatabase(this.database, tmpChc);
-            props.put(ClickHouseSinkConnector.DATABASE, this.database);
-            ClickHouseHelperClient chc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                    .setDatabase(this.database)
+            createDatabase(ClickHouseBase.database, tmpChc);
+            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseBase.database);
+            tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+                    .setDatabase(ClickHouseBase.database)
                     .setUsername(username)
                     .setPassword(password)
                     .sslEnable(sslEnabled)
                     .setTimeout(timeout)
                     .setRetry(csc.getRetry())
                     .build();
-                return chc;
             }
+
         chc = tmpChc;
         return chc;
     }

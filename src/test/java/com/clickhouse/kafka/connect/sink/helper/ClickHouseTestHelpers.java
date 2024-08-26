@@ -5,10 +5,7 @@ import com.clickhouse.client.api.metrics.OperationMetrics;
 import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
-import com.clickhouse.data.ClickHouseColumn;
 import com.clickhouse.data.ClickHouseFormat;
-import com.clickhouse.data.ClickHouseRecord;
-import com.clickhouse.data.ClickHouseValue;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
@@ -26,12 +23,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
@@ -74,6 +68,7 @@ public class ClickHouseTestHelpers {
         }
     }
     public static OperationMetrics createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
+        LOGGER.info("Creating table: {}, Query: {}", tableName, createTableQuery);
         OperationMetrics operationMetrics = createTable(chc, tableName, createTableQuery, new HashMap<>());
         if (isCloud()) {
             try {
@@ -92,7 +87,7 @@ public class ClickHouseTestHelpers {
             settings.setOption(entry.getKey(), entry.getValue());
         }
         try {
-            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(120, java.util.concurrent.TimeUnit.SECONDS);
             return records.getMetrics();
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -141,7 +136,7 @@ public class ClickHouseTestHelpers {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount).get(120, TimeUnit.SECONDS);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);

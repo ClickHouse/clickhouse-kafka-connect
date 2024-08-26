@@ -7,8 +7,6 @@
  */
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-import java.io.ByteArrayOutputStream
-import java.net.URI
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
@@ -34,7 +32,6 @@ plugins {
     signing
    // checkstyle
     id("com.github.gmazzo.buildconfig") version "5.3.5"
-    //id("com.github.spotbugs") version "4.7.9"
     id("com.diffplug.spotless") version "6.25.0"
     id("com.github.johnrengelman.shadow") version "7.1.2"
 }
@@ -50,7 +47,6 @@ repositories {
 }
 
 extra.apply {
-
     set("clickHouseDriverVersion", "0.6.3")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
