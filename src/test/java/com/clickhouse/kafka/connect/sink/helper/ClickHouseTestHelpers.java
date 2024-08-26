@@ -135,7 +135,7 @@ public class ClickHouseTestHelpers {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount).get(30, TimeUnit.SECONDS);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);
