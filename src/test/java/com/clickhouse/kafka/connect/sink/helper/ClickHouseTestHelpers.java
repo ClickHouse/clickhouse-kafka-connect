@@ -131,11 +131,10 @@ public class ClickHouseTestHelpers {
     //        }
     }
 
-    public static int countRows(ClickHouseHelperClient chc, String tableName) {
+    public static int countRows(ClickHouseHelperClient chc, String tableName) throws InterruptedException {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
-        if (isCloud()) {
-            queryCount = String.format("SELECT DISTINCT COUNT(*) FROM clusterAllReplicas(default, `%s.%s`)", chc.getDatabase(), tableName);
-        }
+
+        Thread.sleep(10000);
 
         try {
             Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
