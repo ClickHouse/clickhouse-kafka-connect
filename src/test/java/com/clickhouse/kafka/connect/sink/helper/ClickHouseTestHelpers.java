@@ -68,6 +68,7 @@ public class ClickHouseTestHelpers {
         }
     }
     public static OperationMetrics createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
+        LOGGER.info("Creating table: {}, Query: {}", tableName, createTableQuery);
         OperationMetrics operationMetrics = createTable(chc, tableName, createTableQuery, new HashMap<>());
         if (isCloud()) {
             try {
