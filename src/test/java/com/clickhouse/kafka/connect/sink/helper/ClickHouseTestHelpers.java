@@ -135,12 +135,6 @@ public class ClickHouseTestHelpers {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
         try {
-            Thread.sleep(10000);
-        } catch (InterruptedException e) {
-            LOGGER.error("Error while sleeping", e);
-        }
-
-        try {
             Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
