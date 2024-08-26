@@ -133,9 +133,11 @@ public class ClickHouseTestHelpers {
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
+        QuerySettings querySettings = new QuerySettings();
+        querySettings.setOption("select_sequential_consistency", 1);
 
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount, querySettings).get(10, TimeUnit.SECONDS);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);
