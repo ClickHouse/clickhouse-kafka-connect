@@ -131,10 +131,14 @@ public class ClickHouseTestHelpers {
     //        }
     }
 
-    public static int countRows(ClickHouseHelperClient chc, String tableName) throws InterruptedException {
+    public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
-        Thread.sleep(10000);
+        try {
+            Thread.sleep(10000);
+        } catch (InterruptedException e) {
+            LOGGER.error("Error while sleeping", e);
+        }
 
         try {
             Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
