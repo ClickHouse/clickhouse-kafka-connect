@@ -86,7 +86,7 @@ public class ClickHouseTestHelpers {
             settings.setOption(entry.getKey(), entry.getValue());
         }
         try {
-            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(30, java.util.concurrent.TimeUnit.SECONDS);
             return records.getMetrics();
         } catch (Exception e) {
             throw new RuntimeException(e);
