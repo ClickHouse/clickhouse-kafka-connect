@@ -262,7 +262,7 @@ public class ClickHouseSinkConfig {
                 }
             }
         }
-        this.clientVersion = props.getOrDefault(CLIENT_VERSION, "V2");
+        this.clientVersion = props.getOrDefault(CLIENT_VERSION, "V1");
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
