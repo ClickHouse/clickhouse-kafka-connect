@@ -85,7 +85,7 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok:1.18.34")
 
     // To parse JSON response from ClickHouse to parse complex data types correctly
-    implementation("com.fasterxml.jackson.core:jackson-core:2.17.1")
+    implementation("com.fasterxml.jackson.core:jackson-core:2.17.2")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("com.fasterxml.jackson.core:jackson-annotations:2.17.1")
 
@@ -105,7 +105,7 @@ dependencies {
     clickhouseDependencies("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.google.code.gson:gson:2.11.0")
-    clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:2.17.1")
+    clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:2.17.2")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:2.17.1")
 
