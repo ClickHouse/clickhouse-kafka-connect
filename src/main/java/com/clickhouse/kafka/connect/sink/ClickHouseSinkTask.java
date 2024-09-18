@@ -61,7 +61,10 @@ public class ClickHouseSinkTask extends SinkTask {
     @Override
     public void put(Collection<SinkRecord> records) {
         try {
+            long putStat = System.currentTimeMillis();
             this.proxySinkTask.put(records);
+            long putEnd = System.currentTimeMillis();
+            LOGGER.info("Put records: {} in {} ms", records.size(), putEnd - putStat);
         } catch (Exception e) {
             LOGGER.trace("Passing the exception to the exception handler.");
             boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.isErrorsTolerance();
