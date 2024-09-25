@@ -66,6 +66,9 @@ public class RangeContainer extends TopicPartitionContainer {
         // ZEROED [10, 20] Actual [0, 10]
         if (actualMinOffset == 0)
             return RangeState.ZERO;
+        // PREVIOUS
+        if (actualMaxOffset < minOffset)
+            return RangeState.PREVIOUS;
         // ERROR [10, 20] Actual [8, 19]
         return RangeState.ERROR;
     }

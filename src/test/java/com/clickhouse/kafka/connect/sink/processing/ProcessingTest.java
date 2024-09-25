@@ -244,4 +244,17 @@ public class ProcessingTest {
         assertEquals(records.size(), dbWriter.recordsInserted());
     }
 
+    @Test
+    @DisplayName("ProcessOldRecordsTest")
+    public void ProcessOldRecordsTest() throws IOException, ExecutionException, InterruptedException {
+        List<Record> records = createRecords("test", 1);
+        List<Record> recordsHead = records.subList(1, 2);
+        StateProvider stateProvider = new InMemoryState();
+        stateProvider.setStateRecord(new StateRecord("test", 1, 5000, 4000, State.AFTER_PROCESSING));
+        DBWriter dbWriter = new InMemoryDBWriter();
+        Processing processing = new Processing(stateProvider, dbWriter);
+        processing.doLogic(recordsHead);
+        assertEquals(0, dbWriter.recordsInserted());
+    }
+
 }
