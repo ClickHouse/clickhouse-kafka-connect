@@ -10,6 +10,7 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Date;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.LongStream;
 
 public class SchemaTestData {
@@ -1075,4 +1076,41 @@ public class SchemaTestData {
         return result;
     }
 
+    public static Collection<SinkRecord> createUnsignedIntegers(String topic, int partition) {
+        return createUnsignedIntegers(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createUnsignedIntegers(String topic, int partition, int totalRecords) {
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("uint8", Schema.OPTIONAL_INT8_SCHEMA)
+                .field("uint16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("uint32", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("uint64", Schema.OPTIONAL_INT64_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short) n)
+                    .put("uint8", (byte) ThreadLocalRandom.current().nextInt(0, 127))
+                    .put("uint16", (short) ThreadLocalRandom.current().nextInt(0, 32767))
+                    .put("uint32", ThreadLocalRandom.current().nextInt(0, 2147483647))
+                    .put("uint64", ThreadLocalRandom.current().nextLong(0, 2147483647));
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+
+        return array;
+    }
 }

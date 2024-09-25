@@ -233,10 +233,6 @@ public class ClickHouseWriter implements DBWriter {
                         case "FIXED_STRING":
                         case "Enum8":
                         case "Enum16":
-                        case "UInt8":
-                        case "UInt16":
-                        case "UInt32":
-                        case "UInt64":
                             break;//I notice we just break here, rather than actually validate the type
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
@@ -246,6 +242,18 @@ public class ClickHouseWriter implements DBWriter {
                                     continue;
 
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
+                                    continue;
+
+                                if (colTypeName.equalsIgnoreCase("UINT8") && dataTypeName.equals("INT8"))
+                                    continue;
+
+                                if (colTypeName.equalsIgnoreCase("UINT16") && dataTypeName.equals("INT16"))
+                                    continue;
+
+                                if (colTypeName.equalsIgnoreCase("UINT32") && dataTypeName.equals("INT32"))
+                                    continue;
+
+                                if (colTypeName.equalsIgnoreCase("UINT64") && dataTypeName.equals("INT64"))
                                     continue;
 
                                 if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
@@ -690,7 +698,7 @@ public class ClickHouseWriter implements DBWriter {
         String database = first.getDatabase();
 
         if (!validateDataSchema(table, first, false))
-            throw new RuntimeException();
+            throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
 

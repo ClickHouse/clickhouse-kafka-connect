@@ -1,3 +1,6 @@
+# 1.2.3
+* Tweaking schema validation to allow for UINT
+
 # 1.2.2
 * Adding a new property `tolerateStateMismatch` to allow for the connector to continue processing even if the state stored in ClickHouse does not match the current offset in Kafka
 
