@@ -654,4 +654,27 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             );
         }
     }
+
+    @Test
+    public void unsignedIntegers() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("unsigned-integers-table-test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`uint8` UInt8," +
+                "`uint16` UInt16," +
+                "`uint32` UInt32," +
+                "`uint64` UInt64" +
+                ") Engine = MergeTree ORDER BY `off16`");
+        Collection<SinkRecord> sr = SchemaTestData.createUnsignedIntegers(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
 }

@@ -244,6 +244,18 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
                                     continue;
 
+                                if (colTypeName.equalsIgnoreCase("UINT8") && dataTypeName.equals("INT8"))
+                                    continue;
+
+                                if (colTypeName.equalsIgnoreCase("UINT16") && dataTypeName.equals("INT16"))
+                                    continue;
+
+                                if (colTypeName.equalsIgnoreCase("UINT32") && dataTypeName.equals("INT32"))
+                                    continue;
+
+                                if (colTypeName.equalsIgnoreCase("UINT64") && dataTypeName.equals("INT64"))
+                                    continue;
+
                                 if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
                                     continue;
 
@@ -686,7 +698,7 @@ public class ClickHouseWriter implements DBWriter {
         String database = first.getDatabase();
 
         if (!validateDataSchema(table, first, false))
-            throw new RuntimeException();
+            throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
 
