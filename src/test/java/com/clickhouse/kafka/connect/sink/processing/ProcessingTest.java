@@ -1,4 +1,5 @@
 package com.clickhouse.kafka.connect.sink.processing;
+import com.clickhouse.client.ClickHouseConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,6 +19,7 @@ import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.Assert;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -252,7 +254,13 @@ public class ProcessingTest {
         StateProvider stateProvider = new InMemoryState();
         stateProvider.setStateRecord(new StateRecord("test", 1, 5000, 4000, State.AFTER_PROCESSING));
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
+        Processing processingWithoutConfig = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
+        Assert.assertThrows(RuntimeException.class, () -> processingWithoutConfig.doLogic(recordsHead));
+
+        HashMap<String, String> config = new HashMap<>();
+        config.put(ClickHouseSinkConfig.TOLERATE_STATE_MISMATCH, "true");
+        ClickHouseSinkConfig clickHouseConfig = new ClickHouseSinkConfig(config);
+        Processing processing = new Processing(stateProvider, dbWriter, null, clickHouseConfig);
         processing.doLogic(recordsHead);
         assertEquals(0, dbWriter.recordsInserted());
     }
