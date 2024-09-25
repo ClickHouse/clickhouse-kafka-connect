@@ -1,3 +1,9 @@
+# 1.2.2
+* Adding a new property `tolerateStateMismatch` to allow for the connector to continue processing even if the state stored in ClickHouse does not match the current offset in Kafka
+
+# 1.2.1
+* Adding some additional logging details to help debug issues
+
 # 1.2.0
 * Adding a KeyToValue transformation to allow for key to be stored in a separate column in ClickHouse
 
