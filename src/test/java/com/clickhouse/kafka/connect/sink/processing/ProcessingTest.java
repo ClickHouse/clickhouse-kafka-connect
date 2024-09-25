@@ -58,7 +58,7 @@ public class ProcessingTest {
         List<Record> records = createRecords("test", 1);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(records);
         assertEquals(records.size(), dbWriter.recordsInserted());
     }
@@ -73,7 +73,7 @@ public class ProcessingTest {
         assertEquals(records.size(), recordsHead.size() + recordsTail.size());
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(recordsHead);
         assertEquals(recordsHead.size(), dbWriter.recordsInserted());
         processing.doLogic(recordsTail);
@@ -86,7 +86,7 @@ public class ProcessingTest {
         List<Record> records = createRecords("test", 1);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(records);
         assertEquals(records.size(), dbWriter.recordsInserted());
         processing.doLogic(records);
@@ -102,7 +102,7 @@ public class ProcessingTest {
         //List<Record> recordsTail = records.subList(splitPoint, records.size());
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(recordsHead);
         assertEquals(recordsHead.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
@@ -118,7 +118,7 @@ public class ProcessingTest {
         List<Record> containsRecords = records.subList(345,850);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(records);
         assertEquals(records.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
@@ -133,7 +133,7 @@ public class ProcessingTest {
         List<Record> containsRecords = records.subList(345,850);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(records);
         assertEquals(records.size(), dbWriter.recordsInserted());
         processing.doLogic(containsRecords);
@@ -148,7 +148,7 @@ public class ProcessingTest {
         List<Record> containsRecords = records.subList(345,850);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(records);
         assertEquals(records.size(), dbWriter.recordsInserted());
         processing.doLogic(containsRecords);
@@ -166,7 +166,7 @@ public class ProcessingTest {
         assertEquals(records.size(), recordsHead.size() + recordsTail.size());
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(recordsHead);
         assertEquals(recordsHead.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
@@ -183,7 +183,7 @@ public class ProcessingTest {
         List<Record> containsRecords = records.subList(0,150);
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(records);
         assertEquals(records.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
@@ -218,7 +218,7 @@ public class ProcessingTest {
         List<Record> recordsTail = records.subList(splitPointLow, records.size());
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(recordsHead);
         assertEquals(recordsHead.size(), dbWriter.recordsInserted());
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
@@ -237,7 +237,7 @@ public class ProcessingTest {
         List<Record> recordsTail = records.subList(splitPointLow, records.size());
         StateProvider stateProvider = new InMemoryState();
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(recordsHead);
         assertEquals(recordsHead.size(), dbWriter.recordsInserted());
         processing.doLogic(recordsTail);
@@ -252,7 +252,7 @@ public class ProcessingTest {
         StateProvider stateProvider = new InMemoryState();
         stateProvider.setStateRecord(new StateRecord("test", 1, 5000, 4000, State.AFTER_PROCESSING));
         DBWriter dbWriter = new InMemoryDBWriter();
-        Processing processing = new Processing(stateProvider, dbWriter);
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()));
         processing.doLogic(recordsHead);
         assertEquals(0, dbWriter.recordsInserted());
     }
