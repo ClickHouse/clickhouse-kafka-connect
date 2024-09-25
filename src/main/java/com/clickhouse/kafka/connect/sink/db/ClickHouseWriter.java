@@ -233,6 +233,10 @@ public class ClickHouseWriter implements DBWriter {
                         case "FIXED_STRING":
                         case "Enum8":
                         case "Enum16":
+                        case "UInt8":
+                        case "UInt16":
+                        case "UInt32":
+                        case "UInt64":
                             break;//I notice we just break here, rather than actually validate the type
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
