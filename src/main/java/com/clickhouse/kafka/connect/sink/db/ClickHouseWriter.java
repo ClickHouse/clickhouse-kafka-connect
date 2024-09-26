@@ -224,6 +224,11 @@ public class ClickHouseWriter implements DBWriter {
                     String dataTypeName = obj.getFieldType().getName().toUpperCase();
                     // TODO: make extra validation for Map/Array type
                     LOGGER.debug(String.format("Column type name [%s] and data type name [%s]", colTypeName, dataTypeName));
+
+                    if (col.getName().contains("justas")) {
+                        LOGGER.info(String.format("JUSTAS --- Table column name [%s] type [%s]", col.getName(), dataTypeName));
+                    }
+
                     switch (colTypeName) {
                         case "Date":
                         case "Date32":
@@ -256,7 +261,7 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equalsIgnoreCase("UINT64") && dataTypeName.equals("INT64"))
                                     continue;
 
-                                if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
+                                if ("DECIMAL".equalsIgnoreCase(colTypeName))
                                     continue;
 
                                 validSchema = false;
