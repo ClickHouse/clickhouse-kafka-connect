@@ -118,7 +118,7 @@ dependencies {
     testImplementation("org.mockito:mockito-junit-jupiter:${project.extra["mockitoVersion"]}")
 
     // IntegrationTests
-    testImplementation("org.testcontainers:clickhouse:1.20.1")
+    testImplementation("org.testcontainers:clickhouse:1.20.2")
     testImplementation("org.testcontainers:kafka:1.20.1")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("org.json:json:20240303")
