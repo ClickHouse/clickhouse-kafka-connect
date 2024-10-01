@@ -77,7 +77,7 @@ dependencies {
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
     implementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
     // https://mvnrepository.com/artifact/com.google.guava/guava
-    implementation("com.google.guava:guava:33.3.0-jre")
+    implementation("com.google.guava:guava:33.3.1-jre")
 
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
