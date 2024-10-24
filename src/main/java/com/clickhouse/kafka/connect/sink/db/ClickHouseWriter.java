@@ -29,6 +29,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -244,16 +245,10 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
                                     continue;
 
-                                if (colTypeName.equalsIgnoreCase("UINT8") && dataTypeName.equals("INT8"))
-                                    continue;
-
-                                if (colTypeName.equalsIgnoreCase("UINT16") && dataTypeName.equals("INT16"))
-                                    continue;
-
-                                if (colTypeName.equalsIgnoreCase("UINT32") && dataTypeName.equals("INT32"))
-                                    continue;
-
-                                if (colTypeName.equalsIgnoreCase("UINT64") && dataTypeName.equals("INT64"))
+                                if (colTypeName.equalsIgnoreCase("UINT8")
+                                        || colTypeName.equalsIgnoreCase("UINT16")
+                                        || colTypeName.equalsIgnoreCase("UINT32")
+                                        || colTypeName.equalsIgnoreCase("UINT64"))
                                     continue;
 
                                 if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))

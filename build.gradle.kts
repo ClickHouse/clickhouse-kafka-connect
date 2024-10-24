@@ -22,6 +22,7 @@ java {
 buildscript {
     repositories {
         mavenCentral()
+        maven{ url = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/") }
     }
 }
 
@@ -44,10 +45,11 @@ repositories {
     mavenCentral()
     maven("https://packages.confluent.io/maven/")
     maven("https://jitpack.io")
+    maven{ url = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/") }
 }
 
 extra.apply {
-    set("clickHouseDriverVersion", "0.6.3")
+    set("clickHouseDriverVersion", "0.7.0-SNAPSHOT")
     set("kafkaVersion", "2.7.0")
     set("avroVersion", "1.9.2")
 
