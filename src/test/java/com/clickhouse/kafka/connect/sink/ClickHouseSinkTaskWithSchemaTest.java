@@ -588,10 +588,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
     }
 
+    @Disabled("Disabled because it requires a flag on the instance.")
     @Test
     @SinceClickHouseVersion("24.1")
     public void schemaWithNestedTupleMapArrayAndVariant() {
-        Assumptions.assumeFalse(isCloud, "Skip test since experimental is not available in cloud");
+        if (isCloud) {
+            LOGGER.warn("Skip test since experimental is not available in cloud");
+            return;
+        }
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "nested-tuple-map-array-and-variant-table-test";
