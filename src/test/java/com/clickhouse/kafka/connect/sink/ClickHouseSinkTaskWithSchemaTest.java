@@ -10,6 +10,7 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
@@ -528,6 +529,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
+    @Disabled("Disabled because it requires a flag on the instance.")
     @Test
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleOfMapsWithVariantTest() {

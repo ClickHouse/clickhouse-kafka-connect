@@ -708,7 +708,7 @@ public class ClickHouseWriter implements DBWriter {
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
-            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
 //        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
@@ -716,7 +716,7 @@ public class ClickHouseWriter implements DBWriter {
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
                 for (Column col : table.getRootColumnsList()) {
-                    System.out.println("Writing column: " + col.getName());
+                    LOGGER.debug("Writing column: {}", col.getName());
                     long beforePushStream = System.currentTimeMillis();
                     doWriteCol(record, col, stream, supportDefaults);
                     pushStreamTime += System.currentTimeMillis() - beforePushStream;
@@ -892,7 +892,7 @@ public class ClickHouseWriter implements DBWriter {
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
-            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
         //insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
@@ -1027,7 +1027,7 @@ public class ClickHouseWriter implements DBWriter {
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
-            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
 //        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
