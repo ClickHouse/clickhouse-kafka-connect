@@ -10,6 +10,7 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
@@ -528,6 +529,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
+    @Disabled("Disabled because it requires a flag on the instance.")
     @Test
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleOfMapsWithVariantTest() {
@@ -586,10 +588,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
     }
 
+    @Disabled("Disabled because it requires a flag on the instance.")
     @Test
     @SinceClickHouseVersion("24.1")
     public void schemaWithNestedTupleMapArrayAndVariant() {
-        Assumptions.assumeFalse(isCloud, "Skip test since experimental is not available in cloud");
+        if (isCloud) {
+            LOGGER.warn("Skip test since experimental is not available in cloud");
+            return;
+        }
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "nested-tuple-map-array-and-variant-table-test";

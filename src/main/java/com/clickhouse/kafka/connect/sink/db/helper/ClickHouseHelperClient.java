@@ -388,7 +388,7 @@ public class ClickHouseHelperClient {
         Table table = new Table(database, tableName);
         try {
             QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.JSONEachRow);
-            settings.setOption("describe_include_subcolumns", true);
+            settings.serverSetting("describe_include_subcolumns", "1");
             settings.setDatabase(database);
             QueryResponse queryResponse = client.query(describeQuery, settings).get();
             try (BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {

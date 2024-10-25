@@ -1,3 +1,7 @@
+# 1.2.4
+* Adjusting underlying client version to 0.7.0
+* Bugfix for UINT handling
+
 # 1.2.3
 * Tweaking schema validation to allow for UINT
 

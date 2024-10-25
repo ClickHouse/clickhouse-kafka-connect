@@ -29,6 +29,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -244,16 +245,10 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
                                     continue;
 
-                                if (colTypeName.equalsIgnoreCase("UINT8") && dataTypeName.equals("INT8"))
-                                    continue;
-
-                                if (colTypeName.equalsIgnoreCase("UINT16") && dataTypeName.equals("INT16"))
-                                    continue;
-
-                                if (colTypeName.equalsIgnoreCase("UINT32") && dataTypeName.equals("INT32"))
-                                    continue;
-
-                                if (colTypeName.equalsIgnoreCase("UINT64") && dataTypeName.equals("INT64"))
+                                if (colTypeName.equalsIgnoreCase("UINT8")
+                                        || colTypeName.equalsIgnoreCase("UINT16")
+                                        || colTypeName.equalsIgnoreCase("UINT32")
+                                        || colTypeName.equalsIgnoreCase("UINT64"))
                                     continue;
 
                                 if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
@@ -713,7 +708,7 @@ public class ClickHouseWriter implements DBWriter {
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
-            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
 //        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
@@ -721,7 +716,7 @@ public class ClickHouseWriter implements DBWriter {
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
                 for (Column col : table.getRootColumnsList()) {
-                    System.out.println("Writing column: " + col.getName());
+                    LOGGER.debug("Writing column: {}", col.getName());
                     long beforePushStream = System.currentTimeMillis();
                     doWriteCol(record, col, stream, supportDefaults);
                     pushStreamTime += System.currentTimeMillis() - beforePushStream;
@@ -897,7 +892,7 @@ public class ClickHouseWriter implements DBWriter {
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
-            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
         //insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
@@ -1032,7 +1027,7 @@ public class ClickHouseWriter implements DBWriter {
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
-            insertSettings.setOption(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
+            insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
 //        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
