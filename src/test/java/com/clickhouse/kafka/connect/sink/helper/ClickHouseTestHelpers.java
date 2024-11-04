@@ -38,7 +38,9 @@ public class ClickHouseTestHelpers {
     public static final String DATABASE_DEFAULT = "default";
     public static final String USERNAME_DEFAULT = "default";
 
-    private static final int CLOUD_TIMEOUT_VALUE = 600;
+    private static final int CLOUD_TIMEOUT_VALUE = 900;
+    private static final TimeUnit CLOUD_TIMEOUT_UNIT = TimeUnit.SECONDS;
+
     public static String getClickhouseVersion() {
         String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
         if (clickHouseVersion == null) {
@@ -62,10 +64,8 @@ public class ClickHouseTestHelpers {
     public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try {
-            chc.getClient().queryRecords(dropTable).get(CLOUD_TIMEOUT_VALUE, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
+            chc.getClient().queryRecords(dropTable).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -89,7 +89,7 @@ public class ClickHouseTestHelpers {
             settings.setOption(entry.getKey(), entry.getValue());
         }
         try {
-            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(CLOUD_TIMEOUT_VALUE, java.util.concurrent.TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             return records.getMetrics();
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -123,7 +123,7 @@ public class ClickHouseTestHelpers {
         String queryCount = String.format("OPTIMIZE TABLE `%s`", tableName);
 
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             return records.getMetrics();
         } catch (Exception e) {
             return null;
@@ -135,7 +135,7 @@ public class ClickHouseTestHelpers {
 
         try {
             optimizeTable(chc, tableName);
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);
@@ -151,7 +151,7 @@ public class ClickHouseTestHelpers {
     public static int sumRows(ClickHouseHelperClient chc, String tableName, String column) {
         String queryCount = String.format("SELECT SUM(`%s`) FROM `%s`", column, tableName);
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             String value = records.iterator().next().getString(1);
             return (int)(Float.parseFloat(value));
         } catch (Exception e) {
@@ -162,7 +162,7 @@ public class ClickHouseTestHelpers {
     public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
         String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%'";
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, TimeUnit.SECONDS);
+            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             String value = records.iterator().next().getString(1);
             return (int)(Float.parseFloat(value));
         } catch (Exception e) {
@@ -175,7 +175,7 @@ public class ClickHouseTestHelpers {
         try {
             QuerySettings querySettings = new QuerySettings();
             querySettings.setFormat(ClickHouseFormat.JSONStringsEachRow);
-            QueryResponse queryResponse = chc.getClient().query(String.format("SELECT * FROM `%s`", topic), querySettings).get(CLOUD_TIMEOUT_VALUE, TimeUnit.SECONDS);
+            QueryResponse queryResponse = chc.getClient().query(String.format("SELECT * FROM `%s`", topic), querySettings).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             Gson gson = new Gson();
 
             List<String> records = new ArrayList<>();
