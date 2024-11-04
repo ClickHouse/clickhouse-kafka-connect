@@ -132,11 +132,24 @@ public class ClickHouseTestHelpers {
     //        }
     }
 
+
+    public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName) {
+        String queryCount = String.format("OPTIMIZE TABLE `%s`", tableName);
+
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get(600, TimeUnit.SECONDS);
+            return records.getMetrics();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
 
         try {
-            Records records = chc.getClient().queryRecords(queryCount).get(120, TimeUnit.SECONDS);
+            optimizeTable(chc, tableName);
+            Records records = chc.getClient().queryRecords(queryCount).get(600, TimeUnit.SECONDS);
             // Note we probrbly need asInteger() here
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);
