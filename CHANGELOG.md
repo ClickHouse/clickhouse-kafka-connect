@@ -1,3 +1,6 @@
+# 1.2.5
+* Remove unused avro property from `build.gradle.kts`
+
 # 1.2.4
 * Adjusting underlying client version to 0.7.0
 * Bugfix for UINT handling
