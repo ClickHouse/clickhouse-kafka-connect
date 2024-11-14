@@ -1,18 +1,16 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.clickhouse.ClickHouseContainer;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
@@ -34,6 +32,24 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+    }
+
+    @Test
+    public void primitiveTypesSubsetTest() {
+        Map<String, String> props = createProps();;
+        ClickHouseHelperClient chc = createClient(props);
+        // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
+        String topic = createTopicName("schemaless_primitive_types_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertFalse(ClickHouseTestHelpers.validateRows(chc, topic, sr));
     }
 
     @Test
