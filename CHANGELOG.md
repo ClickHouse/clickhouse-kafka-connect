@@ -1,6 +1,7 @@
 # 1.2.5
 * Remove unused avro property from `build.gradle.kts`
 * Trim schemaless data to only pass the fields that are in the table
+* Allow bypassing the schema validation
 
 # 1.2.4
 * Adjusting underlying client version to 0.7.0

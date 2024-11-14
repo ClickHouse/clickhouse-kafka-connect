@@ -48,6 +48,7 @@ public class ClickHouseSinkConfig {
     public static final String KEEPER_ON_CLUSTER = "keeperOnCluster";
     public static final String DATE_TIME_FORMAT = "dateTimeFormats";
     public static final String TOLERATE_STATE_MISMATCH = "tolerateStateMismatch";
+    public static final String BYPASS_DATA_VALIDATION = "bypassDataValidation";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -94,6 +95,7 @@ public class ClickHouseSinkConfig {
     private final Map<String, DateTimeFormatter> dateTimeFormats;
     private final String clientVersion;
     private final boolean tolerateStateMismatch;
+    private final boolean bypassDataValidation;
 
     public enum InsertFormats {
         NONE,
@@ -266,6 +268,7 @@ public class ClickHouseSinkConfig {
         }
         this.clientVersion = props.getOrDefault(CLIENT_VERSION, "V1");
         this.tolerateStateMismatch = Boolean.parseBoolean(props.getOrDefault(TOLERATE_STATE_MISMATCH, "false"));
+        this.bypassDataValidation = Boolean.parseBoolean(props.getOrDefault(BYPASS_DATA_VALIDATION, "false"));
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
