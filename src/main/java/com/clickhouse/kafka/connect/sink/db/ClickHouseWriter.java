@@ -692,7 +692,7 @@ public class ClickHouseWriter implements DBWriter {
         Record first = records.get(0);
         String database = first.getDatabase();
 
-        if (!validateDataSchema(table, first, false))
+        if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
@@ -746,7 +746,7 @@ public class ClickHouseWriter implements DBWriter {
         Record first = records.get(0);
         String database = first.getDatabase();
 
-        if (!validateDataSchema(table, first, false))
+        if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
