@@ -841,7 +841,7 @@ public class ClickHouseWriter implements DBWriter {
                                 break;
                         }
                         long beforeSerialize = System.currentTimeMillis();
-                        String gsonString = gson.toJson(data, gsonType);
+                        String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
                         dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
                         LOGGER.trace("topic {} partition {} offset {} payload {}",
                                 record.getTopic(),
@@ -914,7 +914,7 @@ public class ClickHouseWriter implements DBWriter {
                         break;
                 }
                 long beforeSerialize = System.currentTimeMillis();
-                String gsonString = gson.toJson(data, gsonType);
+                String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
                 dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
                 LOGGER.trace("topic {} partition {} offset {} payload {}",
                         record.getTopic(),
@@ -935,6 +935,17 @@ public class ClickHouseWriter implements DBWriter {
         s3 = System.currentTimeMillis();
         LOGGER.info("batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
+
+    protected Map<String, Object> cleanupExtraFields(Map<String, Object> m, Table t) {
+        Map<String, Object> cleaned = new HashMap<>();
+        for (Column c : t.getRootColumnsList()) {
+            if (m.containsKey(c.getName())) {
+                cleaned.put(c.getName(), m.get(c.getName()));
+            }
+        }
+        return cleaned;
+    }
+
     protected void doInsertString(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         if(chc.isUseClientV2()) {
             doInsertStringV2(records, table, queryId);
