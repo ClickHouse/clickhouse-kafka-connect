@@ -72,7 +72,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
-    implementation("io.lettuce:lettuce-core:6.4.0.RELEASE")
+    implementation("io.lettuce:lettuce-core:6.5.0.RELEASE")
     implementation("com.google.code.gson:gson:2.11.0")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
     implementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
@@ -100,7 +100,7 @@ dependencies {
         Will in side the Confluent Archive
      */
     clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.3.1")
-    clickhouseDependencies("io.lettuce:lettuce-core:6.4.0.RELEASE")
+    clickhouseDependencies("io.lettuce:lettuce-core:6.5.0.RELEASE")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
