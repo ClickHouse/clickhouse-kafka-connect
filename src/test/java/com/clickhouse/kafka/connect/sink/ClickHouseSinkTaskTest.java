@@ -7,15 +7,11 @@ import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.clickhouse.ClickHouseContainer;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;

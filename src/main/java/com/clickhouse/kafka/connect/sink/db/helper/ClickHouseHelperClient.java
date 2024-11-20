@@ -1,6 +1,11 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
-import com.clickhouse.client.*;
+import com.clickhouse.client.ClickHouseClient;
+import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.ClickHouseNode;
+import com.clickhouse.client.ClickHouseNodeSelector;
+import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.enums.ProxyType;
 import com.clickhouse.client.api.query.GenericRecord;

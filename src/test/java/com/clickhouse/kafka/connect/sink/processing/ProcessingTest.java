@@ -1,17 +1,11 @@
 package com.clickhouse.kafka.connect.sink.processing;
-import com.clickhouse.client.ClickHouseConfig;
+
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
-import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
@@ -30,6 +24,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class ProcessingTest {
 

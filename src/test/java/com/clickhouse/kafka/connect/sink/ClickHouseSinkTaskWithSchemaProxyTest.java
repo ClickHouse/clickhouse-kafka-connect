@@ -1,6 +1,6 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.*;
+import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -22,11 +22,13 @@ import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {

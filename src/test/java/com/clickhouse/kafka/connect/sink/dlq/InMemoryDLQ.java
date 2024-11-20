@@ -1,6 +1,5 @@
 package com.clickhouse.kafka.connect.sink.dlq;
 
-import com.clickhouse.kafka.connect.sink.data.Record;
 import org.apache.kafka.connect.sink.SinkRecord;
 
 import java.util.ArrayList;

@@ -1,12 +1,12 @@
 package com.clickhouse.kafka.connect.sink.kafa;
 
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
 import com.clickhouse.kafka.connect.sink.kafka.RangeState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class RangeContainerTest {
 

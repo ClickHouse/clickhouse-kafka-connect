@@ -1,7 +1,11 @@
 package com.clickhouse.kafka.connect.sink.state.provider;
 
-import com.clickhouse.client.*;
-import com.clickhouse.client.api.query.Records;
+import com.clickhouse.client.ClickHouseClient;
+import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.ClickHouseNode;
+import com.clickhouse.client.ClickHouseNodeSelector;
+import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;

@@ -1,8 +1,6 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 
-
-
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -21,9 +19,11 @@ import org.testcontainers.utility.MountableFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 
 public class ConfluentPlatform {

@@ -1,6 +1,10 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
-import com.clickhouse.client.*;
+import com.clickhouse.client.ClickHouseClient;
+import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.ClickHouseResponse;
+import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.metrics.OperationMetrics;
 import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
@@ -22,10 +26,14 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Serializable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);

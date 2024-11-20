@@ -1,7 +1,6 @@
 package com.clickhouse.kafka.connect.sink.processing;
 
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
-import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
@@ -13,8 +12,6 @@ import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
-import org.apache.kafka.connect.sink.SinkRecord;
-import org.apache.kafka.connect.sink.SinkTaskContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

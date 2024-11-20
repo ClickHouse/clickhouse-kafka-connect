@@ -1,12 +1,12 @@
 package com.clickhouse.kafka.connect.util.jmx;
 
-import java.lang.management.ManagementFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.management.InstanceAlreadyExistsException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.lang.management.ManagementFactory;
 
 public final class MBeanServerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(MBeanServerUtils.class);

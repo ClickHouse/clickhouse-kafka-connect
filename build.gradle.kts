@@ -7,9 +7,9 @@
  */
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 val defaultJdkVersion = 17
 java {
@@ -72,7 +72,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
-    implementation("io.lettuce:lettuce-core:6.5.0.RELEASE")
+    implementation("io.projectreactor:reactor-core:3.7.0")
     implementation("com.google.code.gson:gson:2.11.0")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
     implementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
@@ -148,6 +148,9 @@ tasks.create("integrationTest", Test::class.java) {
     systemProperties = System.getProperties() as Map<String, Any>
 }
 
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf("-Xlint:unchecked", "-Xlint:deprecation"))
+}
 
 tasks.withType<Test> {
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1
