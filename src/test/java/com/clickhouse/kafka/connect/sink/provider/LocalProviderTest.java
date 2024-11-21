@@ -1,14 +1,14 @@
 package com.clickhouse.kafka.connect.sink.provider;
 
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 
 public class LocalProviderTest {

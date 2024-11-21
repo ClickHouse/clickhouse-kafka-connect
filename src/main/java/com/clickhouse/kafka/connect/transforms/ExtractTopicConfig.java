@@ -16,11 +16,11 @@
 
 package com.clickhouse.kafka.connect.transforms;
 
-import java.util.Map;
-import java.util.Optional;
-
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
+
+import java.util.Map;
+import java.util.Optional;
 
 class ExtractTopicConfig extends AbstractConfig {
     public static final String FIELD_NAME_CONFIG = "field.name";

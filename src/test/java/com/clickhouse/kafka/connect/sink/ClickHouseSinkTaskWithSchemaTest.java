@@ -3,8 +3,8 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
-import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
+import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -18,7 +18,9 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 

@@ -62,12 +62,6 @@ public class ClickHouseSinkConfig {
     public static final Integer tableRefreshIntervalDefault = 0;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
     public static final Boolean customInsertFormatDefault = Boolean.FALSE;
-    public enum StateStores {
-        NONE,
-        IN_MEMORY,
-        REDIS,
-        KEEPER_MAP
-    }
 
     private final String hostname;
     private final int port;

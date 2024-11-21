@@ -7,8 +7,6 @@ import com.clickhouse.kafka.connect.sink.data.StructToJsonMap;
 import com.clickhouse.kafka.connect.sink.kafka.OffsetContainer;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 

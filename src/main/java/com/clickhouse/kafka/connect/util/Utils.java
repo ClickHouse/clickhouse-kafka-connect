@@ -1,7 +1,6 @@
 package com.clickhouse.kafka.connect.util;
 
 import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import org.apache.kafka.connect.errors.DataException;
@@ -13,13 +12,10 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class Utils {
 

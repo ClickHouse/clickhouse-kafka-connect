@@ -1,9 +1,11 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
-import com.clickhouse.client.*;
-import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.ClickHouseClient;
+import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.ClickHouseNodeSelector;
+import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.api.query.Records;
-import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +18,11 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
