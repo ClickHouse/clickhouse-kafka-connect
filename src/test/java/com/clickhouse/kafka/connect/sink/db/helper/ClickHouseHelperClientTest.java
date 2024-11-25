@@ -42,7 +42,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 "CREATE TABLE %s ( `num` String ) Engine = MergeTree ORDER BY num");
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
-            List<String> tableNames = table.stream().map(item -> item.getName()).collect(Collectors.toList());
+            List<String> tableNames = table.stream().map(item -> item.getCleanName()).collect(Collectors.toList());
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);

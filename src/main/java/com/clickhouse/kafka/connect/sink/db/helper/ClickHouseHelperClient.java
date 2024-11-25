@@ -304,6 +304,7 @@ public class ClickHouseHelperClient {
                 .build();
              ClickHouseResponse response = client.read(server)
                      .query(String.format("select database, table, count(*) as col_count from system.columns where database = '%s' group by database, table", database))
+                     .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .executeAndWait()) {
             for (ClickHouseRecord r : response.records()) {
                 String databaseName = r.getValue(0).asString();
@@ -439,9 +440,9 @@ public class ClickHouseHelperClient {
                 }
             }
 
-            Table tableTmp = describeTable(this.database, table.getCleanName());
-            if (table != null )
-                tableList.add(tableTmp);
+            Table tableDescribed = describeTable(this.database, table.getCleanName());
+            if (tableDescribed != null )
+                tableList.add(tableDescribed);
         }
         return tableList;
     }
