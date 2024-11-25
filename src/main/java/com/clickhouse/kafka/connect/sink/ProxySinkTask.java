@@ -9,6 +9,7 @@ import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
+import com.clickhouse.kafka.connect.util.Memory;
 import com.clickhouse.kafka.connect.util.jmx.ExecutionTimer;
 import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
@@ -85,6 +86,7 @@ public class ProxySinkTask {
         LOGGER.trace(String.format("Got %d records from put API.", records.size()));
         ExecutionTimer processingTime = ExecutionTimer.start();
 
+        LOGGER.debug(String.format("Memory: before conversion: %s", Memory.get()));
         Map<String, List<Record>> dataRecords = records.stream()
                 .map(v -> Record.convert(v,
                         clickHouseSinkConfig.isEnableDbTopicSplit(),
@@ -92,12 +94,14 @@ public class ProxySinkTask {
                         clickHouseSinkConfig.getDatabase() ))
                 .collect(Collectors.groupingBy(Record::getTopicAndPartition));
         statistics.recordProcessingTime(processingTime);
+        LOGGER.debug(String.format("Memory: before processing: %s", Memory.get()));
         // TODO - Multi process???
         for (String topicAndPartition : dataRecords.keySet()) {
             // Running on etch topic & partition
             List<Record> rec = dataRecords.get(topicAndPartition);
             processing.doLogic(rec);
         }
+        LOGGER.debug(String.format("Memory: after processing: %s", Memory.get()));
         statistics.taskProcessingTime(taskTime);
     }
 }

@@ -5,6 +5,7 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
+import com.clickhouse.kafka.connect.util.Memory;
 import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -31,6 +32,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaTest.class);
     @Test
     public void arrayTypesTest() {
+        LOGGER.debug(String.format("Memory: before test start: %s", Memory.get()));
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -42,12 +44,12 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "`arr_map` Array(Map(String, String))  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
+        LOGGER.debug(String.format("Memory: before test start: %s", Memory.get()));
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
-
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
     }

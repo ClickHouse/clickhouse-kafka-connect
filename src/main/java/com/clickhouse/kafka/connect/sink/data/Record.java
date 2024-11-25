@@ -40,6 +40,9 @@ public class Record {
         this.database = database;
     }
 
+    public void setJsonMap(Map<String, Data> jsonMap) {
+        this.jsonMap = jsonMap;
+    }
     public String getTopicAndPartition() {
         return recordOffsetContainer.getTopicAndPartitionKey();
     }
