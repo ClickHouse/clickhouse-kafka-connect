@@ -30,6 +30,10 @@ public class Table {
     @Accessors(fluent = true)
     private boolean hasDefaults;
 
+    @Setter
+    @Getter
+    private int numColumns = 0;
+
     public Table(String database, String name) {
         this.database = database;
         this.name = name;
@@ -40,6 +44,14 @@ public class Table {
         this.allColumnsMap = new HashMap<>();
     }
 
+    public Table(String database, String name, int numColumns) {
+        this(database, name);
+        this.numColumns = numColumns;
+    }
+
+    public String getCleanName() {
+        return name;
+    }
     public String getName() {
         return Utils.escapeName(name);
     }

@@ -1113,4 +1113,119 @@ public class SchemaTestData {
 
         return array;
     }
+    public static Collection<SinkRecord> createSimpleData(String topic, int partition) {
+        return createSimpleData(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createSimpleData(String topic, int partition, int totalRecords) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("string", Schema.STRING_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("string", "test string");
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSimpleExtendWithNullableData(String topic, int partition) {
+        return createSimpleExtendWithNullableData(topic, partition, 0, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createSimpleExtendWithNullableData(String topic, int partition, int startOffset, int totalRecords) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("string", Schema.STRING_SCHEMA)
+                .field("num32", Schema.OPTIONAL_INT32_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(startOffset, startOffset + totalRecords).forEachOrdered(n -> {
+
+            Integer null_value_data = null;
+
+            if ( n % 2 == 0) {
+                null_value_data = Integer.valueOf((int)n);
+            }
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("string", "test string")
+                    .put("num32", null_value_data);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSimpleExtendWithDefaultData(String topic, int partition, int startOffset, int totalRecords) {
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("string", Schema.STRING_SCHEMA)
+                .field("num32", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("num32_default", Schema.INT32_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(startOffset, startOffset + totalRecords).forEachOrdered(n -> {
+
+            Integer null_value_data = null;
+
+            if ( n % 2 == 0) {
+                null_value_data = Integer.valueOf((int)n);
+            }
+
+            Integer default_value_data = 0;
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("string", "test string")
+                    .put("num32", null_value_data);
+            if ( n % 2 == 0) {
+                value_struct.put("num32_default", (int)n);
+            }
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
 }

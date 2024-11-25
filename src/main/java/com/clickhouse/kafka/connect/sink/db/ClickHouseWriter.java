@@ -150,7 +150,6 @@ public class ClickHouseWriter implements DBWriter {
                 return;
             }
 
-
             // Adding new tables to mapping, or update existing tables
             // TODO: check Kafka Connect's topics name or topics regex config and
             // only add tables to in-memory mapping that matches the topics we consume.
