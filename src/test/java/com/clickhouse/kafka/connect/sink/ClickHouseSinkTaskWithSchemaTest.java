@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
+import java.awt.desktop.SystemSleepEvent;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(FromVersionConditionExtension.class)
@@ -685,4 +687,83 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
+
+    @Test
+    public void changeSchemaWhileRunning() throws InterruptedException {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("change-schema-while-running-table-test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`string` String" +
+                ") Engine = MergeTree ORDER BY `off16`");
+        Collection<SinkRecord> sr = SchemaTestData.createSimpleData(topic, 1);
+
+        int numRecords = sr.size();
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+
+
+        ClickHouseTestHelpers.createTable(chc, topic, "ALTER TABLE `%s` ADD COLUMN num32 Nullable(Int32) AFTER string");
+        Thread.sleep(5000);
+        sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
+        int numRecordsWithNullable = sr.size();
+        chst.put(sr);
+
+        ClickHouseTestHelpers.createTable(chc, topic, "ALTER TABLE `%s` ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32");
+        Thread.sleep(5000);
+
+        sr = SchemaTestData.createSimpleExtendWithDefaultData(topic, 1, 20000, 3000);
+        int numRecordsWithDefault = sr.size();
+        System.out.println("numRecordsWithDefault: " + numRecordsWithDefault);
+        chst.put(sr);
+        ClickHouseTestHelpers.getAllRowsAsJson(chc, topic).forEach(row -> {
+            //System.out.println(row);
+        });
+        chst.stop();
+        assertEquals(numRecords + numRecordsWithNullable + numRecordsWithDefault, ClickHouseTestHelpers.countRows(chc, topic));
+    }
+    @Test
+    public void changeSchemaWhileRunningWithRefreshEnabled() throws InterruptedException {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        props.put(TABLE_REFRESH_INTERVAL, "1");
+        String topic = createTopicName("change-schema-while-running-table-test-with-refresh-enabled");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`string` String" +
+                ") Engine = MergeTree ORDER BY `off16`");
+        Collection<SinkRecord> sr = SchemaTestData.createSimpleData(topic, 1);
+
+        int numRecords = sr.size();
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+
+
+        ClickHouseTestHelpers.createTable(chc, topic, "ALTER TABLE `%s` ADD COLUMN num32 Nullable(Int32) AFTER string");
+        Thread.sleep(5000);
+        sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
+        int numRecordsWithNullable = sr.size();
+        chst.put(sr);
+
+        ClickHouseTestHelpers.createTable(chc, topic, "ALTER TABLE `%s` ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32");
+        Thread.sleep(5000);
+
+        sr = SchemaTestData.createSimpleExtendWithDefaultData(topic, 1, 20000, 3000);
+        int numRecordsWithDefault = sr.size();
+        System.out.println("numRecordsWithDefault: " + numRecordsWithDefault);
+        chst.put(sr);
+        ClickHouseTestHelpers.getAllRowsAsJson(chc, topic).forEach(row -> {
+            //System.out.println(row);
+        });
+        chst.stop();
+        assertEquals(numRecords + numRecordsWithNullable + numRecordsWithDefault, ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
 }

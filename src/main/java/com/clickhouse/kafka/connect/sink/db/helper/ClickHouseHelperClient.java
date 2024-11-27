@@ -294,42 +294,46 @@ public class ClickHouseHelperClient {
         throw new RuntimeException(ce);
     }
 
-    public List<String> showTables(String database) {
+    public List<Table> showTables(String database) {
         if (useClientV2) {
             return showTablesV2(database);
         } else {
             return showTablesV1(database);
         }
     }
-    public List<String> showTablesV1(String database) {
-        List<String> tablesNames = new ArrayList<>();
+    public List<Table> showTablesV1(String database) {
+        List<Table> tables = new ArrayList<>();
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
              ClickHouseResponse response = client.read(server)
-                     .query(String.format("SHOW TABLES FROM `%s`", database))
+                     .query(String.format("select database, table, count(*) as col_count from system.columns where database = '%s' group by database, table", database))
+                     .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .executeAndWait()) {
             for (ClickHouseRecord r : response.records()) {
-                ClickHouseValue v = r.getValue(0);
-                String tableName = v.asString();
-                tablesNames.add(tableName);
+                String databaseName = r.getValue(0).asString();
+                String tableName = r.getValue(1).asString();
+                int colCount =  r.getValue(2).asInteger();
+                tables.add(new Table(databaseName, tableName, colCount));
             }
         } catch (ClickHouseException e) {
             LOGGER.error("Failed in show tables", e);
         }
-        return tablesNames;
+        return tables;
     }
 
-    public List<String> showTablesV2(String database) {
-        List<String> tablesNames = new ArrayList<>();
-        Records records = queryV2(String.format("SHOW TABLES FROM `%s`", database));
+    public List<Table> showTablesV2(String database) {
+        List<Table> tablesList = new ArrayList<>();
+        Records records = queryV2(String.format("select database, table, count(*) as col_count from system.columns where database = '%s' group by database, table", database));
         for (GenericRecord record : records) {
-            String tableName = record.getString(1);
+            String databaseName = record.getString(1);
+            String tableName = record.getString(2);
+            int colCount =  record.getInteger(3);
             LOGGER.debug("table name: {}", tableName);
-            tablesNames.add(tableName);
+            tablesList.add(new Table(databaseName, tableName, colCount));
         }
-        return tablesNames;
+        return tablesList;
     }
 
     public Table describeTable(String database, String tableName) {
@@ -425,20 +429,26 @@ public class ClickHouseHelperClient {
     }
     public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
         List<Table> tableList =  new ArrayList<>();
-        for (String tableName : showTables(database) ) {
+        for (Table table : showTables(database) ) {
             // (Full) Table names are escaped in the cache
-            String escapedTableName = Utils.escapeTableName(database, tableName);
+            String escapedTableName = Utils.escapeTableName(database, table.getCleanName());
 
             // Read from cache if we already described this table before
             // This means we won't pick up edited table configs until the connector is restarted
             if (cache.containsKey(escapedTableName)) {
-                tableList.add(cache.get(escapedTableName));
-                continue;
+                // 2 -> 3
+                if (cache.get(escapedTableName).getNumColumns() < table.getNumColumns()) {
+                    LOGGER.info("Table {} has been updated, re-describing", table.getCleanName());
+                } else {
+                    // No need to re-describe since no columns have been added
+                    continue;
+                }
             }
-
-            Table table = describeTable(this.database, tableName);
-            if (table != null )
-                tableList.add(table);
+            Table tableDescribed = describeTable(this.database, table.getCleanName());
+            if (tableDescribed != null) {
+                tableDescribed.setNumColumns(table.getNumColumns());
+                tableList.add(tableDescribed);
+            }
         }
         return tableList;
     }

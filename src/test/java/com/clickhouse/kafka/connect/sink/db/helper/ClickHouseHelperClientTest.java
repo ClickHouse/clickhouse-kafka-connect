@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseHelperClientTest extends ClickHouseBase {
@@ -38,7 +39,8 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         ClickHouseTestHelpers.createTable(chc, topic,
                 "CREATE TABLE %s ( `num` String ) Engine = MergeTree ORDER BY num");
         try {
-            List<String> tableNames = chc.showTables(chc.getDatabase());
+            List<Table> table = chc.showTables(chc.getDatabase());
+            List<String> tableNames = table.stream().map(item -> item.getCleanName()).collect(Collectors.toList());
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);
