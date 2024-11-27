@@ -967,6 +967,10 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     protected Map<String, Object> cleanupExtraFields(Map<String, Object> m, Table t) {
+        if (csc.isBypassFieldCleanup()) {
+            return m;
+        }
+
         Map<String, Object> cleaned = new HashMap<>();
         for (Column c : t.getRootColumnsList()) {
             if (m.containsKey(c.getName())) {
