@@ -693,6 +693,17 @@ public class ClickHouseWriter implements DBWriter {
             } else {
                 throw e;
             }
+        } catch (Exception e) {
+            // Note: this part will be removed once V1 is deprecated
+            LOGGER.error("Error inserting records", e);
+            if (e.getMessage().indexOf("ClickHouseException: Code: 33") != -1 && retry == true) {
+                LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
+                updateMapping(table.getDatabase());
+                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
+            } else {
+                throw e;
+            }
         }
     }
     protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
