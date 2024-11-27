@@ -434,15 +434,16 @@ public class ClickHouseHelperClient {
                 // 2 -> 3
                 if (cache.get(escapedTableName).getNumColumns() < table.getNumColumns()) {
                     LOGGER.info("Table {} has been updated, re-describing", table.getCleanName());
-                    tableList.add(cache.get(escapedTableName));
                 } else {
+                    // No need to re-describe since no columns have been added
                     continue;
                 }
             }
-
             Table tableDescribed = describeTable(this.database, table.getCleanName());
-            if (tableDescribed != null )
+            if (tableDescribed != null) {
+                tableDescribed.setNumColumns(table.getNumColumns());
                 tableList.add(tableDescribed);
+            }
         }
         return tableList;
     }

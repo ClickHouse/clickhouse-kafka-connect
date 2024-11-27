@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink.db;
 
 import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
+import com.clickhouse.client.api.ServerException;
 import com.clickhouse.client.api.insert.InsertResponse;
 import com.clickhouse.client.api.insert.InsertSettings;
 import com.clickhouse.client.config.ClickHouseClientOption;
@@ -193,7 +194,7 @@ public class ClickHouseWriter implements DBWriter {
                 if (csc.isBypassRowBinary()) {
                     doInsertJson(records, table, queryId);
                 } else {
-                    doInsertRawBinary(records, table, queryId, table.hasDefaults());
+                    doInsertRawBinary(records, table, queryId, table.hasDefaults(), true);
                 }
                 break;
             case SCHEMA_LESS:
@@ -675,11 +676,23 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
-        if (chc.isUseClientV2()) {
-            doInsertRawBinaryV2(records, table, queryId, supportDefaults);
-        } else {
-            doInsertRawBinaryV1(records, table, queryId, supportDefaults);
+    protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults, boolean retry) throws IOException, ExecutionException, InterruptedException {
+        try {
+            if (chc.isUseClientV2()) {
+                doInsertRawBinaryV2(records, table, queryId, supportDefaults);
+            } else {
+                doInsertRawBinaryV1(records, table, queryId, supportDefaults);
+            }
+        } catch (ServerException e) {
+            LOGGER.error("Error inserting records can cause by schema changes", e);
+            if (e.getCode() == 33 && retry == true) {
+                LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
+                updateMapping(table.getDatabase());
+                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
+            } else {
+                throw e;
+            }
         }
     }
     protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
