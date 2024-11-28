@@ -1,9 +1,12 @@
+# 1.2.6
+* Detect if table schema has changed and refresh the schema
+* Allow bypassing field cleanup
+
 # 1.2.5
 * Remove redis state provide since we are using KeeperMap for state storage
 * Remove unused avro property from `build.gradle.kts`
 * Trim schemaless data to only pass the fields that are in the table
 * Allow bypassing the schema validation
-* Detect if table schema has changed and refresh the schema
 
 # 1.2.4
 * Adjusting underlying client version to 0.7.0

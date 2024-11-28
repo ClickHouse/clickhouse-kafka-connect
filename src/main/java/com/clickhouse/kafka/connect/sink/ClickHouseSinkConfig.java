@@ -49,6 +49,7 @@ public class ClickHouseSinkConfig {
     public static final String DATE_TIME_FORMAT = "dateTimeFormats";
     public static final String TOLERATE_STATE_MISMATCH = "tolerateStateMismatch";
     public static final String BYPASS_SCHEMA_VALIDATION = "bypassSchemaValidation";
+    public static final String BYPASS_FIELD_CLEANUP = "bypassFieldCleanup";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -90,6 +91,7 @@ public class ClickHouseSinkConfig {
     private final String clientVersion;
     private final boolean tolerateStateMismatch;
     private final boolean bypassSchemaValidation;
+    private final boolean bypassFieldCleanup;
 
     public enum InsertFormats {
         NONE,
@@ -263,6 +265,7 @@ public class ClickHouseSinkConfig {
         this.clientVersion = props.getOrDefault(CLIENT_VERSION, "V1");
         this.tolerateStateMismatch = Boolean.parseBoolean(props.getOrDefault(TOLERATE_STATE_MISMATCH, "false"));
         this.bypassSchemaValidation = Boolean.parseBoolean(props.getOrDefault(BYPASS_SCHEMA_VALIDATION, "false"));
+        this.bypassFieldCleanup = Boolean.parseBoolean(props.getOrDefault(BYPASS_FIELD_CLEANUP, "false"));
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
@@ -285,6 +288,7 @@ public class ClickHouseSinkConfig {
     private static ConfigDef createConfigDef() {
         ConfigDef configDef = new ConfigDef();
 
+        //TODO: At some point we should group these more clearly
         String group = "Connection";
         int orderInGroup = 0;
         configDef.define(HOSTNAME,
@@ -567,6 +571,26 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Tolerate state mismatch."
+        );
+        configDef.define(BYPASS_SCHEMA_VALIDATION,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "Bypass schema validation. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Bypass schema validation."
+        );
+        configDef.define(BYPASS_FIELD_CLEANUP,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "Bypass field cleanup. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Bypass field cleanup."
         );
         return configDef;
     }
