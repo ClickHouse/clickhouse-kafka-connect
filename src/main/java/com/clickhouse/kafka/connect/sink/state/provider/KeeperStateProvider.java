@@ -93,7 +93,13 @@ public class KeeperStateProvider implements StateProvider {
 
     @Override
     public StateRecord getStateRecord(String topic, int partition) {
-        String key = String.format("%s-%d", topic, partition);
+        String key;
+        if (!csc.getConnectStatePrefix().isEmpty()) {
+            key = String.format("%s-%d", topic, partition);
+        } else {
+            key = String.format("%s-%s-%d",csc.getConnectStatePrefix(), topic, partition);
+        }
+
         String selectStr = String.format("SELECT * FROM `%s` WHERE `key`= '%s'", csc.getZkDatabase(), key);
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
@@ -136,6 +142,11 @@ public class KeeperStateProvider implements StateProvider {
         long minOffset = stateRecord.getMinOffset();
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
+
+        if (!csc.getConnectStatePrefix().isEmpty()) {
+            key = String.format("%s-%s", csc.getConnectStatePrefix(), key );
+        }
+
         String state = stateRecord.getState().toString();
         String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase(), key, minOffset, maxOffset, state);
         LOGGER.info("Write state record: {}", stateRecord);

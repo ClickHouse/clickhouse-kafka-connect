@@ -20,7 +20,7 @@ import static com.clickhouse.kafka.connect.ClickHouseSinkConnector.CLIENT_VERSIO
 public class ClickHouseSinkConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConfig.class);
 
-    //Configuration Names
+    // Configuration Names
     public static final String HOSTNAME = "hostname";
     public static final String PORT = "port";
     public static final String DATABASE = "database";
@@ -50,6 +50,7 @@ public class ClickHouseSinkConfig {
     public static final String TOLERATE_STATE_MISMATCH = "tolerateStateMismatch";
     public static final String BYPASS_SCHEMA_VALIDATION = "bypassSchemaValidation";
     public static final String BYPASS_FIELD_CLEANUP = "bypassFieldCleanup";
+    public static final String CONNECT_STATE_PREFIX = "connectStatePrefix";
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
 
     public static final int MILLI_IN_A_SEC = 1000;
@@ -93,6 +94,7 @@ public class ClickHouseSinkConfig {
     private final boolean tolerateStateMismatch;
     private final boolean bypassSchemaValidation;
     private final boolean bypassFieldCleanup;
+    private final String connectStatePrefix;
     private final boolean ignorePartitionsWhenBatching;
 
     public enum InsertFormats {
@@ -105,12 +107,13 @@ public class ClickHouseSinkConfig {
     private boolean bypassRowBinary = false;
 
     private InsertFormats insertFormat = InsertFormats.NONE;
+
     public static class UTF8String implements ConfigDef.Validator {
 
         @Override
         public void ensureValid(String name, Object o) {
             String s = (String) o;
-            if (s != null ) {
+            if (s != null) {
                 byte[] tmpBytes = s.getBytes(StandardCharsets.UTF_8);
             }
         }
@@ -120,6 +123,7 @@ public class ClickHouseSinkConfig {
             return "utf-8 string";
         }
     }
+
     public static final class ZKPathValidator implements ConfigDef.Validator {
 
         @Override
@@ -140,6 +144,7 @@ public class ClickHouseSinkConfig {
             else
                 return List.of("NONE");
         }
+
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
             return true;
@@ -151,6 +156,7 @@ public class ClickHouseSinkConfig {
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
             return List.of((Object[]) ClickHouseProxyType.values());
         }
+
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
             return true;
@@ -162,6 +168,7 @@ public class ClickHouseSinkConfig {
         public List<Object> validValues(String name, Map<String, Object> parsedConfig) {
             return List.of("_", "-", ".");
         }
+
         @Override
         public boolean visible(String name, Map<String, Object> parsedConfig) {
             return true;
@@ -175,13 +182,20 @@ public class ClickHouseSinkConfig {
         database = props.getOrDefault(DATABASE, databaseDefault);
         username = props.getOrDefault(USERNAME, usernameDefault);
         password = props.getOrDefault(PASSWORD, passwordDefault).trim();
-        sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED,"false"));
-        jdbcConnectionProperties = props.getOrDefault(JDBC_CONNECTION_PROPERTIES,jdbcConnectionPropertiesDefault).trim();
-        timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
+        sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED, "false"));
+        jdbcConnectionProperties = props.getOrDefault(JDBC_CONNECTION_PROPERTIES, jdbcConnectionPropertiesDefault)
+                .trim();
+        timeout = Integer.parseInt(props.getOrDefault(TIMEOUT_SECONDS, timeoutSecondsDefault.toString()))
+                * MILLI_IN_A_SEC; // multiple in 1000 milli
         retry = Integer.parseInt(props.getOrDefault(RETRY_COUNT, retryCountDefault.toString()));
-        tableRefreshInterval = Long.parseLong(props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple in 1000 milli
-        exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
-        suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
+        tableRefreshInterval = Long.parseLong(
+                props.getOrDefault(TABLE_REFRESH_INTERVAL, tableRefreshIntervalDefault.toString())) * MILLI_IN_A_SEC; // multiple
+                                                                                                                      // in
+                                                                                                                      // 1000
+                                                                                                                      // milli
+        exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE, "false"));
+        suppressTableExistenceException = Boolean
+                .parseBoolean(props.getOrDefault("suppressTableExistenceException", "false"));
 
         String errorsToleranceString = props.getOrDefault("errors.tolerance", "none").trim();
         errorsTolerance = errorsToleranceString.equalsIgnoreCase("all");
@@ -189,10 +203,10 @@ public class ClickHouseSinkConfig {
         Map<String, String> clickhouseSettings = new HashMap<>();
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
         if (!clickhouseSettingsString.isBlank()) {
-            String [] stringSplit = clickhouseSettingsString.split(",");
-            for (String clickProp: stringSplit) {
-                String [] propSplit = clickProp.trim().split("=");
-                if ( propSplit.length == 2 ) {
+            String[] stringSplit = clickhouseSettingsString.split(",");
+            for (String clickProp : stringSplit) {
+                String[] propSplit = clickProp.trim().split("=");
+                if (propSplit.length == 2) {
                     clickhouseSettings.put(propSplit[0].trim(), propSplit[1].trim());
                 }
             }
@@ -201,16 +215,16 @@ public class ClickHouseSinkConfig {
         this.addClickHouseSetting("input_format_skip_unknown_fields", "1", false);
         this.addClickHouseSetting("wait_end_of_query", "1", false);
         this.addClickHouseSetting("async_insert", "0", false);
-        //We set this so our ResponseSummary has actual data in it
+        // We set this so our ResponseSummary has actual data in it
         this.addClickHouseSetting("send_progress_in_http_headers", "1", false);
 
         topicToTableMap = new HashMap<>();
         String topicToTableMapString = props.getOrDefault(TABLE_MAPPING, "").trim();
         if (!topicToTableMapString.isBlank()) {
-            String [] stringSplit = topicToTableMapString.split(",");
-            for (String topicToTable: stringSplit) {
-                String [] propSplit = topicToTable.trim().split("=");
-                if ( propSplit.length == 2 ) {
+            String[] stringSplit = topicToTableMapString.split(",");
+            for (String topicToTable : stringSplit) {
+                String[] propSplit = topicToTable.trim().split("=");
+                if (propSplit.length == 2) {
                     topicToTableMap.put(propSplit[0].trim(), propSplit[1].trim());
                 }
             }
@@ -256,10 +270,10 @@ public class ClickHouseSinkConfig {
         this.dateTimeFormats = new HashMap<>();
         String dateTimeFormatsString = props.getOrDefault(DATE_TIME_FORMAT, "").trim();
         if (!dateTimeFormatsString.isBlank()) {
-            String [] stringSplit = dateTimeFormatsString.split(";");
-            for (String topicToDateTimeFormat: stringSplit) {
-                String [] propSplit = topicToDateTimeFormat.trim().split("=");
-                if ( propSplit.length == 2 ) {
+            String[] stringSplit = dateTimeFormatsString.split(";");
+            for (String topicToDateTimeFormat : stringSplit) {
+                String[] propSplit = topicToDateTimeFormat.trim().split("=");
+                if (propSplit.length == 2) {
                     dateTimeFormats.put(propSplit[0].trim(), DateTimeFormatter.ofPattern(propSplit[1].trim()));
                 }
             }
@@ -268,9 +282,13 @@ public class ClickHouseSinkConfig {
         this.tolerateStateMismatch = Boolean.parseBoolean(props.getOrDefault(TOLERATE_STATE_MISMATCH, "false"));
         this.bypassSchemaValidation = Boolean.parseBoolean(props.getOrDefault(BYPASS_SCHEMA_VALIDATION, "false"));
         this.bypassFieldCleanup = Boolean.parseBoolean(props.getOrDefault(BYPASS_FIELD_CLEANUP, "false"));
-        this.ignorePartitionsWhenBatching = Boolean.parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
 
-        LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
+        this.connectStatePrefix = props.getOrDefault(CONNECT_STATE_PREFIX, "").trim();
+        this.ignorePartitionsWhenBatching = Boolean
+                .parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
+
+        LOGGER.debug(
+                "ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
         LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
@@ -291,7 +309,7 @@ public class ClickHouseSinkConfig {
     private static ConfigDef createConfigDef() {
         ConfigDef configDef = new ConfigDef();
 
-        //TODO: At some point we should group these more clearly
+        // TODO: At some point we should group these more clearly
         String group = "Connection";
         int orderInGroup = 0;
         configDef.define(HOSTNAME,
@@ -453,8 +471,7 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.LONG,
                 "Insert format.",
-                new InsertFormatValidatorAndRecommender()
-                );
+                new InsertFormatValidatorAndRecommender());
         configDef.define(PROXY_TYPE,
                 ConfigDef.Type.STRING,
                 "",
@@ -464,8 +481,7 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Proxy type",
-                new ProxyTypeValidatorAndRecommender()
-        );
+                new ProxyTypeValidatorAndRecommender());
         configDef.define(PROXY_HOST,
                 ConfigDef.Type.STRING,
                 "",
@@ -474,8 +490,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Proxy host"
-        );
+                "Proxy host");
         configDef.define(PROXY_PORT,
                 ConfigDef.Type.INT,
                 -1,
@@ -484,8 +499,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Proxy port"
-        );
+                "Proxy port");
         configDef.define(ZK_PATH,
                 ConfigDef.Type.STRING,
                 "/kafka-connect",
@@ -495,8 +509,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
-                "Zookeeper path"
-        );
+                "Zookeeper path");
         configDef.define(ZK_DATABASE,
                 ConfigDef.Type.STRING,
                 "connect_state",
@@ -505,8 +518,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
-                "State store database"
-        );
+                "State store database");
         configDef.define(ENABLE_DB_TOPIC_SPLIT,
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -525,8 +537,7 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Database topic split character",
-                new DbTopicSplitCharValidatorAndRecommender()
-        );
+                new DbTopicSplitCharValidatorAndRecommender());
         configDef.define(KEEPER_ON_CLUSTER,
                 ConfigDef.Type.STRING,
                 "",
@@ -535,8 +546,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Keeper on cluster"
-        );
+                "Keeper on cluster");
         configDef.define("bypassRowBinary",
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -563,8 +573,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Client version"
-        );
+                "Client version");
         configDef.define(TOLERATE_STATE_MISMATCH,
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -573,8 +582,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Tolerate state mismatch."
-        );
+                "Tolerate state mismatch.");
         configDef.define(BYPASS_SCHEMA_VALIDATION,
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -583,8 +591,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Bypass schema validation."
-        );
+                "Bypass schema validation.");
         configDef.define(BYPASS_FIELD_CLEANUP,
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -593,8 +600,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Bypass field cleanup."
-        );
+                "Bypass field cleanup.");
         configDef.define(IGNORE_PARTITIONS_WHEN_BATCHING,
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -603,8 +609,7 @@ public class ClickHouseSinkConfig {
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
-                "Ignore partitions when batching."
-        );
+                "Ignore partitions when batching.");
         return configDef;
     }
 }
