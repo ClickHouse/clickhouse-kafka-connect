@@ -776,8 +776,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "`off16` Int16," +
                 "`string` String," +
                 "`t` Tuple(" +
-                "    `off16` Int16," +
-                "    `string` String " +
+                "    `off16` Nullable(Int16)," +
+                "    `string` Nullable(String) " +
                 ")) Engine = MergeTree ORDER BY `off16`");
 
         Collection<SinkRecord> sr = SchemaTestData.createTupleSimpleData(topic, 1);

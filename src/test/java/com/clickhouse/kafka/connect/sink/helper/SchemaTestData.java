@@ -1166,8 +1166,8 @@ public class SchemaTestData {
     public static Collection<SinkRecord> createTupleSimpleData(String topic, int partition, int totalRecords) {
 
         Schema TUPLE_SCHEMA = SchemaBuilder.struct()
-                .field("off16", Schema.INT16_SCHEMA)
-                .field("string", Schema.STRING_SCHEMA)
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
