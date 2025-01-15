@@ -622,12 +622,12 @@ public class ClickHouseWriter implements DBWriter {
     }
 
 
-    protected void doWriteCol(Data value, boolean filedExists, Column col, OutputStream stream, boolean defaultsSupport) throws IOException {
+    protected void doWriteCol(Data value, boolean fieldExists, Column col, OutputStream stream, boolean defaultsSupport) throws IOException {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
         String name = col.getName();
         Type colType = col.getType();
-        if (filedExists) {
+        if (fieldExists) {
             LOGGER.trace("Column value is {}", value);
             // TODO: the mapping need to be more efficient
             if (defaultsSupport) {
