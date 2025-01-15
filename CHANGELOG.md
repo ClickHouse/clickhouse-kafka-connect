@@ -1,3 +1,6 @@
+# 1.2.7
+* Fix for handling of nullable fields in tuples ClickHouse data type
+
 # 1.2.6
 * Detect if table schema has changed and refresh the schema
 * Allow bypassing field cleanup
