@@ -1169,6 +1169,7 @@ public class SchemaTestData {
                 .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
                 .field("string", Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
+
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
                 .field("string", Schema.STRING_SCHEMA)
@@ -1184,6 +1185,58 @@ public class SchemaTestData {
                     .put( "t", new Struct(TUPLE_SCHEMA)
                             .put("off16", (short)n)
                             .put("string", "test string")
+                    );
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public static Collection<SinkRecord> createNestedTupleSimpleData(String topic, int partition) {
+        return createNestedTupleSimpleData(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createNestedTupleSimpleData(String topic, int partition, int totalRecords) {
+
+        Schema NESTED_TUPLE_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema TUPLE_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("n", NESTED_TUPLE_SCHEMA)
+                .build();
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("string", Schema.STRING_SCHEMA)
+                .field("t", TUPLE_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("string", "test string")
+                    .put( "t", new Struct(TUPLE_SCHEMA)
+                            .put("off16", (short)n)
+                            .put("string", "test string")
+                            .put("n" , new Struct(NESTED_TUPLE_SCHEMA)
+                                    .put("off16", (short)n)
+                                    .put("string", "test string"))
                     );
 
             SinkRecord sr = new SinkRecord(

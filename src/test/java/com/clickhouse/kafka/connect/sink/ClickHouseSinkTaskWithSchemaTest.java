@@ -815,4 +815,36 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
+
+    @Test
+    public void nestedTupleTestWithDefault() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("nested-tuple-table-test-default");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`string` String," +
+                "`insert_datetime` DateTime default now()," +
+                "`t` Tuple(" +
+                "    `off16` Nullable(Int16)," +
+                "    `string` Nullable(String), " +
+                "    `n` Tuple(" +
+                "    `off16` Nullable(Int16)," +
+                "    `string` Nullable(String) " +
+                ")" +
+                ")" +
+                ") Engine = MergeTree ORDER BY `off16`");
+
+        Collection<SinkRecord> sr = SchemaTestData.createNestedTupleSimpleData(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
 }
