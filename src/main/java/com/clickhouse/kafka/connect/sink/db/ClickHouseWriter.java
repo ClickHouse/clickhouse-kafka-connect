@@ -479,7 +479,7 @@ public class ClickHouseWriter implements DBWriter {
                     Data innerData = (Data) jsonMapValues.get(fieldName);
                     try {
                         // we need to apply here the default and nullable logic
-                        doWriteCol(innerData, jsonMapValues.containsKey(fieldName), column, stream, defaultsSupport, false);
+                        doWriteCol(innerData, jsonMapValues.containsKey(fieldName), column, stream, false);
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -621,8 +621,19 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-
-    protected void doWriteCol(Data value, boolean fieldExists, Column col, OutputStream stream, boolean defaultsSupport, boolean firstTime) throws IOException {
+    /**
+     * Write records to ClickHouse using RowBinary/RowBinaryWithDefaults format.
+     *
+     * Note: RowBinaryWithDefaults writes an extra byte 01 to indicate default, and 00
+     * to indicate actual value. But that only applies to top level columns.
+     * @param value The data to write
+     * @param fieldExists Indecate if the field exists
+     * @param col Internal Column object (represent type and name of the column)
+     * @param stream Stream to write the data
+     * @param defaultsSupport Indicate if the defaults values in fields at the level
+     * @throws IOException
+     */
+    protected void doWriteCol(Data value, boolean fieldExists, Column col, OutputStream stream, boolean defaultsSupport) throws IOException {
         LOGGER.trace("Writing column {} to stream", col.getName());
         LOGGER.trace("Column type is {}", col.getType());
         String name = col.getName();
@@ -632,9 +643,7 @@ public class ClickHouseWriter implements DBWriter {
             // TODO: the mapping need to be more efficient
             if (defaultsSupport) {
                 if (value.getObject() != null) {//Because we now support defaults, we have to send nonNull
-                    if (firstTime) {
-                        BinaryStreamUtils.writeNonNull(stream);//Write 0 for no default
-                    }
+                    BinaryStreamUtils.writeNonNull(stream);//Write 0 for no default
 
                     if (col.isNullable()) {//If the column is nullable
                         BinaryStreamUtils.writeNonNull(stream);//Write 0 for not null
@@ -752,7 +761,7 @@ public class ClickHouseWriter implements DBWriter {
                     String name = col.getName();
                     boolean filedExists = record.getJsonMap().containsKey(name);
                     Data value = record.getJsonMap().get(name);
-                    doWriteCol(value, filedExists, col, stream, supportDefaults, true);
+                    doWriteCol(value, filedExists, col, stream, supportDefaults);
                     pushStreamTime += System.currentTimeMillis() - beforePushStream;
                 }
             }
@@ -808,7 +817,7 @@ public class ClickHouseWriter implements DBWriter {
                             String name = col.getName();
                             boolean filedExists = record.getJsonMap().containsKey(name);
                             Data value = record.getJsonMap().get(name);
-                            doWriteCol(value, filedExists, col, stream, supportDefaults, true);
+                            doWriteCol(value, filedExists, col, stream, supportDefaults);
                             pushStreamTime += System.currentTimeMillis() - beforePushStream;
                         }
                     }

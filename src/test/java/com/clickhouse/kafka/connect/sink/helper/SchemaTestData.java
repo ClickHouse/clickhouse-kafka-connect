@@ -1254,7 +1254,121 @@ public class SchemaTestData {
         });
         return array;
     }
+    public static Collection<SinkRecord> createCoolSchemaWithRandomFields(String topic, int partition) {
+        return createCoolSchemaWithRandomFields(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createCoolSchemaWithRandomFields(String topic, int partition, int totalRecords) {
 
+//        "`processing_time` DateTime," +
+//                "`insert_time` DateTime DEFAULT now()," +
+//                "`type` String," +
+//                "`player` Tuple(id Nullable(Int64), key Nullable(String), ip Nullable(String), label Nullable(String), device_id Nullable(Int64), player_tracker_id Nullable(Int64), is_new_player Nullable(Bool), player_root Nullable(String), target Nullable(String), `type` Nullable(String), name Nullable(String), processing_time Nullable(Int64), tags Map(String, String), session_id Nullable(String), machine_fingerprint Nullable(String), player_fingerprint Nullable(String))," +
+//                "`sensor` Tuple(sensor_id String, origin_device String, session_id String, machine_id Int64, machine_timestamp String)," +
+//                "`data` String, " +
+//                "`id` String, " +
+//                "`desc` Nullable(String), " +
+//                "`tag` Nullable(String), " +
+//                "`va` Nullable(Float64) " +
+
+
+        Schema PLAYER_SCHEMA = SchemaBuilder.struct()
+                .field("id", Schema.OPTIONAL_INT64_SCHEMA)
+                .field("key", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("ip", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("label", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("device_id", Schema.OPTIONAL_INT64_SCHEMA)
+                .field("player_tracker_id", Schema.OPTIONAL_INT64_SCHEMA)
+                .field("is_new_player", Schema.OPTIONAL_BOOLEAN_SCHEMA)
+                .field("player_root", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("target", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("type", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("processing_time", Schema.OPTIONAL_INT64_SCHEMA)
+                .field("tags", SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA))
+                .field("session_id", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("machine_fingerprint", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("player_fingerprint", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema SENSOR_SCHEMA = SchemaBuilder.struct()
+                .field("sensor_id", Schema.STRING_SCHEMA)
+                .field("origin_device", Schema.STRING_SCHEMA)
+                .field("session_id", Schema.STRING_SCHEMA)
+                .field("machine_id", Schema.INT64_SCHEMA)
+                .field("machine_timestamp", Schema.STRING_SCHEMA)
+                .build();
+
+        Schema COOL_SCHEMA = SchemaBuilder.struct()
+                .field("processing_time", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("type", Schema.STRING_SCHEMA)
+                .field("player", PLAYER_SCHEMA)
+                .field("sensor", SENSOR_SCHEMA)
+                .field("data", Schema.STRING_SCHEMA)
+                .field("id", Schema.STRING_SCHEMA)
+                .field("desc", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("tag", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("va", Schema.OPTIONAL_FLOAT64_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            Map<String,String> tags = Map.of(
+                    "k1", "v1",
+                    "k2", "v1"
+            );
+
+            Struct player_struct = new Struct(PLAYER_SCHEMA)
+                    .put("id", n)
+                    .put("key", "Cool key")
+                    .put("ip", "0.0.0.0")
+                    .put("label", "Cool label")
+                    .put("device_id", n)
+                    .put("player_tracker_id", n)
+                    .put("is_new_player", false)
+                    .put("player_root", UUID.randomUUID().toString())
+                    .put("target", "cool target")
+                    .put("type", "cool type")
+                    .put("name", "cool name")
+                    .put("processing_time", System.currentTimeMillis())
+                    .put("tags", tags)
+                    .put("session_id", UUID.randomUUID().toString())
+                    .put("machine_fingerprint", UUID.randomUUID().toString())
+                    .put("player_fingerprint", UUID.randomUUID().toString());
+
+            Struct sensor_struct = new Struct(SENSOR_SCHEMA)
+                    .put("sensor_id", "461ca7c5-5632-4f08-be15-8a0aceb5c874")
+                    .put("origin_device", "cool device")
+                    .put("session_id", "7b45b380-77fe-4cda-a390-00603cdd0c8e")
+                    .put("machine_id", n)
+                    .put("machine_timestamp", "cool device");
+
+            Struct value_struct = new Struct(COOL_SCHEMA)
+                    .put("processing_time", (int)n)
+                    .put("type", "Cool type")
+                    .put("player", player_struct)
+                    .put("sensor", sensor_struct)
+                    .put("data", "Cool data")
+                    .put("id", "0ce8ca62-237a-422f-af1f-a8ec73549fe8 ")
+                    .put("desc", "Cool app")
+                    .put("tag", "Cool")
+                    .put("va", (double)n);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, COOL_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
     public static Collection<SinkRecord> createSimpleExtendWithNullableData(String topic, int partition) {
         return createSimpleExtendWithNullableData(topic, partition, 0, DEFAULT_TOTAL_RECORDS);
     }
