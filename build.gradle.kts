@@ -48,7 +48,7 @@ repositories {
 }
 
 extra.apply {
-    set("clickHouseDriverVersion", "0.7.1")
+    set("clickHouseDriverVersion", "0.8.0")
     set("kafkaVersion", "2.7.0")
 
     // Testing dependencies
