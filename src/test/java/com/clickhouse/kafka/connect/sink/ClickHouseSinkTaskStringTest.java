@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
-        String queryCount = "select count(*) from " + topic + " where str LIKE '%\uD83D\uDE00%'";
+        String queryCount = "select count(*) from " + topic + " where str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
             String value = records.iterator().next().getString(1);
@@ -35,7 +35,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         }
     }
     private int countRows(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from `%s`", topic);
+        String queryCount = String.format("select count(*) from `%s` SETTINGS select_sequential_consistency = 1", topic);
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
             String value = records.iterator().next().getString(1);

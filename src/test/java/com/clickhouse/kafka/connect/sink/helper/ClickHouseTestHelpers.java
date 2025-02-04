@@ -183,7 +183,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = String.format("SELECT COUNT(*) FROM `%s`", tableName);
+        String queryCount = String.format("SELECT COUNT(*) FROM `%s` SETTINGS select_sequential_consistency = 1", tableName);
 
         try {
             optimizeTable(chc, tableName);
@@ -212,7 +212,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%'";
+        String queryCount = "SELECT COUNT(*) FROM `" + tableName + "` WHERE str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
         try {
             Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             String value = records.iterator().next().getString(1);
