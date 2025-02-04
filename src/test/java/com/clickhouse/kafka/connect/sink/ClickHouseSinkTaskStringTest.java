@@ -35,7 +35,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         }
     }
     private int countRows(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from `%s`", topic);
+        String queryCount = String.format("select count(*) from `%s` SETTINGS select_sequential_consistency = 1", topic);
         try {
             Records records = chc.getClient().queryRecords(queryCount).get();
             String value = records.iterator().next().getString(1);
