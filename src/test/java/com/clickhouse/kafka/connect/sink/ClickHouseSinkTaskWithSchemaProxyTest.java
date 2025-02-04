@@ -42,7 +42,8 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         db = new org.testcontainers.clickhouse.ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE)
                 .withNetwork(network)
                 .withNetworkAliases("clickhouse")
-                .withPassword("test_password");
+                .withPassword("test_password")
+                .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
         db.start();
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
