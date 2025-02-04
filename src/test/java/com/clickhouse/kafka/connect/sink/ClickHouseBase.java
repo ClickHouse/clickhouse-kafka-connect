@@ -34,7 +34,7 @@ public class ClickHouseBase {
             initialPing();
             return;
         }
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withEnv("CLICKHOUSE_PASSWORD", "test_password");
         db.start();
     }
 
