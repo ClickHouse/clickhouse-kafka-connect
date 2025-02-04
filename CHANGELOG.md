@@ -1,3 +1,6 @@
+# 1.2.8
+* Fix NPE on V1 client when Clickhouse has table with Array(Nested...) field
+
 # 1.2.7
 * Bump clickhouse-java to 0.8.0
 * Fix for handling of nullable fields in tuples ClickHouse data type
