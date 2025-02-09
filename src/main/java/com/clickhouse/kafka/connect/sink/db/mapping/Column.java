@@ -186,6 +186,9 @@ public class Column {
                     .build();
         } else if (valueType.startsWith("Array")) {
             Column arrayType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false, isSubColumn, hasDefaultValue, arrayDepth + 1);
+            if (arrayType == null) {
+                return null;
+            }
 
             Column array = builder.type(Type.ARRAY)
                     .arrayType(arrayType)

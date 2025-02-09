@@ -64,6 +64,22 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     }
 
     @Test
+    public void ignoreArrayWithNestedTable() {
+        String topic = createTopicName("nested_table_test");
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE %s ( `num` String, " +
+                        "`nested` Array(Nested (innerInt Int32, innerString String))) " +
+                        "Engine = MergeTree ORDER BY num");
+
+        try {
+            Table table = chc.describeTable(chc.getDatabase(), topic);
+            Assertions.assertNull(table);
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    @Test
     @SinceClickHouseVersion("24.1")
     public void describeNestedUnFlattenedTable() {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
