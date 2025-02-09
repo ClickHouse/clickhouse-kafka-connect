@@ -78,7 +78,8 @@ public class ClickHouseBase {
         String password = csc.getPassword();
         boolean sslEnabled = csc.isSslEnabled();
         int timeout = csc.getTimeout();
-
+        String clientVersion = csc.getClientVersion();
+        boolean useClientV2 = clientVersion.equals("V1") ? false : true;
         ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(database)
                 .setUsername(username)
@@ -86,6 +87,7 @@ public class ClickHouseBase {
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .useClientV2(useClientV2)
                 .build();
 
         if (withDatabase) {
@@ -98,6 +100,7 @@ public class ClickHouseBase {
                     .sslEnable(sslEnabled)
                     .setTimeout(timeout)
                     .setRetry(csc.getRetry())
+                    .useClientV2(useClientV2)
                     .build();
             }
 
