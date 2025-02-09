@@ -8,9 +8,9 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.util.function.Tuple2;
-import reactor.util.function.Tuple3;
-import reactor.util.function.Tuples;
+import com.clickhouse.kafka.connect.util.reactor.function.Tuple2;
+import com.clickhouse.kafka.connect.util.reactor.function.Tuple3;
+import com.clickhouse.kafka.connect.util.reactor.function.Tuples;
 
 import java.util.ArrayList;
 import java.util.Comparator;

@@ -1,4 +1,5 @@
 # 1.2.8
+* Reduce archive size by removing unnecessary dependencies from the jar
 * Fix NPE on V1 client when Clickhouse has table with Array(Nested...) field
 
 # 1.2.7
