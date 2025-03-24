@@ -16,7 +16,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
     @Test
     public void primitiveTypesTest() {
-        Map<String, String> props = createProps();;
+        Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
@@ -34,8 +34,29 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     }
 
     @Test
+    public void primitiveTypesTestSimplifiedBatching() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("schemaless_primitive_types_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+    }
+
+    @Test
     public void primitiveTypesSubsetTest() {
-        Map<String, String> props = createProps();;
+        Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
