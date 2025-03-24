@@ -744,7 +744,11 @@ public class ClickHouseWriter implements DBWriter {
 
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
-        insertSettings.setDeduplicationToken(queryId.getDeduplicationToken());
+
+        String deduplicationToken = queryId.getDeduplicationToken();
+        if (deduplicationToken != null) {
+            insertSettings.setDeduplicationToken(deduplicationToken);
+        }
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
@@ -873,6 +877,8 @@ public class ClickHouseWriter implements DBWriter {
                 java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
+                        LOGGER.trace("Record: {}", record.getTopicAndPartition());
+
                         Map<String, Object> data;
                         switch (record.getSchemaType()) {
                             case SCHEMA:
@@ -934,7 +940,10 @@ public class ClickHouseWriter implements DBWriter {
 
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
-        insertSettings.setDeduplicationToken(queryId.getDeduplicationToken());
+        String deduplicationToken = queryId.getDeduplicationToken();
+        if (deduplicationToken != null) {
+            insertSettings.setDeduplicationToken(deduplicationToken);
+        }
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
@@ -1084,7 +1093,10 @@ public class ClickHouseWriter implements DBWriter {
 
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
-        insertSettings.setDeduplicationToken(queryId.getDeduplicationToken());
+        String deduplicationToken = queryId.getDeduplicationToken();
+        if (deduplicationToken != null) {
+            insertSettings.setDeduplicationToken(deduplicationToken);
+        }
         insertSettings.setQueryId(queryId.getQueryId());
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
@@ -1162,8 +1174,12 @@ public class ClickHouseWriter implements DBWriter {
         ClickHouseRequest.Mutation request = client.read(server)
                 .write()
                 .table(tableName, queryId.getQueryId())
-                .format(format)
-                .set("insert_deduplication_token", queryId.getDeduplicationToken());
+                .format(format);
+
+        String deduplicationToken = queryId.getDeduplicationToken();
+        if (deduplicationToken != null) {
+            request.set("insert_deduplication_token", deduplicationToken);
+        }
 
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             request.set(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
