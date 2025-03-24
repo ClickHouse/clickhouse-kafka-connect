@@ -85,22 +85,13 @@ public class ProxySinkTask {
         LOGGER.trace(String.format("Got %d records from put API.", records.size()));
         ExecutionTimer processingTime = ExecutionTimer.start();
 
-        Map<String, List<Record>> dataRecords;
-        if (!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()) {
-            dataRecords = records.stream()
-                    .map(v -> Record.convert(v,
-                            clickHouseSinkConfig.isEnableDbTopicSplit(),
-                            clickHouseSinkConfig.getDbTopicSplitChar(),
-                            clickHouseSinkConfig.getDatabase() ))
-                    .collect(Collectors.groupingBy(Record::getTopic));
-        } else {
-            dataRecords = records.stream()
-                    .map(v -> Record.convert(v,
-                            clickHouseSinkConfig.isEnableDbTopicSplit(),
-                            clickHouseSinkConfig.getDbTopicSplitChar(),
-                            clickHouseSinkConfig.getDatabase() ))
-                    .collect(Collectors.groupingBy(Record::getTopicAndPartition));
-        }
+        Map<String, List<Record>> dataRecords = records.stream()
+                .map(v -> Record.convert(v,
+                        clickHouseSinkConfig.isEnableDbTopicSplit(),
+                        clickHouseSinkConfig.getDbTopicSplitChar(),
+                        clickHouseSinkConfig.getDatabase() ))
+                .collect(Collectors.groupingBy(!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()
+                        ? Record::getTopic : Record::getTopicAndPartition));
 
         statistics.recordProcessingTime(processingTime);
         // TODO - Multi process???
