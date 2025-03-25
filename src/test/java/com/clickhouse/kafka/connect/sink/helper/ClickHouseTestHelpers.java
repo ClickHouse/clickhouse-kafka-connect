@@ -5,7 +5,9 @@ import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.metrics.OperationMetrics;
+import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
@@ -271,6 +273,19 @@ public class ClickHouseTestHelpers {
 
         return match;
     }
+
+    public static int countInsertQueries(ClickHouseHelperClient chc, String topic) {
+        try (Client client = chc.getClient()) {
+            String sql = String.format("SELECT COUNT(*) " +
+                    "FROM system.query_log " +
+                    "WHERE type = 'QueryFinish' " +
+                    "AND query_kind = 'Insert' " +
+                    "AND query ILIKE '%%%s%%'", topic);
+            GenericRecord result = client.queryAll(sql).get(0);
+            return result.getInteger(1);
+        }
+    }
+
 
     @Deprecated(since = "for debug purposes only")
     public static void showRows(ClickHouseHelperClient chc, String topic) {
