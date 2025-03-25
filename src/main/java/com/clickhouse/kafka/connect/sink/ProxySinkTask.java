@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
@@ -67,7 +68,7 @@ public class ProxySinkTask {
     }
 
     private String getMBeanNAme() {
-        return "com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask" + id;
+        return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", id, ClickHouseClientOption.class.getPackage().getImplementationVersion());
     }
 
     public void stop() {
