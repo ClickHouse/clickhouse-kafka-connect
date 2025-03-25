@@ -15,11 +15,9 @@ import com.clickhouse.kafka.connect.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class Processing {
@@ -45,7 +43,7 @@ public class Processing {
      */
     private void doInsert(List<Record> records, RangeContainer rangeContainer) {
         if (records == null || records.isEmpty()) {
-            LOGGER.debug("doInsert - No records to insert.");
+            LOGGER.trace("doInsert - No records to insert.");
             return;
         }
         QueryIdentifier queryId = new QueryIdentifier(records.get(0).getRecordOffsetContainer().getTopic(), records.get(0).getRecordOffsetContainer().getPartition(),
@@ -54,6 +52,21 @@ public class Processing {
 
         try {
             LOGGER.debug("doInsert - Records: [{}] - {}", records.size(), queryId);
+            dbWriter.doInsert(records, queryId, errorReporter);
+        } catch (Exception e) {
+            throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
+        }
+    }
+
+    private void doInsert(List<Record> records) {
+        if (records == null || records.isEmpty()) {
+            LOGGER.trace("doInsert - No records to insert.");
+            return;
+        }
+        QueryIdentifier queryId = new QueryIdentifier(records.get(0).getRecordOffsetContainer().getTopic(), UUID.randomUUID().toString());
+
+        try {
+            LOGGER.info("doInsert - Records: [{}] - {}", records.size(), queryId);
             dbWriter.doInsert(records, queryId, errorReporter);
         } catch (Exception e) {
             throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
@@ -91,7 +104,7 @@ public class Processing {
     }
 
 
-    public void doLogic(List<Record> records) throws IOException, ExecutionException, InterruptedException {
+    public void doLogic(List<Record> records) {
         List<Record> trimmedRecords;
         Record record = records.get(0);
 
@@ -100,6 +113,12 @@ public class Processing {
 
         if (this.clickHouseSinkConfig != null && clickHouseSinkConfig.isEnableDbTopicSplit()) {
             topic = database + clickHouseSinkConfig.getDbTopicSplitChar() + topic;
+        }
+
+        if (!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()) {
+            LOGGER.debug("doLogic - Topic: [{}], Records: [{}]", topic, records.size());
+            doInsert(records);
+            return;
         }
 
         int partition = record.getRecordOffsetContainer().getPartition();

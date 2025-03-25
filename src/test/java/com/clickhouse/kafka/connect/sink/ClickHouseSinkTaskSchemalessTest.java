@@ -16,7 +16,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
     @Test
     public void primitiveTypesTest() {
-        Map<String, String> props = createProps();;
+        Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
@@ -35,7 +35,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
     @Test
     public void primitiveTypesSubsetTest() {
-        Map<String, String> props = createProps();;
+        Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");

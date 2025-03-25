@@ -7,6 +7,8 @@ import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
@@ -129,5 +131,28 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             int count = countRows(chc, String.valueOf(i), tableName);
             assertEquals(DEFAULT_TOTAL_RECORDS, count);
         });
+    }
+
+
+    @Test
+    public void simplifiedBatchingSchemaless() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("schemaless_simple_batch_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        //assertEquals(1, ClickHouseTestHelpers.countInsertQueries(chc, topic));
     }
 }
