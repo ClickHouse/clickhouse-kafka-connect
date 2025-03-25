@@ -1,3 +1,7 @@
+# 1.2.9
+* Add `ignorePartitionsWhenBatching` flag to adjust batching when not using exactlyOnce
+* Add version information to MBean
+
 # 1.2.8
 * Reduce archive size by removing unnecessary dependencies from the jar
 * Fix NPE on V1 client when Clickhouse has table with Array(Nested...) field

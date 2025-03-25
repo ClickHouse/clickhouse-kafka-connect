@@ -2,12 +2,13 @@
 lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 rules:
-  - pattern: "com.clickhouse<type=ClickHouseKafkaConnector, name=SinkTask(.*)><>(.*): (.*)"
+  - pattern: "com.clickhouse<type=ClickHouseKafkaConnector, name=SinkTask(.*), version=(.*)><>(.*): (.*)"
     name: clickhouse_kafka_connect
     labels:
       sinktask: "$1"
-      attribute: "$2"
-    help: "ClickHouseKafkaConnector metric $2"
+      version: "$2"
+      attribute: "$3"
+    help: "ClickHouseKafkaConnector metrics version $2"
     type: COUNTER
   - pattern: 'kafka.(.+)<type=app-info, client-id=(.+)><>start-time-ms'
     name: kafka_$1_start_time_seconds
