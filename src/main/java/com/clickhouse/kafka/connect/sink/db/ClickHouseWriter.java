@@ -732,6 +732,8 @@ public class ClickHouseWriter implements DBWriter {
         Record first = records.get(0);
         String database = first.getDatabase();
 
+        Map<String, Data> dataRecord = StructToJsonMap.toJsonMap((Struct) first.getSinkRecord().value());
+        first.setJsonMap(dataRecord);
         if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
@@ -759,6 +761,8 @@ public class ClickHouseWriter implements DBWriter {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
+                Map<String, Data> dataRecordTmp = StructToJsonMap.toJsonMap((Struct) record.getSinkRecord().value());
+                record.setJsonMap(dataRecordTmp);
                 for (Column col : table.getRootColumnsList()) {
                     LOGGER.debug("Writing column: {}", col.getName());
                     long beforePushStream = System.currentTimeMillis();
@@ -768,6 +772,7 @@ public class ClickHouseWriter implements DBWriter {
                     doWriteCol(value, filedExists, col, stream, supportDefaults);
                     pushStreamTime += System.currentTimeMillis() - beforePushStream;
                 }
+                record.setJsonMap(null);
             }
         }
 
@@ -793,6 +798,9 @@ public class ClickHouseWriter implements DBWriter {
         Record first = records.get(0);
         String database = first.getDatabase();
 
+        Map<String, Data> dataRecord = StructToJsonMap.toJsonMap((Struct) first.getSinkRecord().value());
+        first.setJsonMap(dataRecord);
+
         if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
@@ -816,6 +824,8 @@ public class ClickHouseWriter implements DBWriter {
                 // write bytes into the piped stream
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
+                        Map<String, Data> dataRecordTmp = StructToJsonMap.toJsonMap((Struct) record.getSinkRecord().value());
+                        record.setJsonMap(dataRecordTmp);
                         for (Column col : table.getRootColumnsList()) {
                             long beforePushStream = System.currentTimeMillis();
                             String name = col.getName();
@@ -824,6 +834,8 @@ public class ClickHouseWriter implements DBWriter {
                             doWriteCol(value, filedExists, col, stream, supportDefaults);
                             pushStreamTime += System.currentTimeMillis() - beforePushStream;
                         }
+                        record.setJsonMap(null);
+
                     }
                 }
                 // We need to close the stream before getting a response
