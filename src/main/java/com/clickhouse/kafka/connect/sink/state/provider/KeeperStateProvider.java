@@ -17,6 +17,9 @@ import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class KeeperStateProvider implements StateProvider {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KeeperStateProvider.class);
@@ -27,8 +30,11 @@ public class KeeperStateProvider implements StateProvider {
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
+    private Map<String, StateRecord> stateMap = null;
+
     public KeeperStateProvider(ClickHouseSinkConfig csc) {
         this.csc = csc;
+        this.stateMap = new HashMap<>();
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -106,7 +112,15 @@ public class KeeperStateProvider implements StateProvider {
             long maxOffset = r.getValue(2).asLong();
             State state = State.valueOf(r.getValue(3).asString());
             LOGGER.debug(String.format("read state record: topic %s partition %s with %s state max %d min %d", topic, partition, state, maxOffset, minOffset));
-            return new StateRecord(topic, partition, maxOffset, minOffset, state);
+
+            StateRecord stateRecord = new StateRecord(topic, partition, maxOffset, minOffset, state);
+            StateRecord storedRecord = stateMap.get(csc.getZkDatabase() + "-" + key);
+            if (storedRecord != null && !stateRecord.equals(storedRecord)) {
+                LOGGER.warn("State record is changed: {} -> {}", storedRecord, stateRecord);
+            } else {
+                LOGGER.debug("State record stored: {}", storedRecord);
+            }
+            return stateRecord;
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
@@ -127,5 +141,7 @@ public class KeeperStateProvider implements StateProvider {
             LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
             response.close();
         }
+
+        stateMap.put(csc.getZkDatabase() + "-" + key, stateRecord);
     }
 }
