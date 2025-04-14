@@ -115,7 +115,7 @@ public class KeeperStateProvider implements StateProvider {
             long minOffset = r.getValue(1).asLong();
             long maxOffset = r.getValue(2).asLong();
             State state = State.valueOf(r.getValue(3).asString());
-            LOGGER.debug(String.format("read state record: topic %s partition %s with %s state max %d min %d", topic, partition, state, maxOffset, minOffset));
+            LOGGER.debug("read state record: topic {} partition {} with {} state max {} min {}", topic, partition, state, maxOffset, minOffset);
 
             StateRecord stateRecord = new StateRecord(topic, partition, maxOffset, minOffset, state);
             StateRecord storedRecord = stateMap.get(csc.getZkDatabase() + "-" + key);
