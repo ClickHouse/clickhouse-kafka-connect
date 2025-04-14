@@ -103,10 +103,14 @@ public class KeeperStateProvider implements StateProvider {
                      .query(selectStr)
                      .executeAndWait()) {
             LOGGER.debug("return size: {}", response.getSummary().getReadRows());
-            if ( response.getSummary().getResultRows() == 0) {
-                LOGGER.info(String.format("read state record: topic %s partition %s with NONE state", topic, partition));
+            long totalResultsFound = response.getSummary().getResultRows();
+            if ( totalResultsFound == 0) {
+                LOGGER.info("Read state record: topic {} partition {} with NONE state", topic, partition);
                 return new StateRecord(topic, partition, 0, 0, State.NONE);
+            } else if(totalResultsFound > 1){
+                LOGGER.warn("There was more than 1 state records for query: {} ({} found)", selectStr, totalResultsFound);
             }
+
             ClickHouseRecord r = response.firstRecord();
             long minOffset = r.getValue(1).asLong();
             long maxOffset = r.getValue(2).asLong();
