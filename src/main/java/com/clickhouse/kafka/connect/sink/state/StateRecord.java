@@ -31,4 +31,14 @@ public class StateRecord extends RangeContainer {
                 && this.getMinOffset() == that.getMinOffset()
                 && this.getMaxOffset() == that.getMaxOffset();
     }
+
+    public String toString() {
+        return "StateRecord{" +
+                "topic='" + topic + "'" +
+                ", partition=" + partition +
+                ", state='" + state + "'" +
+                ", minOffset=" + getMinOffset() +
+                ", maxOffset=" + getMaxOffset() +
+                '}';
+    }
 }
