@@ -17,8 +17,8 @@ import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class KeeperStateProvider implements StateProvider {
 
@@ -34,7 +34,7 @@ public class KeeperStateProvider implements StateProvider {
 
     public KeeperStateProvider(ClickHouseSinkConfig csc) {
         this.csc = csc;
-        this.stateMap = new HashMap<>();
+        this.stateMap = new ConcurrentHashMap<>();
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
