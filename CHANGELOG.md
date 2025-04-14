@@ -1,3 +1,6 @@
+# 1.3.0
+* Added additional debug logging around KeeperMap and exactlyOnce
+
 # 1.2.9
 * Add `ignorePartitionsWhenBatching` flag to adjust batching when not using exactlyOnce
 * Add version information to MBean

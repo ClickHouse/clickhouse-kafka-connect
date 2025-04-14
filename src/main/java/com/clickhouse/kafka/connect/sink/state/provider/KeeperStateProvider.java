@@ -17,6 +17,9 @@ import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class KeeperStateProvider implements StateProvider {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KeeperStateProvider.class);
@@ -27,8 +30,11 @@ public class KeeperStateProvider implements StateProvider {
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
+    private Map<String, StateRecord> stateMap = null;
+
     public KeeperStateProvider(ClickHouseSinkConfig csc) {
         this.csc = csc;
+        this.stateMap = new ConcurrentHashMap<>();
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -97,16 +103,28 @@ public class KeeperStateProvider implements StateProvider {
                      .query(selectStr)
                      .executeAndWait()) {
             LOGGER.debug("return size: {}", response.getSummary().getReadRows());
-            if ( response.getSummary().getResultRows() == 0) {
-                LOGGER.info(String.format("read state record: topic %s partition %s with NONE state", topic, partition));
+            long totalResultsFound = response.getSummary().getResultRows();
+            if ( totalResultsFound == 0) {
+                LOGGER.info("Read state record: topic {} partition {} with NONE state", topic, partition);
                 return new StateRecord(topic, partition, 0, 0, State.NONE);
+            } else if(totalResultsFound > 1){
+                LOGGER.warn("There was more than 1 state records for query: {} ({} found)", selectStr, totalResultsFound);
             }
+
             ClickHouseRecord r = response.firstRecord();
             long minOffset = r.getValue(1).asLong();
             long maxOffset = r.getValue(2).asLong();
             State state = State.valueOf(r.getValue(3).asString());
-            LOGGER.debug(String.format("read state record: topic %s partition %s with %s state max %d min %d", topic, partition, state, maxOffset, minOffset));
-            return new StateRecord(topic, partition, maxOffset, minOffset, state);
+            LOGGER.debug("read state record: topic {} partition {} with {} state max {} min {}", topic, partition, state, maxOffset, minOffset);
+
+            StateRecord stateRecord = new StateRecord(topic, partition, maxOffset, minOffset, state);
+            StateRecord storedRecord = stateMap.get(csc.getZkDatabase() + "-" + key);
+            if (storedRecord != null && !stateRecord.equals(storedRecord)) {
+                LOGGER.warn("State record is changed: {} -> {}", storedRecord, stateRecord);
+            } else {
+                LOGGER.debug("State record stored: {}", storedRecord);
+            }
+            return stateRecord;
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
@@ -119,13 +137,15 @@ public class KeeperStateProvider implements StateProvider {
         String key = stateRecord.getTopicAndPartitionKey();
         String state = stateRecord.getState().toString();
         String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase(), key, minOffset, maxOffset, state);
+        LOGGER.debug("Write state record: {}", stateRecord);
         if (chc.isUseClientV2()) {
             this.chc.queryV2(insertStr);
         } else {
             ClickHouseResponse response = this.chc.queryV1(insertStr);
-            LOGGER.info(String.format("write state record: topic %s partition %s with %s state max %d min %d", stateRecord.getTopic(), stateRecord.getPartition(), state, maxOffset, minOffset));
-            LOGGER.debug(String.format("Number of written rows [%d]", response.getSummary().getWrittenRows()));
+            LOGGER.debug("Number of written rows [{}]", response.getSummary().getWrittenRows());
             response.close();
         }
+
+        stateMap.put(csc.getZkDatabase() + "-" + key, stateRecord);
     }
 }
