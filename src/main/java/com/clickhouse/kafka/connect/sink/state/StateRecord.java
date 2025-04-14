@@ -2,6 +2,8 @@ package com.clickhouse.kafka.connect.sink.state;
 
 import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
 
+import java.util.Objects;
+
 public class StateRecord extends RangeContainer {
     private State state;
 
@@ -25,7 +27,7 @@ public class StateRecord extends RangeContainer {
 
         StateRecord that = (StateRecord) o;
 
-        return this.topic.equals(that.topic)
+        return Objects.equals(this.topic, that.topic)
                 && this.partition == that.partition
                 && this.state == that.state
                 && this.getMinOffset() == that.getMinOffset()
