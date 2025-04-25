@@ -72,7 +72,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
-    implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.google.code.gson:gson:2.13.1")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
     implementation("org.apache.httpcomponents.client5:httpclient5:5.4.2")
 
@@ -99,7 +99,7 @@ dependencies {
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
-    clickhouseDependencies("com.google.code.gson:gson:2.11.0")
+    clickhouseDependencies("com.google.code.gson:gson:2.13.1")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:2.18.3")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-databind:2.18.2")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:2.18.2")
