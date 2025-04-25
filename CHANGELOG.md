@@ -1,3 +1,6 @@
+# 1.3.1
+* Ensure resources are auto-closed in exactlyOnce
+
 # 1.3.0
 * Added additional debug logging around KeeperMap and exactlyOnce
 
