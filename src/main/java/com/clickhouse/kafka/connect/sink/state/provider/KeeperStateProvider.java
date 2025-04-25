@@ -6,6 +6,7 @@ import com.clickhouse.client.ClickHouseNode;
 import com.clickhouse.client.ClickHouseNodeSelector;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
@@ -137,12 +138,17 @@ public class KeeperStateProvider implements StateProvider {
         String key = stateRecord.getTopicAndPartitionKey();
         String state = stateRecord.getState().toString();
         String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase(), key, minOffset, maxOffset, state);
-        LOGGER.debug("Write state record: {}", stateRecord);
+        LOGGER.info("Write state record: {}", stateRecord);
         if (chc.isUseClientV2()) {
-            this.chc.queryV2(insertStr);
+            try (Records records = this.chc.queryV2(insertStr)) {
+                LOGGER.debug("Number of written rows (V2) [{}]", records.getWrittenRows());
+            } catch (Exception e) {
+                LOGGER.error("Failed to write state record: {}", stateRecord, e);
+                throw new RuntimeException(e);
+            }
         } else {
             ClickHouseResponse response = this.chc.queryV1(insertStr);
-            LOGGER.debug("Number of written rows [{}]", response.getSummary().getWrittenRows());
+            LOGGER.debug("Number of written rows (V1) [{}]", response.getSummary().getWrittenRows());
             response.close();
         }
 
