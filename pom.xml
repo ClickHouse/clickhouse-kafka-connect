@@ -237,6 +237,46 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>io.confluent</groupId>
+                <version>0.12.0</version>
+                <artifactId>kafka-connect-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>kafka-connect</goal>
+                        </goals>
+                        <configuration>
+                            <title>ClickHouse Connector</title>
+                            <documentationUrl>https://github.com/ClickHouse/kafka-connect-clickhouse</documentationUrl>
+                            <description>
+                                The official ClickHouse connector for Apache Kafka Connect.
+                            </description>
+                            <componentTypes>
+                                <componentType>sink</componentType>
+                            </componentTypes>
+                            <tags>
+                                <tag>ClickHouse</tag>
+                                <tag>database</tag>
+                            </tags>
+                            <requirements>
+                                <requirement>ClickHouse Server 22.3 or later</requirement>
+                                <requirement>Confluent Platform 6.0 or later</requirement>
+                            </requirements>
+                            <deliveryGuarantee>
+                                <deliveryGuarantee>atLeastOnce</deliveryGuarantee>
+                            </deliveryGuarantee>
+                            <kafkaConnectApi>true</kafkaConnectApi>
+                            <singleMessageTransforms>true</singleMessageTransforms>
+                            <confluentControlCenterIntegration>true</confluentControlCenterIntegration>
+                            <ownerUsername>clickhouse</ownerUsername>
+                            <ownerType>organization</ownerType>
+                            <ownerName>ClickHouse, Inc.</ownerName>
+                            <ownerUrl>https://clickhouse.com/</ownerUrl>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>
