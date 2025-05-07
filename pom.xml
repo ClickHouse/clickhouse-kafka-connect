@@ -12,10 +12,47 @@
     <name>ClickHouse Kafka Connect</name>
     <description>The official ClickHouse Apache Kafka Connect Connector.</description>
 
+    <organization>
+        <name>ClickHouse, Inc.</name>
+        <url>https://clickhouse.com</url>
+    </organization>
+    <url>https://clickhouse.com</url>
+
+    <licenses>
+        <license>
+            <name>Apache License 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.html</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git://github.com/ClickHouse/kafka-connect-clickhouse.git</connection>
+        <developerConnection>scm:git:git@github.com:ClickHouse/kafka-connect-clickhouse.git</developerConnection>
+        <url>https://github.com/ClickHouse/kafka-connect-clickhouse</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/ClickHouse/kafka-connect-clickhouse/issues</url>
+    </issueManagement>
+
+    <developers>
+        <developer>
+            <id>clickhouse</id>
+            <name>ClickHouse Team</name>
+            <email>clickhouse@clickhouse.com</email>
+        </developer>
+    </developers>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
+        <dist-archive-name>${project.artifactId}-${project.version}.zip</dist-archive-name>
+        <gpg.skip>true</gpg.skip>
+        <autoReleaseAfterClose>true</autoReleaseAfterClose>
 
         <!-- Dependencies versions -->
         <clickhouse.driver.version>0.8.0</clickhouse.driver.version>
@@ -214,6 +251,18 @@
                             <filters>
                                 <filter>
                                     <artifact>com.clickhouse:*</artifact>
+                                    <includes>
+                                        <include>**</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>com.fasterxml.jackson:*</artifact>
+                                    <includes>
+                                        <include>**</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.apache.httpcomponents.client5:*</artifact>
                                     <includes>
                                         <include>**</include>
                                     </includes>
