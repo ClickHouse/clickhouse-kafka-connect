@@ -196,6 +196,18 @@
             <version>2.1.7</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Confluent SMT dependencies -->
+        <dependency>
+            <groupId>io.confluent</groupId>
+            <artifactId>kafka-connect-transforms</artifactId>
+            <version>${confluent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.confluent</groupId>
+            <artifactId>kafka-connect-transforms-common</artifactId>
+            <version>${confluent.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -248,31 +260,18 @@
                             <shadedArtifactAttached>true</shadedArtifactAttached>
                             <shadedClassifierName>confluent</shadedClassifierName>
                             <minimizeJar>false</minimizeJar>
+                            <outputDirectory>${project.build.directory}/components/clickhouse-kafka-connect/lib</outputDirectory>
                             <filters>
-                                <filter>
-                                    <artifact>com.clickhouse:*</artifact>
-                                    <includes>
-                                        <include>**</include>
-                                    </includes>
-                                </filter>
-                                <filter>
-                                    <artifact>com.fasterxml.jackson:*</artifact>
-                                    <includes>
-                                        <include>**</include>
-                                    </includes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.apache.httpcomponents.client5:*</artifact>
-                                    <includes>
-                                        <include>**</include>
-                                    </includes>
-                                </filter>
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>META-INF/LICENSE*</exclude>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
@@ -282,6 +281,17 @@
                                     <mainClass>com.clickhouse.kafka.connect.ClickHouseSinkConnector</mainClass>
                                 </transformer>
                             </transformers>
+                            <artifactSet>
+                                <includes>
+                                    <include>*:*</include>
+                                </includes>
+                                <excludes>
+                                    <exclude>org.apache.kafka:connect-api</exclude>
+                                    <exclude>org.apache.kafka:connect-runtime</exclude>
+                                    <exclude>org.apache.kafka:connect-json</exclude>
+                                    <exclude>org.apache.kafka:connect-transforms</exclude>
+                                </excludes>
+                            </artifactSet>
                         </configuration>
                     </execution>
                 </executions>
