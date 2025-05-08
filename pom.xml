@@ -55,7 +55,7 @@
         <autoReleaseAfterClose>true</autoReleaseAfterClose>
 
         <!-- Dependencies versions -->
-        <clickhouse.driver.version>0.4.6</clickhouse.driver.version>
+        <clickhouse.driver.version>0.8.0</clickhouse.driver.version>
         <kafka.version>2.7.0</kafka.version>
         <junit.jupiter.version>5.9.2</junit.jupiter.version>
         <junit.platform.version>1.8.1</junit.platform.version>
