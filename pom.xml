@@ -248,31 +248,18 @@
                             <shadedArtifactAttached>true</shadedArtifactAttached>
                             <shadedClassifierName>confluent</shadedClassifierName>
                             <minimizeJar>false</minimizeJar>
+                            <outputDirectory>${project.build.directory}/components/clickhouse-kafka-connect/lib</outputDirectory>
                             <filters>
-                                <filter>
-                                    <artifact>com.clickhouse:*</artifact>
-                                    <includes>
-                                        <include>**</include>
-                                    </includes>
-                                </filter>
-                                <filter>
-                                    <artifact>com.fasterxml.jackson:*</artifact>
-                                    <includes>
-                                        <include>**</include>
-                                    </includes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.apache.httpcomponents.client5:*</artifact>
-                                    <includes>
-                                        <include>**</include>
-                                    </includes>
-                                </filter>
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>META-INF/LICENSE*</exclude>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
@@ -284,13 +271,7 @@
                             </transformers>
                             <artifactSet>
                                 <includes>
-                                    <include>com.clickhouse:*</include>
-                                    <include>com.fasterxml.jackson:*</include>
-                                    <include>org.apache.httpcomponents.client5:*</include>
-                                    <include>com.google.code.gson:*</include>
-                                    <include>org.apache.commons:*</include>
-                                    <include>org.jsoup:*</include>
-                                    <include>io.micrometer:*</include>
+                                    <include>*:*</include>
                                 </includes>
                             </artifactSet>
                         </configuration>
@@ -333,6 +314,8 @@
                             <ownerType>organization</ownerType>
                             <ownerName>ClickHouse, Inc.</ownerName>
                             <ownerUrl>https://clickhouse.com/</ownerUrl>
+                            <outputDirectory>${project.build.directory}/components</outputDirectory>
+                            <libDirectory>${project.build.directory}/components/clickhouse-kafka-connect/lib</libDirectory>
                         </configuration>
                     </execution>
                 </executions>

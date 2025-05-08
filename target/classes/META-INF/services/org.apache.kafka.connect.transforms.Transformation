@@ -1,3 +1,0 @@
-com.clickhouse.kafka.connect.transforms.ExtractTopic$Value
-com.clickhouse.kafka.connect.transforms.ExtractTopic$Key
-com.clickhouse.kafka.connect.transforms.KeyToValue
