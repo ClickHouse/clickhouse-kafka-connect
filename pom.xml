@@ -197,16 +197,11 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Confluent SMT dependencies -->
+        <!-- Kafka Connect Transforms -->
         <dependency>
-            <groupId>io.confluent</groupId>
-            <artifactId>kafka-connect-transforms</artifactId>
-            <version>${confluent.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.confluent</groupId>
-            <artifactId>kafka-connect-transforms-common</artifactId>
-            <version>${confluent.version}</version>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>connect-transforms</artifactId>
+            <version>${kafka.version}</version>
         </dependency>
     </dependencies>
 
