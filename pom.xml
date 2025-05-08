@@ -248,7 +248,6 @@
                             <shadedArtifactAttached>true</shadedArtifactAttached>
                             <shadedClassifierName>confluent</shadedClassifierName>
                             <minimizeJar>false</minimizeJar>
-                            <outputDirectory>${project.build.directory}/components/clickhouse-kafka-connect/lib</outputDirectory>
                             <filters>
                                 <filter>
                                     <artifact>com.clickhouse:*</artifact>
@@ -323,8 +322,6 @@
                             <ownerType>organization</ownerType>
                             <ownerName>ClickHouse, Inc.</ownerName>
                             <ownerUrl>https://clickhouse.com/</ownerUrl>
-                            <outputDirectory>${project.build.directory}/components</outputDirectory>
-                            <libDirectory>${project.build.directory}/components/clickhouse-kafka-connect/lib</libDirectory>
                         </configuration>
                     </execution>
                 </executions>
