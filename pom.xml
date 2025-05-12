@@ -113,7 +113,12 @@
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
-            <version>5.4.2</version>
+            <version>5.2.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents.core5</groupId>
+            <artifactId>httpcore5</artifactId>
+            <version>5.2.1</version>
         </dependency>
 
         <!-- Lombok -->
@@ -321,12 +326,14 @@
                                 <deliveryGuarantee>atLeastOnce</deliveryGuarantee>
                             </deliveryGuarantee>
                             <kafkaConnectApi>true</kafkaConnectApi>
-                            <singleMessageTransforms>true</singleMessageTransforms>
+                            <singleMessageTransforms>false</singleMessageTransforms>
                             <confluentControlCenterIntegration>true</confluentControlCenterIntegration>
                             <ownerUsername>clickhouse</ownerUsername>
                             <ownerType>organization</ownerType>
                             <ownerName>ClickHouse, Inc.</ownerName>
                             <ownerUrl>https://clickhouse.com/</ownerUrl>
+                            <outputDirectory>${project.build.directory}/components</outputDirectory>
+                            <libDirectory>${project.build.directory}/components/clickhouse-kafka-connect/lib</libDirectory>
                         </configuration>
                     </execution>
                 </executions>
