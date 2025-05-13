@@ -116,14 +116,14 @@ public class Processing {
         }
 
         if (!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()) {
-            LOGGER.debug("doLogic - Topic: [{}], Records: [{}]", topic, records.size());
+//            LOGGER.debug("doLogic - Topic: [{}], Records: [{}]", topic, records.size());
             doInsert(records);
             return;
         }
 
         int partition = record.getRecordOffsetContainer().getPartition();
         RangeContainer rangeContainer = extractRange(records, topic, partition);
-        LOGGER.info("doLogic - Topic: [{}], Partition: [{}], MinOffset: [{}], MaxOffset: [{}], Records: [{}]",
+//        LOGGER.info("doLogic - Topic: [{}], Partition: [{}], MinOffset: [{}], MaxOffset: [{}], Records: [{}]",
                 topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset(), records.size());
         // State                 Actual
         // [10, 19]              [10, 19] ==> same
