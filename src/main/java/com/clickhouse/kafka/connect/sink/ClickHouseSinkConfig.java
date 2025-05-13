@@ -206,6 +206,7 @@ public class ClickHouseSinkConfig {
 
         topicToTableMap = new HashMap<>();
         String topicToTableMapString = props.getOrDefault(TABLE_MAPPING, "").trim();
+        LOGGER.info("Topic to Table Map String: {}", topicToTableMapString);
         if (!topicToTableMapString.isBlank()) {
             String [] stringSplit = topicToTableMapString.split(",");
             for (String topicToTable: stringSplit) {
@@ -273,7 +274,7 @@ public class ClickHouseSinkConfig {
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
-        LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
+        LOGGER.info("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
     }
 
     public void addClickHouseSetting(String key, String value, boolean override) {
