@@ -124,7 +124,7 @@ public class Processing {
         int partition = record.getRecordOffsetContainer().getPartition();
         RangeContainer rangeContainer = extractRange(records, topic, partition);
 //        LOGGER.info("doLogic - Topic: [{}], Partition: [{}], MinOffset: [{}], MaxOffset: [{}], Records: [{}]",
-                topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset(), records.size());
+//                topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset(), records.size());
         // State                 Actual
         // [10, 19]              [10, 19] ==> same
         // [10, 19]              [09, 30] ==> overlapping [10, 19], [20, 30]
