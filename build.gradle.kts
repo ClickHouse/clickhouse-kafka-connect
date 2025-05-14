@@ -74,7 +74,7 @@ dependencies {
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.google.code.gson:gson:2.13.1")
     // https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5
-    implementation("org.apache.httpcomponents.client5:httpclient5:5.4.2")
+    implementation("org.apache.httpcomponents.client5:httpclient5:5.4.4")
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
     compileOnly("org.projectlombok:lombok:1.18.34")
@@ -95,7 +95,7 @@ dependencies {
     /*
         Will in side the Confluent Archive
      */
-    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.4.2")
+    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.4.4")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
@@ -118,7 +118,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("org.json:json:20240303")
     testImplementation("org.testcontainers:toxiproxy:1.20.6")
-    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.4.2")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.4.4")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
