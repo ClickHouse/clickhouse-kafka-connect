@@ -57,14 +57,14 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE `%s` ( c String COMMENT '\\\\'" +
+        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE `%s` ( c String COMMENT '\\\\', d String COMMENT '\\n'" +
                 ")" +
                 "ENGINE = MergeTree()" +
                 "ORDER BY tuple()");
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
-        assertEquals(table.getRootColumnsList().size(), 1);
+        assertEquals(table.getRootColumnsList().size(), 2);
         ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 
