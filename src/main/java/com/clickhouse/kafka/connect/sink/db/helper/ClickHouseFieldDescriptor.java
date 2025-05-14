@@ -45,6 +45,6 @@ public class ClickHouseFieldDescriptor {
     }
 
     public static ClickHouseFieldDescriptor fromJsonRow(String json) throws JsonProcessingException {
-        return OBJECT_MAPPER.readValue(json.replace("\n", "\\n").replace("\\", "\\\\"), ClickHouseFieldDescriptor.class);
+        return OBJECT_MAPPER.readValue(json.replace("\\", "\\\\").replace("\n", "\\n"), ClickHouseFieldDescriptor.class);
     }
 }
