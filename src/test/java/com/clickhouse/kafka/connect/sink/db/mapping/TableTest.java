@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -45,6 +46,25 @@ class TableTest extends ClickHouseBase {
         assertNotNull(table);
         assertEquals(table.getRootColumnsList().size(), 2);
         assertEquals(table.getAllColumnsList().size(), 3);
+        ClickHouseTestHelpers.dropTable(chc, tableName);
+    }
+
+    @Test
+    public void extractCommentV1() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String tableName = createTopicName("extract-table-test");
+        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE `%s` ( c String COMMENT '\\\\', d String COMMENT '\\n'" +
+                ")" +
+                "ENGINE = MergeTree()" +
+                "ORDER BY tuple()");
+
+        Table table = chc.describeTable(chc.getDatabase(), tableName);
+        assertNotNull(table);
+        assertEquals(table.getRootColumnsList().size(), 2);
         ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 
