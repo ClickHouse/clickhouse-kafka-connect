@@ -32,7 +32,7 @@ plugins {
     `maven-publish`
     signing
    // checkstyle
-    id("com.github.gmazzo.buildconfig") version "5.5.0"
+    id("com.github.gmazzo.buildconfig") version "5.6.5"
     id("com.diffplug.spotless") version "7.0.2"
     id("com.github.johnrengelman.shadow") version "7.1.2"
 }
