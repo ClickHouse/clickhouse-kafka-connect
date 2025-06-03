@@ -116,11 +116,11 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
                                                                final Object value,
                                                                final String fieldName) {
         if (value == null) {
-            throw new DataException(dataPlace() + " can't be null if field name is specified: " + recordStr);
+            throw new DataException(dataPlace() + " can't be null for field: " + fieldName);
         }
 
         if (!(value instanceof Map)) {
-            throw new DataException(dataPlace() + " type must be Map if field name is specified: " + recordStr);
+            throw new DataException(dataPlace() + " type must be Map if field name is specified.");
         }
 
         @SuppressWarnings("unchecked") final Map<String, Object> valueMap = (Map<String, Object>) value;
@@ -129,9 +129,7 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
             .map(field -> {
                 if (!SUPPORTED_VALUE_CLASS_TO_CONVERT_FROM.contains(field.getClass())) {
                     throw new DataException(fieldName + " type in " + dataPlace()
-                        + " " + value
-                        + " must be " + SUPPORTED_VALUE_CLASS_TO_CONVERT_FROM
-                        + ": " + recordStr);
+                            + " must be one of " + SUPPORTED_VALUE_CLASS_TO_CONVERT_FROM + ".");
                 }
                 return field;
             })
@@ -143,7 +141,7 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
             if (config.skipMissingOrNull()) {
                 return Optional.empty();
             } else {
-                throw new DataException(fieldName + " in " + dataPlace() + " can't be null or empty: " + recordStr);
+                throw new DataException(fieldName + " in " + dataPlace() + " can't be null or empty.");
             }
         }
     }
@@ -154,15 +152,13 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
             if (config.skipMissingOrNull()) {
                 return Optional.empty();
             } else {
-                throw new DataException(dataPlace() + " can't be null or empty: " + recordStr);
+                throw new DataException(dataPlace() + " can't be null or empty.");
             }
         }
 
         if (!SUPPORTED_VALUE_CLASS_TO_CONVERT_FROM.contains(value.getClass())) {
-            throw new DataException("type in " + dataPlace()
-                + " " + value
-                + " must be " + SUPPORTED_VALUE_CLASS_TO_CONVERT_FROM
-                + ": " + recordStr);
+            throw new DataException("Type in " + dataPlace()
+                    + " must be one of " + SUPPORTED_VALUE_CLASS_TO_CONVERT_FROM + ".");
         }
 
         return Optional.of(value.toString());
@@ -173,12 +169,11 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
                                                                final Object value,
                                                                final String fieldName) {
         if (Schema.Type.STRUCT != schema.type()) {
-            throw new DataException(dataPlace() + " schema type must be STRUCT if field name is specified: "
-                + recordStr);
+            throw new DataException(dataPlace() + " schema type must be STRUCT if field name is specified.");
         }
 
         if (value == null) {
-            throw new DataException(dataPlace() + " can't be null if field name is specified: " + recordStr);
+            throw new DataException(dataPlace() + " can't be null if field name is specified.");
         }
 
         final Field field = schema.field(fieldName);
@@ -186,14 +181,13 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
             if (config.skipMissingOrNull()) {
                 return Optional.empty();
             } else {
-                throw new DataException(fieldName + " in " + dataPlace() + " schema can't be missing: " + recordStr);
+                throw new DataException(fieldName + " in " + dataPlace() + " schema can't be missing.");
             }
         }
 
         if (!SUPPORTED_SCHEMA_TYPES_TO_CONVERT_FROM.contains(field.schema().type())) {
             throw new DataException(fieldName + " schema type in " + dataPlace()
-                + " must be " + SUPPORTED_SCHEMA_TYPES_TO_CONVERT_FROM
-                + ": " + recordStr);
+                    + " must be one of " + SUPPORTED_SCHEMA_TYPES_TO_CONVERT_FROM + ".");
         }
 
         final Struct struct = (Struct) value;
@@ -206,7 +200,7 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
             if (config.skipMissingOrNull()) {
                 return Optional.empty();
             } else {
-                throw new DataException(fieldName + " in " + dataPlace() + " can't be null or empty: " + recordStr);
+                throw new DataException(fieldName + " in " + dataPlace() + " can't be null or empty.");
             }
         }
     }
@@ -215,17 +209,15 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
                                                                  final Schema schema,
                                                                  final Object value) {
         if (!SUPPORTED_SCHEMA_TYPES_TO_CONVERT_FROM.contains(schema.type())) {
-            throw new DataException(dataPlace() + " schema type must be "
-                + SUPPORTED_SCHEMA_TYPES_TO_CONVERT_FROM
-                + " if field name is not specified: "
-                + recordStr);
+            throw new DataException(dataPlace() + " schema type must be one of "
+                    + SUPPORTED_SCHEMA_TYPES_TO_CONVERT_FROM + " if field name is not specified.");
         }
 
         if (value == null || "".equals(value)) {
             if (config.skipMissingOrNull()) {
                 return Optional.empty();
             } else {
-                throw new DataException(dataPlace() + " can't be null or empty: " + recordStr);
+                throw new DataException(dataPlace() + " can't be null or empty.");
             }
         }
 
