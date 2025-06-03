@@ -28,7 +28,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
 
     @Override
     public R apply(R record) {
-        LOGGER.debug("Old Key: {}, Old Value: {}", record.key(), record.value());
+        LOGGER.trace("Old Key: {}, Old Value: {}", record.key(), record.value());
         if (record.valueSchema() == null) {
             return applySchemaless(record);
         } else {
