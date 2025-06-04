@@ -1191,14 +1191,12 @@ public class ClickHouseWriter implements DBWriter {
     }
     protected Table getTable(String database, String topic) {
         String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
-//        LOGGER.info("Topic to Table Map: {}", csc.getTopicToTableMap());
-//        LOGGER.info("Resolved Table Name: {}", tableName);
         Table table = this.mapping.get(tableName);
         if (table == null) {
             this.updateMapping(database);
             table = this.mapping.get(tableName);//If null, update then do it again to be sure
         }
-//        LOGGER.info("Resolved Table Object: {}", table);
+
         if (table == null) {
             this.updateMapping(database);
 

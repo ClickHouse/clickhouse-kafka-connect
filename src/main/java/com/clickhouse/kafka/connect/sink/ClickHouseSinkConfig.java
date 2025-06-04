@@ -274,7 +274,7 @@ public class ClickHouseSinkConfig {
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
-        LOGGER.info("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
+        LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
     }
 
     public void addClickHouseSetting(String key, String value, boolean override) {

@@ -32,9 +32,6 @@ public class ClickHouseSinkTask extends SinkTask {
         LOGGER.info("Start SinkTask: ");
         try {
             clickHouseSinkConfig = new ClickHouseSinkConfig(props);
-            // Log the props map in a readable format
-            LOGGER.info("ClickHouseSinkConfig properties:");
-            props.forEach((key, value) -> LOGGER.info("  {} = {}", key, value));
             errorReporter = createErrorReporter();
         } catch (Exception e) {
             throw new ConnectException("Failed to start new task" , e);
