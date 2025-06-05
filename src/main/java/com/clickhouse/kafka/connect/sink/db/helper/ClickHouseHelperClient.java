@@ -508,7 +508,6 @@ public class ClickHouseHelperClient {
 
         public ClickHouseClientBuilder setPassword(String password) {
             this.password = password;
-            LOGGER.info("[Builder] setPassword: {}", password);
             return this;
         }
 

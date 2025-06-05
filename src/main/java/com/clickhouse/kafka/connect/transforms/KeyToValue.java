@@ -43,7 +43,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
 
         final Map<String, Object> value = (Map<String, Object>) record.value();
         value.put(keyFieldName, record.key());
-        LOGGER.debug("New schemaless value: {}", value);
+        LOGGER.trace("New schemaless value: {}", value);
         return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), record.valueSchema(), value, record.timestamp());
     }
 
@@ -71,7 +71,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
                 newValue.put(f, oldValue.get(f));
             }
         });
-        LOGGER.debug("New schema value: {}", newValue);
+        LOGGER.trace("New schema value: {}", newValue);
         return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), valueSchema, newValue, record.timestamp());
     }
 
