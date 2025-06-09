@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.config.ClickHouseProxyType;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import lombok.Getter;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigException;
@@ -168,6 +169,41 @@ public class ClickHouseSinkConfig {
         }
     }
 
+    public static final class ConnectionValidator implements ConfigDef.Validator {
+        @Override
+        public void ensureValid(String name, Object o) {
+            Map<String, String> props = (Map<String, String>) o;
+
+            // Extract required connection parameters
+            String hostname = props.get(HOSTNAME);
+            int port = Integer.parseInt(props.getOrDefault(PORT, String.valueOf(portDefault)));
+            String database = props.getOrDefault(DATABASE, databaseDefault);
+            String username = props.getOrDefault(USERNAME, usernameDefault);
+            String password = props.getOrDefault(PASSWORD, passwordDefault);
+            boolean sslEnabled = Boolean.parseBoolean(props.getOrDefault(SSL_ENABLED, String.valueOf(sslDefault)));
+
+            // Create a temporary client to test connection
+            ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, null, null, -1)
+                    .setDatabase(database)
+                    .setUsername(username)
+                    .setPassword(password)
+                    .sslEnable(sslEnabled)
+                    .setTimeout(timeoutSecondsDefault * MILLI_IN_A_SEC)
+                    .setRetry(retryCountDefault)
+                    .build();
+
+            // Test the connection
+            if (!client.ping()) {
+                throw new ConfigException("Failed to connect to ClickHouse server. Please verify your connection settings.");
+            }
+        }
+
+        @Override
+        public String toString() {
+            return "ClickHouse connection validator";
+        }
+    }
+
     public ClickHouseSinkConfig(Map<String, String> props) {
         // Extracting configuration
         hostname = props.get(HOSTNAME);
@@ -298,7 +334,7 @@ public class ClickHouseSinkConfig {
         configDef.define(HOSTNAME,
                 ConfigDef.Type.STRING,
                 ConfigDef.NO_DEFAULT_VALUE,
-                new ConfigDef.NonEmptyString(),
+                new ConnectionValidator(),
                 ConfigDef.Importance.HIGH,
                 "hostname",
                 group,
