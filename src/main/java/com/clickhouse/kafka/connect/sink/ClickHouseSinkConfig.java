@@ -172,7 +172,15 @@ public class ClickHouseSinkConfig {
     public static final class ConnectionValidator implements ConfigDef.Validator {
         @Override
         public void ensureValid(String name, Object o) {
+           if (o == null) {
+                return;
+            }
+
+            // Get the current configuration context
             Map<String, String> props = (Map<String, String>) o;
+            if (props == null || props.isEmpty()) {
+                return;
+            }
 
             // Extract required connection parameters
             String hostname = props.get(HOSTNAME);
