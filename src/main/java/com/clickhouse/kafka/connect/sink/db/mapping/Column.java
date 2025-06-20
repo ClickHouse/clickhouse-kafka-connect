@@ -77,82 +77,65 @@ public class Column {
         else return Optional.of(index);
     }
 
-    private static Type dispatchPrimitive(String valueType) {
-        Type type = Type.UNKNOWN;
-        switch (valueType) {
-            case "Int8":
-                type = Type.INT8;
-                break;
-            case "Int16":
-                type = Type.INT16;
-                break;
-            case "Int32":
-                type = Type.INT32;
-                break;
-            case "Int64":
-                type = Type.INT64;
-                break;
-            case "Int128":
-                type = Type.INT128;
-                break;
-            case "Int256":
-                type = Type.INT256;
-                break;
-            case "UInt8":
-                type = Type.UINT8;
-                break;
-            case "UInt16":
-                type = Type.UINT16;
-                break;
-            case "UInt32":
-                type = Type.UINT32;
-                break;
-            case "UInt64":
-                type = Type.UINT64;
-                break;
-            case "UInt128":
-                type = Type.UINT128;
-                break;
-            case "UInt256":
-                type = Type.UINT256;
-                break;
-            case "UUID":
-                type = Type.UUID;
-                break;
-            case "String":
-                type = Type.STRING;
-                break;
-            case "Float32":
-                type = Type.FLOAT32;
-                break;
-            case "Float64":
-                type = Type.FLOAT64;
-                break;
-            case "Bool":
-                type = Type.BOOLEAN;
-                break;
-            case "Date":
-                type = Type.Date;
-                break;
-            case "Date32":
-                type = Type.Date32;
-                break;
-            case "DateTime":
-                type = Type.DateTime;
-                break;
-            default:
-                if (valueType.startsWith("DateTime64")) {
-                    // Need to understand why DateTime64(3)
-                    type = Type.DateTime64;
-                } else if (valueType.startsWith("Decimal")) {
-                    // FIXME: Map keys doesn't support Decimal:
-                    //        Type of Map key must be a type, that can be represented by integer or String or FixedString (possibly LowCardinality) or UUID or IPv6, but Decimal(5, 0) given.
-                    type = Type.Decimal;
-                } else if (valueType.startsWith("FixedString")) {
-                    type = Type.FIXED_STRING;
-                }
+    private static final Map<String, Type> TYPE_MAP = Map.ofEntries(
+            Map.entry("Int8", Type.INT8),
+            Map.entry("Int16", Type.INT16),
+            Map.entry("Int32", Type.INT32),
+            Map.entry("Int64", Type.INT64),
+            Map.entry("Int128", Type.INT128),
+            Map.entry("Int256", Type.INT256),
+            Map.entry("UInt8", Type.UINT8),
+            Map.entry("UInt16", Type.UINT16),
+            Map.entry("UInt32", Type.UINT32),
+            Map.entry("UInt64", Type.UINT64),
+            Map.entry("UInt128", Type.UINT128),
+            Map.entry("UInt256", Type.UINT256),
+            Map.entry("UUID", Type.UUID),
+            Map.entry("String", Type.STRING),
+            Map.entry("Float32", Type.FLOAT32),
+            Map.entry("Float64", Type.FLOAT64),
+            Map.entry("Bool", Type.BOOLEAN),
+            Map.entry("Date", Type.Date),
+            Map.entry("Date32", Type.Date32),
+            Map.entry("DateTime", Type.DateTime),
+            Map.entry("IntervalQuarter", Type.IntervalQuarter),
+            Map.entry("IntervalYear", Type.IntervalYear),
+            Map.entry("IntervalMonth", Type.IntervalMonth),
+            Map.entry("IntervalWeek", Type.IntervalWeek),
+            Map.entry("IntervalDay", Type.IntervalDay),
+            Map.entry("IntervalHour", Type.IntervalHour),
+            Map.entry("IntervalMinute", Type.IntervalMinute),
+            Map.entry("IntervalSecond", Type.IntervalSecond),
+            Map.entry("IntervalMillisecond", Type.IntervalMillisecond),
+            Map.entry("IntervalNanosecond", Type.IntervalNanosecond),
+            Map.entry("IntervalMicrosecond", Type.IntervalMicrosecond),
+            Map.entry("IPv4", Type.IPv4),
+            Map.entry("IPv6", Type.IPv6),
+            Map.entry("Point", Type.Point),
+            Map.entry("Polygon", Type.Polygon),
+            Map.entry("MultiPolygon", Type.MultiPolygon),
+            Map.entry("Ring", Type.Ring),
+            Map.entry("JSON", Type.JSON),
+            Map.entry("Object", Type.Object)
+    );
 
-                break;
+    private static Type dispatchPrimitive(String valueType) {
+        Type type = TYPE_MAP.getOrDefault(valueType, Type.UNKNOWN);
+
+        if (valueType.startsWith("DateTime64")) {
+            type = Type.DateTime64;
+        } else if (valueType.startsWith("Decimal256")) {
+            type = Type.Decimal256;
+        } else if (valueType.startsWith("Decimal128")) {
+            type = Type.Decimal128;
+        } else if (valueType.startsWith("Decimal64")) {
+            type = Type.Decimal64;
+        } else if (valueType.startsWith("Decimal32")) {
+            type = Type.Decimal32;
+        } else if (valueType.startsWith("Decimal")) {
+            type = Type.Decimal;
+        } else if (valueType.startsWith("FixedString")) {
+            type = Type.FIXED_STRING;
         }
         return type;
     }

@@ -35,7 +35,16 @@ plugins {
     id("com.github.gmazzo.buildconfig") version "5.5.0"
     id("com.diffplug.spotless") version "7.0.2"
     id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.google.protobuf") version "0.9.5"
 }
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:3.25.1"
+    }
+    generatedFilesBaseDir = "$buildDir/generated/source/proto"
+}
+
 
 group = "com.clickhouse.kafka"
 version = file("VERSION").readText().trim()
@@ -123,7 +132,17 @@ dependencies {
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
+    testImplementation("org.apache.kafka:kafka-streams-test-utils:${project.extra["kafkaVersion"]}")
 
+    // Protobuf dependencies
+    testImplementation("com.google.protobuf:protobuf-java:3.25.1")
+    testImplementation("io.confluent:kafka-protobuf-serializer:7.9.1")
+    testImplementation("io.confluent:kafka-connect-protobuf-converter:7.9.1")
+    
+    // Schema Registry client for testing
+    testImplementation("io.confluent:kafka-schema-registry-client:7.5.4")
+    testImplementation("io.confluent:kafka-schema-registry:7.5.4")
+    testImplementation("io.confluent:kafka-schema-serializer:7.5.4")
 }
 
 

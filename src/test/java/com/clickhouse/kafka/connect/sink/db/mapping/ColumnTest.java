@@ -1,5 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import com.clickhouse.data.ClickHouseDataType;
+import org.junit.Assert;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -164,6 +166,62 @@ class ColumnTest {
         assertEquals(2, col.getEnumValues().size());
         assertTrue(col.getEnumValues().containsKey("a, valid"));
         assertTrue(col.getEnumValues().containsKey("b"));
+    }
+
+    @Test
+    public void checkNoUnknownTypes() {
+
+        String[] modifiers = new String[]{"Nullable", "LowCardinality", "Map", "Array", "Tuple"};
+
+        for (ClickHouseDataType dt : ClickHouseDataType.values()) {
+            String fieldDef = dt.name();
+            switch (dt) {
+                case DateTime32:
+                    // cannot find this type described. skipp for now
+                    continue;
+                case SimpleAggregateFunction:
+                case AggregateFunction:
+                    continue; // just ignore need to be implemented.
+                case Array:
+                case Tuple:
+                case Map:
+                case Nothing:
+                case Nested:
+                    continue; // handled differently
+                case DateTime64:
+                    fieldDef = "DateTime64(3, 'UTC')";
+                    break;
+                case Enum8:
+                case Enum16:
+                    fieldDef = "Enum8('a' = 1, 'b' = 2)";
+                    break;
+                case FixedString:
+                    fieldDef = "FixedString( 123 )";
+                    break;
+            }
+
+            try {
+                Column simpleCol = Column.extractColumn(newDescriptor(fieldDef));
+                assertNotEquals(Type.UNKNOWN, simpleCol.getType(), "type " + dt.name() + " is unknown");
+
+                for (String modifier : modifiers) {
+                    Column modifiedCol = Column.extractColumn(newDescriptor(m(modifier, fieldDef)));
+                    assertNotEquals(Type.UNKNOWN, simpleCol.getType());
+                }
+            } catch (Exception e) {
+                fail("Failed processing " + dt.name(), e);
+            }
+        }
+    }
+
+    private static String m(String modifier, String type) {
+        return modifier + "(" + type + ")";
+    }
+
+    @Test
+    public void simpleJSONColumn() {
+        Column col = Column.extractColumn(newDescriptor("JSON"));
+        assertEquals(Type.JSON, col.getType());
     }
 }
 
