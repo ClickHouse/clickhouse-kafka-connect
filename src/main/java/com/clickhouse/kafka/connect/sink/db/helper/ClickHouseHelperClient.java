@@ -60,6 +60,7 @@ public class ClickHouseHelperClient {
     private int proxyPort = -1;
     @Getter
     private boolean useClientV2 = false;
+    private Map<String, String> additionalChSettings = new HashMap<>();
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -76,9 +77,11 @@ public class ClickHouseHelperClient {
         this.proxyPort = builder.proxyPort;
         this.useClientV2 = builder.useClientV2;
         // We are creating two clients, one for V1 and one for V2
-        this.client = createClientV2();
         this.server = createClientV1();
+        this.client = createClientV2(this.server);
     }
+
+
 
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
@@ -123,7 +126,7 @@ public class ClickHouseHelperClient {
         return server;
     }
 
-    private Client createClientV2() {
+    private Client createClientV2(ClickHouseNode server) {
         String protocol = "http";
         if (this.sslEnabled)
             protocol += "s";
@@ -143,13 +146,27 @@ public class ClickHouseHelperClient {
 
         LOGGER.info("ClickHouse URL: {}", url);
 
-
+        // TODO: following is temp solution
+        HashMap<String, String>  serverOptions = new HashMap<>();
+        serverOptions.putAll(server.getOptions());
+        for (ClickHouseClientOption option : ClickHouseClientOption.values()) {
+            serverOptions.remove(option.getKey());
+        }
 
         Client.Builder clientBuilder = new Client.Builder()
                 .addEndpoint(url)
                 .setUsername(this.username)
                 .setPassword(this.password)
                 .setDefaultDatabase(this.database);
+
+
+        for (Map.Entry<String, String> entry : serverOptions.entrySet()) {
+            clientBuilder.serverSetting(entry.getKey(), entry.getValue());
+        }
+
+        for (Map.Entry<String, String> entry : additionalChSettings.entrySet()) {
+            clientBuilder.serverSetting(entry.getKey(), entry.getValue());
+        }
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
@@ -451,6 +468,14 @@ public class ClickHouseHelperClient {
             }
         }
         return tableList;
+    }
+
+    public void addChSetting(String name, String value) {
+        if (value == null) {
+            additionalChSettings.remove(name);
+        } else {
+            additionalChSettings.put(name, value);
+        }
     }
 
     public static class ClickHouseClientBuilder {

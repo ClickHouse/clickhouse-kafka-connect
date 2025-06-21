@@ -10,8 +10,10 @@ import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.ServerException;
+import com.clickhouse.client.api.data_formats.internal.SerializerUtils;
 import com.clickhouse.client.api.insert.InsertResponse;
 import com.clickhouse.client.api.insert.InsertSettings;
+import com.clickhouse.client.api.internal.ServerSettings;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.data.ClickHouseDataStreamFactory;
 import com.clickhouse.data.ClickHouseFormat;
@@ -28,8 +30,10 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -103,6 +107,10 @@ public class ClickHouseWriter implements DBWriter {
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
                 .build();
+
+        if (csc.isWriteJSONColumnAsString()) {
+            chc.addChSetting(ServerSettings.INPUT_FORMAT_BINARY_READ_JSON_AS_STRING, "1");
+        }
 
         if (!chc.ping()) {
             LOGGER.error("Unable to ping Clickhouse server.");
@@ -249,8 +257,11 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))
                                     continue;
 
-                                if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
-                                    continue;
+                                if (dataTypeName.equals("STRUCT")) {
+                                    if (colTypeName.equals("TUPLE") || colTypeName.equals("JSON")) {
+                                        continue;
+                                    }
+                                }
 
                                 if (colTypeName.equalsIgnoreCase("UINT8")
                                         || colTypeName.equalsIgnoreCase("UINT16")
@@ -520,6 +531,8 @@ public class ClickHouseWriter implements DBWriter {
                     );
                 }
                 break;
+            case JSON:
+                throw new UnsupportedOperationException("Writing JSON column in binary is not supported yet.");
             default:
                 // If you wonder, how NESTED works in JDBC:
                 // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159

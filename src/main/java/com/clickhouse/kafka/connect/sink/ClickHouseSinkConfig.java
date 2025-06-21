@@ -51,6 +51,7 @@ public class ClickHouseSinkConfig {
     public static final String BYPASS_SCHEMA_VALIDATION = "bypassSchemaValidation";
     public static final String BYPASS_FIELD_CLEANUP = "bypassFieldCleanup";
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
+    public static final String WRITE_JSON_COLUMN_AS_STRING = "writeJsonColumnAsString";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -94,6 +95,7 @@ public class ClickHouseSinkConfig {
     private final boolean bypassSchemaValidation;
     private final boolean bypassFieldCleanup;
     private final boolean ignorePartitionsWhenBatching;
+    private final boolean writeJSONColumnAsString;
 
     public enum InsertFormats {
         NONE,
@@ -269,6 +271,7 @@ public class ClickHouseSinkConfig {
         this.bypassSchemaValidation = Boolean.parseBoolean(props.getOrDefault(BYPASS_SCHEMA_VALIDATION, "false"));
         this.bypassFieldCleanup = Boolean.parseBoolean(props.getOrDefault(BYPASS_FIELD_CLEANUP, "false"));
         this.ignorePartitionsWhenBatching = Boolean.parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
+        this.writeJSONColumnAsString = Boolean.parseBoolean(props.getOrDefault(WRITE_JSON_COLUMN_AS_STRING, "false"));
 
         LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);

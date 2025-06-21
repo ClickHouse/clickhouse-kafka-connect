@@ -5,27 +5,35 @@ import com.clickhouse.data.ClickHouseInputStream;
 import com.clickhouse.data.ClickHouseOutputStream;
 import com.clickhouse.data.ClickHousePipedOutputStream;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
+import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.convert.RecordConvertor;
+import com.clickhouse.kafka.connect.sink.data.convert.SchemaRecordConvertor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
+import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ClickHouseWriterTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriterTest.class);
     ClickHouseHelperClient chc = null;
+    RecordConvertor schemaRecordConvertor = new SchemaRecordConvertor();
 
     @BeforeEach
     public void setUp() {
@@ -48,54 +57,13 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     public void writeUTF8StringPrimitive() throws IOException {
         ClickHouseWriter writer = new ClickHouseWriter();
         Column column = Column.extractColumn(newDescriptor("utf8String", "String"));
-        ClickHousePipedOutputStream out = new ClickHousePipedOutputStream(null) {
-            List<Byte> bytes = new ArrayList<>();
-
-            @Override
-            public ClickHouseOutputStream transferBytes(byte[] bytes, int i, int i1) throws IOException {
-                for (int j = i; j < i1; j++) {
-                    this.bytes.add(bytes[j]);
-                }
-                return this;
-            }
-
-            @Override
-            public ClickHouseOutputStream writeByte(byte b) throws IOException {
-                this.bytes.add(b);
-                return this;
-            }
-
-            @Override
-            public ClickHouseOutputStream writeBytes(byte[] bytes, int i, int i1) throws IOException {
-                for (int j = i; j < i1; j++) {
-                    this.bytes.add(bytes[j]);
-                }
-                return this;
-            }
-
-            @Override
-            public ClickHouseOutputStream writeCustom(ClickHouseDataUpdater clickHouseDataUpdater) throws IOException {
-                return this;
-            }
-
-            @Override
-            public ClickHouseInputStream getInputStream(Runnable runnable) {
-                return null;
-            }
-
-            @Override
-            public String toString() {
-                byte[] bytes = new byte[this.bytes.size()];
-                for (int i = 0; i < this.bytes.size(); i++) {
-                    bytes[i] = this.bytes.get(i);
-                }
-                return new String(bytes, StandardCharsets.UTF_8);
-            }
-        };
-        byte[] originalBytes = "שלום".getBytes(StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        final String originalString = "שלום";
+        byte[] originalBytes = originalString.getBytes(StandardCharsets.UTF_8);
         writer.doWritePrimitive(Type.STRING, Schema.Type.STRING, out,"שלום", column);
-        byte[] newBytes = out.toString().getBytes(StandardCharsets.UTF_8);
-        assertTrue(Arrays.equals(originalBytes, Arrays.copyOfRange(newBytes, 1, newBytes.length)));//We add a length before the string
+        byte[] encodedBytes =  out.toByteArray();
+        assertEquals(originalBytes.length, encodedBytes[0]);
+        assertTrue(Arrays.equals(originalBytes, 0, originalBytes.length, encodedBytes, 1, encodedBytes.length));
     }
 
     @Test
@@ -127,7 +95,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void doWriteColValue_Tuples() {
-        Map<String, String> props = createProps();;
+        Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("do_write_col_value_tuples_test");
 
@@ -169,51 +137,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .tupleFields(tupleFields)
                 .build();
 
-        ClickHousePipedOutputStream out = new ClickHousePipedOutputStream(null) {
-            List<Byte> bytes = new ArrayList<>();
-
-            @Override
-            public ClickHouseOutputStream transferBytes(byte[] bytes, int i, int i1) throws IOException {
-                for (int j = i; j < i1; j++) {
-                    this.bytes.add(bytes[j]);
-                }
-                return this;
-            }
-
-            @Override
-            public ClickHouseOutputStream writeByte(byte b) throws IOException {
-                this.bytes.add(b);
-                return this;
-            }
-
-            @Override
-            public ClickHouseOutputStream writeBytes(byte[] bytes, int i, int i1) throws IOException {
-                for (int j = i; j < i1; j++) {
-                    this.bytes.add(bytes[j]);
-                }
-                return this;
-            }
-
-            @Override
-            public ClickHouseOutputStream writeCustom(ClickHouseDataUpdater clickHouseDataUpdater) throws IOException {
-                return this;
-            }
-
-            @Override
-            public ClickHouseInputStream getInputStream(Runnable runnable) {
-                return null;
-            }
-
-            @Override
-            public String toString() {
-                byte[] bytes = new byte[this.bytes.size()];
-                for (int i = 0; i < this.bytes.size(); i++) {
-                    bytes[i] = this.bytes.get(i);
-                }
-                return new String(bytes, StandardCharsets.UTF_8);
-            }
-        };
-
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             chw.doWriteColValue(column, out, data, true);
 
@@ -222,5 +146,53 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         }
 
         ClickHouseTestHelpers.dropTable(chc, topic);
+    }
+
+    @Test
+    public void testWritingJSONAsString() throws Exception {
+        Map<String, String> props = createProps();
+        String originalChSettings = props.getOrDefault(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?");
+        props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, originalChSettings + "&allow_experimental_json_type=1");
+
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("test_writing_json_as_string");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE %s (ts DateTime64(9), event JSON ) Engine = MergeTree ORDER BY ts");
+
+        Schema eventSchema = SchemaBuilder.struct()
+                .field("ts", Schema.INT64_SCHEMA)
+                .field("name",  Schema.STRING_SCHEMA)
+                .build();
+
+        Schema schema = SchemaBuilder.struct()
+                .field("ts", Schema.INT64_SCHEMA)
+                .field("event", eventSchema)
+                .build();
+
+        Struct event = new Struct(eventSchema)
+                .put("ts", System.currentTimeMillis())
+                .put("name", "test_event");
+
+        Struct dataObject = new Struct(schema)
+                .put("ts", System.currentTimeMillis())
+                .put("event", event);
+
+//        Data data = new Data(schema, dataObject);
+        SinkRecord sinkRecord = new SinkRecord(topic, 1, Schema.STRING_SCHEMA, "test-key", schema, dataObject, 0);
+        Record record = schemaRecordConvertor.doConvert(sinkRecord, topic, chc.getDatabase());
+
+
+        ClickHouseWriter chw = new ClickHouseWriter();
+        Map<String, String> writerClientProps = createProps();
+        writerClientProps.put(ClickHouseSinkConfig.WRITE_JSON_COLUMN_AS_STRING, "true");
+        chw.setSinkConfig(new ClickHouseSinkConfig(writerClientProps));
+        chw.setClient(chc);
+        try {
+            chw.doInsert(Collections.singletonList(record), new QueryIdentifier(topic, "q-1"));
+        } finally {
+            chw.stop();
+        }
     }
 }

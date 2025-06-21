@@ -60,7 +60,7 @@ public class ProtobufConverterTest {
         SchemaAndValue connectSchema = new ProtobufData(1).toConnectData(schema, message);
         Object value = connectSchema.value();
         Schema schema1 = connectSchema.schema();
-        Schema keySchema = new SchemaBuilder(Schema.Type.STRING).keySchema();
+        Schema keySchema = Schema.STRING_SCHEMA;
 
         SinkRecord sinkRecord = new SinkRecord(TEST_TOPIC, 1, keySchema, "test-key", schema1, value, 0);
         SchemaRecordConvertor recordConvertor = new SchemaRecordConvertor();

@@ -88,6 +88,7 @@ public class ClickHouseBase {
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
+                .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                 .build();
 
         if (withDatabase) {
@@ -101,6 +102,7 @@ public class ClickHouseBase {
                     .setTimeout(timeout)
                     .setRetry(csc.getRetry())
                     .useClientV2(useClientV2)
+                    .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                     .build();
             }
 
