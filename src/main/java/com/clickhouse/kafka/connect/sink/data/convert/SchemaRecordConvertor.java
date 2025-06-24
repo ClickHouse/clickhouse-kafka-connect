@@ -18,7 +18,7 @@ public class SchemaRecordConvertor extends RecordConvertor{
         int partition = sinkRecord.kafkaPartition().intValue();
         long offset = sinkRecord.kafkaOffset();
         Struct struct = (Struct) sinkRecord.value();
-        Map<String, Data> data = StructToJsonMap.toJsonMap((Struct) sinkRecord.value());
+        Map<String, Data> data = null; //StructToJsonMap.toJsonMap((Struct) sinkRecord.value());
         return new Record(SchemaType.SCHEMA, new OffsetContainer(topic, partition, offset), struct.schema().fields(), data, database, sinkRecord);
     }
 }
