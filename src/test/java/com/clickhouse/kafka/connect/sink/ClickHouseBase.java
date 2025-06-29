@@ -191,6 +191,12 @@ public class ClickHouseBase {
 
     }
 
+    protected void executeQuery(ClickHouseHelperClient chc, String sql) {
+        chc.queryV2(sql);
+    }
+
+
+
     protected int countRows(ClickHouseHelperClient chc, String database, String topic) {
         String queryCount = String.format("select count(*) from `%s.%s`", database, topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
@@ -233,5 +239,21 @@ public class ClickHouseBase {
 
     protected String createTopicName(String name) {
         return String.format("%s_%d", name, System.currentTimeMillis());
+    }
+
+    protected String extractProductName(ClickHouseHelperClient chc, String topic) {
+        String extractProductNameSql = String.format("SELECT http_user_agent, tables FROM clusterAllReplicas('default', system.query_log) WHERE type = 'QueryStart' AND query_kind = 'Insert' AND has(databases,'%s') LIMIT 100", database);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer()) // or client.connect(endpoints)
+                     // you'll have to parse response manually if using a different format
+
+
+                     .query(extractProductNameSql)
+                     .executeAndWait()) {
+            ClickHouseResponseSummary summary = response.getSummary();
+            return response.firstRecord().getValue(0).asString();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

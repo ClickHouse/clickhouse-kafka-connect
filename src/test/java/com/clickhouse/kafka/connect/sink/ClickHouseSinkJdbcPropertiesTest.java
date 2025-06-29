@@ -190,4 +190,24 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         chst.stop();
         assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
     }
+
+    @Test
+    public void validateProductNameTestV2() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("product_name_v2");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        executeQuery(chc, "SYSTEM FLUSH LOGS");
+        String productNAme = extractProductName(chc, topic);
+        System.out.println(productNAme);
+
+    }
+
 }
