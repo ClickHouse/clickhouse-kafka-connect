@@ -1,7 +1,11 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.clickhouse.kafka.connect.util.jmx.ConnectorStatistics;
+import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
+
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -21,6 +25,7 @@ public class ClickHouseSinkTask extends SinkTask {
     private ProxySinkTask proxySinkTask;
     private ClickHouseSinkConfig clickHouseSinkConfig;
     private ErrorReporter errorReporter;
+    private ConnectorStatistics statistics;
 
     @Override
     public String version() {
@@ -34,12 +39,17 @@ public class ClickHouseSinkTask extends SinkTask {
             clickHouseSinkConfig = new ClickHouseSinkConfig(props);
             errorReporter = createErrorReporter();
         } catch (Exception e) {
-            throw new ConnectException("Failed to start new task" , e);
+            throw new ConnectException("Failed to start new task", e);
         }
 
         this.proxySinkTask = new ProxySinkTask(clickHouseSinkConfig, errorReporter);
+        this.statistics = MBeanServerUtils.registerMBean(new ConnectorStatistics(), getMBeanName());
     }
 
+    private String getMBeanName() {
+        return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=ConnectorStatistics,version=%s",
+                ClickHouseClientOption.class.getPackage().getImplementationVersion());
+    }
 
     @Override
     public void put(Collection<SinkRecord> records) {
@@ -53,14 +63,13 @@ public class ClickHouseSinkTask extends SinkTask {
         } catch (Exception e) {
             LOGGER.trace("Passing the exception to the exception handler.");
             boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.isErrorsTolerance();
-            Utils.handleException(e, errorTolerance, records);
+            Utils.handleException(e, errorTolerance, records, statistics);
             if (errorTolerance && errorReporter != null) {
                 LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
                 records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
             }
         }
     }
-
 
     // TODO: can be removed ss
     @Override
@@ -78,7 +87,6 @@ public class ClickHouseSinkTask extends SinkTask {
     public void setErrorReporter(ErrorReporter errorReporter) {
         this.errorReporter = errorReporter;
     }
-
 
     private ErrorReporter createErrorReporter() {
         ErrorReporter result = devNullErrorReporter();

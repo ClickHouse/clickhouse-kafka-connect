@@ -2,6 +2,8 @@ package com.clickhouse.kafka.connect.sink.util;
 
 import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+
 import org.apache.kafka.connect.errors.RetriableException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,6 @@ public class UtilsTest {
         assertEquals(e1, Utils.getRootCause(e4));
     }
 
-
     @Test
     @DisplayName("Test ClickHouseException Root Cause")
     public void TestClickHouseRootCause() {
@@ -41,10 +42,10 @@ public class UtilsTest {
 
     @Test
     @DisplayName("Test ClickHouseClient Timeout Throw Cause")
-    public void TestClickHouseClientTimeoutCause(){
+    public void TestClickHouseClientTimeoutCause() {
         assertThrows(RetriableException.class, () -> {
             Exception timeout = new IOException("Write timed out after 30000 ms");
-            Utils.handleException(timeout, false, new ArrayList<>());
+            Utils.handleException(timeout, false, new ArrayList<>(), new SinkTaskStatistics());
         });
     }
 }

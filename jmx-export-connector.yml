@@ -10,6 +10,13 @@ rules:
       attribute: "$3"
     help: "ClickHouseKafkaConnector metrics version $2"
     type: COUNTER
+  - pattern: "com.clickhouse<type=ClickHouseKafkaConnector, name=ConnectorStatistics, version=(.*)><>failedRecords_(.+): (.*)"
+    name: clickhouse_kafka_connect_failed_records
+    labels:
+      version: "$1"
+      error: "$2"
+    help: "ClickHouseKafkaConnector failed records count by error type version $1"
+    type: COUNTER
   - pattern: 'kafka.(.+)<type=app-info, client-id=(.+)><>start-time-ms'
     name: kafka_$1_start_time_seconds
     labels:

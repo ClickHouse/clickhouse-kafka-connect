@@ -3,6 +3,8 @@ package com.clickhouse.kafka.connect.util;
 import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
+import com.clickhouse.kafka.connect.util.jmx.ConnectorStatistics;
+
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -18,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 
 public class Utils {
-
     public static String escapeName(String topic) {
         String cleanTopic = topic.replace("`", "");
         return String.format("`%s`", cleanTopic);
@@ -44,7 +45,7 @@ public class Utils {
         if (e == null)
             return null;
 
-        Throwable runningException = e;//We have to use Throwable because of the getCause() signature
+        Throwable runningException = e;// We have to use Throwable because of the getCause() signature
         while (runningException.getCause() != null &&
                 (!prioritizeClickHouseException || !(runningException instanceof ClickHouseException))) {
             LOGGER.trace("Found exception: {}", runningException.getLocalizedMessage());
@@ -54,18 +55,19 @@ public class Utils {
         return runningException instanceof Exception ? (Exception) runningException : null;
     }
 
-
     /**
-     * This method checks to see if we should retry, otherwise it just throws the exception again
+     * This method checks to see if we should retry, otherwise it just throws the
+     * exception again
      *
      * @param e Exception to check
      */
 
-    public static void handleException(Exception e, boolean errorsTolerance, Collection<SinkRecord> records) {
+    public static void handleException(Exception e, boolean errorsTolerance, Collection<SinkRecord> records,
+            ConnectorStatistics statistics) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
 
-        //Let's check if we have a ClickHouseException to reference the error code
-        //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
+        // Let's check if we have a ClickHouseException to reference the error code
+        // https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
         Exception rootCause = Utils.getRootCause(e, true);
         if (rootCause instanceof ClickHouseException) {
             ClickHouseException clickHouseException = (ClickHouseException) rootCause;
@@ -86,6 +88,8 @@ public class Utils {
                 case 319: // UNKNOWN_STATUS_OF_INSERT
                 case 425: // SYSTEM_ERROR
                 case 999: // KEEPER_EXCEPTION
+                    statistics.failedRecords("ClickHouse Exception: " + clickHouseException.getErrorCode(),
+                            records.size());
                     throw new RetriableException(e);
                 default:
                     LOGGER.error("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());
@@ -93,28 +97,34 @@ public class Utils {
             }
         }
 
-        //High-Level Explicit Exception Checking
+        // High-Level Explicit Exception Checking
         if (e instanceof DataException && !errorsTolerance) {
             LOGGER.warn("DataException thrown, wrapping exception: {}", e.getLocalizedMessage());
+            statistics.failedRecords("DataException", records.size());
             throw (DataException) e;
         }
 
-        //Otherwise use Root-Cause Exception Checking
+        // Otherwise use Root-Cause Exception Checking
         if (rootCause instanceof SocketTimeoutException) {
             LOGGER.warn("SocketTimeoutException thrown, wrapping exception: {}", e.getLocalizedMessage());
+            statistics.failedRecords("SocketTimeoutException", records.size());
             throw new RetriableException(e);
         } else if (rootCause instanceof UnknownHostException) {
             LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
+            statistics.failedRecords("UnknownHostException", records.size());
             throw new RetriableException(e);
         } else if (rootCause instanceof IOException) {
             final String msg = rootCause.getMessage();
-            if (msg.indexOf(CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG) == 0 || msg.indexOf(CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG) == 0) {
+            if (msg.indexOf(CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG) == 0
+                    || msg.indexOf(CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG) == 0) {
                 LOGGER.warn("IOException thrown, wrapping exception: {}", e.getLocalizedMessage());
+                statistics.failedRecords("IOException", records.size());
                 throw new RetriableException(e);
             }
         }
 
-        if (errorsTolerance) {//Right now this is all exceptions - should we restrict to just ClickHouseExceptions?
+        if (errorsTolerance) {// Right now this is all exceptions - should we restrict to just
+                              // ClickHouseExceptions?
             LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
         } else {
             LOGGER.error("Errors tolerance is disabled, wrapping exception: {}", e.getLocalizedMessage());
@@ -149,7 +159,6 @@ public class Utils {
 
         return escapeTableName(database, tableName);
     }
-
 
     public static String getOffsets(Collection<SinkRecord> records) {
         long minOffset = Long.MAX_VALUE;
