@@ -85,6 +85,8 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.19.0")
     implementation("com.fasterxml.jackson.core:jackson-annotations:2.19.0")
 
+    //Support AWS Glue Schema Registry
+    implementation("software.amazon.glue:schema-registry-kafkaconnect-converter:1.1.22")
 
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:2.0.17")
