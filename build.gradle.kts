@@ -89,7 +89,7 @@ dependencies {
     // TODO: need to remove ???
     implementation("org.slf4j:slf4j-reload4j:2.0.17")
     implementation("org.junit.jupiter:junit-jupiter-api:5.11.3")
-    implementation("org.testcontainers:testcontainers:1.21.1")
+    implementation("org.testcontainers:testcontainers:1.21.3")
     implementation("org.testcontainers:toxiproxy:1.21.0")
 
     /*
@@ -114,7 +114,7 @@ dependencies {
 
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:1.20.3")
-    testImplementation("org.testcontainers:kafka:1.21.1")
+    testImplementation("org.testcontainers:kafka:1.21.3")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("org.json:json:20250107")
     testImplementation("org.testcontainers:toxiproxy:1.21.0")
