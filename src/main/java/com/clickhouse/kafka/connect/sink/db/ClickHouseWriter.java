@@ -28,7 +28,10 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.google.gson.ExclusionStrategy;
+import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -71,6 +74,11 @@ public class ClickHouseWriter implements DBWriter {
 
     private Map<String, Table> mapping = null;
     private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
+    private boolean binaryFormatWrtiteJsonAsString = false;
+
+    private Gson schemaExcludingJsonWriter = new GsonBuilder().setExclusionStrategies(
+            new SchemaFieldExclusionStrategy()
+    ).create(); // used only for JSON writing
 
     public ClickHouseWriter() {
         this.mapping = new HashMap<String, Table>();
@@ -81,6 +89,9 @@ public class ClickHouseWriter implements DBWriter {
     }
     protected void setSinkConfig(ClickHouseSinkConfig csc) {
         this.csc = csc;
+
+        String jsonAsString = csc.getClickhouseSettings().get("input_format_binary_read_json_as_string");
+        this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
     }
     protected Map<String, Table> getMapping() {
         return mapping;
@@ -89,7 +100,7 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
-        this.csc = csc;
+        setSinkConfig(csc);
         String clientVersion = csc.getClientVersion();
         boolean useClientV2 = clientVersion.equals("V1") ? false : true;
 
@@ -260,6 +271,15 @@ public class ClickHouseWriter implements DBWriter {
 
                                 if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
                                     continue;
+
+                                if (type == Type.JSON) {
+                                    if (binaryFormatWrtiteJsonAsString &&
+                                            (dataTypeName.equals("STRUCT") || dataTypeName.equals("STRING"))) {
+                                        // we will convert struct to a string
+                                        //  suppose to have JSON already
+                                        continue;
+                                    }
+                                }
 
                                 validSchema = false;
                                 LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
@@ -520,6 +540,21 @@ public class ClickHouseWriter implements DBWriter {
                     );
                 }
                 break;
+            case JSON:
+                if (binaryFormatWrtiteJsonAsString) {
+                    if (value.getFieldType() == Schema.Type.STRUCT) {
+                        value.getObject(); // map<String, Object>
+                        String json = schemaExcludingJsonWriter.toJson(value.getObject());
+                        BinaryStreamUtils.writeString(stream, json.getBytes(StandardCharsets.UTF_8));
+                    } else if (value.getFieldType() == Schema.Type.STRING) {
+                        BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
+                    } else {
+                        throw new RuntimeException("Unsupported field type: " + value.getFieldType() + " for column type [JSON]");
+                    }
+                    break;
+                } else {
+                    throw new RuntimeException("Writing JSON in binary is not supported yet. Use `input_format_binary_read_json_as_string=1` in clickhouse settings to allow writing as string");
+                }
             default:
                 // If you wonder, how NESTED works in JDBC:
                 // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
@@ -961,6 +996,7 @@ public class ClickHouseWriter implements DBWriter {
                         data = new HashMap<>(16);
                         Struct struct = (Struct) record.getSinkRecord().value();
                         for (Field field : struct.schema().fields()) {
+                            Object value = struct.get(field.name());
                             data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
                         }
                         break;
@@ -976,6 +1012,7 @@ public class ClickHouseWriter implements DBWriter {
                         record.getRecordOffsetContainer().getPartition(),
                         record.getRecordOffsetContainer().getOffset(),
                         gsonString);
+                System.out.println(gsonString);
                 BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
             } else {
                 LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
@@ -1216,5 +1253,21 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public long recordsInserted() {
         return 0;
+    }
+
+    private static class SchemaFieldExclusionStrategy implements ExclusionStrategy {
+
+        @Override
+        public boolean shouldSkipField(FieldAttributes f) {
+            if (f.getDeclaringClass() == Data.class && f.getName().equals("schema"))  {
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean shouldSkipClass(Class<?> clazz) {
+            return false;
+        }
     }
 }

@@ -150,6 +150,9 @@ public class Column {
                     type = Type.Decimal;
                 } else if (valueType.startsWith("FixedString")) {
                     type = Type.FIXED_STRING;
+                } else if (valueType.startsWith("JSON")) {
+                    // There are some parameters that we ignore because server will handle them for us
+                    type = Type.JSON;
                 }
 
                 break;

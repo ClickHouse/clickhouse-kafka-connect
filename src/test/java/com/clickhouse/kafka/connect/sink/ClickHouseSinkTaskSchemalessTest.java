@@ -1,12 +1,15 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
 
+import java.io.Serializable;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -214,6 +217,27 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(smallerCollection);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+
+    @Test
+    public void jsonTypeTest() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("schemaless_json_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        Map<String, Serializable> clientSettings = new HashMap<>();
+        clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, " +
+                " `content` JSON, `struct` JSON ) Engine = MergeTree ORDER BY off16", clientSettings);
+
+        Collection<SinkRecord> sr = SchemalessTestData.createJSONType(topic, 1, 10);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));

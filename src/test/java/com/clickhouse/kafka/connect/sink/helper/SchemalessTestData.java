@@ -1,6 +1,9 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import org.apache.kafka.common.record.TimestampType;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaBuilder;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 
 import java.math.BigDecimal;
@@ -205,6 +208,46 @@ public class SchemalessTestData {
             value_struct.put("map_string_map", mapStringMap);
             value_struct.put("map_string_array", mapStringArray);
             value_struct.put("map_map_map", mapMapMap);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public static Collection<SinkRecord> createJSONType(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            Map<String,String> flatJson = Map.of(
+                    "k1", "v1" + n,
+                    "k2", "v2" + n
+            );
+
+            Schema STRUCT_SCHEMA = SchemaBuilder.struct()
+                    .field("k3", Schema.INT16_SCHEMA)
+                    .field("k4", Schema.STRING_SCHEMA)
+                    .build();
+
+            Struct struct = new Struct(STRUCT_SCHEMA)
+                    .put("k3", (short)n)
+                    .put("k4", "v4" + n);
+
+
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("off16", (short)n);
+            value_struct.put("content", flatJson);
+            value_struct.put("struct", struct);
 
             SinkRecord sr = new SinkRecord(
                     topic,

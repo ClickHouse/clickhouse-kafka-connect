@@ -1,8 +1,10 @@
 package com.clickhouse.kafka.connect.sink;
 
+import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
+import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -18,8 +20,10 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.awt.desktop.SystemSleepEvent;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -874,6 +878,27 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    public void testWritingJsonAsStringWithRowBinary() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
+        String topic = createTopicName("schema_json_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        Map<String, Serializable> clientSettings = new HashMap<>();
+        clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, " +
+                " `struct_content` JSON, `json_as_str` JSON ) Engine = MergeTree ORDER BY off16", clientSettings);
+
+        Collection<SinkRecord> sr = SchemaTestData.createJSONType(topic, 1, 10);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 }
