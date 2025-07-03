@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package test;
+
+option java_package = "com.clickhouse.kafka.connect.test";
+option java_outer_classname = "TestProtos";
+
+// A simple message with primitive types
+message TestMessage {
+  int32 id = 1;
+  string name = 2;
+  bool is_active = 3;
+  double score = 4;
+  repeated string tags = 5;
+  
+  // A oneof field that can be one of two message types
+  oneof content {
+    UserInfo user_info = 6;
+    ProductInfo product_info = 7;
+  }
+}
+
+// First message type for the oneof field
+message UserInfo {
+  string email = 1;
+  int32 age = 2;
+  UserType user_type = 3;
+  
+  enum UserType {
+    REGULAR = 0;
+    PREMIUM = 1;
+    ADMIN = 2;
+  }
+}
+
+// Second message type for the oneof field
+message ProductInfo {
+  string sku = 1;
+  double price = 2;
+  bool in_stock = 3;
+  repeated string categories = 4;
+}

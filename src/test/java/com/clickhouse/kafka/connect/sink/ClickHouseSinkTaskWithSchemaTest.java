@@ -6,7 +6,17 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
+import com.clickhouse.kafka.connect.test.TestProtos;
 import com.clickhouse.kafka.connect.util.Utils;
+import io.confluent.connect.protobuf.ProtobufConverter;
+import io.confluent.connect.protobuf.ProtobufConverterConfig;
+import io.confluent.connect.protobuf.ProtobufDataConfig;
+import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
+import io.confluent.kafka.schemaregistry.testutil.MockSchemaRegistry;
+import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
+import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
+import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
@@ -20,6 +30,7 @@ import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -901,5 +912,59 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    @SinceClickHouseVersion("24.10")
+    public void testWritingProtoMessageWithRowBinary() throws Exception {
+
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
+        String topic = createTopicName("protobuf_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        TestProtos.TestMessage userMsg = SchemaTestData.createUserMessage();
+        TestProtos.TestMessage productMsg = SchemaTestData.createProductMessage();
+
+        MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
+        // Register your test schema
+        TestProtos.TestMessage message = TestProtos.TestMessage.getDefaultInstance();
+        ProtobufSchema schema = new ProtobufSchema(userMsg.getDescriptorForType());
+        String subject = topic + "-value";
+        schemaRegistry.register(subject, schema);
+
+        ProtobufConverter protobufConverter = new ProtobufConverter(schemaRegistry);
+        Map<String, Object> converterConfig = new HashMap<>();
+        converterConfig.put(ProtobufConverterConfig.AUTO_REGISTER_SCHEMAS, true);
+        converterConfig.put(ProtobufDataConfig.GENERATE_INDEX_FOR_UNIONS_CONFIG, false);
+        converterConfig.put(KafkaProtobufSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-url");
+
+        protobufConverter.configure(converterConfig, false);
+        KafkaProtobufSerializer protobufSerializer = new KafkaProtobufSerializer(schemaRegistry);
+        byte[] serializedUserMsg=  protobufSerializer.serialize(topic, userMsg);
+        SchemaAndValue userConnectData = protobufConverter.toConnectData(topic, serializedUserMsg);
+        byte[] serializedProdudctMsg=  protobufSerializer.serialize(topic, productMsg);
+        SchemaAndValue productConnectData = protobufConverter.toConnectData(topic, serializedProdudctMsg);
+
+        List<SinkRecord> records = Arrays.asList(
+                new SinkRecord(topic, 0, null, null,
+                        userConnectData.schema(), userConnectData.value(), 0),
+                new SinkRecord(topic, 0, null, null,
+                        productConnectData.schema(), productConnectData.value(), 1)
+        );
+
+        Map<String, Serializable> clientSettings = new HashMap<>();
+        clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
+
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE %s ( `id` Int32, `name` String, `is_active` Boolean, `score` Float64, `tags` Array(String), " +
+                " `content` JSON ) Engine = MergeTree ORDER BY ()", clientSettings);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+        assertEquals(records.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 }
