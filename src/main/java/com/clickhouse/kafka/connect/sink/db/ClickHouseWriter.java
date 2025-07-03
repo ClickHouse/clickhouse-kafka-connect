@@ -543,7 +543,6 @@ public class ClickHouseWriter implements DBWriter {
             case JSON:
                 if (binaryFormatWrtiteJsonAsString) {
                     if (value.getFieldType() == Schema.Type.STRUCT) {
-                        value.getObject(); // map<String, Object>
                         String json = schemaExcludingJsonWriter.toJson(value.getObject());
                         BinaryStreamUtils.writeString(stream, json.getBytes(StandardCharsets.UTF_8));
                     } else if (value.getFieldType() == Schema.Type.STRING) {
@@ -996,7 +995,6 @@ public class ClickHouseWriter implements DBWriter {
                         data = new HashMap<>(16);
                         Struct struct = (Struct) record.getSinkRecord().value();
                         for (Field field : struct.schema().fields()) {
-                            Object value = struct.get(field.name());
                             data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
                         }
                         break;
@@ -1012,7 +1010,6 @@ public class ClickHouseWriter implements DBWriter {
                         record.getRecordOffsetContainer().getPartition(),
                         record.getRecordOffsetContainer().getOffset(),
                         gsonString);
-                System.out.println(gsonString);
                 BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
             } else {
                 LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
