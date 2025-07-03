@@ -74,7 +74,6 @@ public class ClickHouseWriter implements DBWriter {
 
     private Map<String, Table> mapping = null;
     private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
-    private boolean binaryFormatWrtiteJsonAsString = false;
 
     private Gson schemaExcludingJsonWriter = new GsonBuilder().setExclusionStrategies(
             new SchemaFieldExclusionStrategy()
@@ -89,9 +88,6 @@ public class ClickHouseWriter implements DBWriter {
     }
     protected void setSinkConfig(ClickHouseSinkConfig csc) {
         this.csc = csc;
-
-        String jsonAsString = csc.getClickhouseSettings().get("input_format_binary_read_json_as_string");
-        this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
     }
     protected Map<String, Table> getMapping() {
         return mapping;
@@ -273,7 +269,7 @@ public class ClickHouseWriter implements DBWriter {
                                     continue;
 
                                 if (type == Type.JSON) {
-                                    if (binaryFormatWrtiteJsonAsString &&
+                                    if (csc.isBinaryFormatWrtiteJsonAsString() &&
                                             (dataTypeName.equals("STRUCT") || dataTypeName.equals("STRING"))) {
                                         // we will convert struct to a string
                                         //  suppose to have JSON already
@@ -541,7 +537,7 @@ public class ClickHouseWriter implements DBWriter {
                 }
                 break;
             case JSON:
-                if (binaryFormatWrtiteJsonAsString) {
+                if (csc.isBinaryFormatWrtiteJsonAsString()) {
                     if (value.getFieldType() == Schema.Type.STRUCT) {
                         String json = schemaExcludingJsonWriter.toJson(value.getObject());
                         BinaryStreamUtils.writeString(stream, json.getBytes(StandardCharsets.UTF_8));
