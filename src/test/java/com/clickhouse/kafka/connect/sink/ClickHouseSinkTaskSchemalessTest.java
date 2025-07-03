@@ -4,9 +4,11 @@ import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
+import com.clickhouse.kafka.connect.sink.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.Serializable;
 import java.util.Collection;
@@ -16,6 +18,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
     @Test
