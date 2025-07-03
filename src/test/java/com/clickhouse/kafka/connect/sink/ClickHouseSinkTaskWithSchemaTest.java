@@ -882,6 +882,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     @Test
+    @SinceClickHouseVersion("24.10")
     public void testWritingJsonAsStringWithRowBinary() {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);

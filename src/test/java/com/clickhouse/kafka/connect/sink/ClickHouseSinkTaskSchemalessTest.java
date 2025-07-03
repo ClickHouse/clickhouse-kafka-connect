@@ -4,6 +4,7 @@ import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
+import com.clickhouse.kafka.connect.sink.junit.extension.SinceClickHouseVersion;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
 
@@ -224,6 +225,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
 
     @Test
+    @SinceClickHouseVersion("24.10")
     public void jsonTypeTest() {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
