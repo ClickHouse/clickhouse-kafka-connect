@@ -35,7 +35,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig.*;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -742,7 +742,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     public void changeSchemaWhileRunningWithRefreshEnabled() throws InterruptedException {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
-        props.put(TABLE_REFRESH_INTERVAL, "1");
+        props.put(ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL, "1");
         String topic = createTopicName("change-schema-while-running-table-test-with-refresh-enabled");
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
@@ -1003,8 +1003,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         // dropping first batch since connect might think someone restarted the topic and offset is set to zero
         data01.remove(0);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        props.put(TOLERATE_STATE_MISMATCH, "true");
-        props.put(EXACTLY_ONCE, "true");
+        props.put(ClickHouseSinkConfig.TOLERATE_STATE_MISMATCH, "true");
+        props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");
         chst.start(props);
         for (Collection<SinkRecord> records : data) {
             chst.put(records);
