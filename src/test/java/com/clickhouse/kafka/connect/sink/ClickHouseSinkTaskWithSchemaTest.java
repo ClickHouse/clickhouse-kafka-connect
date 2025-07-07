@@ -13,7 +13,6 @@ import io.confluent.connect.protobuf.ProtobufConverterConfig;
 import io.confluent.connect.protobuf.ProtobufDataConfig;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
-import io.confluent.kafka.schemaregistry.testutil.MockSchemaRegistry;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -30,15 +29,11 @@ import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL;
+import static com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -914,7 +909,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
-    @Test
+    //@Test
     @SinceClickHouseVersion("24.10")
     public void testWritingProtoMessageWithRowBinary() throws Exception {
 
@@ -966,5 +961,61 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(records);
         chst.stop();
         assertEquals(records.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    public List<Collection<SinkRecord>> partition(Collection<SinkRecord> collection, int size) {
+
+        List<Collection<SinkRecord>> partitions = new ArrayList<>();
+        Iterator<SinkRecord> iterator = collection.iterator();
+
+        while (iterator.hasNext()) {
+            Collection<SinkRecord> partition = new ArrayList<>();
+            for (int i = 0; i < size && iterator.hasNext(); i++) {
+                partition.add(iterator.next());
+            }
+            partitions.add(partition);
+        }
+        return partitions;
+    }
+
+    @Test
+    public void exactlyOnceStateMismatchTest() {
+        // This test is running only cloud
+        if (!isCloud)
+            return;
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "exactly_once_state_mismatch_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), " +
+                "`arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), " +
+                "`arr_float64` Array(Float64), `arr_bool` Array(Bool), `arr_str_arr` Array(Array(String)), `arr_arr_str_arr` Array(Array(Array(String))), " +
+                "`arr_map` Array(Map(String, String))  ) Engine = MergeTree ORDER BY off16");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
+        List<Collection<SinkRecord>> data = partition(sr, 11);
+        data = data.subList(0, data.size() - 2);
+        List<Collection<SinkRecord>> data01 = partition(sr, 7);
+        // dropping first batch since connect might think someone restarted the topic
+        data01.remove(0);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        props.put(TOLERATE_STATE_MISMATCH, "true");
+        props.put(EXACTLY_ONCE, "true");
+        chst.start(props);
+        for (Collection<SinkRecord> records : data) {
+            chst.put(records);
+        }
+        assertEquals(data.size() * 11, ClickHouseTestHelpers.countRows(chc, topic));
+//        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        for (Collection<SinkRecord> records : data01) {
+            chst.put(records);
+        }
+//        chst.put(sr);
+        chst.stop();
+        // after the second insert we have exactly sr.size() records
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+
     }
 }

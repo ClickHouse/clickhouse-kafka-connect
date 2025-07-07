@@ -1,5 +1,7 @@
 package com.clickhouse.kafka.connect.sink.kafka;
 
+import com.clickhouse.kafka.connect.sink.state.State;
+
 public class RangeContainer extends TopicPartitionContainer {
 
     private long maxOffset;
@@ -47,7 +49,8 @@ public class RangeContainer extends TopicPartitionContainer {
      * @param rangeContainer A container with the actual state
      * @return The state of the comparison
      */
-    public RangeState getOverLappingState(RangeContainer rangeContainer) {
+    public RangeState getOverLappingState(RangeContainer rangeContainer, State state) {
+        // rangeContainer contains the actual records offset
         long actualMinOffset = rangeContainer.getMinOffset();
         long actualMaxOffset = rangeContainer.getMaxOffset();
 
@@ -66,12 +69,15 @@ public class RangeContainer extends TopicPartitionContainer {
         // ZEROED [10, 20] Actual [0, 10]
         if (actualMinOffset == 0)
             return RangeState.ZERO;
-        // PREVIOUS [10, 20] Actual [5, 8]
-        if (actualMaxOffset < minOffset)
+        // PREVIOUS - state [10, 20]   Actual - records [5, 8]
+        // PREVIOUS - state [968, 978] Actual - records [966, 972]
+        // in this case we should ignore since we are sure that data was already inserted we covered all situations in the previous conditions
+        if (state == State.AFTER_PROCESSING)
             return RangeState.PREVIOUS;
         // ERROR [10, 20] Actual [8, 19]
         return RangeState.ERROR;
     }
+
 
 
     public RangeContainer getRangeContainer() {
