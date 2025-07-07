@@ -911,7 +911,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
-    //@Test
+    @Test
     @SinceClickHouseVersion("24.10")
     public void testWritingProtoMessageWithRowBinary() throws Exception {
 
