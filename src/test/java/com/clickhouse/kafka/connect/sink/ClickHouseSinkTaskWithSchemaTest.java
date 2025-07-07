@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
@@ -978,15 +980,16 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         return partitions;
     }
 
-    @Test
-    public void exactlyOnceStateMismatchTest() {
+    @ParameterizedTest
+    @ValueSource(ints = {11, 17 , 37,  61, 113})
+    public void exactlyOnceStateMismatchTest(int split) {
         // This test is running only cloud
         if (!isCloud)
             return;
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
-        String topic = "exactly_once_state_mismatch_test";
+        String topic = "exactly_once_state_mismatch_test_" + split;
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), " +
                 "`arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), " +
@@ -994,10 +997,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "`arr_map` Array(Map(String, String))  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
-        List<Collection<SinkRecord>> data = partition(sr, 11);
+        List<Collection<SinkRecord>> data = partition(sr, split);
         data = data.subList(0, data.size() - 2);
         List<Collection<SinkRecord>> data01 = partition(sr, 7);
-        // dropping first batch since connect might think someone restarted the topic
+        // dropping first batch since connect might think someone restarted the topic and offset is set to zero
         data01.remove(0);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         props.put(TOLERATE_STATE_MISMATCH, "true");
@@ -1006,12 +1009,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         for (Collection<SinkRecord> records : data) {
             chst.put(records);
         }
-        assertEquals(data.size() * 11, ClickHouseTestHelpers.countRows(chc, topic));
-//        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        assertEquals(data.size() * split, ClickHouseTestHelpers.countRows(chc, topic));
         for (Collection<SinkRecord> records : data01) {
             chst.put(records);
         }
-//        chst.put(sr);
         chst.stop();
         // after the second insert we have exactly sr.size() records
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
