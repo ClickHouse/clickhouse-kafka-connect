@@ -981,7 +981,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {11, 17 , 37,  61, 113})
+    @ValueSource(ints = {11, 17 , 37,  61, 113, 131, 150, 157, 167, 229})
     public void exactlyOnceStateMismatchTest(int split) {
         // This test is running only cloud
         if (!isCloud)
@@ -1015,8 +1015,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
         chst.stop();
         // after the second insert we have exactly sr.size() records
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
     }
 }
