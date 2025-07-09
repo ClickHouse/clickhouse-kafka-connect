@@ -994,6 +994,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             "157, 131",
             "167, 161",
             "229, 220",
+            "229, 221",
     })
     public void exactlyOnceStateMismatchTest(int split, int batch) {
         // This test is running only cloud
