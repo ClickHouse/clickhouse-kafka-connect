@@ -761,6 +761,8 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String database = first.getDatabase();
+        String topic = first.getSinkRecord().topic();
+        String partition = first.getSinkRecord().kafkaPartition().toString();
 
         if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
@@ -812,7 +814,7 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
     }
     protected void doInsertRawBinaryV1(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
@@ -822,6 +824,8 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String database = first.getDatabase();
+        String topic = first.getSinkRecord().topic();
+        String partition = first.getSinkRecord().kafkaPartition().toString();
 
         if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
@@ -866,7 +870,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic :{} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
     protected void doInsertJson(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
@@ -890,6 +894,8 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String database = first.getDatabase();
+        String topic = first.getSinkRecord().topic();
+        String partition = first.getSinkRecord().kafkaPartition().toString();
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
@@ -945,7 +951,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
     protected void doInsertJsonV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
@@ -962,6 +968,8 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String database = first.getDatabase();
+        String topic = first.getSinkRecord().topic();
+        String partition = first.getSinkRecord().kafkaPartition().toString();
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
@@ -1018,7 +1026,7 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
     protected Map<String, Object> cleanupExtraFields(Map<String, Object> m, Table t) {
@@ -1051,6 +1059,8 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String database = first.getDatabase();
+        String topic = first.getSinkRecord().topic();
+        String partition = first.getSinkRecord().kafkaPartition().toString();
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
@@ -1107,7 +1117,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
     protected void doInsertStringV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         byte[] endingLine = new byte[]{'\n'};
@@ -1118,6 +1128,8 @@ public class ClickHouseWriter implements DBWriter {
 
         Record first = records.get(0);
         String database = first.getDatabase();
+        String topic = first.getSinkRecord().topic();
+        String partition = first.getSinkRecord().kafkaPartition().toString();
 
         Client client = chc.getClient();
 
@@ -1177,7 +1189,7 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         s3 = System.currentTimeMillis();
-        LOGGER.info("batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
 
