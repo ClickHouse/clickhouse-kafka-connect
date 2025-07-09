@@ -41,15 +41,15 @@ public class ClickHouseBase {
     @AfterAll
     protected static void tearDown() {
         // disable dropping database for debug
-//        if (isCloud) {//We need to clean up databases in the cloud, we can ignore the local database
-//            if (database != null) {
-//                try {
-//                    dropDatabase(database);
-//                } catch (Exception e) {
-//                    LOGGER.error("Error dropping database", e);
-//                }
-//            }
-//        }
+        if (isCloud) {//We need to clean up databases in the cloud, we can ignore the local database
+            if (database != null) {
+                try {
+                    dropDatabase(database);
+                } catch (Exception e) {
+                    LOGGER.error("Error dropping database", e);
+                }
+            }
+        }
         if (db != null)
             db.stop();
     }
