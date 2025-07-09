@@ -9,6 +9,7 @@ import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.google.crypto.tink.internal.Random;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.slf4j.Logger;
@@ -28,7 +29,7 @@ public class ClickHouseBase {
     @BeforeAll
     public static void setup() throws IOException  {
         if (database == null) {
-            database = String.format("kafka_connect_test_%s", System.currentTimeMillis());
+            database = String.format("kafka_connect_test_%d_%s", Random.randInt(), System.currentTimeMillis());
         }
         if (isCloud) {
             initialPing();
