@@ -13,7 +13,6 @@ import io.confluent.connect.protobuf.ProtobufConverterConfig;
 import io.confluent.connect.protobuf.ProtobufDataConfig;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
-import io.confluent.kafka.schemaregistry.testutil.MockSchemaRegistry;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -24,21 +23,20 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -745,7 +743,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     public void changeSchemaWhileRunningWithRefreshEnabled() throws InterruptedException {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
-        props.put(TABLE_REFRESH_INTERVAL, "1");
+        props.put(ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL, "1");
         String topic = createTopicName("change-schema-while-running-table-test-with-refresh-enabled");
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
@@ -966,5 +964,72 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(records);
         chst.stop();
         assertEquals(records.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    public List<Collection<SinkRecord>> partition(Collection<SinkRecord> collection, int size) {
+
+        List<Collection<SinkRecord>> partitions = new ArrayList<>();
+        Iterator<SinkRecord> iterator = collection.iterator();
+
+        while (iterator.hasNext()) {
+            Collection<SinkRecord> partition = new ArrayList<>();
+            for (int i = 0; i < size && iterator.hasNext(); i++) {
+                partition.add(iterator.next());
+            }
+            partitions.add(partition);
+        }
+        return partitions;
+    }
+
+    @ParameterizedTest
+    //@ValueSource(ints = {11, 17 , 37,  61, 113, 131, 150, 157, 167, 229})
+    @CsvSource({
+            "11, 7",
+            "17, 11",
+            "37, 17",
+            "61, 37",
+            "113, 120",
+            "131, 150",
+            "150, 160",
+            "157, 131",
+            "167, 161",
+            "229, 220",
+            "229, 221",
+    })
+    public void exactlyOnceStateMismatchTest(int split, int batch) {
+        // This test is running only cloud
+        if (!isCloud)
+            return;
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "exactly_once_state_mismatch_test_" + split + "_" + batch + "_" + System.currentTimeMillis();
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), " +
+                "`arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), " +
+                "`arr_float64` Array(Float64), `arr_bool` Array(Bool), `arr_str_arr` Array(Array(String)), `arr_arr_str_arr` Array(Array(Array(String))), " +
+                "`arr_map` Array(Map(String, String))  ) Engine = MergeTree ORDER BY off16");
+        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+        Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
+        List<Collection<SinkRecord>> data = partition(sr, split);
+        data = data.subList(0, data.size() - 2);
+        List<Collection<SinkRecord>> data01 = partition(sr, batch);
+        // dropping first batch since connect might think someone restarted the topic and offset is set to zero
+        data01.remove(0);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        props.put(ClickHouseSinkConfig.TOLERATE_STATE_MISMATCH, "true");
+        props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");
+        chst.start(props);
+        for (Collection<SinkRecord> records : data) {
+            chst.put(records);
+        }
+        assertEquals(data.size() * split, ClickHouseTestHelpers.countRows(chc, topic));
+        for (Collection<SinkRecord> records : data01) {
+            chst.put(records);
+        }
+        chst.stop();
+        // after the second insert we have exactly sr.size() records
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+
     }
 }

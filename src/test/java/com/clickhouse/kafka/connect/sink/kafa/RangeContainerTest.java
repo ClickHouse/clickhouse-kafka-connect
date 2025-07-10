@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.kafka.RangeState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static com.clickhouse.kafka.connect.sink.state.State.NONE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class RangeContainerTest {
@@ -19,8 +20,8 @@ public class RangeContainerTest {
         RangeContainer rangeContainerFirst = new RangeContainer(topic, partition, 10, 1);
         RangeContainer rangeContainerSecond01 = new RangeContainer(topic, partition, 10, 1);
         RangeContainer rangeContainerSecond02 = new RangeContainer(topic, partition, 10, 0);
-        assertEquals(RangeState.SAME, rangeContainerFirst.getOverLappingState(rangeContainerSecond01));
-        assertEquals(RangeState.SAME, rangeContainerFirst.getOverLappingState(rangeContainerSecond02));
+        assertEquals(RangeState.SAME, rangeContainerFirst.getOverLappingState(rangeContainerSecond01, NONE));
+        assertEquals(RangeState.SAME, rangeContainerFirst.getOverLappingState(rangeContainerSecond02, NONE));
 
     }
 
@@ -30,7 +31,7 @@ public class RangeContainerTest {
     public void newRangeTest() {
         RangeContainer rangeContainerFirst = new RangeContainer(topic, partition, 10, 0);
         RangeContainer rangeContainerSecond = new RangeContainer(topic, partition, 20, 11);
-        assertEquals(RangeState.NEW, rangeContainerFirst.getOverLappingState(rangeContainerSecond));
+        assertEquals(RangeState.NEW, rangeContainerFirst.getOverLappingState(rangeContainerSecond, NONE));
 
     }
 
@@ -43,9 +44,9 @@ public class RangeContainerTest {
         RangeContainer rangeContainerSecond02 = new RangeContainer(topic, partition, 9, 0);
         RangeContainer rangeContainerSecond03 = new RangeContainer(topic, partition, 10, 1);
 
-        assertEquals(RangeState.CONTAINS, rangeContainerFirst.getOverLappingState(rangeContainerSecond01));
-        assertEquals(RangeState.CONTAINS, rangeContainerFirst.getOverLappingState(rangeContainerSecond02));
-        assertEquals(RangeState.CONTAINS, rangeContainerFirst.getOverLappingState(rangeContainerSecond03));
+        assertEquals(RangeState.CONTAINS, rangeContainerFirst.getOverLappingState(rangeContainerSecond01, NONE));
+        assertEquals(RangeState.CONTAINS, rangeContainerFirst.getOverLappingState(rangeContainerSecond02, NONE));
+        assertEquals(RangeState.CONTAINS, rangeContainerFirst.getOverLappingState(rangeContainerSecond03, NONE));
 
     }
 
@@ -54,7 +55,7 @@ public class RangeContainerTest {
     public void errorRangeTest() {
         RangeContainer rangeContainerFirst = new RangeContainer(topic, partition, 10, 4);
         RangeContainer rangeContainerSecond = new RangeContainer(topic, partition, 9, 2);
-        assertEquals(RangeState.ERROR, rangeContainerFirst.getOverLappingState(rangeContainerSecond));
+        assertEquals(RangeState.ERROR, rangeContainerFirst.getOverLappingState(rangeContainerSecond, NONE));
 
     }
 
@@ -68,11 +69,11 @@ public class RangeContainerTest {
         RangeContainer rangeContainerSecond04 = new RangeContainer(topic, partition, 11, 0);
         RangeContainer rangeContainerSecond05 = new RangeContainer(topic, partition, 11, 1);
 
-        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond01));
-        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond02));
-        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond03));
-        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond04));
-        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond05));
+        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond01, NONE));
+        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond02, NONE));
+        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond03, NONE));
+        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond04, NONE));
+        assertEquals(RangeState.OVER_LAPPING, rangeContainerFirst.getOverLappingState(rangeContainerSecond05, NONE));
 
     }
 
