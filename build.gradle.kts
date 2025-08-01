@@ -118,7 +118,7 @@ dependencies {
     testImplementation("org.testcontainers:clickhouse:1.21.3")
     testImplementation("org.testcontainers:kafka:1.21.3")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
-    testImplementation("org.json:json:20250107")
+    testImplementation("org.json:json:20250517")
     testImplementation("org.testcontainers:toxiproxy:1.21.0")
     testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
