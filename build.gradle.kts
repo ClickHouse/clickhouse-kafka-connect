@@ -128,8 +128,8 @@ dependencies {
 
     // Protobuf dependencies
     testImplementation("com.google.protobuf:protobuf-java:3.25.1")
-    testImplementation("io.confluent:kafka-protobuf-serializer:7.9.1")
-    testImplementation("io.confluent:kafka-connect-protobuf-converter:7.9.1")
+    testImplementation("io.confluent:kafka-protobuf-serializer:8.0.0")
+    testImplementation("io.confluent:kafka-connect-protobuf-converter:8.0.0")
 
 //    // Schema Registry client for testing
     testImplementation("io.confluent:kafka-schema-registry-client:7.5.4")
