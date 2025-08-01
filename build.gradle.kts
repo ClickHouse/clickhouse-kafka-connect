@@ -45,6 +45,7 @@ description = "The official ClickHouse Apache Kafka Connect Connector."
 
 repositories {
     mavenCentral()
+    mavenLocal()
     maven("https://packages.confluent.io/maven/")
     maven("https://jitpack.io")
 }
@@ -272,4 +273,12 @@ protobuf {
         artifact = "com.google.protobuf:protoc:3.25.1"
     }
 //    generatedFilesBaseDir = "$buildDir/generated/source/proto"
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"]) // Publishes the Java component
+        }
+    }
 }
