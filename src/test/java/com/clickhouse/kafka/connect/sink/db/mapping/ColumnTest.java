@@ -29,6 +29,18 @@ class ColumnTest {
     }
 
     @Test
+    public void extractSimpleAggregateFunctionColumn() {
+        Column col = Column.extractColumn(newDescriptor("SimpleAggregateFunction(sum, Int64)"));
+        assertEquals(Type.INT64, col.getType());
+    }
+
+    @Test
+    public void extractSimpleAggregateFunctionNullableColumn() {
+        Column col = Column.extractColumn(newDescriptor("SimpleAggregateFunction(sum, Nullable(Int64))"));
+        assertEquals(Type.INT64, col.getType());
+    }
+
+    @Test
     public void extractArrayOfLowCardinalityNullableColumn() {
         Column col = Column.extractColumn(newDescriptor("Array(LowCardinality(Nullable(String)))"));
         assertEquals(Type.ARRAY, col.getType());
