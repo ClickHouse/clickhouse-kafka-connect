@@ -251,6 +251,14 @@ public class Column {
             return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue, isSubColumn);
         } else if (valueType.startsWith("Nullable")) {
             return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true, hasDefaultValue, isSubColumn);
+        } else if (valueType.startsWith("SimpleAggregateFunction")) {
+            Pattern p = Pattern.compile("^SimpleAggregateFunction\\s*\\([^,]+,\\s*(.+)\\)$");
+            Matcher m = p.matcher(valueType);
+            if (!m.matches()) {
+                throw new RuntimeException("can't parse SimpleAggregateFunction type");
+            }
+            String argType = m.group(1).trim();
+            return extractColumn(name, argType, isNull, hasDefaultValue, isSubColumn);
         }
 
         // We're dealing with a primitive type here
