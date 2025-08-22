@@ -25,6 +25,10 @@ import java.util.stream.Collectors;
 @Builder
 @Getter
 public class Column {
+    private static final Pattern PARAMETRIZED_TYPE_PATTERN = Pattern.compile(".+\\(.+\\)");
+    private static final Pattern DECIMAL_TYPE_PATTERN = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
+    private static final Pattern SIMPLE_AGGREGATE_FUNCTION_TYPE_PATTERN = Pattern.compile("^SimpleAggregateFunction\\s*\\([^,]+,\\s*(.+)\\)$");
+
     private static final Logger LOGGER = LoggerFactory.getLogger(Column.class);
 
     private String name;
@@ -229,7 +233,7 @@ public class Column {
 
                         ColumnBuilder variantTypeBuilder = Column.builder().type(typePrecisionAndScale.getT1());
 
-                        if (Pattern.compile(".+\\(.+\\)").asMatchPredicate().test(definition)) {
+                        if (PARAMETRIZED_TYPE_PATTERN.asMatchPredicate().test(definition)) {
                             variantTypeBuilder = variantTypeBuilder
                                     .precision(typePrecisionAndScale.getT2())
                                     .scale(typePrecisionAndScale.getT3());
@@ -251,6 +255,13 @@ public class Column {
             return extractColumn(name, valueType.substring("LowCardinality".length() + 1, valueType.length() - 1), isNull, hasDefaultValue, isSubColumn);
         } else if (valueType.startsWith("Nullable")) {
             return extractColumn(name, valueType.substring("Nullable".length() + 1, valueType.length() - 1), true, hasDefaultValue, isSubColumn);
+        } else if (valueType.startsWith("SimpleAggregateFunction")) {
+            Matcher m = SIMPLE_AGGREGATE_FUNCTION_TYPE_PATTERN.matcher(valueType);
+            if (!m.matches()) {
+                throw new RuntimeException("can't parse SimpleAggregateFunction type");
+            }
+            String argType = m.group(1).trim();
+            return extractColumn(name, argType, isNull, hasDefaultValue, isSubColumn);
         }
 
         // We're dealing with a primitive type here
@@ -277,9 +288,7 @@ public class Column {
             precision = Integer.parseInt(scaleAndTimezone[0].trim());
             LOGGER.trace("Parsed precision of DateTime64 is {}", precision);
         } else if (type == Type.Decimal) {
-            final Pattern patter = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
-            Matcher match = patter.matcher(valueType);
-
+            Matcher match = DECIMAL_TYPE_PATTERN.matcher(valueType);
             if (!match.matches()) {
                 throw new RuntimeException("type doesn't match");
             }
