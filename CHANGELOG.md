@@ -1,3 +1,6 @@
+# 1.3.3
+Write custom JSON serializer for KafkaConnect structs
+
 # 1.3.2 
 Added support of writing JSON as string to a JSON column.
 Upgraded dependency `org.slf4j:slf4j-reload4j` from `2.0.13` to `2.0.17`
