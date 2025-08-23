@@ -1,4 +1,4 @@
-package com.clickhouse.kafka.connect.sink.junit.extension;
+package com.clickhouse.kafka.connect.test.junit.extension;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

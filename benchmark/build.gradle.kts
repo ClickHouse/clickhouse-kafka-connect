@@ -12,6 +12,8 @@ plugins {
     application
 }
 
+val connectorVersion = file("../VERSION").readText().trim()
+
 application {
     mainClass.set("kafka_connector.BenchmarkMain")
 }
@@ -19,6 +21,8 @@ application {
 repositories {
     mavenLocal()
     mavenCentral()
+    maven("https://packages.confluent.io/maven/")
+    maven("https://jitpack.io")
 }
 
 java {
@@ -28,7 +32,8 @@ java {
 }
 
 dependencies {
-    implementation("com.clickhouse.kafka:clickhouse-kafka-connect:v1.3.2")
+    implementation("com.clickhouse.kafka:clickhouse-kafka-connect:${connectorVersion}")
+    implementation("com.clickhouse.kafka:clickhouse-kafka-connect:${connectorVersion}:test-fixtures")
     implementation("org.apache.kafka:connect-api:2.7.0")
 
     // https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
@@ -38,5 +43,14 @@ dependencies {
     implementation("org.openjdk.jmh:jmh-core:1.37")
     implementation("org.openjdk.jmh:jmh-generator-annprocess:1.37")
     annotationProcessor("org.openjdk.jmh:jmh-generator-annprocess:1.37")
+
+    implementation("com.google.protobuf:protobuf-java:3.25.1")
+    implementation("io.confluent:kafka-protobuf-serializer:7.9.1")
+    implementation("io.confluent:kafka-connect-protobuf-converter:7.9.1")
+
+//    // Schema Registry client for testing
+    implementation("io.confluent:kafka-schema-registry-client:7.5.4")
+    implementation("io.confluent:kafka-schema-registry:7.5.4")
+    implementation("io.confluent:kafka-schema-serializer:7.5.4")
 }
 

@@ -1,6 +1,6 @@
-package kafka_connector.data;
+package com.clickhouse.kafka.connect.sink.helper;
 
-//import com.clickhouse.kafka.connect.test.TestProtos;
+import com.clickhouse.kafka.connect.test.TestProtos;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Decimal;
@@ -1496,41 +1496,39 @@ public class SchemaTestData {
         });
         return array;
     }
-//
-//    public static TestProtos.TestMessage createUserMessage() {
-//        return TestProtos.TestMessage.newBuilder()
-//                .setId(123)
-//                .setName("Test User")
-//                .setIsActive(true)
-//                .setScore(95.5)
-//                .addAllTags(Arrays.asList("tag1", "tag2"))
-//                .setUserInfo(
-//                        TestProtos.UserInfo.newBuilder()
-//                                .setEmail("user@example.com")
-//                                .setAge(30)
-//                                .setUserType(TestProtos.UserInfo.UserType.PREMIUM)
-//                                .build()
-//                )
-//                .build();
-//    }
 
+    public static TestProtos.TestMessage createUserMessage() {
+        return TestProtos.TestMessage.newBuilder()
+                .setId(123)
+                .setName("Test User")
+                .setIsActive(true)
+                .setScore(95.5)
+                .addAllTags(Arrays.asList("tag1", "tag2"))
+                .setUserInfo(
+                        TestProtos.UserInfo.newBuilder()
+                                .setEmail("user@example.com")
+                                .setAge(30)
+                                .setUserType(TestProtos.UserInfo.UserType.PREMIUM)
+                                .build()
+                )
+                .build();
+    }
 
-
-//    public static TestProtos.TestMessage createProductMessage() {
-//        return TestProtos.TestMessage.newBuilder()
-//                .setId(456)
-//                .setName("Test Product")
-//                .setIsActive(true)
-//                .setScore(4.5)
-//                .addAllTags(Arrays.asList("electronics", "gadgets"))
-//                .setProductInfo(
-//                        TestProtos.ProductInfo.newBuilder()
-//                                .setSku("PROD-123")
-//                                .setPrice(99.99)
-//                                .setInStock(true)
-//                                .addAllCategories(Arrays.asList("Electronics", "Gadgets"))
-//                                .build()
-//                )
-//                .build();
-//    }
+    public static TestProtos.TestMessage createProductMessage() {
+        return TestProtos.TestMessage.newBuilder()
+                .setId(456)
+                .setName("Test Product")
+                .setIsActive(true)
+                .setScore(4.5)
+                .addAllTags(Arrays.asList("electronics", "gadgets"))
+                .setProductInfo(
+                        TestProtos.ProductInfo.newBuilder()
+                                .setSku("PROD-123")
+                                .setPrice(99.99)
+                                .setInStock(true)
+                                .addAllCategories(Arrays.asList("Electronics", "Gadgets"))
+                                .build()
+                )
+                .build();
+    }
 }

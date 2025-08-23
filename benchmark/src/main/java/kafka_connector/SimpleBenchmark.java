@@ -1,12 +1,10 @@
 package kafka_connector;
 
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
-import com.clickhouse.kafka.connect.sink.data.convert.RecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemaRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemalessRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.StringRecordConvertor;
-import kafka_connector.data.SchemaTestData;
-import kafka_connector.data.SchemalessTestData;
+import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
+import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Level;
