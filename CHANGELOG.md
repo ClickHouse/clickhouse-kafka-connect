@@ -1,5 +1,5 @@
 # 1.3.3
-Write custom JSON serializer for KafkaConnect structs
+* Added support of SimpleAggregateFunction column type
 
 # 1.3.2 
 Added support of writing JSON as string to a JSON column.
