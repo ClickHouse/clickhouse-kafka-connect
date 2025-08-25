@@ -36,3 +36,8 @@ transforms=keyToValue
 transforms.keyToValue.type=com.clickhouse.kafka.connect.transforms.KeyToValue
 transforms.keyToValue.field=_key
 ```
+
+## Performance Testing
+
+There is a dedicated gradle project in this repo - `benchmark` for performance testing. 
+Please see its [README](./benchmark/README.md) for more information and how to run.
