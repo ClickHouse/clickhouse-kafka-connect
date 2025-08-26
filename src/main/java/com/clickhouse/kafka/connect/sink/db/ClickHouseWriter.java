@@ -26,6 +26,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
+import static com.clickhouse.kafka.connect.util.DataJson.GSON;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.ExclusionStrategy;
@@ -539,8 +540,8 @@ public class ClickHouseWriter implements DBWriter {
             case JSON:
                 if (csc.isBinaryFormatWrtiteJsonAsString()) {
                     if (value.getFieldType() == Schema.Type.STRUCT) {
-                        String json = schemaExcludingJsonWriter.toJson(value.getObject());
-                        BinaryStreamUtils.writeString(stream, json.getBytes(StandardCharsets.UTF_8));
+                        byte[] jsonBytes = GSON.toJson(value).getBytes(StandardCharsets.UTF_8);
+                        BinaryStreamUtils.writeString(stream, jsonBytes);
                     } else if (value.getFieldType() == Schema.Type.STRING) {
                         BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
                     } else {
