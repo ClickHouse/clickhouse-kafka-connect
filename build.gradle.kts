@@ -36,7 +36,7 @@ plugins {
     id("com.diffplug.spotless") version "7.0.2"
     id("com.github.johnrengelman.shadow") version "7.1.2"
     id("com.google.protobuf") version "0.9.5"
-
+    id("java-test-fixtures")
 }
 
 group = "com.clickhouse.kafka"
@@ -45,6 +45,7 @@ description = "The official ClickHouse Apache Kafka Connect Connector."
 
 repositories {
     mavenCentral()
+    mavenLocal()
     maven("https://packages.confluent.io/maven/")
     maven("https://jitpack.io")
 }
@@ -126,15 +127,31 @@ dependencies {
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
 
-    // Protobuf dependencies
-    testImplementation("com.google.protobuf:protobuf-java:3.25.1")
-    testImplementation("io.confluent:kafka-protobuf-serializer:7.9.1")
-    testImplementation("io.confluent:kafka-connect-protobuf-converter:7.9.1")
 
 //    // Schema Registry client for testing
     testImplementation("io.confluent:kafka-schema-registry-client:7.5.4")
     testImplementation("io.confluent:kafka-schema-registry:7.5.4")
     testImplementation("io.confluent:kafka-schema-serializer:7.5.4")
+
+    // Test Fixtures Dependencies
+    // Test Fixtures is used to extract helpers into a separate jar and publish locally to use in other test projects
+    // like JMH Benchmark
+    // Protobuf dependencies
+    testFixturesApi("com.google.protobuf:protobuf-java:3.25.1")
+    testFixturesApi("io.confluent:kafka-protobuf-serializer:7.9.1")
+    testFixturesApi("io.confluent:kafka-connect-protobuf-converter:7.9.1")
+
+    testFixturesImplementation(platform("org.junit:junit-bom:${project.extra["junitJupiterVersion"]}"))
+    testFixturesImplementation("org.junit.jupiter:junit-jupiter")
+    testFixturesImplementation("org.junit.platform:junit-platform-runner")
+    testFixturesImplementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
+    testFixturesImplementation("org.apache.commons:commons-lang3:3.18.0")
+    testFixturesImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
+    testFixturesImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
+    testFixturesImplementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
+    testFixturesImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
+    testFixturesImplementation("com.google.code.gson:gson:2.13.1")
+    testFixturesImplementation("org.json:json:20250517")
 }
 
 
@@ -272,4 +289,20 @@ protobuf {
         artifact = "com.google.protobuf:protoc:3.25.1"
     }
 //    generatedFilesBaseDir = "$buildDir/generated/source/proto"
+}
+
+task("testJar", type = Jar::class) {
+    archiveClassifier.set("test")
+    from(sourceSets.testFixtures.get().allSource)
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"]) // Publishes the Java component
+        }
+        create<MavenPublication>("mavenTestJar") {
+            artifact(tasks["testJar"])
+        }
+    }
 }

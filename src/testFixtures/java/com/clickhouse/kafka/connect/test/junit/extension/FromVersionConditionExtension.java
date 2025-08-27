@@ -1,4 +1,4 @@
-package com.clickhouse.kafka.connect.sink.junit.extension;
+package com.clickhouse.kafka.connect.test.junit.extension;
 
 import org.junit.jupiter.api.extension.BeforeTestExecutionCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
