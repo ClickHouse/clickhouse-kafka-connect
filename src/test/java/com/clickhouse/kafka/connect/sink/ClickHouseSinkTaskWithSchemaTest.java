@@ -994,6 +994,18 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(userMsg.getUserInfo().getUserType().name(), userInfo.getString("user_type"));
         // Handle age type conversion (ClickHouse stores as string, protobuf as int)
         assertEquals(userMsg.getUserInfo().getAge(), Integer.parseInt(userInfo.getString("age")));
+        // Verify address fields match protobuf
+        JSONObject address = userInfo.getJSONObject("address");
+        assertEquals(userMsg.getUserInfo().getAddress().getStreet(), address.getString("street"));
+        assertEquals(userMsg.getUserInfo().getAddress().getCity(), address.getString("city"));
+        assertEquals(userMsg.getUserInfo().getAddress().getState(), address.getString("state"));
+        assertEquals(userMsg.getUserInfo().getAddress().getZip(), address.getString("zip"));
+        // Verify nested address
+        JSONObject altAddress = address.getJSONObject("alt");
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getStreet(), altAddress.getString("street"));
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getCity(), altAddress.getString("city"));
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getState(), altAddress.getString("state"));
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getZip(), altAddress.getString("zip"));
         
         // Verify second row (product message) top-level fields match protobuf
         assertEquals(productMsg.getId(), secondRow.getInt("id"));

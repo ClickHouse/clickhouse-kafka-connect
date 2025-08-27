@@ -26,13 +26,11 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
-import static com.clickhouse.kafka.connect.util.DataJson.GSON;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.google.gson.ExclusionStrategy;
 import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -66,6 +64,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import static com.clickhouse.kafka.connect.util.DataJson.GSON;
+
 public class ClickHouseWriter implements DBWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
@@ -75,10 +75,6 @@ public class ClickHouseWriter implements DBWriter {
 
     private Map<String, Table> mapping = null;
     private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
-
-    private Gson schemaExcludingJsonWriter = new GsonBuilder().setExclusionStrategies(
-            new SchemaFieldExclusionStrategy()
-    ).create(); // used only for JSON writing
 
     public ClickHouseWriter() {
         this.mapping = new HashMap<String, Table>();
