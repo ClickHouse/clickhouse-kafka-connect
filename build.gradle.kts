@@ -127,7 +127,7 @@ dependencies {
     testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
 
     // Protobuf dependencies
-    testImplementation("com.google.protobuf:protobuf-java:3.25.1")
+    testImplementation("com.google.protobuf:protobuf-java:4.31.1")
     testImplementation("io.confluent:kafka-protobuf-serializer:7.9.1")
     testImplementation("io.confluent:kafka-connect-protobuf-converter:7.9.1")
 
@@ -269,7 +269,7 @@ tasks.register<Zip>("createConfluentArchive") {
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.1"
+        artifact = "com.google.protobuf:protoc:4.31.1"
     }
 //    generatedFilesBaseDir = "$buildDir/generated/source/proto"
 }
