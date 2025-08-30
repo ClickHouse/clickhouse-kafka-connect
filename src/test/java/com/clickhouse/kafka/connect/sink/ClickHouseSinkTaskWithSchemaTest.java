@@ -993,7 +993,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(userMsg.getUserInfo().getEmail(), userInfo.getString("email"));
         assertEquals(userMsg.getUserInfo().getUserType().name(), userInfo.getString("user_type"));
         // Handle age type conversion (ClickHouse stores as string, protobuf as int)
-        assertEquals(userMsg.getUserInfo().getAge(), Integer.parseInt(userInfo.getString("age")));
+        assertEquals(userMsg.getUserInfo().getAge(), userInfo.getNumber("age").intValue());
         // Verify address fields match protobuf
         JSONObject address = userInfo.getJSONObject("address");
         assertEquals(userMsg.getUserInfo().getAddress().getStreet(), address.getString("street"));
