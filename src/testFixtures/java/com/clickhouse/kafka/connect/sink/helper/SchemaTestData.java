@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.kafka.connect.test.TestProtos;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Schema;
@@ -9,7 +10,6 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.data.Time;
 import org.apache.kafka.connect.data.Timestamp;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.testcontainers.shaded.org.apache.commons.lang3.RandomStringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
