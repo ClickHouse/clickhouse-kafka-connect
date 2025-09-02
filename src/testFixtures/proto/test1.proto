@@ -25,12 +25,21 @@ message UserInfo {
   string email = 1;
   int32 age = 2;
   UserType user_type = 3;
+  UserAddress address = 4;
   
   enum UserType {
     REGULAR = 0;
     PREMIUM = 1;
     ADMIN = 2;
   }
+}
+
+message UserAddress {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string zip = 4;
+  UserAddress alt = 5;
 }
 
 // Second message type for the oneof field

@@ -1,12 +1,13 @@
 # 1.3.3
-* Added support of SimpleAggregateFunction column type
+* Fixed writing JSON values to ClickHouse. Previously all JSON Object were written as objects where field value were wrapped with `{ "object": <field value> }`. Now objects stored with original structure. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/574) 
+* Added support of SimpleAggregateFunction column type. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/571)
 
 # 1.3.2 
-Added support of writing JSON as string to a JSON column.
-Upgraded dependency `org.slf4j:slf4j-reload4j` from `2.0.13` to `2.0.17`
-Upgraded dependency `org.apache.httpcomponents.client5:httpclient5` from `5.4.4` to `5.5`
-Upgraded dependency `com.fasterxml.jackson.core:jackson-annotations` from `2.19.0` to `2.19.1`
-Upgraded dependency `org.projectlombok:lombok` from `1.18.34` to `1.18.38`
+* Added support of writing JSON as string to a JSON column.
+* Upgraded dependency `org.slf4j:slf4j-reload4j` from `2.0.13` to `2.0.17`
+* Upgraded dependency `org.apache.httpcomponents.client5:httpclient5` from `5.4.4` to `5.5`
+* Upgraded dependency `com.fasterxml.jackson.core:jackson-annotations` from `2.19.0` to `2.19.1`
+* Upgraded dependency `org.projectlombok:lombok` from `1.18.34` to `1.18.38`
 
 # 1.3.1
 * Ensure resources are auto-closed in exactlyOnce

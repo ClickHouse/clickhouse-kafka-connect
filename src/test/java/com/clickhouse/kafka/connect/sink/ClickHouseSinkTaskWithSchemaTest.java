@@ -19,6 +19,7 @@ import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -925,7 +926,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
         // Register your test schema
-        TestProtos.TestMessage message = TestProtos.TestMessage.getDefaultInstance();
         ProtobufSchema schema = new ProtobufSchema(userMsg.getDescriptorForType());
         String subject = topic + "-value";
         schemaRegistry.register(subject, schema);
@@ -962,6 +962,76 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(records);
         chst.stop();
         assertEquals(records.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        
+        // Verify the actual row data matches the proto JSON conversion by comparing JSON strings
+        List<JSONObject> insertedRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(records.size(), insertedRows.size());
+        
+        // Compare database rows directly with protobuf message fields
+        JSONObject firstRow = insertedRows.get(0);
+        JSONObject secondRow = insertedRows.get(1);
+        
+        // Verify first row (user message) top-level fields match protobuf
+        assertEquals(userMsg.getId(), firstRow.getInt("id"));
+        assertEquals(userMsg.getName(), firstRow.getString("name"));
+        assertEquals(userMsg.getIsActive(), firstRow.getBoolean("is_active"));
+        assertEquals(userMsg.getScore(), firstRow.getDouble("score"), 0.01);
+        
+        // Verify tags array matches protobuf
+        JSONArray userTagsArray = firstRow.getJSONArray("tags");
+        assertEquals(userMsg.getTagsCount(), userTagsArray.length());
+        for (int i = 0; i < userMsg.getTagsCount(); i++) {
+            assertEquals(userMsg.getTags(i), userTagsArray.getString(i));
+        }
+        
+        // Verify the content column contains the nested user_info data
+        JSONObject firstRowContent = firstRow.getJSONObject("content");
+        assertTrue(firstRowContent.has("user_info"), "Content should contain user_info");
+        JSONObject userInfo = firstRowContent.getJSONObject("user_info");
+        assertEquals(userMsg.getUserInfo().getEmail(), userInfo.getString("email"));
+        assertEquals(userMsg.getUserInfo().getUserType().name(), userInfo.getString("user_type"));
+        // Handle age type conversion (ClickHouse stores as string, protobuf as int)
+        assertEquals(userMsg.getUserInfo().getAge(), userInfo.getNumber("age").intValue());
+        // Verify address fields match protobuf
+        JSONObject address = userInfo.getJSONObject("address");
+        assertEquals(userMsg.getUserInfo().getAddress().getStreet(), address.getString("street"));
+        assertEquals(userMsg.getUserInfo().getAddress().getCity(), address.getString("city"));
+        assertEquals(userMsg.getUserInfo().getAddress().getState(), address.getString("state"));
+        assertEquals(userMsg.getUserInfo().getAddress().getZip(), address.getString("zip"));
+        // Verify nested address
+        JSONObject altAddress = address.getJSONObject("alt");
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getStreet(), altAddress.getString("street"));
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getCity(), altAddress.getString("city"));
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getState(), altAddress.getString("state"));
+        assertEquals(userMsg.getUserInfo().getAddress().getAlt().getZip(), altAddress.getString("zip"));
+        
+        // Verify second row (product message) top-level fields match protobuf
+        assertEquals(productMsg.getId(), secondRow.getInt("id"));
+        assertEquals(productMsg.getName(), secondRow.getString("name"));
+        assertEquals(productMsg.getIsActive(), secondRow.getBoolean("is_active"));
+        assertEquals(productMsg.getScore(), secondRow.getDouble("score"), 0.01);
+        
+        // Verify product tags array matches protobuf
+        JSONArray productTagsArray = secondRow.getJSONArray("tags");
+        assertEquals(productMsg.getTagsCount(), productTagsArray.length());
+        for (int i = 0; i < productMsg.getTagsCount(); i++) {
+            assertEquals(productMsg.getTags(i), productTagsArray.getString(i));
+        }
+        
+        // Verify the content column contains the nested product_info data
+        JSONObject secondRowContent = secondRow.getJSONObject("content");
+        assertTrue(secondRowContent.has("product_info"), "Content should contain product_info");
+        JSONObject productInfo = secondRowContent.getJSONObject("product_info");
+        assertEquals(productMsg.getProductInfo().getSku(), productInfo.getString("sku"));
+        assertEquals(productMsg.getProductInfo().getPrice(), productInfo.getDouble("price"), 0.01);
+        assertEquals(productMsg.getProductInfo().getInStock(), productInfo.getBoolean("in_stock"));
+        
+        // Verify categories array in product_info matches protobuf
+        JSONArray categoriesArray = productInfo.getJSONArray("categories");
+        assertEquals(productMsg.getProductInfo().getCategoriesCount(), categoriesArray.length());
+        for (int i = 0; i < productMsg.getProductInfo().getCategoriesCount(); i++) {
+            assertEquals(productMsg.getProductInfo().getCategories(i), categoriesArray.getString(i));
+        }
     }
 
     public List<Collection<SinkRecord>> partition(Collection<SinkRecord> collection, int size) {
