@@ -132,9 +132,9 @@ dependencies {
     testImplementation("io.confluent:kafka-connect-protobuf-converter:7.9.1")
 
 //    // Schema Registry client for testing
-    testImplementation("io.confluent:kafka-schema-registry-client:7.5.4")
-    testImplementation("io.confluent:kafka-schema-registry:7.5.4")
-    testImplementation("io.confluent:kafka-schema-serializer:7.5.4")
+    testImplementation("io.confluent:kafka-schema-registry-client:8.0.0")
+    testImplementation("io.confluent:kafka-schema-registry:8.0.0")
+    testImplementation("io.confluent:kafka-schema-serializer:8.0.0")
 }
 
 
