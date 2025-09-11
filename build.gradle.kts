@@ -137,7 +137,7 @@ dependencies {
     // Test Fixtures is used to extract helpers into a separate jar and publish locally to use in other test projects
     // like JMH Benchmark
     // Protobuf dependencies
-    testFixturesApi("com.google.protobuf:protobuf-java:3.25.1")
+    testFixturesApi("com.google.protobuf:protobuf-java:4.32.0")
     testFixturesApi("io.confluent:kafka-protobuf-serializer:7.9.1")
     testFixturesApi("io.confluent:kafka-connect-protobuf-converter:7.9.1")
 
@@ -286,7 +286,7 @@ tasks.register<Zip>("createConfluentArchive") {
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.1"
+        artifact = "com.google.protobuf:protoc:4.32.0"
     }
 //    generatedFilesBaseDir = "$buildDir/generated/source/proto"
 }
