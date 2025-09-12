@@ -1100,4 +1100,45 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
     }
+
+    @Test
+    public void splitDBTopicTest() throws Exception {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic1 = "tenant_1__events";
+        String topic2 = "tenant_2__events";
+        ClickHouseTestHelpers.dropDatabase(chc, "tenant_1");
+        ClickHouseTestHelpers.dropDatabase(chc, "tenant_2");
+        ClickHouseTestHelpers.createDatabase(chc, "tenant_1");
+        ClickHouseTestHelpers.createDatabase(chc, "tenant_2");
+
+        ClickHouseTestHelpers.query(chc, "CREATE TABLE `tenant_1`.`events` (" +
+                "`off16` Int16," +
+                "`string` String" +
+                ") Engine = MergeTree ORDER BY `off16`");
+        ClickHouseTestHelpers.query(chc, "CREATE TABLE `tenant_2`.`events` (" +
+                "`off16` Int16," +
+                "`string` String" +
+                ") Engine = MergeTree ORDER BY `off16`");
+
+        Collection<SinkRecord> sr1 = SchemaTestData.createSimpleData(topic1, 1, 5);
+        Collection<SinkRecord> sr2 = SchemaTestData.createSimpleData(topic2, 1, 10);
+
+        List<SinkRecord> records = new ArrayList<>();
+        records.addAll(sr1);
+        records.addAll(sr2);
+        Collections.shuffle(records);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, "__");
+        props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
+        props.put(ClickHouseSinkConfig.DATABASE, "tenant_1");
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+
+        assertEquals(sr1.size(), ClickHouseTestHelpers.countRows(chc, "events", "tenant_1"));
+        assertEquals(sr2.size(), ClickHouseTestHelpers.countRows(chc, "events", "tenant_2"));
+    }
 }

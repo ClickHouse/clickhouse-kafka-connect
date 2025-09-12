@@ -427,11 +427,11 @@ public class ClickHouseHelperClient {
         }
         return table;
     }
-    public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
+    public List<Table> extractTablesMapping(String tableDatabase, Map<String, Table> cache) {
         List<Table> tableList =  new ArrayList<>();
-        for (Table table : showTables(database) ) {
+        for (Table table : showTables(tableDatabase) ) {
             // (Full) Table names are escaped in the cache
-            String escapedTableName = Utils.escapeTableName(database, table.getCleanName());
+            String escapedTableName = Utils.escapeTableName(tableDatabase, table.getCleanName());
 
             // Read from cache if we already described this table before
             // This means we won't pick up edited table configs until the connector is restarted
@@ -444,7 +444,7 @@ public class ClickHouseHelperClient {
                     continue;
                 }
             }
-            Table tableDescribed = describeTable(this.database, table.getCleanName());
+            Table tableDescribed = describeTable(tableDatabase, table.getCleanName());
             if (tableDescribed != null) {
                 tableDescribed.setNumColumns(table.getNumColumns());
                 tableList.add(tableDescribed);
