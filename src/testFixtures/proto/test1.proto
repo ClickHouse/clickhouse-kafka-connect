@@ -12,12 +12,18 @@ message TestMessage {
   bool is_active = 3;
   double score = 4;
   repeated string tags = 5;
-  
+
   // A oneof field that can be one of two message types
   oneof content {
     UserInfo user_info = 6;
     ProductInfo product_info = 7;
   }
+
+  oneof image {
+    string base64 = 8;
+    bytes raw = 9;
+  }
+
 }
 
 // First message type for the oneof field

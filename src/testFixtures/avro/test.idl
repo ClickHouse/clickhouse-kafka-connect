@@ -1,0 +1,13 @@
+/*
+ * use avro-tools.jar to generate schema or source from idl (simpler avro schema format).
+ * 1. create test.avro (schema in json format)
+ * 2. compile schema ./test.avro
+ */
+
+namespace com.clickhouse.kafka.connect.avro.test;
+schema Image;
+
+record Image {
+  string name;
+  union {string, bytes} content;
+}
