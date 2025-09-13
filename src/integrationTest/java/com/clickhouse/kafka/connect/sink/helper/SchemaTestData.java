@@ -481,4 +481,39 @@ public class SchemaTestData {
 
         return array;
     }
+
+    public static Collection<SinkRecord> createDataWithUnions(String topic, int partition, int totalRecords) {
+        Schema unionSchema = SchemaBuilder.struct()
+                .field("string_value", Schema.STRING_SCHEMA)
+                .field("int_value", Schema.INT32_SCHEMA)
+                .build();
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("union_field", unionSchema)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Object unionValue = (n % 2 == 0) ? "string_value_" + n : (int) n;
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short) n)
+                    .put("union_field", unionValue);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
 }
