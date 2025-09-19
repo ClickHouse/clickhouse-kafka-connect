@@ -55,6 +55,7 @@ jobs:
         with:
           arguments: test
       - name: Save Jars
+        if: matrix.clickhouse == 'latest'
         uses: actions/upload-artifact@v4
         with:
           name: build_artifacts
