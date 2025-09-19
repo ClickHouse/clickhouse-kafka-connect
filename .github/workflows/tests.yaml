@@ -54,3 +54,9 @@ jobs:
           CLIENT_VERSION: ${{ matrix.client }}
         with:
           arguments: test
+      - name: Save Jars
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_artifacts
+          path: build/libs/*.jar
+          retention-days: 5

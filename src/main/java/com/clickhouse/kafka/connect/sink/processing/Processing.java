@@ -57,6 +57,7 @@ public class Processing {
             LOGGER.debug("doInsert - Records: [{}] - {}", records.size(), queryId);
             dbWriter.doInsert(records, queryId, errorReporter);
         } catch (Exception e) {
+            LOGGER.error("doInsert - Error inserting records", e);
             throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
         }
     }
