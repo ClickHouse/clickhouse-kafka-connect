@@ -186,7 +186,16 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
             chc.queryV2("SYSTEM FLUSH LOGS");
-            List<GenericRecord> records = chc.getClient().queryAll("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) WHERE query_kind = 'Insert'");
+            String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+                    "   WHERE query_kind = 'Insert' " +
+                    "   AND type = 'QueryStart'" +
+                    "   AND has(databases,'%1$s') " +
+                    "   AND has(tables,'%1$s.%2$s') " +
+                    "   AND startsWith(http_user_agent, '%3$s') LIMIT 100",
+                        chc.getDatabase(), topic, ClickHouseHelperClient.CONNECT_CLIENT_NAME);
+
+            List<GenericRecord> records = chc.getClient().queryAll(getLogRecords);
+            assertFalse(records.isEmpty());
             for (GenericRecord record : records) {
                 assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
             }
