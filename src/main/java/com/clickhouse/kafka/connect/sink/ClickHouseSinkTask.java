@@ -56,11 +56,23 @@ public class ClickHouseSinkTask extends SinkTask {
             Utils.handleException(e, errorTolerance, records);
             if (errorTolerance && errorReporter != null) {
                 LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
-                records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
+                final Exception actualException = getActualException(e);
+                records.forEach(r -> Utils.sendTODlq(errorReporter, r, actualException));
             }
         }
     }
 
+    private static Exception getActualException(Exception e) {
+        Throwable cause = e.getCause();
+        try {
+            if (cause instanceof Exception) {
+                return (Exception) cause;
+            }
+        } catch (ClassCastException cce) {
+            // ignore
+        }
+        return e;
+    }
 
     // TODO: can be removed ss
     @Override
