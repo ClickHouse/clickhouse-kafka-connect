@@ -185,7 +185,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
             assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
-            chc.queryV2("SYSTEM FLUSH LOGS");
+            chc.queryV2("SYSTEM FLUSH LOGS "+ (isCloud ? "ON CLUSTER 'default'" : ""));
             String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
                     "   WHERE query_kind = 'Insert' " +
                     "   AND type = 'QueryStart'" +
