@@ -54,3 +54,11 @@ jobs:
           CLIENT_VERSION: ${{ matrix.client }}
         with:
           arguments: test
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: result ${{ github.job }}_${{ matrix.clickhouse }}_${{ matrix.client }}
+          path: |
+            **/build/reports/tests
+          retention-days: 5
