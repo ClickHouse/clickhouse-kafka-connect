@@ -187,12 +187,18 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
             chc.queryV2("SYSTEM FLUSH LOGS "+ (isCloud ? "ON CLUSTER 'default'" : ""));
 
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                // ignore
+            }
+
             for (int i = 0; i < 3; i++) {
                 String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
                                 "   WHERE query_kind = 'Insert' " +
                                 "   AND type = 'QueryStart'" +
                                 "   AND has(databases,'%1$s') " +
-                                "   AND startsWith(http_user_agent, '%3$s') LIMIT 100",
+                                "   AND position(http_user_agent, '%3$s') > 0 LIMIT 100",
                         chc.getDatabase(), topic, ClickHouseHelperClient.CONNECT_CLIENT_NAME);
 
 
