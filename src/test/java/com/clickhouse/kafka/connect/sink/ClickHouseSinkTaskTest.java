@@ -161,57 +161,53 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     }
 
     @Test
-    public void clientNameTest() {
+    public void clientNameTest() throws Exception {
 
-        List<String> versions = Arrays.asList("V1", "V2");
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("schemaless_simple_batch_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
 
-        for (String version : versions) {
-            Map<String, String> props = createProps();
-            props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-            props.put(ClickHouseSinkConnector.CLIENT_VERSION, version);
-            ClickHouseHelperClient chc = createClient(props);
-            String topic = createTopicName("schemaless_simple_batch_test");
-            ClickHouseTestHelpers.dropTable(chc, topic);
-            ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                    "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
-            Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
-            sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
-            sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
-            ClickHouseSinkTask chst = new ClickHouseSinkTask();
-            chst.start(props);
-            chst.put(sr);
-            chst.stop();
-            assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-            assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        chc.queryV2("SYSTEM FLUSH LOGS " + (isCloud ? "ON CLUSTER 'default'" : ""));
 
-            chc.queryV2("SYSTEM FLUSH LOGS "+ (isCloud ? "ON CLUSTER 'default'" : ""));
-
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                // ignore
-            }
-
-            for (int i = 0; i < 3; i++) {
-                String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
-                                "   WHERE query_kind = 'Insert' " +
-                                "   AND type = 'QueryStart'" +
-                                "   AND has(databases,'%1$s') " +
-                                "   AND position(http_user_agent, '%3$s') > 0 LIMIT 100",
-                        chc.getDatabase(), topic, ClickHouseHelperClient.CONNECT_CLIENT_NAME);
-
-
-                List<GenericRecord> records = chc.getClient().queryAll(getLogRecords);
-                if (records.isEmpty() && i < 2) {
-                    continue;
-                }
-                assertFalse(records.isEmpty());
-                for (GenericRecord record : records) {
-                    assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
-                }
-                break;
-            }
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            // ignore
         }
+
+        for (int i = 0; i < 3; i++) {
+            String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+                            "   WHERE query_kind = 'Insert' " +
+                            "   AND type = 'QueryStart'" +
+                            "   AND has(databases,'%1$s') " +
+                            "   AND position(http_user_agent, '%3$s') > 0 LIMIT 100",
+                    chc.getDatabase(), topic, ClickHouseHelperClient.CONNECT_CLIENT_NAME);
+
+
+            Records records = chc.getClient().queryRecords(getLogRecords).get();
+            if (records.isEmpty() && i < 2) {
+                continue;
+            }
+            assertFalse(records.isEmpty());
+            for (GenericRecord record : records) {
+                assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
+            }
+            break;
+        }
+
     }
 }
