@@ -16,6 +16,7 @@ import io.confluent.connect.protobuf.ProtobufDataConfig;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -885,6 +886,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         Collection<SinkRecord> sr = SchemaTestData.createCoolSchemaWithRandomFields(topic, 1);
 
+
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
@@ -1128,7 +1130,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Map<String, Object> converterConfig = new HashMap<>();
         converterConfig.put(ProtobufConverterConfig.AUTO_REGISTER_SCHEMAS, true);
         converterConfig.put(ProtobufDataConfig.GENERATE_INDEX_FOR_UNIONS_CONFIG, false);
-        converterConfig.put(KafkaProtobufSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-url");
+        converterConfig.put(KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-url");
 
         converter.configure(converterConfig, false);
         KafkaAvroSerializer serializer = new KafkaAvroSerializer(schemaRegistry);
@@ -1142,8 +1144,5 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 new SinkRecord(topic, 0, null, null,
                         image2ConnectData.schema(), image2ConnectData.value(), 1)
         );
-
-
-        System.out.println(records);
     }
 }
