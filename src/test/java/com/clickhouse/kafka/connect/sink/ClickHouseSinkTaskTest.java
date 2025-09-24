@@ -192,7 +192,6 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
                                 "   WHERE query_kind = 'Insert' " +
                                 "   AND type = 'QueryStart'" +
                                 "   AND has(databases,'%1$s') " +
-                                "   AND has(tables,'%1$s.%2$s') " +
                                 "   AND startsWith(http_user_agent, '%3$s') LIMIT 100",
                         chc.getDatabase(), topic, ClickHouseHelperClient.CONNECT_CLIENT_NAME);
 
