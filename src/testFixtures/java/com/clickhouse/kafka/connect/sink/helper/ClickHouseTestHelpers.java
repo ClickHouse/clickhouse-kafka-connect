@@ -12,12 +12,14 @@ import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import jdk.dynalink.Operation;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
@@ -65,11 +67,24 @@ public class ClickHouseTestHelpers {
     }
 
     public static void query(ClickHouseHelperClient chc, String query) {
-        if (chc.isUseClientV2()) {
-            chc.queryV2(query);
-        } else {
-            chc.queryV1(query);
+        try {
+            if (chc.isUseClientV2()) {
+                chc.queryV2(query).close();
+            } else {
+                chc.queryV1(query).close();
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error while executing query", e);
+            throw new RuntimeException(e);
         }
+    }
+
+    public static void createDatabase(ClickHouseHelperClient chc, String database) {
+        query(chc, "CREATE DATABASE " + database);
+    }
+
+    public static void dropDatabase(ClickHouseHelperClient chc, String database) {
+        query(chc, "DROP DATABASE IF EXISTS " + database);
     }
 
     public static OperationMetrics dropTable(ClickHouseHelperClient chc, String tableName) {
@@ -185,7 +200,11 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = String.format("SELECT COUNT(*) FROM `%s` SETTINGS select_sequential_consistency = 1", tableName);
+       return countRows(chc, tableName, chc.getDatabase());
+    }
+
+    public static int countRows(ClickHouseHelperClient chc, String tableName, String database) {
+        String queryCount = String.format("SELECT COUNT(*) FROM `%s`.`%s` SETTINGS select_sequential_consistency = 1", database, tableName);
 
         try {
             optimizeTable(chc, tableName);

@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Timer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ProxySinkTask {
@@ -86,13 +87,24 @@ public class ProxySinkTask {
         LOGGER.trace(String.format("Got %d records from put API.", records.size()));
         ExecutionTimer processingTime = ExecutionTimer.start();
 
+        Function<Record, String> keyMapper;
+
+        if (clickHouseSinkConfig.isEnableDbTopicSplit()) {
+            // in this case topic == table name so it cannot be a grouping key because it will cause all records
+            // to be written to same database. Grouping by partition is not possible, too.
+            keyMapper = Record::getDatabase;
+        } else if (!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()) {
+            keyMapper = Record::getTopic;
+        } else {
+            keyMapper = Record::getTopicAndPartition;
+        }
+
         Map<String, List<Record>> dataRecords = records.stream()
                 .map(v -> Record.convert(v,
                         clickHouseSinkConfig.isEnableDbTopicSplit(),
                         clickHouseSinkConfig.getDbTopicSplitChar(),
                         clickHouseSinkConfig.getDatabase() ))
-                .collect(Collectors.groupingBy(!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()
-                        ? Record::getTopic : Record::getTopicAndPartition));
+                .collect(Collectors.groupingBy(keyMapper));
 
         statistics.recordProcessingTime(processingTime);
         // TODO - Multi process???
