@@ -196,14 +196,15 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
                             "   AND has(databases,'%1$s') " +
                             "   AND position(http_user_agent, '%3$s') > 0 LIMIT 100",
                     chc.getDatabase(), topic, ClickHouseHelperClient.CONNECT_CLIENT_NAME);
-
+            List<GenericRecord> records2 = chc.getClient().queryAll("SELECT http_user_agent " +
+                    " FROM clusterAllReplicas('default', system.query_log)" +
+                    " WHERE query_kind = 'Insert' AND type = 'QueryStart' LIMIT 100");
+            for (GenericRecord r : records2) {
+                System.out.println(r.getString(1));
+            }
 
             Records records = chc.getClient().queryRecords(getLogRecords).get();
             if (records.isEmpty() && i < 2) {
-                List<GenericRecord> records2 = chc.getClient().queryAll("SELECT http_user_agent WHERE query_kind = 'Insert' AND type = 'QueryStart' FROM system.query_log LIMIT 100");
-                for (GenericRecord r : records2) {
-                    System.out.println(r.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
-                }
                 continue;
             }
             assertFalse(records.isEmpty());
