@@ -183,37 +183,18 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         chc.queryV2("SYSTEM FLUSH LOGS " + (isCloud ? "ON CLUSTER 'default'" : ""));
 
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            // ignore
+        String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+                        "   WHERE query_kind = 'Insert' " +
+                        "   AND type = 'QueryStart'" +
+                        "   AND has(databases,'%1$s') " +
+                        "   AND position(http_user_agent, '%2$s') > -1 LIMIT 100",
+                chc.getDatabase(), ClickHouseHelperClient.CONNECT_CLIENT_NAME);
+
+        Records records = chc.getClient().queryRecords(getLogRecords).get();
+        assertFalse(records.isEmpty());
+        for (GenericRecord record : records) {
+            assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
         }
-
-        for (int i = 0; i < 3; i++) {
-            String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
-                            "   WHERE query_kind = 'Insert' " +
-                            "   AND type = 'QueryStart'" +
-                            "   AND has(databases,'%1$s') " +
-                            "   AND position(http_user_agent, '%3$s') > 0 LIMIT 100",
-                    chc.getDatabase(), topic, ClickHouseHelperClient.CONNECT_CLIENT_NAME);
-            List<GenericRecord> records2 = chc.getClient().queryAll("SELECT http_user_agent " +
-                    " FROM clusterAllReplicas('default', system.query_log)" +
-                    " WHERE query_kind = 'Insert' AND type = 'QueryStart' LIMIT 100");
-            for (GenericRecord r : records2) {
-                System.out.println(r.getString(1));
-            }
-
-            Records records = chc.getClient().queryRecords(getLogRecords).get();
-            if (records.isEmpty() && i < 2) {
-                continue;
-            }
-            assertFalse(records.isEmpty());
-            for (GenericRecord record : records) {
-                assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
-            }
-            records.close();
-            break;
-        }
-
+        records.close();
     }
 }
