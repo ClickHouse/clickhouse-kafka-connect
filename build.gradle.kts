@@ -78,6 +78,7 @@ extra.apply {
 
 val clickhouseDependencies: Configuration by configurations.creating
 
+
 dependencies {
     implementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
