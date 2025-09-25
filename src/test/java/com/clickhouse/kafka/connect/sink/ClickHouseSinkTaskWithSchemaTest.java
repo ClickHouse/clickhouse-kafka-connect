@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.api.ClientConfigProperties;
+import com.clickhouse.kafka.connect.avro.test.Image;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
@@ -8,11 +9,14 @@ import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExt
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.test.TestProtos;
 import com.clickhouse.kafka.connect.util.Utils;
+import io.confluent.connect.avro.AvroConverter;
 import io.confluent.connect.protobuf.ProtobufConverter;
 import io.confluent.connect.protobuf.ProtobufConverterConfig;
 import io.confluent.connect.protobuf.ProtobufDataConfig;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -32,6 +36,7 @@ import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -881,6 +886,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         Collection<SinkRecord> sr = SchemaTestData.createCoolSchemaWithRandomFields(topic, 1);
 
+
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
@@ -1099,5 +1105,44 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         // after the second insert we have exactly sr.size() records
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
+    }
+
+    @Test
+    public void testAvroWithUnion() throws Exception {
+        Image image1 = Image.newBuilder()
+                .setName("image1")
+                .setContent("content")
+                .build();
+
+
+        Image image2 = Image.newBuilder()
+                .setName("image2")
+                .setContent(ByteBuffer.wrap("content2".getBytes()))
+                .build();
+        String topic = createTopicName("test");
+
+        MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
+        // Register your test schema
+        String subject = topic + "-value";
+        schemaRegistry.register(subject, image1.getSchema());
+
+        AvroConverter converter = new AvroConverter(schemaRegistry);
+        Map<String, Object> converterConfig = new HashMap<>();
+        converterConfig.put(ProtobufConverterConfig.AUTO_REGISTER_SCHEMAS, true);
+        converterConfig.put(ProtobufDataConfig.GENERATE_INDEX_FOR_UNIONS_CONFIG, false);
+        converterConfig.put(KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-url");
+
+        converter.configure(converterConfig, false);
+        KafkaAvroSerializer serializer = new KafkaAvroSerializer(schemaRegistry);
+
+        SchemaAndValue image1ConnectData = converter.toConnectData(topic, serializer.serialize(topic, image1));
+        SchemaAndValue image2ConnectData = converter.toConnectData(topic, serializer.serialize(topic, image2));
+
+        List<SinkRecord> records = Arrays.asList(
+                new SinkRecord(topic, 0, null, null,
+                        image1ConnectData.schema(), image1ConnectData.value(), 0),
+                new SinkRecord(topic, 0, null, null,
+                        image2ConnectData.schema(), image2ConnectData.value(), 1)
+        );
     }
 }
