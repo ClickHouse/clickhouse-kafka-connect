@@ -19,6 +19,7 @@ import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.data.ClickHouseValue;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
+import com.clickhouse.kafka.connect.sink.Version;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -80,9 +81,11 @@ public class ClickHouseHelperClient {
         this.server = createClientV1();
     }
 
+    public static final String CONNECT_CLIENT_NAME = "clickhouse-kafka-connect/" + Version.ARTIFACT_VERSION;
+
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
-        options.put(ClickHouseClientOption.PRODUCT_NAME, "clickhouse-kafka-connect/"+ClickHouseClientOption.class.getPackage().getImplementationVersion());
+        options.put(ClickHouseClientOption.CLIENT_NAME, CONNECT_CLIENT_NAME);
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             options.put(ClickHouseClientOption.PROXY_TYPE, proxyType);
             options.put(ClickHouseClientOption.PROXY_HOST, proxyHost);
@@ -149,6 +152,7 @@ public class ClickHouseHelperClient {
                 .addEndpoint(url)
                 .setUsername(this.username)
                 .setPassword(this.password)
+                .setClientName(CONNECT_CLIENT_NAME)
                 .setDefaultDatabase(this.database);
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {

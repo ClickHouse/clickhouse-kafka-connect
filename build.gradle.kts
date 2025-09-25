@@ -78,6 +78,7 @@ extra.apply {
 
 val clickhouseDependencies: Configuration by configurations.creating
 
+
 dependencies {
     implementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
     implementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
@@ -286,6 +287,39 @@ tasks.register<Zip>("createConfluentArchive") {
     archiveAppendix.set(archiveFilename)
     archiveVersion.set(project.version.toString())
     destinationDirectory.set(file("$buildDir/confluent"))
+}
+
+var generateVersionFile = tasks.register<DefaultTask>("generateVersionFile") {
+    val outputDir = "generated/sources/version/java/main/com/clickhouse/kafka/connect/sink/";
+    outputs.dir(layout.buildDirectory.dir(outputDir))
+    doFirst {
+        val outputDir = layout.buildDirectory.dir(outputDir).get().asFile
+        outputDir.mkdirs() // Ensure the directory exists
+
+        val outputFile = File(outputDir, "Version.java")
+        val versionContent = """
+package com.clickhouse.kafka.connect.sink;
+
+public final class Version {
+    public static final String ARTIFACT_VERSION = "${project.version}";
+
+    private Version() {
+        // Prevent instantiation
+    }
+}
+""".trimIndent()
+
+        outputFile.writeText(versionContent)
+    }
+}
+tasks.getByName("compileJava").dependsOn("generateVersionFile")
+
+sourceSets {
+    main {
+        java {
+            srcDir(generateVersionFile)
+        }
+    }
 }
 
 protobuf {
