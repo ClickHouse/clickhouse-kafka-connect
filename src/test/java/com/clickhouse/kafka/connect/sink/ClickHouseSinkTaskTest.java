@@ -162,7 +162,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void clientNameTest() throws Exception {
-
+        if (isCloud) {
+            // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
+            return;
+        }
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
