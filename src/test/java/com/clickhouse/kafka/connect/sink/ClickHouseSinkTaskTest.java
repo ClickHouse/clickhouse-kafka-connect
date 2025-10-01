@@ -6,6 +6,9 @@ import com.clickhouse.client.ClickHouseNodeSelector;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.api.query.Records;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -154,5 +158,52 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
         //assertEquals(1, com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.countInsertQueries(chc, topic));
+    }
+
+    @Test
+    public void clientNameTest() throws Exception {
+        if (isCloud) {
+            // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
+            return;
+        }
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("schemaless_simple_batch_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+
+        chc.queryV2("SYSTEM FLUSH LOGS " + (isCloud ? "ON CLUSTER 'default'" : "")).close();
+
+        String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+                        "   WHERE query_kind = 'Insert' " +
+                        "   AND type = 'QueryStart'" +
+                        "   AND has(databases,'%1$s') " +
+                        "   AND position(http_user_agent, '%2$s') > -1 LIMIT 100",
+                chc.getDatabase(), ClickHouseHelperClient.CONNECT_CLIENT_NAME);
+
+        String debugQuery = String.format("SELECT http_user_agent, query_kind, type FROM clusterAllReplicas('default', system.query_log) LIMIT 10");
+        List<GenericRecord> debugRecords = chc.getClient().queryAll(debugQuery);
+        StringBuilder sb = new StringBuilder();
+        for (GenericRecord record : debugRecords) {
+            sb.append(record.getString("http_user_agent") + " " + record.getObject("query_kind") + " " + record.getObject("type") + ";");
+        }
+
+        List<GenericRecord> records = chc.getClient().queryAll(getLogRecords);
+        assertFalse(records.isEmpty(), sb.toString());
+        for (GenericRecord record : records) {
+            assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
+        }
     }
 }
