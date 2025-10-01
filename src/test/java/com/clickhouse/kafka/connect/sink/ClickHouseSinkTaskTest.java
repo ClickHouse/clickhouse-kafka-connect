@@ -193,11 +193,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
                         "   AND position(http_user_agent, '%2$s') > -1 LIMIT 100",
                 chc.getDatabase(), ClickHouseHelperClient.CONNECT_CLIENT_NAME);
 
-        Records records = chc.getClient().queryRecords(getLogRecords).get();
+        List<GenericRecord> records = chc.getClient().queryAll(getLogRecords);
         assertFalse(records.isEmpty());
         for (GenericRecord record : records) {
             assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
         }
-        records.close();
     }
 }
