@@ -143,8 +143,8 @@ dependencies {
     testFixturesApi("com.google.protobuf:protobuf-java:${project.extra["libprotobuf"]}")
     testFixturesApi("io.confluent:kafka-protobuf-serializer:${project.extra["kafkaPlatformProtobuf"]}")
     testFixturesApi("io.confluent:kafka-connect-protobuf-converter:${project.extra["kafkaPlatformProtobuf"]}")
-    testFixturesApi("io.confluent:kafka-connect-avro-converter:7.9.1")
-    testFixturesApi("io.confluent:kafka-avro-serializer:7.9.1")
+    testFixturesApi("io.confluent:kafka-connect-avro-converter:8.0.1")
+    testFixturesApi("io.confluent:kafka-avro-serializer:8.0.1")
 
     testFixturesImplementation(platform("org.junit:junit-bom:${project.extra["junitJupiterVersion"]}"))
     testFixturesImplementation("org.junit.jupiter:junit-jupiter")
