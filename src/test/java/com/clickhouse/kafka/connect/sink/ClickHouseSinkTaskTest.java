@@ -201,7 +201,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
 
         List<GenericRecord> records = chc.getClient().queryAll(getLogRecords);
-        assertFalse(records.isEmpty());
+        assertFalse(records.isEmpty(), sb.toString());
         for (GenericRecord record : records) {
             assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
         }
