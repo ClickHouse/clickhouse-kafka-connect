@@ -5,6 +5,7 @@
  */
 package com.clickhouse.kafka.connect.avro.test;
 
+import org.apache.avro.generic.GenericArray;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.util.Utf8;
 import org.apache.avro.message.BinaryMessageEncoder;
@@ -13,19 +14,17 @@ import org.apache.avro.message.SchemaStore;
 
 @org.apache.avro.specific.AvroGenerated
 public class Image extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  private static final long serialVersionUID = 2747036010697240683L;
-
-
-  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse("{\"type\":\"record\",\"name\":\"Image\",\"namespace\":\"com.clickhouse.kafka.connect.avro.test\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"content\",\"type\":[\"string\",\"bytes\"]}]}");
+  private static final long serialVersionUID = -4478037929845636151L;
+  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse("{\"type\":\"record\",\"name\":\"Image\",\"namespace\":\"com.clickhouse.kafka.connect.avro.test\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"content\",\"type\":[\"string\",\"bytes\"]},{\"name\":\"description\",\"type\":[\"null\",\"string\",\"bytes\"],\"default\":null}]}");
   public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
 
-  private static final SpecificData MODEL$ = new SpecificData();
+  private static SpecificData MODEL$ = new SpecificData();
 
   private static final BinaryMessageEncoder<Image> ENCODER =
-      new BinaryMessageEncoder<>(MODEL$, SCHEMA$);
+      new BinaryMessageEncoder<Image>(MODEL$, SCHEMA$);
 
   private static final BinaryMessageDecoder<Image> DECODER =
-      new BinaryMessageDecoder<>(MODEL$, SCHEMA$);
+      new BinaryMessageDecoder<Image>(MODEL$, SCHEMA$);
 
   /**
    * Return the BinaryMessageEncoder instance used by this class.
@@ -49,7 +48,7 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
    * @return a BinaryMessageDecoder instance for this class backed by the given SchemaStore
    */
   public static BinaryMessageDecoder<Image> createDecoder(SchemaStore resolver) {
-    return new BinaryMessageDecoder<>(MODEL$, SCHEMA$, resolver);
+    return new BinaryMessageDecoder<Image>(MODEL$, SCHEMA$, resolver);
   }
 
   /**
@@ -72,8 +71,9 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
     return DECODER.decode(b);
   }
 
-  private java.lang.CharSequence name;
-  private java.lang.Object content;
+   private java.lang.CharSequence name;
+   private java.lang.Object content;
+   private java.lang.Object description;
 
   /**
    * Default constructor.  Note that this does not initialize fields
@@ -86,36 +86,34 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
    * All-args constructor.
    * @param name The new value for name
    * @param content The new value for content
+   * @param description The new value for description
    */
-  public Image(java.lang.CharSequence name, java.lang.Object content) {
+  public Image(java.lang.CharSequence name, java.lang.Object content, java.lang.Object description) {
     this.name = name;
     this.content = content;
+    this.description = description;
   }
 
-  @Override
   public org.apache.avro.specific.SpecificData getSpecificData() { return MODEL$; }
-
-  @Override
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
-
   // Used by DatumWriter.  Applications should not call.
-  @Override
   public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return name;
     case 1: return content;
-    default: throw new IndexOutOfBoundsException("Invalid index: " + field$);
+    case 2: return description;
+    default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
 
   // Used by DatumReader.  Applications should not call.
-  @Override
   @SuppressWarnings(value="unchecked")
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
     case 0: name = (java.lang.CharSequence)value$; break;
     case 1: content = value$; break;
-    default: throw new IndexOutOfBoundsException("Invalid index: " + field$);
+    case 2: description = value$; break;
+    default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
 
@@ -151,6 +149,23 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
    */
   public void setContent(java.lang.Object value) {
     this.content = value;
+  }
+
+  /**
+   * Gets the value of the 'description' field.
+   * @return The value of the 'description' field.
+   */
+  public java.lang.Object getDescription() {
+    return description;
+  }
+
+
+  /**
+   * Sets the value of the 'description' field.
+   * @param value the value to set.
+   */
+  public void setDescription(java.lang.Object value) {
+    this.description = value;
   }
 
   /**
@@ -190,16 +205,16 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
   /**
    * RecordBuilder for Image instances.
    */
-  @org.apache.avro.specific.AvroGenerated
   public static class Builder extends org.apache.avro.specific.SpecificRecordBuilderBase<Image>
     implements org.apache.avro.data.RecordBuilder<Image> {
 
     private java.lang.CharSequence name;
     private java.lang.Object content;
+    private java.lang.Object description;
 
     /** Creates a new Builder */
     private Builder() {
-      super(SCHEMA$, MODEL$);
+      super(SCHEMA$);
     }
 
     /**
@@ -216,6 +231,10 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
         this.content = data().deepCopy(fields()[1].schema(), other.content);
         fieldSetFlags()[1] = other.fieldSetFlags()[1];
       }
+      if (isValidValue(fields()[2], other.description)) {
+        this.description = data().deepCopy(fields()[2].schema(), other.description);
+        fieldSetFlags()[2] = other.fieldSetFlags()[2];
+      }
     }
 
     /**
@@ -223,7 +242,7 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
      * @param other The existing instance to copy.
      */
     private Builder(com.clickhouse.kafka.connect.avro.test.Image other) {
-      super(SCHEMA$, MODEL$);
+      super(SCHEMA$);
       if (isValidValue(fields()[0], other.name)) {
         this.name = data().deepCopy(fields()[0].schema(), other.name);
         fieldSetFlags()[0] = true;
@@ -231,6 +250,10 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
       if (isValidValue(fields()[1], other.content)) {
         this.content = data().deepCopy(fields()[1].schema(), other.content);
         fieldSetFlags()[1] = true;
+      }
+      if (isValidValue(fields()[2], other.description)) {
+        this.description = data().deepCopy(fields()[2].schema(), other.description);
+        fieldSetFlags()[2] = true;
       }
     }
 
@@ -314,6 +337,46 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
       return this;
     }
 
+    /**
+      * Gets the value of the 'description' field.
+      * @return The value.
+      */
+    public java.lang.Object getDescription() {
+      return description;
+    }
+
+
+    /**
+      * Sets the value of the 'description' field.
+      * @param value The value of 'description'.
+      * @return This builder.
+      */
+    public com.clickhouse.kafka.connect.avro.test.Image.Builder setDescription(java.lang.Object value) {
+      validate(fields()[2], value);
+      this.description = value;
+      fieldSetFlags()[2] = true;
+      return this;
+    }
+
+    /**
+      * Checks whether the 'description' field has been set.
+      * @return True if the 'description' field has been set, false otherwise.
+      */
+    public boolean hasDescription() {
+      return fieldSetFlags()[2];
+    }
+
+
+    /**
+      * Clears the value of the 'description' field.
+      * @return This builder.
+      */
+    public com.clickhouse.kafka.connect.avro.test.Image.Builder clearDescription() {
+      description = null;
+      fieldSetFlags()[2] = false;
+      return this;
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     public Image build() {
@@ -321,6 +384,7 @@ public class Image extends org.apache.avro.specific.SpecificRecordBase implement
         Image record = new Image();
         record.name = fieldSetFlags()[0] ? this.name : (java.lang.CharSequence) defaultValue(fields()[0]);
         record.content = fieldSetFlags()[1] ? this.content :  defaultValue(fields()[1]);
+        record.description = fieldSetFlags()[2] ? this.description :  defaultValue(fields()[2]);
         return record;
       } catch (org.apache.avro.AvroMissingFieldException e) {
         throw e;

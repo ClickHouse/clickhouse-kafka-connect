@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(FromVersionConditionExtension.class)
@@ -1118,8 +1119,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Image image2 = Image.newBuilder()
                 .setName("image2")
                 .setContent(ByteBuffer.wrap("content2".getBytes()))
+                .setDescription("description")
                 .build();
-        String topic = createTopicName("test");
+        String topic = createTopicName("test_avro_union_string");
 
         MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
         // Register your test schema
@@ -1144,5 +1146,25 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 new SinkRecord(topic, 0, null, null,
                         image2ConnectData.schema(), image2ConnectData.value(), 1)
         );
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE `%s` (`name` String, `content` String, `description` Nullable(String)) Engine = MergeTree ORDER BY ()");
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        JSONObject row = rows.get(0);
+        assertEquals("image1", row.getString("name"));
+        assertEquals("content", row.getString("content"));
+        assertTrue(row.isNull("description"));
+        row = rows.get(1);
+        assertEquals("image2", row.getString("name"));
+        assertEquals("description", row.getString("description"));
+        assertEquals("content2", row.getString("content"));
     }
 }

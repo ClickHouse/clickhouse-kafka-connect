@@ -246,12 +246,26 @@ public class ClickHouseWriter implements DBWriter {
                         case "Enum8":
                         case "Enum16":
                             break;//I notice we just break here, rather than actually validate the type
+                        case "STRING": {
+                            if (dataTypeName.equals("BYTES")) {
+                                continue;
+                            } else if (obj.getFieldType().equals(Schema.Type.STRUCT)) {
+                                for (Field field : objSchema.fields()) {
+                                    if (!(field.schema().type().equals(Schema.Type.STRING) || field.schema().type().equals(Schema.Type.BYTES))) {
+                                        validSchema = false;
+                                        break;
+                                    }
+                                }
+                                if (!validSchema) {
+                                    LOGGER.error(String.format("Cannot write field of union schema '%s' to column [%s] of `String`: only unions of `string` and `bytes` are allowed in this case",
+                                            objSchema.schema().fields(), colName));
+                                }
+                            }
+                            break;
+                        }
                         default:
                             if (!colTypeName.equals(dataTypeName)) {
                                 LOGGER.debug("Data schema name: {}", objSchema.name());
-
-                                if (colTypeName.equals("STRING") && dataTypeName.equals("BYTES"))
-                                    continue;
 
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
                                     continue;
@@ -632,6 +646,20 @@ public class ClickHouseWriter implements DBWriter {
             case STRING:
                 if (Schema.Type.BYTES.equals(dataType)) {
                     BinaryStreamUtils.writeString(stream, (byte[]) value);
+                } else if (Schema.Type.STRUCT.equals(dataType)) {
+                    Map<String, Data> map = (Map<String, Data>) value;
+                    for (Data unionData : map.values()) {
+                        if (unionData != null && unionData.getObject() != null) {
+                            if (unionData.getObject() instanceof String) {
+                                BinaryStreamUtils.writeString(stream, ((String) unionData.getObject()).getBytes(StandardCharsets.UTF_8));
+                            } else if (unionData.getObject() instanceof byte[]) {
+                                BinaryStreamUtils.writeString(stream, (byte[]) unionData.getObject());
+                            } else {
+                                throw new DataException("Not implemented conversion from " + unionData.getObject().getClass() + " to String");
+                            }
+                            break;
+                        }
+                    }
                 } else {
                     BinaryStreamUtils.writeString(stream, ((String) value).getBytes(StandardCharsets.UTF_8));
                 }

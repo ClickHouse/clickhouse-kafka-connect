@@ -129,7 +129,7 @@ dependencies {
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
-
+    testImplementation("org.slf4j:slf4j-simple:2.0.17")
 
 //    // Schema Registry client for testing
     testImplementation("io.confluent:kafka-schema-registry-client:${project.extra["kafkaPlatformSchemaRegistry"]}")

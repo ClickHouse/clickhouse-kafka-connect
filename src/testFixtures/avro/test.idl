@@ -10,4 +10,5 @@ schema Image;
 record Image {
   string name;
   union {string, bytes} content;
+  union {null, string, bytes} description = null;
 }
