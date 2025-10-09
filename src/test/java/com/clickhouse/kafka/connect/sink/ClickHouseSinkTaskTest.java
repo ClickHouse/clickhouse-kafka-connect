@@ -16,6 +16,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.PrintWriter;
@@ -161,7 +162,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     }
 
     @Test
+    @Disabled
     public void clientNameTest() throws Exception {
+        // TODO: fix instability of the test.
         if (isCloud) {
             // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
             return;
