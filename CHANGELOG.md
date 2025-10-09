@@ -1,3 +1,9 @@
+# 1.3.4
+* Added column named that causes error (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/607)
+* Updated clickhouse-java version (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/596)
+* Fixed Client Name reported for `query_log` (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/542)
+* Fixed writing Avro union of `string` and `bytes` to `String` column (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/572)
+
 # 1.3.3
 * Fixed writing JSON values to ClickHouse. Previously all JSON Object were written as objects where field value were wrapped with `{ "object": <field value> }`. Now objects stored with original structure. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/574) 
 * Added support of SimpleAggregateFunction column type. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/571)
