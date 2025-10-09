@@ -114,7 +114,8 @@ public class Table {
                     case VARIANT:
                         return;
                     default:
-                        LOGGER.error("Unhandled complex type '{}' as a child of an array", parentArrayType.getType());
+                        LOGGER.error("Unhandled complex type '{}' as a child of an array (parent name: '{}', child name: '{}')",
+                                parentArrayType.getType(), parent.getName(), child.getName() );
                         return;
                 }
             case MAP:
@@ -175,7 +176,8 @@ public class Table {
                 if (child.getName().endsWith(".null")) {
                     LOGGER.debug("Ignoring complex column: {}", child);
                 } else {
-                    LOGGER.warn("Unsupported complex parent type: {}", parent.getType());
+                    LOGGER.warn("Unsupported complex parent type: {} (parent name: '{}')",
+                            parent.getType(), parent.getName());
                 }
         }
     }
