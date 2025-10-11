@@ -1,3 +1,6 @@
+# 1.3.5
+* Fixed error message about unhandled complex type in array (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/608)
+
 # 1.3.4
 * Added column named that causes error (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/607)
 * Updated clickhouse-java version (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/596)
