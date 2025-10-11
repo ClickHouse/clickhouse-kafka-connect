@@ -95,7 +95,8 @@ public class Table {
                 // Variants are handled fully in the Column class because its types are always primitive. Let's ignore them here.
                 return;
             case ARRAY:
-                if (SIZE_FIELD_MATCHER.test(child.getName()))
+                final String childName = child.getName();
+                if (SIZE_FIELD_MATCHER.test(childName) || childName.endsWith(".null"))
                     return;
 
                 Column parentArrayType = parent.getArrayType();
@@ -114,7 +115,7 @@ public class Table {
                     case VARIANT:
                         return;
                     default:
-                        LOGGER.error("Unhandled complex type '{}' as a child of an array (parent name: '{}', child name: '{}')",
+                        LOGGER.warn("Unhandled complex type '{}' as a child of an array or unexpected subcolumn (parent name: '{}', child name: '{}').",
                                 parentArrayType.getType(), parent.getName(), child.getName() );
                         return;
                 }
