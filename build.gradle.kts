@@ -362,5 +362,8 @@ publishing {
 
 
 signing {
+    val signingKey = properties.get("signingKey").toString()
+    val signingPassword = properties.get("signingPassword").toString()
+    useInMemoryPgpKeys(signingKey, signingPassword)
     sign(publishing.publications["confluentJarSnapshot"])
 }
