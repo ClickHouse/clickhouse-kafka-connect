@@ -32,8 +32,8 @@ jobs:
           distribution: "temurin"
           java-version: |            
             17
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2
       - name: Release Snapshot
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
@@ -42,7 +42,7 @@ jobs:
           SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
         run: | 
           ls && 
-          gradle publishConfluentJarSnapshotToMavenLocal -Psigning.signingKey=${GPG_PRIVATE_KEY} -Psigning.password=${GPG_PASSPHRASE}
+          ./gradle publishConfluentJarSnapshotToMavenLocal -Psigning.signingKey=${GPG_PRIVATE_KEY} -Psigning.password=${GPG_PASSPHRASE}
 #      - name: Release Snapshot
 #        uses: samuelmeuli/action-maven-publish@v1
 #        with:
