@@ -42,7 +42,7 @@ jobs:
           SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
         run: | 
           ls && 
-          ./gradlew publishConfluentJarSnapshotToMavenLocal -DsigningKey=${GPG_PRIVATE_KEY} -DsigningPassword=${GPG_PASSPHRASE}
+          ./gradlew publishConfluentJarSnapshotToMavenLocal -PsigningKey=${GPG_PRIVATE_KEY} -PsigningPassword=${GPG_PASSPHRASE}
 #      - name: Release Snapshot
 #        uses: samuelmeuli/action-maven-publish@v1
 #        with:
