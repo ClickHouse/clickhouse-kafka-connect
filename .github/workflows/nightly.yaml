@@ -1,14 +1,11 @@
 name: Nightly
 
 on:
-  schedule:
-    # Build and publish nightly snapshot at 3:55pm every day
-    - cron: "55 15 * * *"
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: "Pull request#"
-        required: false
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - 'docs/**'
 
 env:
   CHC_BRANCH: "main"
