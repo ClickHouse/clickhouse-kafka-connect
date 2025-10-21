@@ -1,0 +1,59 @@
+name: Nightly
+
+on:
+  schedule:
+    # Build and publish nightly snapshot at 3:55pm every day
+    - cron: "55 15 * * *"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request#"
+        required: false
+
+env:
+  CHC_BRANCH: "main"
+
+jobs:
+  nightly:
+    if: ${{ startsWith(github.repository, 'ClickHouse/') }}
+    name: "Build and Publish Nightly Snapshot"
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 20
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+#        with:
+#          ref: ${{ env.CHC_BRANCH }}
+      - name: Check out PR
+        run: |
+          git fetch --no-tags --prune --progress --no-recurse-submodules --depth=1 \
+            origin pull/${{ github.event.inputs.pr }}/merge:merged-pr && git checkout merged-pr
+        if: github.event.inputs.pr != ''
+      - name: Install JDK and Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: |            
+            17
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2
+      - name: Release Snapshot
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          SONATYPE_TOKEN_USER: ${{ secrets.SONATYPE_TOKEN_USER }}
+          SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
+        run: | 
+          ls && 
+          gradle publishConfluentJarSnapshotToMavenLocal -Psigning.signingKey=${GPG_PRIVATE_KEY} -Psigning.password=${GPG_PASSPHRASE}
+#      - name: Release Snapshot
+#        uses: samuelmeuli/action-maven-publish@v1
+#        with:
+#          maven_profiles: release
+#          maven_args: -q --batch-mode -DclickhouseVersion=${{ env.CH_VERSION }}
+#          server_id: central
+#          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+#          gpg_passphrase: ${{ secrets.GPG_PASSPHRASE }}
+#          nexus_username: ${{ secrets.SONATYPE_TOKEN_USER }}
+#          nexus_password: ${{ secrets.SONATYPE_TOKEN }}
+

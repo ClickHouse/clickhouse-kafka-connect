@@ -13,9 +13,9 @@ import java.time.format.DateTimeFormatter
 
 val defaultJdkVersion = 17
 java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(11))
-    }
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+
 }
 
 
@@ -36,6 +36,7 @@ plugins {
     id("com.github.johnrengelman.shadow") version "7.1.2"
     id("com.google.protobuf") version "0.9.5"
     id("java-test-fixtures")
+    id("org.jreleaser") version "1.20.0"
 }
 
 group = "com.clickhouse.kafka"
@@ -336,8 +337,22 @@ task("testJar", type = Jar::class) {
 
 publishing {
     publications {
-        create<MavenPublication>("mavenJava") {
-            from(components["java"]) // Publishes the Java component
+        create<MavenPublication>("confluentJarSnapshot") {
+            groupId = "com.clickhouse"
+            artifactId = "clickhouse-kafka-connector";
+            version = version.toString() + "-SNAPSHOT"
+
+            pom {
+                developers {
+                    developer {
+                        id = "clickhouse"
+                        name = "ClickHouse"
+                        email = "clickhouse@clickhouse.com"
+                    }
+                }
+            }
+
+            artifact(tasks["confluentJar"]) // Publishes the Java component
         }
         create<MavenPublication>("mavenTestJar") {
             artifact(tasks["testJar"])
@@ -345,3 +360,7 @@ publishing {
     }
 }
 
+
+signing {
+    sign(publishing.publications["confluentJarSnapshot"])
+}
