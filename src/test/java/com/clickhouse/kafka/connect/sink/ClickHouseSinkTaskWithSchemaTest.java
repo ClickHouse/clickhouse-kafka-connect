@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.api.ClientConfigProperties;
+import com.clickhouse.kafka.connect.avro.test.Event;
 import com.clickhouse.kafka.connect.avro.test.Image;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -13,6 +14,7 @@ import io.confluent.connect.avro.AvroConverter;
 import io.confluent.connect.protobuf.ProtobufConverter;
 import io.confluent.connect.protobuf.ProtobufConverterConfig;
 import io.confluent.connect.protobuf.ProtobufDataConfig;
+import io.confluent.kafka.schemaregistry.avro.AvroSchema;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
@@ -37,9 +39,14 @@ import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -221,7 +228,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, datetime64_number DateTime64, timestamp_int64 Int64, timestamp_date DateTime64, time_int32 Int32, time_date32 Date32, date_date Date, datetime_date DateTime ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` " +
+                " ( `off16` Int16, date_number Nullable(Date), date32_number Nullable(Date32), datetime_number DateTime, " +
+                " datetime64_number DateTime64, datetime64_3_number DateTime64(3), datetime64_6_number DateTime64(6), datetime64_9_number DateTime64(9), timestamp_int64 Int64, timestamp_date DateTime64, time_int32 Int32, time_date32 Date32, date_date Date, datetime_date DateTime ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createDateType(topic, 1);
 
@@ -231,6 +240,16 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        for (JSONObject row : rows) {
+            String dateTime64_9 = row.getString("datetime64_9_number");
+            String dateTime64_6 = row.getString("datetime64_6_number");
+            String dateTime64_3 = row.getString("datetime64_3_number");
+
+            assertTrue(dateTime64_9.contains(dateTime64_3), dateTime64_3 + " is not a substring of " + dateTime64_9);
+            assertTrue(dateTime64_9.contains(dateTime64_6), dateTime64_6 + " is not a substring of " + dateTime64_9);
+        }
     }
 
     @Test
@@ -1114,8 +1133,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .setName("image1")
                 .setContent("content")
                 .build();
-
-
         Image image2 = Image.newBuilder()
                 .setName("image2")
                 .setContent(ByteBuffer.wrap("content2".getBytes()))
@@ -1123,29 +1140,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .build();
         String topic = createTopicName("test_avro_union_string");
 
-        MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
-        // Register your test schema
-        String subject = topic + "-value";
-        schemaRegistry.register(subject, image1.getSchema());
-
-        AvroConverter converter = new AvroConverter(schemaRegistry);
-        Map<String, Object> converterConfig = new HashMap<>();
-        converterConfig.put(ProtobufConverterConfig.AUTO_REGISTER_SCHEMAS, true);
-        converterConfig.put(ProtobufDataConfig.GENERATE_INDEX_FOR_UNIONS_CONFIG, false);
-        converterConfig.put(KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-url");
-
-        converter.configure(converterConfig, false);
-        KafkaAvroSerializer serializer = new KafkaAvroSerializer(schemaRegistry);
-
-        SchemaAndValue image1ConnectData = converter.toConnectData(topic, serializer.serialize(topic, image1));
-        SchemaAndValue image2ConnectData = converter.toConnectData(topic, serializer.serialize(topic, image2));
-
-        List<SinkRecord> records = Arrays.asList(
-                new SinkRecord(topic, 0, null, null,
-                        image1ConnectData.schema(), image1ConnectData.value(), 0),
-                new SinkRecord(topic, 0, null, null,
-                        image2ConnectData.schema(), image2ConnectData.value(), 1)
-        );
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(Image.getClassSchema()), Arrays.asList(image1, image2));
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1166,5 +1161,35 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals("image2", row.getString("name"));
         assertEquals("description", row.getString("description"));
         assertEquals("content2", row.getString("content"));
+    }
+
+    @Test
+    public void testAvroDateAndTimeTypes() throws Exception {
+
+        final String topic = createTopicName("test_avro_timestamps");
+        final ZoneId tz = ZoneId.of("UTC");
+        final Instant now = Instant.now();
+        List<Object> events = IntStream.range(0, 3).mapToObj(i -> {
+            Event event = Event.newBuilder()
+                    .setId(i)
+                    .setTime1(now)
+                    .setTime2(LocalTime.ofInstant(now, tz))
+                    .build();
+            return event;
+        }).collect(Collectors.toList());
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(Event.getClassSchema()), events);
+        System.out.println(records);
+
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE `%s` (`id` Int64, `time1` DateTime64(3), `time2` DateTime64(3)) Engine = MergeTree ORDER BY ()");
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
     }
 }

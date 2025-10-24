@@ -57,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -298,6 +299,8 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
+    private int[] BASES = new int[] { 1_000, 100, 10, 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000 };
+
     protected void doWriteDates(Type type, OutputStream stream, Data value, int precision, String columnName) throws IOException {
         // TODO: develop more specific tests to have better coverage
         if (value.getObject() == null) {
@@ -355,13 +358,14 @@ public class ClickHouseWriter implements DBWriter {
                 }
                 break;
             case DateTime64:
-                if (value.getFieldType().equals(Schema.Type.INT64)) {
-                    if (value.getObject().getClass().getName().endsWith(".Date")) {
-                        Date date = (Date) value.getObject();
-                        BinaryStreamUtils.writeInt64(stream, date.getTime());
+                if ( value.getFieldType().equals(Schema.Type.INT64)) {
+                    if (value.getObject() instanceof Date) {
+                        doWriteDate(stream, (Date) value.getObject(), precision);
                     } else {
                         BinaryStreamUtils.writeInt64(stream, (Long) value.getObject());
                     }
+                } else if (value.getFieldType().equals(Schema.Type.INT32) && value.getObject() instanceof Date) {
+                    doWriteDate(stream, (Date) value.getObject(), precision);
                 } else if (value.getFieldType().equals(Schema.Type.STRING)) {
                     try {
                         long seconds;
@@ -413,6 +417,16 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error(msg);
             throw new DataException(msg);
         }
+    }
+
+    private void doWriteDate(OutputStream stream, Date date, int precision ) throws IOException {
+        long ts = date.getTime();
+        if (precision > 3) {
+            ts *= BASES[precision];
+        } else if (precision < 3) {
+            ts /= BASES[precision];
+        }
+        BinaryStreamUtils.writeInt64(stream, ts);
     }
 
     protected void doWriteColValue(Column col, OutputStream stream, Data value, boolean defaultsSupport) throws IOException {

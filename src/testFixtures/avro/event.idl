@@ -1,0 +1,14 @@
+namespace com.clickhouse.kafka.connect.avro.test;
+schema Event;
+
+record Event {
+    // Just ID
+    long id;
+
+    // The time-millis logical type represents a time of day, with no reference to a particular calendar, time zone or date, with a precision of one millisecond.
+    timestamp_ms time1;
+
+    // The timestamp-millis logical type represents an instant on the global timeline, independent of a particular time zone or calendar, with a precision of one millisecond.
+    time_ms time2;
+
+}
