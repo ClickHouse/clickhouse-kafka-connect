@@ -780,9 +780,6 @@ public class ClickHouseWriter implements DBWriter {
     }
     protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
-        long s2 = 0;
-        long s3 = 0;
-        long pushStreamTime = 0;
 
         Record first = records.get(0);
         String database = first.getDatabase();
@@ -794,7 +791,7 @@ public class ClickHouseWriter implements DBWriter {
         // Let's test first record
         // Do we have all elements from the table inside the record
 
-        s2 = System.currentTimeMillis();
+        long s2 = System.currentTimeMillis();
 
         // get or create client
         Client client = chc.getClient();
@@ -812,7 +809,7 @@ public class ClickHouseWriter implements DBWriter {
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
 //        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
-
+        long pushStreamTime = 0;
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
@@ -838,14 +835,11 @@ public class ClickHouseWriter implements DBWriter {
         try (InsertResponse insertResponse = client.insert(table.getName(), data, format, insertSettings).get()) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
-        s3 = System.currentTimeMillis();
+        long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
     }
     protected void doInsertRawBinaryV1(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
-        long s2 = 0;
-        long s3 = 0;
-        long pushStreamTime = 0;
 
         Record first = records.get(0);
         String database = first.getDatabase();
@@ -857,7 +851,8 @@ public class ClickHouseWriter implements DBWriter {
         // Let's test first record
         // Do we have all elements from the table inside the record
 
-        s2 = System.currentTimeMillis();
+        long s2 = System.currentTimeMillis();
+        long pushStreamTime = 0;
         try (ClickHouseClient client = getClient()) {
             ClickHouseRequest.Mutation request;
             if (supportDefaults) {
@@ -873,6 +868,7 @@ public class ClickHouseWriter implements DBWriter {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
+
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
                         for (Column col : table.getRootColumnsList()) {
@@ -894,7 +890,7 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
 
-        s3 = System.currentTimeMillis();
+        long s3 = System.currentTimeMillis();
         LOGGER.info("topic :{} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
@@ -912,8 +908,7 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
         Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
-        long s2 = 0;
-        long s3 = 0;
+
         long dataSerializeTime = 0;
 
 
@@ -925,7 +920,7 @@ public class ClickHouseWriter implements DBWriter {
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
 
-
+        long s2;
         try (ClickHouseClient client = getClient()) {
             ClickHouseRequest.Mutation request = getMutationRequest(client, ClickHouseFormat.JSONEachRow, table.getName(), database, queryId);
             ClickHouseConfig config = request.getConfig();
@@ -975,7 +970,7 @@ public class ClickHouseWriter implements DBWriter {
                 }
             }
         }
-        s3 = System.currentTimeMillis();
+        long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
@@ -986,10 +981,6 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
         Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
-        long s2 = 0;
-        long s3 = 0;
-        long dataSerializeTime = 0;
-
 
         Record first = records.get(0);
         String database = first.getDatabase();
@@ -1016,6 +1007,7 @@ public class ClickHouseWriter implements DBWriter {
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
+        long dataSerializeTime = 0;
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
                 Map<String, Object> data;
@@ -1046,11 +1038,11 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         InputStream data = new ByteArrayInputStream(stream.toByteArray());
-
+        long s2 = System.currentTimeMillis();
         try (InsertResponse insertResponse = client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings).get()) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
-        s3 = System.currentTimeMillis();
+        long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
@@ -1078,9 +1070,6 @@ public class ClickHouseWriter implements DBWriter {
     protected void doInsertStringV1(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         byte[] endingLine = new byte[]{'\n'};
         long s1 = System.currentTimeMillis();
-        long s2 = 0;
-        long s3 = 0;
-        long pushStreamTime = 0;
 
         Record first = records.get(0);
         String database = first.getDatabase();
@@ -1103,6 +1092,8 @@ public class ClickHouseWriter implements DBWriter {
                 clickHouseFormat = ClickHouseFormat.JSONEachRow;
         }
 
+        long s2;
+        long pushStreamTime = 0;
         try (ClickHouseClient client = getClient()) {
             ClickHouseRequest.Mutation request = getMutationRequest(client, clickHouseFormat, table.getName(), database, queryId);
             ClickHouseConfig config = request.getConfig();
@@ -1141,15 +1132,12 @@ public class ClickHouseWriter implements DBWriter {
                 }
             }
         }
-        s3 = System.currentTimeMillis();
+        long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
     protected void doInsertStringV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         byte[] endingLine = new byte[]{'\n'};
         long s1 = System.currentTimeMillis();
-        long s2 = 0;
-        long s3 = 0;
-        long pushStreamTime = 0;
 
         Record first = records.get(0);
         String database = first.getDatabase();
@@ -1188,7 +1176,7 @@ public class ClickHouseWriter implements DBWriter {
             default:
                 clickHouseFormat = ClickHouseFormat.JSONEachRow;
         }
-
+        long pushStreamTime = 0;
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
                 String data = (String)record.getSinkRecord().value();
@@ -1210,10 +1198,11 @@ public class ClickHouseWriter implements DBWriter {
             }
         }
 
+        long s2 = System.currentTimeMillis();
         try (InsertResponse insertResponse = client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), clickHouseFormat, insertSettings).get()) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
-        s3 = System.currentTimeMillis();
+        long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
     }
 
