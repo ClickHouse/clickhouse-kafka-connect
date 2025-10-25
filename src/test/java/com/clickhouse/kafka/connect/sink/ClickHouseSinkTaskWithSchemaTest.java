@@ -1,14 +1,50 @@
 package com.clickhouse.kafka.connect.sink;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.kafka.connect.data.SchemaAndValue;
+import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
+
 import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.avro.test.Image;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseTableSchema;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
+import com.clickhouse.kafka.connect.test.TestProtos;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
-import com.clickhouse.kafka.connect.test.TestProtos;
-import com.clickhouse.kafka.connect.util.Utils;
+
 import io.confluent.connect.avro.AvroConverter;
 import io.confluent.connect.protobuf.ProtobufConverter;
 import io.confluent.connect.protobuf.ProtobufConverterConfig;
@@ -19,32 +55,6 @@ import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
-import org.apache.kafka.connect.data.SchemaAndValue;
-import org.apache.kafka.connect.errors.DataException;
-import org.apache.kafka.connect.sink.SinkRecord;
-import org.json.JSONObject;
-import org.json.JSONArray;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
-
-import java.io.Serializable;
-import java.math.BigDecimal;
-import java.nio.ByteBuffer;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
@@ -75,6 +85,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     public void arrayNullableSubtypesTest() {
         Map<String, String> props = createProps();
+        props.put("enable.new.schema.validation", "true"); // Feature flag
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "array_nullable_subtypes_table_test";
@@ -82,12 +93,29 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr_nullable_str` Array(Nullable(String)), `arr_empty_nullable_str` Array(Nullable(String)), `arr_nullable_int8` Array(Nullable(Int8)), `arr_nullable_int16` Array(Nullable(Int16)), `arr_nullable_int32` Array(Nullable(Int32)), `arr_nullable_int64` Array(Nullable(Int64)), `arr_nullable_float32` Array(Nullable(Float32)), `arr_nullable_float64` Array(Nullable(Float64)), `arr_nullable_bool` Array(Nullable(Bool))  ) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemaTestData.createArrayNullableSubtypes(topic, 1);
 
+        Collection<SinkRecord> validRecords = SchemaTestData.createArrayNullableSubtypes(topic, 1);
+        Collection<SinkRecord> invalidRecords = SchemaTestData.createInvalidArrayData(topic);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
-        chst.put(sr);
+        chst.put(validRecords);
+        assertEquals(validRecords.size(), ClickHouseTestHelpers.countRows(chc, topic),
+                "All valid records should be inserted correctly");
+
+        assertThrows(RuntimeException.class, () -> chst.put(invalidRecords),
+                "Invalid records should cause a failure");
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        ClickHouseTableSchema schema = chc.getTableSchema(topic);
+
+        assertEquals("Array(Nullable(String))", schema.getColumnType("arr_nullable_str"));
+        assertEquals("Array(Nullable(String))", schema.getColumnType("arr_empty_nullable_str"));
+        assertEquals("Array(Nullable(Int8))", schema.getColumnType("arr_nullable_int8"));
+        assertEquals("Array(Nullable(Int16))", schema.getColumnType("arr_nullable_int16"));
+        assertEquals("Array(Nullable(Int32))", schema.getColumnType("arr_nullable_int32"));
+        assertEquals("Array(Nullable(Int64))", schema.getColumnType("arr_nullable_int64"));
+        assertEquals("Array(Nullable(Float32))", schema.getColumnType("arr_nullable_float32"));
+        assertEquals("Array(Nullable(Float64))", schema.getColumnType("arr_nullable_float64"));
+        assertEquals("Array(Nullable(Bool))", schema.getColumnType("arr_nullable_bool"));
     }
     
     @Test

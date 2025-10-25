@@ -51,6 +51,7 @@ public class ClickHouseSinkConfig {
     public static final String BYPASS_SCHEMA_VALIDATION = "bypassSchemaValidation";
     public static final String BYPASS_FIELD_CLEANUP = "bypassFieldCleanup";
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
+    public static final String ENABLE_NEW_SCHEMA_VALIDATION = "enableNewSchemaValidation";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -64,6 +65,7 @@ public class ClickHouseSinkConfig {
     public static final Integer tableRefreshIntervalDefault = 0;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
     public static final Boolean customInsertFormatDefault = Boolean.FALSE;
+    public static final boolean enableNewSchemaValidationDefault = false;
 
     private final String hostname;
     private final int port;
@@ -95,6 +97,7 @@ public class ClickHouseSinkConfig {
     private final boolean bypassFieldCleanup;
     private final boolean ignorePartitionsWhenBatching;
     private final boolean binaryFormatWrtiteJsonAsString;
+    private final boolean enableNewSchemaValidation;
 
     public enum InsertFormats {
         NONE,
@@ -270,6 +273,7 @@ public class ClickHouseSinkConfig {
         this.bypassSchemaValidation = Boolean.parseBoolean(props.getOrDefault(BYPASS_SCHEMA_VALIDATION, "false"));
         this.bypassFieldCleanup = Boolean.parseBoolean(props.getOrDefault(BYPASS_FIELD_CLEANUP, "false"));
         this.ignorePartitionsWhenBatching = Boolean.parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
+        this.enableNewSchemaValidation = Boolean.parseBoolean(props.getOrDefault(ENABLE_NEW_SCHEMA_VALIDATION, String.valueOf(enableNewSchemaValidationDefault)));
 
 
         String jsonAsString = getClickhouseSettings().get("input_format_binary_read_json_as_string");
@@ -610,6 +614,15 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Ignore partitions when batching."
         );
+        configDef.define(ENABLE_NEW_SCHEMA_VALIDATION,
+                ConfigDef.Type.BOOLEAN,
+                enableNewSchemaValidationDefault,
+                ConfigDef.Importance.LOW,
+                "Enable the new schema validation logic. Default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Enable New Schema Validation");
         return configDef;
     }
 }

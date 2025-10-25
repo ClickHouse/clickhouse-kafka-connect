@@ -431,6 +431,59 @@ public class ClickHouseHelperClient {
         }
         return table;
     }
+    
+    public ClickHouseTableSchema getTableSchema(String tableName) {
+        Map<String, String> columnTypes = new HashMap<>();
+        
+        if (useClientV2) {
+            return getTableSchemaV2(tableName, columnTypes);
+        } else {
+            return getTableSchemaV1(tableName, columnTypes);
+        }
+    }
+    
+    private ClickHouseTableSchema getTableSchemaV1(String tableName, Map<String, String> columnTypes) {
+        Table table = describeTable(database, tableName);
+        if (table == null) {
+            return null;
+        }
+        
+        // Get the full type description from describe table
+        String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", database, tableName);
+        
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(server)
+                     .set("describe_include_subcolumns", true)
+                     .format(ClickHouseFormat.JSONEachRow)
+                     .query(describeQuery)
+                     .executeAndWait()) {
+            
+            for (ClickHouseRecord r : response.records()) {
+                ClickHouseValue v = r.getValue(0);
+                String rowJson = v.asString();
+                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(rowJson);
+                
+                if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized() || fieldDescriptor.isEphemeral()) {
+                    continue;
+                }
+                
+                columnTypes.put(fieldDescriptor.getName(), fieldDescriptor.getType());
+            }
+        } catch (ClickHouseException | JsonProcessingException e) {
+            LOGGER.error(String.format("Exception when getting table schema %s", describeQuery), e);
+            return null;
+        }
+        
+        return new ClickHouseTableSchema(columnTypes);
+    }
+    
+    private ClickHouseTableSchema getTableSchemaV2(String tableName, Map<String, String> columnTypes) {
+        return getTableSchemaV1(tableName, columnTypes);
+    }
+    
     public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
         List<Table> tableList =  new ArrayList<>();
         for (Table table : showTables(database) ) {
