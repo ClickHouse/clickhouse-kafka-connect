@@ -121,7 +121,7 @@ dependencies {
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:${project.extra["testcontainers"]}")
     testImplementation("org.testcontainers:kafka:${project.extra["testcontainers"]}")
-    testImplementation("com.squareup.okhttp3:okhttp:5.1.0")
+    testImplementation("com.squareup.okhttp3:okhttp:5.3.0")
     testImplementation("org.json:json:${project.extra["org.json"]}")
     testImplementation("org.testcontainers:toxiproxy:${project.extra["toxiproxy"]}")
     testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5")
