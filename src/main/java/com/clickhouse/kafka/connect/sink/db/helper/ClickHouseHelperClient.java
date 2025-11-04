@@ -14,6 +14,7 @@ import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
+import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
@@ -114,14 +115,15 @@ public class ClickHouseHelperClient {
 
         LOGGER.info("ClickHouse URL: {}", url);
 
+        final Map<String, String> options = new HashMap<>();
+        options.put(ClickHouseHttpOption.CUSTOM_PARAMS.getKey(),  "enable_http_compression=0");
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
-            Map<String, String> options = new HashMap<>();
             options.put("user", username);
             options.put("password", password);
             server = ClickHouseNode.of(url, options);
         } else {
-            server = ClickHouseNode.of(url);
+            server = ClickHouseNode.of(url, options);
         }
         return server;
     }
