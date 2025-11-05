@@ -12,6 +12,8 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 
@@ -25,8 +27,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
+    private static final Logger log = LoggerFactory.getLogger(ClickHouseSinkTaskSchemalessProxyTest.class);
     private static ToxiproxyContainer toxiproxy = null;
     private static Proxy proxy = null;
+
+    private static final int PROXY_PORT = 8666;
     @BeforeAll
     public static void setup() throws IOException {
         // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
@@ -36,8 +41,10 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
         toxiproxy.start();
 
+        log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
+        log.info("Proxy configured {}", proxy.getListen());
     }
 
     @AfterAll
@@ -59,7 +66,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
         props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
-        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(8666)));
+        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
         return props;
     }
 
