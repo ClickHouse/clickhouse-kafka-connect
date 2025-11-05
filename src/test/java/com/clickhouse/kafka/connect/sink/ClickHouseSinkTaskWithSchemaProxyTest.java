@@ -16,6 +16,7 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
 import org.junit.Ignore;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,17 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
         proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
         proxy.enable();
+    }
+
+    @AfterAll
+    public static void tearDown() {
+        ClickHouseBase.tearDown();
+
+        try {
+            toxiproxy.stop();
+        } catch (Exception e) {
+            // ignore
+        }
     }
 
     private Map<String, String> getTestProperties() {
