@@ -51,6 +51,9 @@ public class ClickHouseBase {
                 .withNetwork(network)
                 .withNetworkAliases("clickhouse")
                 .withPassword("test_password")
+                .withCreateContainerCmdModifier(cmd -> {
+                    cmd.getHostConfig().withMemory(1024 * 1024 * 1024 * 2L);
+                })
                 .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
         db.start();
         setDb(db);
