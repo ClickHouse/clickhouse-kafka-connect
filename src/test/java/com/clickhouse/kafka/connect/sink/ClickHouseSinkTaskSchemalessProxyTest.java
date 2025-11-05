@@ -62,6 +62,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         proxy.disable();
         assertFalse(chc.ping());
         proxy.enable();
+        assertTrue(chc.ping());
     }
 
     @Test

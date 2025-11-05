@@ -147,6 +147,7 @@ public class ClickHouseTestHelpers {
         try {
             return chc.getClient().queryRecords(createTableQueryTmp, settings).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT).getMetrics();
         } catch (Exception e) {
+            LOGGER.error("Error table creation: {}, ", chc.getServer());
             throw new RuntimeException(e);
         }
     }
