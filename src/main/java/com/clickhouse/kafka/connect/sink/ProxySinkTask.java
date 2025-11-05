@@ -34,7 +34,7 @@ public class ProxySinkTask {
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
     private ClickHouseSinkConfig clickHouseSinkConfig = null;
-
+    private Timer tableRefreshTimer;
 
     private final SinkTaskStatistics statistics;
     private int id = NEXT_ID.getAndAdd(1);
@@ -54,7 +54,7 @@ public class ProxySinkTask {
         // Add table mapping refresher
         if (clickHouseSinkConfig.getTableRefreshInterval() > 0) {
             TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(clickHouseSinkConfig.getDatabase(), chWriter);
-            Timer tableRefreshTimer = new Timer();
+            tableRefreshTimer = new Timer();
             tableRefreshTimer.schedule(tableMappingRefresher, clickHouseSinkConfig.getTableRefreshInterval(), clickHouseSinkConfig.getTableRefreshInterval());
         }
 
@@ -68,10 +68,19 @@ public class ProxySinkTask {
     }
 
     private String getMBeanNAme() {
-        return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", id, ClickHouseClientOption.class.getPackage().getImplementationVersion());
+        return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", id, com.clickhouse.kafka.connect.sink.Version.ARTIFACT_VERSION);
     }
 
     public void stop() {
+        if (tableRefreshTimer != null) {
+            try {
+                tableRefreshTimer.cancel();
+            } catch (Exception e) {
+                LOGGER.error("Error canceling table refresh timer on com.clickhouse.kafka.connect.sink.ProxySinkTask.stop", e);
+            }
+        }
+
+        LOGGER.info("Stopping MBean server {}", getMBeanNAme());
         MBeanServerUtils.unregisterMBean(getMBeanNAme());
     }
 
