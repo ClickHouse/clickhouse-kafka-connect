@@ -9,9 +9,11 @@ import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -26,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     private static final Logger log = LoggerFactory.getLogger(ClickHouseSinkTaskSchemalessProxyTest.class);
     private static ToxiproxyContainer toxiproxy = null;
@@ -33,10 +36,11 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     private static final int PROXY_PORT = 8666;
     @BeforeAll
-    public static void setup() throws IOException {
+    public void setup() throws IOException {
         // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-        ClickHouseBase.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
+        super.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
         Network network = getDb().getNetwork();
+
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
         toxiproxy.start();
@@ -48,8 +52,8 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     }
 
     @AfterAll
-    public static void tearDown() {
-        ClickHouseBase.tearDown();
+    public void tearDown() {
+        super.tearDown();
 
         try {
             toxiproxy.stop();

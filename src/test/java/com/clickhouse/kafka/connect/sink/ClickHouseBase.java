@@ -12,6 +12,7 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.TestInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
@@ -21,19 +22,21 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
 //    private static ClickHouseHelperClient chc = null;
-    protected static ThreadLocal<ClickHouseContainer> db = new ThreadLocal<>();
-    protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
-    protected static ThreadLocal<String> database = new ThreadLocal<>();
+    protected ClickHouseContainer db;
+    protected boolean isCloud = ClickHouseTestHelpers.isCloud();
+    protected String database;
+
 
     @BeforeAll
-    public static void setup() throws IOException  {
+    public  void setup() throws IOException  {
         setup(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
     }
 
-    public static void setup(String clickhouseDockerImage) {
+    public void setup(String clickhouseDockerImage) {
         LOGGER.info("ClickHouse setup start threadId={}", Thread.currentThread().getId());
         setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
 
@@ -54,7 +57,7 @@ public class ClickHouseBase {
     }
 
     @AfterAll
-    protected static void tearDown() {
+    protected void tearDown() {
         // disable dropping database for debug
         if (isCloud) {//We need to clean up databases in the cloud, we can ignore the local database
             if (database != null) {
@@ -69,24 +72,24 @@ public class ClickHouseBase {
         ClickHouseContainer ch = getDb();
         if (ch != null) {
             LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
-            ClickHouseBase.getDb().stop();
+            ch.stop();
         }
     }
 
-    public static ClickHouseContainer getDb() {
-        return db.get();
+    public  ClickHouseContainer getDb() {
+        return db;
     }
 
-    public static void setDb(ClickHouseContainer db) {
-        ClickHouseBase.db.set(db);
+    public  void setDb(ClickHouseContainer db) {
+        this.db = db;
     }
 
-    public static String getDatabase() {
-        return database.get();
+    public  String getDatabase() {
+        return database;
     }
 
-    public static void setDatabase(String database) {
-        ClickHouseBase.database.set(database);
+    public void setDatabase(String database) {
+        this.database = database;
     }
 
     public static String extractClientVersion() {
@@ -127,10 +130,10 @@ public class ClickHouseBase {
                 .build();
 
         if (withDatabase) {
-            createDatabase(ClickHouseBase.getDatabase(), tmpChc);
-            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseBase.getDatabase());
+            createDatabase(getDatabase(), tmpChc);
+            props.put(ClickHouseSinkConnector.DATABASE, getDatabase());
             tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                    .setDatabase(ClickHouseBase.getDatabase())
+                    .setDatabase(getDatabase())
                     .setUsername(username)
                     .setPassword(password)
                     .sslEnable(sslEnabled)
@@ -191,8 +194,8 @@ public class ClickHouseBase {
         }
     }
 
-    protected static void dropDatabase(String database) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(ClickHouseBase.createProps());
+    protected  void dropDatabase(String database) {
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(createProps());
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -239,7 +242,7 @@ public class ClickHouseBase {
         }
     }
 
-    protected static Map<String,String> createProps() {
+    protected Map<String,String> createProps() {
         Map<String, String> props = new HashMap<>();
         String clientVersion = extractClientVersion();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);

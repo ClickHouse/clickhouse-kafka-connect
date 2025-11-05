@@ -9,7 +9,6 @@ import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.util.Utils;
-import com.google.crypto.tink.internal.Random;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.errors.DataException;
@@ -20,10 +19,10 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 
@@ -34,8 +33,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.LongStream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     private static final Logger log = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaProxyTest.class);
@@ -45,10 +47,11 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
 
     private static final int PROXY_PORT = 8667;
     @BeforeAll
-    public static void setup() throws IOException {
+    public void setup() throws IOException {
         // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-        ClickHouseBase.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
+        super.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
         Network network = getDb().getNetwork();
+
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
         toxiproxy.start();
@@ -60,8 +63,8 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     }
 
     @AfterAll
-    public static void tearDown() {
-        ClickHouseBase.tearDown();
+    public void tearDown() {
+        super.tearDown();
 
         try {
             toxiproxy.stop();
