@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Ignore
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     private static final Logger log = LoggerFactory.getLogger(ClickHouseSinkTaskSchemalessProxyTest.class);

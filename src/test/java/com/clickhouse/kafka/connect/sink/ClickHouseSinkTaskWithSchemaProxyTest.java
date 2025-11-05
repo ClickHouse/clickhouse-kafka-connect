@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Ignore
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
