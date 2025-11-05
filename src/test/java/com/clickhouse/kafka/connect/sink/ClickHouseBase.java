@@ -23,7 +23,7 @@ import java.util.Map;
 
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
-    protected static ClickHouseHelperClient chc = null;
+    private static ClickHouseHelperClient chc = null;
     protected static ThreadLocal<ClickHouseContainer> db = new ThreadLocal<>();
     protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
     protected static ThreadLocal<String> database = new ThreadLocal<>();
@@ -34,9 +34,8 @@ public class ClickHouseBase {
     }
 
     public static void setup(String clickhouseDockerImage) {
-        if (getDatabase() == null) {
-            setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
-        }
+        setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
+
         if (isCloud) {
             initialPing();
             return;
@@ -66,7 +65,9 @@ public class ClickHouseBase {
             }
         }
 
-        if (ClickHouseBase.getDb() != null) {
+        ClickHouseContainer ch = getDb();
+        if (ch != null) {
+            LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
             ClickHouseBase.getDb().stop();
         }
     }

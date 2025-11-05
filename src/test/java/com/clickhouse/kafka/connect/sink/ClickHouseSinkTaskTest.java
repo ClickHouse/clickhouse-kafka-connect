@@ -115,6 +115,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         createClient(props, false);
         String tableName = createTopicName("splitTopic");
         int dbRange = 10;
+        ClickHouseHelperClient chc = createClient(props);
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
