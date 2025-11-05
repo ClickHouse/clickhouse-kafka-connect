@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
+import org.testcontainers.containers.Network;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -23,20 +24,33 @@ import java.util.Map;
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected static ClickHouseHelperClient chc = null;
-    protected static ClickHouseContainer db = null;
+    protected static ThreadLocal<ClickHouseContainer> db = new ThreadLocal<>();
     protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
-    protected static String database = null;
+    protected static ThreadLocal<String> database = new ThreadLocal<>();
+
     @BeforeAll
     public static void setup() throws IOException  {
-        if (database == null) {
-            database = String.format("kafka_connect_test_%d_%s", Random.randInt(), System.currentTimeMillis());
+        setup(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
+    }
+
+    public static void setup(String clickhouseDockerImage) {
+        if (getDatabase() == null) {
+            setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
         }
         if (isCloud) {
             initialPing();
             return;
         }
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withPassword("test_password").withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
+
+        Network network = Network.newNetwork();
+
+        ClickHouseContainer db = new ClickHouseContainer(clickhouseDockerImage)
+                .withNetwork(network)
+                .withNetworkAliases("clickhouse")
+                .withPassword("test_password")
+                .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
         db.start();
+        setDb(db);
     }
 
     @AfterAll
@@ -45,17 +59,35 @@ public class ClickHouseBase {
         if (isCloud) {//We need to clean up databases in the cloud, we can ignore the local database
             if (database != null) {
                 try {
-                    dropDatabase(database);
+                    dropDatabase(getDatabase());
                 } catch (Exception e) {
                     LOGGER.error("Error dropping database", e);
                 }
             }
         }
-        if (db != null)
-            db.stop();
+
+        if (ClickHouseBase.getDb() != null) {
+            ClickHouseBase.getDb().stop();
+        }
     }
 
-    public String extractClientVersion() {
+    public static ClickHouseContainer getDb() {
+        return db.get();
+    }
+
+    public static void setDb(ClickHouseContainer db) {
+        ClickHouseBase.db.set(db);
+    }
+
+    public static String getDatabase() {
+        return database.get();
+    }
+
+    public static void setDatabase(String database) {
+        ClickHouseBase.database.set(database);
+    }
+
+    public static String extractClientVersion() {
         String clientVersion = System.getenv("CLIENT_VERSION");
         if (clientVersion != null && clientVersion.equals("V1")) {
             return "V1";
@@ -93,10 +125,10 @@ public class ClickHouseBase {
                 .build();
 
         if (withDatabase) {
-            createDatabase(ClickHouseBase.database, tmpChc);
-            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseBase.database);
+            createDatabase(ClickHouseBase.getDatabase(), tmpChc);
+            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseBase.getDatabase());
             tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                    .setDatabase(ClickHouseBase.database)
+                    .setDatabase(ClickHouseBase.getDatabase())
                     .setUsername(username)
                     .setPassword(password)
                     .sslEnable(sslEnabled)
@@ -162,7 +194,7 @@ public class ClickHouseBase {
     }
 
     protected static void dropDatabase(String database) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(new ClickHouseBase().createProps());
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(ClickHouseBase.createProps());
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -209,7 +241,7 @@ public class ClickHouseBase {
         }
     }
 
-    protected Map<String,String> createProps() {
+    protected static Map<String,String> createProps() {
         Map<String, String> props = new HashMap<>();
         String clientVersion = extractClientVersion();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
@@ -223,11 +255,11 @@ public class ClickHouseBase {
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
         } else {
-            props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-            props.put(ClickHouseSinkConnector.PORT, db.getFirstMappedPort().toString());
+            props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
+            props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());
             props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
-            props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-            props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+            props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
+            props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         }
         return props;
