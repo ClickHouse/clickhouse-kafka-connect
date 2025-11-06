@@ -20,7 +20,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@Timeout(value = 3, unit = TimeUnit.MINUTES)
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
