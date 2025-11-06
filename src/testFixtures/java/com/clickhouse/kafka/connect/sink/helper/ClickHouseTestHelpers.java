@@ -180,6 +180,29 @@ public class ClickHouseTestHelpers {
         }
     }
 
+    public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName)  {
+        String query = String.format("SELECT * FROM clusterAllReplicas('default', `%s`)", tableName);
+        QuerySettings querySettings = new QuerySettings();
+        querySettings.setFormat(ClickHouseFormat.JSONEachRow);
+        try {
+            QueryResponse queryResponse = chc.getClient().query(query, querySettings).get();
+            List<JSONObject> jsonObjects = new ArrayList<>();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                JSONObject jsonObject = new JSONObject(line);
+                jsonObjects.add(jsonObject);
+            }
+            return jsonObjects;
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 
     public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("OPTIMIZE TABLE `%s`", tableName);

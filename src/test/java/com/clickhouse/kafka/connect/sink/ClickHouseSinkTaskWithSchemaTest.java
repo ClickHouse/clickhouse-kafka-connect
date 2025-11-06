@@ -1158,6 +1158,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        if (rows.size() == 0) {
+            rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+            LOGGER.info("Second attempt read: {}", rows.size());
+            if (rows.size() == 0) {
+                rows = ClickHouseTestHelpers.getAllRowsAsJsonCloud(chc, topic);
+                LOGGER.info("Third attempt read: {}", rows.size());
+            }
+        }
         JSONObject row = rows.get(0);
         assertEquals("image1", row.getString("name"));
         assertEquals("content", row.getString("content"));
