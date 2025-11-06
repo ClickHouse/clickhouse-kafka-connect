@@ -54,6 +54,7 @@ public class ClickHouseBase {
                 .withCreateContainerCmdModifier(cmd -> {
                     cmd.getHostConfig().withMemory(1024 * 1024 * 1024 * 2L);
                 })
+                .withExposedPorts(8123)
                 .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
         db.start();
         setDb(db);
@@ -75,6 +76,10 @@ public class ClickHouseBase {
         ClickHouseContainer ch = getDb();
         if (ch != null) {
             LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
+            ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.log",
+                    "./build/reports/tests/server_"+ + db.getMappedPort(8123) +".log");
+            ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.err.log",
+                    "./build/reports/tests/server-err_" + db.getMappedPort(8123) +  ".log");
             ch.stop();
         }
     }
