@@ -25,7 +25,6 @@ import java.util.Map;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
-//    private static ClickHouseHelperClient chc = null;
     protected ClickHouseContainer db;
     protected boolean isCloud = ClickHouseTestHelpers.isCloud();
     protected String database;
@@ -37,7 +36,6 @@ public class ClickHouseBase {
     }
 
     public void setup(String clickhouseDockerImage) {
-        LOGGER.info("ClickHouse setup start threadId={}", Thread.currentThread().getId());
         setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
 
         if (isCloud) {
@@ -157,7 +155,12 @@ public class ClickHouseBase {
     protected void createDatabase(String database, ClickHouseHelperClient chc) {
         String createDatabaseQuery = String.format("CREATE DATABASE IF NOT EXISTS `%s`", database);
         if (chc.isUseClientV2()) {
-            chc.queryV2(createDatabaseQuery);
+            try {
+                chc.queryV2(createDatabaseQuery).close();
+            } catch (Exception e) {
+                LOGGER.info("Failed to create database ", e);
+                throw new RuntimeException(e);
+            }
         } else {
             chc.queryV1(createDatabaseQuery);
         }
@@ -225,13 +228,22 @@ public class ClickHouseBase {
     }
     protected static void dropDatabase(String database, ClickHouseHelperClient chc) {
         String dropDatabaseQuery = String.format("DROP DATABASE IF EXISTS `%s`", database);
-        chc.queryV2(dropDatabaseQuery);
+        try {
+            chc.queryV2(dropDatabaseQuery).close();
+        } catch (Exception e) {
+            LOGGER.info("Failed to drop database ", e);
+            throw new RuntimeException(e);
+        }
     }
 
     protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
         String createTableQueryTmp = String.format(createTableQuery, topic);
-        chc.queryV2(createTableQueryTmp);
-
+        try {
+            chc.queryV2(createTableQueryTmp).close();
+        } catch (Exception e) {
+            LOGGER.info("Failed to create table ", e);
+            throw new RuntimeException(e);
+        }
     }
 
     protected int countRows(ClickHouseHelperClient chc, String database, String topic) {

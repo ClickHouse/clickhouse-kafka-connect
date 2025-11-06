@@ -54,7 +54,7 @@ jobs:
           CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
           CLIENT_VERSION: ${{ matrix.client }}
         run: |
-          ./gradlew test -info
+          ./gradlew test
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: failure()

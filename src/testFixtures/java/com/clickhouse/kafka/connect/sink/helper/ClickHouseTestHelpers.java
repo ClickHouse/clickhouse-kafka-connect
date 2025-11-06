@@ -68,7 +68,12 @@ public class ClickHouseTestHelpers {
 
     public static void query(ClickHouseHelperClient chc, String query) {
         if (chc.isUseClientV2()) {
-            chc.queryV2(query);
+            try {
+                chc.queryV2(query).close();
+            } catch (Exception e) {
+                LOGGER.info("Failed to query ", e);
+                throw new RuntimeException(e);
+            }
         } else {
             chc.queryV1(query);
         }
@@ -144,8 +149,8 @@ public class ClickHouseTestHelpers {
         for (Map.Entry<String, Serializable> entry : clientSettings.entrySet()) {
             settings.setOption(entry.getKey(), entry.getValue());
         }
-        try {
-            return chc.getClient().queryRecords(createTableQueryTmp, settings).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT).getMetrics();
+        try (Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT)) {
+            return records.getMetrics();
         } catch (Exception e) {
             LOGGER.error("Error table creation: {}, ", chc.getServer());
             throw new RuntimeException(e);

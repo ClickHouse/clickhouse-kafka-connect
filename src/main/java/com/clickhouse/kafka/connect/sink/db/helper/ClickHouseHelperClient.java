@@ -7,7 +7,6 @@ import com.clickhouse.client.ClickHouseNodeSelector;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.api.Client;
-import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.client.api.enums.ProxyType;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.QueryResponse;
@@ -233,8 +232,8 @@ public class ClickHouseHelperClient {
     public String versionV2() {
         QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.RowBinaryWithNamesAndTypes);
         CompletableFuture<Records> futureRecords = client.queryRecords("SELECT VERSION()", settings);
-        try {
-            Records records = futureRecords.get();
+        try (Records records = futureRecords.get()) {
+
             for (GenericRecord record : records) {
                 return record.getString(1); // string column col3
             }
@@ -242,6 +241,9 @@ public class ClickHouseHelperClient {
             LOGGER.error("Exception when trying to retrieve VERSION()", e);
             return null;
         } catch (ExecutionException e) {
+            LOGGER.error("Exception when trying to retrieve VERSION()", e);
+            return null;
+        } catch (Exception e) {
             LOGGER.error("Exception when trying to retrieve VERSION()", e);
             return null;
         }
@@ -333,13 +335,16 @@ public class ClickHouseHelperClient {
 
     public List<Table> showTablesV2(String database) {
         List<Table> tablesList = new ArrayList<>();
-        Records records = queryV2(String.format("select database, table, count(*) as col_count from system.columns where database = '%s' group by database, table", database));
-        for (GenericRecord record : records) {
-            String databaseName = record.getString(1);
-            String tableName = record.getString(2);
-            int colCount =  record.getInteger(3);
-            LOGGER.debug("table name: {}", tableName);
-            tablesList.add(new Table(databaseName, tableName, colCount));
+        try (Records records = queryV2(String.format("select database, table, count(*) as col_count from system.columns where database = '%s' group by database, table", database))) {
+            for (GenericRecord record : records) {
+                String databaseName = record.getString(1);
+                String tableName = record.getString(2);
+                int colCount = record.getInteger(3);
+                LOGGER.debug("table name: {}", tableName);
+                tablesList.add(new Table(databaseName, tableName, colCount));
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed in show tables", e);
         }
         return tablesList;
     }
@@ -407,8 +412,9 @@ public class ClickHouseHelperClient {
             QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.JSONEachRow);
             settings.serverSetting("describe_include_subcolumns", "1");
             settings.setDatabase(database);
-            QueryResponse queryResponse = client.query(describeQuery, settings).get();
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
+
+            try (QueryResponse queryResponse = client.query(describeQuery, settings).get();
+                    BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
                 String line = null;
                 while ((line = br.readLine()) != null) {
                     ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(line);
@@ -431,9 +437,6 @@ public class ClickHouseHelperClient {
             }
         } catch (Exception e) {
             LOGGER.error("describeTableV2 failed", e);
-            if (e instanceof ConnectionRequestTimeoutException) {
-                LOGGER.error("Failed to connect to: {}, {}", getServer().getAddress(), getServer().getBaseUri());
-            }
             return null;
         }
         return table;

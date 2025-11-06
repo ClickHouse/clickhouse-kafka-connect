@@ -37,7 +37,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@Ignore
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
@@ -47,32 +46,32 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     private static Proxy proxy = null;
 
     private static final int PROXY_PORT = 8667;
-//    @BeforeAll
-//    public void setup() throws IOException {
-//        // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-//        super.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
-//        Network network = getDb().getNetwork();
-//
-//
-//        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
-//        toxiproxy.start();
-//
-//        log.info("Started proxy container: {}", toxiproxy.getControlPort());
-//        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-//        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
-//        log.info("Proxy configured {}", proxy.getListen());
-//    }
-//
-//    @AfterAll
-//    public void tearDown() {
-//        super.tearDown();
-//
-//        try {
-//            toxiproxy.stop();
-//        } catch (Exception e) {
-//            // ignore
-//        }
-//    }
+    @BeforeAll
+    public void setup() throws IOException {
+        // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
+        super.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
+        Network network = getDb().getNetwork();
+
+
+        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
+        toxiproxy.start();
+
+        log.info("Started proxy container: {}", toxiproxy.getControlPort());
+        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
+        log.info("Proxy configured {}", proxy.getListen());
+    }
+
+    @AfterAll
+    public void tearDown() {
+        super.tearDown();
+
+        try {
+            toxiproxy.stop();
+        } catch (Exception e) {
+            // ignore
+        }
+    }
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
