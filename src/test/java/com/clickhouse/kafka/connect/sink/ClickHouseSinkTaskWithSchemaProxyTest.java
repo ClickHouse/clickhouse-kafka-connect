@@ -14,7 +14,6 @@ import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
-import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
@@ -48,10 +47,10 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     private static final int PROXY_PORT = 8667;
     @BeforeAll
     public void setup() throws IOException {
+        super.setup();
         // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-        super.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
+        super.setupContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
         Network network = getDb().getNetwork();
-
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
         toxiproxy.start();

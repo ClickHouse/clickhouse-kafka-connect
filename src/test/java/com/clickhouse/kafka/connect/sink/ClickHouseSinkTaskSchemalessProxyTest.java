@@ -9,7 +9,6 @@ import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -37,8 +36,9 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     private static final int PROXY_PORT = 8666;
     @BeforeAll
     public void setup() throws IOException {
+        super.setup();
         // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-        super.setup(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
+        super.setupContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
         Network network = getDb().getNetwork();
 
 

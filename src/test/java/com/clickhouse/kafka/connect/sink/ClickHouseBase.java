@@ -32,10 +32,6 @@ public class ClickHouseBase {
 
     @BeforeAll
     public  void setup() throws IOException  {
-        setup(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
-    }
-
-    public void setup(String clickhouseDockerImage) {
         setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
 
         if (isCloud) {
@@ -43,6 +39,10 @@ public class ClickHouseBase {
             return;
         }
 
+        setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
+    }
+
+    public void setupContainer(String clickhouseDockerImage) {
         Network network = Network.newNetwork();
 
         ClickHouseContainer db = new ClickHouseContainer(clickhouseDockerImage)
