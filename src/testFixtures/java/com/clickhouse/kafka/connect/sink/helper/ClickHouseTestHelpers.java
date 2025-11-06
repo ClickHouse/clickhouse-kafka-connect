@@ -158,7 +158,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName)  {
-        String query = String.format("SELECT * FROM `%s`", tableName);
+        String query = String.format("SELECT * FROM clusterAllReplicas('default', `%s`)", tableName);
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
         try {
