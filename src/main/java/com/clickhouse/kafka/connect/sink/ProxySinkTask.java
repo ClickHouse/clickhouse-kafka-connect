@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.config.ClickHouseClientOption;
+import com.clickhouse.kafka.connect.sink.Version;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
@@ -37,7 +38,7 @@ public class ProxySinkTask {
 
 
     private final SinkTaskStatistics statistics;
-    private int id = NEXT_ID.getAndAdd(1);
+    private final int id = NEXT_ID.getAndAdd(1);
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
         this.clickHouseSinkConfig = clickHouseSinkConfig;
@@ -68,7 +69,7 @@ public class ProxySinkTask {
     }
 
     private String getMBeanNAme() {
-        return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", id, ClickHouseClientOption.class.getPackage().getImplementationVersion());
+        return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", id, Version.ARTIFACT_VERSION);
     }
 
     public void stop() {

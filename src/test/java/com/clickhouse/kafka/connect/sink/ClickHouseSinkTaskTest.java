@@ -12,15 +12,21 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
+import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.Assert;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import javax.management.MBeanInfo;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -208,5 +214,35 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         for (GenericRecord record : records) {
             assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
         }
+    }
+
+    @Test
+    public void metricsTest() throws Exception {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("schemaless_simple_batch_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+
+        MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+
+        String mbeanName = String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", 0, com.clickhouse.kafka.connect.sink.Version.ARTIFACT_VERSION);
+
+        ObjectName objectName = new ObjectName(mbeanName);
+        Object receivedRecords = mBeanServer.getAttribute(objectName, "ReceivedRecords");
+        Assert.assertEquals(sr.size(), ((Long)receivedRecords).longValue());
+
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
     }
 }

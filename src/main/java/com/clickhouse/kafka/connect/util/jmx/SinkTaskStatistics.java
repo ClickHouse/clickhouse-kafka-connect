@@ -1,34 +1,43 @@
 package com.clickhouse.kafka.connect.util.jmx;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
-    private volatile long receivedRecords;
-    private volatile long recordProcessingTime;
-    private volatile long taskProcessingTime;
+    private AtomicLong receivedRecords;
+    private AtomicLong recordProcessingTime;
+    private AtomicLong taskProcessingTime;
+
+    public SinkTaskStatistics() {
+        this.receivedRecords = new AtomicLong(0);
+        this.recordProcessingTime = new AtomicLong(0);
+        this.taskProcessingTime = new AtomicLong(0);
+    }
+
     @Override
     public long getReceivedRecords() {
-        return receivedRecords;
+        return receivedRecords.get();
     }
 
     @Override
     public long getRecordProcessingTime() {
-        return recordProcessingTime;
+        return recordProcessingTime.get();
     }
 
     @Override
     public long getTaskProcessingTime() {
-        return taskProcessingTime;
+        return taskProcessingTime.get();
     }
 
-    public void receivedRecords(final int n ) {
-        this.receivedRecords += n;
+    public void receivedRecords(final int n) {
+        this.receivedRecords.addAndGet(n);
     }
 
     public void recordProcessingTime(ExecutionTimer timer) {
-        this.recordProcessingTime += timer.nanosElapsed();
+        this.recordProcessingTime.addAndGet(timer.nanosElapsed());
     }
 
     public void taskProcessingTime(ExecutionTimer timer) {
-        this.taskProcessingTime += timer.nanosElapsed();
+        this.taskProcessingTime.addAndGet(timer.nanosElapsed());
     }
 
 }
