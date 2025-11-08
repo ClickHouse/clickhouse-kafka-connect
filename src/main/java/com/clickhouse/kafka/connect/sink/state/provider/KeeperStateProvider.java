@@ -84,7 +84,11 @@ public class KeeperStateProvider implements StateProvider {
                 csc.getZkPath());
         // TODO: exec instead of query
         if (chc.isUseClientV2()) {
-            chc.queryV2(createTable);
+            try (Records r = chc.queryV2(createTable)) {
+
+            } catch (Exception e) {
+                LOGGER.error("Failed to create keeper table", e);
+            }
         } else {
             ClickHouseResponse r = chc.queryV1(createTable);
             r.close();
