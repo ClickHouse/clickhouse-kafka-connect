@@ -8,4 +8,5 @@ public interface SinkTaskStatisticsMBean {
 
     long getTaskProcessingTime();
 
+    long getInsertedRecords();
 }

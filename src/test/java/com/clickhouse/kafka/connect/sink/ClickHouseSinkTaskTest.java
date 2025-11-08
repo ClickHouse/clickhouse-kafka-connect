@@ -13,6 +13,7 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
@@ -21,6 +22,7 @@ import org.junit.Assert;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import javax.management.InstanceNotFoundException;
 import javax.management.MBeanInfo;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -217,7 +219,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     }
 
     @Test
-    public void metricsTest() throws Exception {
+    public void statisticsTest() throws Exception {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
@@ -232,17 +234,98 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
+        Thread.sleep(5000);
+        chst.put(sr);
 
-        MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+        final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
 
-        String mbeanName = String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", 0, com.clickhouse.kafka.connect.sink.Version.ARTIFACT_VERSION);
-
+        final String mbeanName = SinkTaskStatistics.getMBeanNAme(0);
         ObjectName objectName = new ObjectName(mbeanName);
         Object receivedRecords = mBeanServer.getAttribute(objectName, "ReceivedRecords");
-        Assert.assertEquals(sr.size(), ((Long)receivedRecords).longValue());
+        assertEquals(sr.size() * 2L, ((Long)receivedRecords).longValue());
+
+        final ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(0, topic));
+        Object insertedRecords = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulRecords");
+        assertEquals(sr.size() * 2L, ((Long)insertedRecords).longValue());
+        Object insertedBatches = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulBatches");
+        assertEquals(2, ((Long)insertedBatches).longValue());
+        Object eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
+        assertTrue((Long)eventReceiveLag > 0);
+        Object insertTime = mBeanServer.getAttribute(topicMbeanName, "MeanInsertTime");
+        assertTrue((Long)insertTime > 0);
+
+        Object failedRecords = mBeanServer.getAttribute(topicMbeanName, "TotalFailedRecords");
+        assertEquals(0, ((Long)failedRecords).longValue());
+        Object failedBatches = mBeanServer.getAttribute(topicMbeanName, "TotalFailedBatches");
+        assertEquals(0, ((Long)failedBatches).longValue());
 
         chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(sr.size() * 2, ClickHouseTestHelpers.countRows(chc, topic));
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+
+
+        assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(objectName));
+        assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(topicMbeanName));
+    }
+
+    @Test
+    public void meanLagTimeTest() throws Exception {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("schemaless_simple_batch_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+
+        int n = 40;
+        for (int i = 0; i < n; i++) {
+
+            long k;
+            if ( i < n * 0.25) {
+                k = 2000;
+            } else if ( i < n * 0.50) {
+                k = 3000;
+            } else {
+                k = 0;
+            }
+
+            List<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+            SinkRecord first = sr.get(0);
+            long createTime = System.currentTimeMillis() - k;
+            first = first.newRecord(first.topic(), first.kafkaPartition(), first.keySchema(), first.key(), first.valueSchema(),
+                    first.value(), createTime);
+            sr.set(0, first);
+            chst.put(sr);
+
+            Thread.sleep(1000);
+        }
+        MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+
+        ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(0, topic));
+        Object eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
+        assertTrue((Long)eventReceiveLag < 2000L);
+
+        for (int i = 0; i < n; i++) {
+
+            long k = 0;
+            List<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+            SinkRecord first = sr.get(0);
+            long createTime = System.currentTimeMillis() - k;
+            first = first.newRecord(first.topic(), first.kafkaPartition(), first.keySchema(), first.key(), first.valueSchema(),
+                    first.value(), createTime);
+            sr.set(0, first);
+            chst.put(sr);
+
+            Thread.sleep(1000);
+        }
+
+        eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
+        assertTrue((Long)eventReceiveLag < 300L, "eventReceiveLag: " + eventReceiveLag);
+
+        chst.stop();
     }
 }
