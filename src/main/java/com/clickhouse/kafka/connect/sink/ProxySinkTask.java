@@ -98,4 +98,8 @@ public class ProxySinkTask {
         }
         statistics.taskProcessingTime(taskTime);
     }
+
+    public int getId() {
+        return id;
+    }
 }

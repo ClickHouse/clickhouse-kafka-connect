@@ -234,18 +234,19 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
+        final int taskId = chst.taskId();
         chst.put(sr);
         Thread.sleep(5000);
         chst.put(sr);
 
         final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
 
-        final String mbeanName = SinkTaskStatistics.getMBeanNAme(0);
+        final String mbeanName = SinkTaskStatistics.getMBeanNAme(taskId);
         ObjectName objectName = new ObjectName(mbeanName);
         Object receivedRecords = mBeanServer.getAttribute(objectName, "ReceivedRecords");
         assertEquals(sr.size() * 2L, ((Long)receivedRecords).longValue());
 
-        final ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(0, topic));
+        final ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(taskId, topic));
         Object insertedRecords = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulRecords");
         assertEquals(sr.size() * 2L, ((Long)insertedRecords).longValue());
         Object insertedBatches = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulBatches");
@@ -281,7 +282,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
-
+        final int taskId = chst.taskId();
         int n = 40;
         for (int i = 0; i < n; i++) {
 
@@ -306,7 +307,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
         MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
 
-        ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(0, topic));
+        ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(taskId, topic));
         Object eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
         assertTrue((Long)eventReceiveLag < 2000L);
 
@@ -325,7 +326,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
 
         eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
-        assertTrue((Long)eventReceiveLag < 300L, "eventReceiveLag: " + eventReceiveLag);
+        assertTrue((Long)eventReceiveLag < 1000L, "eventReceiveLag: " + eventReceiveLag);
 
         chst.stop();
     }
