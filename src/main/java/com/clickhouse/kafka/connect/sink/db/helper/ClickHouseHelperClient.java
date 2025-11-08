@@ -14,6 +14,7 @@ import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
+import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
@@ -25,6 +26,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -114,15 +116,13 @@ public class ClickHouseHelperClient {
 
         LOGGER.info("ClickHouse URL: {}", url);
 
+        final Map<String, String> options = new HashMap<>();
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
-            Map<String, String> options = new HashMap<>();
             options.put("user", username);
             options.put("password", password);
-            server = ClickHouseNode.of(url, options);
-        } else {
-            server = ClickHouseNode.of(url);
         }
+        server = ClickHouseNode.of(url, options);
         return server;
     }
 
@@ -229,8 +229,8 @@ public class ClickHouseHelperClient {
     public String versionV2() {
         QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.RowBinaryWithNamesAndTypes);
         CompletableFuture<Records> futureRecords = client.queryRecords("SELECT VERSION()", settings);
-        try {
-            Records records = futureRecords.get();
+        try (Records records = futureRecords.get()) {
+
             for (GenericRecord record : records) {
                 return record.getString(1); // string column col3
             }
@@ -238,6 +238,9 @@ public class ClickHouseHelperClient {
             LOGGER.error("Exception when trying to retrieve VERSION()", e);
             return null;
         } catch (ExecutionException e) {
+            LOGGER.error("Exception when trying to retrieve VERSION()", e);
+            return null;
+        } catch (Exception e) {
             LOGGER.error("Exception when trying to retrieve VERSION()", e);
             return null;
         }
@@ -329,13 +332,16 @@ public class ClickHouseHelperClient {
 
     public List<Table> showTablesV2(String database) {
         List<Table> tablesList = new ArrayList<>();
-        Records records = queryV2(String.format("select database, table, count(*) as col_count from system.columns where database = '%s' group by database, table", database));
-        for (GenericRecord record : records) {
-            String databaseName = record.getString(1);
-            String tableName = record.getString(2);
-            int colCount =  record.getInteger(3);
-            LOGGER.debug("table name: {}", tableName);
-            tablesList.add(new Table(databaseName, tableName, colCount));
+        try (Records records = queryV2(String.format("select database, table, count(*) as col_count from system.columns where database = '%s' group by database, table", database))) {
+            for (GenericRecord record : records) {
+                String databaseName = record.getString(1);
+                String tableName = record.getString(2);
+                int colCount = record.getInteger(3);
+                LOGGER.debug("table name: {}", tableName);
+                tablesList.add(new Table(databaseName, tableName, colCount));
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed in show tables", e);
         }
         return tablesList;
     }
@@ -403,8 +409,9 @@ public class ClickHouseHelperClient {
             QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.JSONEachRow);
             settings.serverSetting("describe_include_subcolumns", "1");
             settings.setDatabase(database);
-            QueryResponse queryResponse = client.query(describeQuery, settings).get();
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
+
+            try (QueryResponse queryResponse = client.query(describeQuery, settings).get();
+                    BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
                 String line = null;
                 while ((line = br.readLine()) != null) {
                     ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(line);
@@ -426,7 +433,7 @@ public class ClickHouseHelperClient {
                     table.addColumn(column);                }
             }
         } catch (Exception e) {
-            System.out.println(e);
+            LOGGER.error("describeTableV2 failed", e);
             return null;
         }
         return table;

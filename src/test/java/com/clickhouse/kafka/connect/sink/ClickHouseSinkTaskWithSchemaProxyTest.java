@@ -9,17 +9,19 @@ import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.util.Utils;
-import com.google.crypto.tink.internal.Random;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
-import org.junit.Ignore;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 
@@ -30,44 +32,55 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.LongStream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
+    private static final Logger log = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaProxyTest.class);
+
     private static ToxiproxyContainer toxiproxy = null;
     private static Proxy proxy = null;
 
+    private static final int PROXY_PORT = 8667;
     @BeforeAll
-    public static void setup() throws IOException {
-        if (database == null) {
-            database = String.format("kafka_connect_test_%d_%s", Random.randInt(), System.currentTimeMillis());
-        }
-        Network network = Network.newNetwork();
+    public void setup() throws IOException {
+        super.setup();
         // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-        db = new org.testcontainers.clickhouse.ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE)
-                .withNetwork(network)
-                .withNetworkAliases("clickhouse")
-                .withPassword("test_password")
-                .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
-        db.start();
+        super.setupContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
+        Network network = getDb().getNetwork();
 
         toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
         toxiproxy.start();
 
+        log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
-        proxy.enable();
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
+        log.info("Proxy configured {}", proxy.getListen());
+    }
+
+    @AfterAll
+    public void tearDown() {
+        super.tearDown();
+
+        try {
+            toxiproxy.stop();
+        } catch (Exception e) {
+            // ignore
+        }
     }
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
         props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
+        props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
         props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
-        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(8666)));
+        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
         return props;
     }
 

@@ -32,7 +32,7 @@ public class ProxySinkTask {
     private final StateProvider stateProvider;
     private final DBWriter dbWriter;
     private final ClickHouseSinkConfig clickHouseSinkConfig;
-
+    private Timer tableRefreshTimer;
 
     private final SinkTaskStatistics statistics;
     private final int id = NEXT_ID.getAndAdd(1);
@@ -54,7 +54,7 @@ public class ProxySinkTask {
         // Add table mapping refresher
         if (clickHouseSinkConfig.getTableRefreshInterval() > 0) {
             TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(clickHouseSinkConfig.getDatabase(), chWriter);
-            Timer tableRefreshTimer = new Timer();
+            tableRefreshTimer = new Timer();
             tableRefreshTimer.schedule(tableMappingRefresher, clickHouseSinkConfig.getTableRefreshInterval(), clickHouseSinkConfig.getTableRefreshInterval());
         }
 

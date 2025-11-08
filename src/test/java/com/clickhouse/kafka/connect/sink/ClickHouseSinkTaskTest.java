@@ -123,11 +123,12 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         createClient(props, false);
         String tableName = createTopicName("splitTopic");
         int dbRange = 10;
+        ClickHouseHelperClient chc = createClient(props);
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
             dropTable(chc, tmpTableName);
-            createDatabase(databaseName);
+            createDatabase(databaseName, chc);
             createTable(chc, tmpTableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         });
 
