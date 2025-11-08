@@ -117,15 +117,12 @@ public class ClickHouseHelperClient {
         LOGGER.info("ClickHouse URL: {}", url);
 
         final Map<String, String> options = new HashMap<>();
-        options.put(ClickHouseHttpOption.CUSTOM_PARAMS.getKey(),  "enable_http_compression=0");
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
             options.put("user", username);
             options.put("password", password);
-            server = ClickHouseNode.of(url, options);
-        } else {
-            server = ClickHouseNode.of(url, options);
         }
+        server = ClickHouseNode.of(url, options);
         return server;
     }
 
