@@ -1544,4 +1544,54 @@ public class SchemaTestData {
                 )
                 .build();
     }
+
+    public static Collection<SinkRecord> createInvalidArrayData(String topic) {
+        // Create schema that expects Array(Nullable(String)) but we'll provide wrong inner type
+        Schema ARRAY_INT32_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_INT32_SCHEMA).build();
+        Schema ARRAY_OPTIONAL_STRING_SCHEMA = SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).build();
+
+        // This schema has the WRONG type for arr_nullable_str field
+        Schema INVALID_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("arr_nullable_str", ARRAY_INT32_SCHEMA)  // Wrong: INT32 instead of STRING
+                .field("arr_nullable_int32", SchemaBuilder.array(Schema.OPTIONAL_INT32_SCHEMA).build())
+                .field("arr_nullable_int8", SchemaBuilder.array(Schema.OPTIONAL_INT8_SCHEMA).build())
+                .field("arr_nullable_int16", SchemaBuilder.array(Schema.OPTIONAL_INT16_SCHEMA).build())
+                .field("arr_nullable_int64", SchemaBuilder.array(Schema.OPTIONAL_INT64_SCHEMA).build())
+                .field("arr_nullable_float32", SchemaBuilder.array(Schema.OPTIONAL_FLOAT32_SCHEMA).build())
+                .field("arr_nullable_float64", SchemaBuilder.array(Schema.OPTIONAL_FLOAT64_SCHEMA).build())
+                .field("arr_nullable_bool", SchemaBuilder.array(Schema.OPTIONAL_BOOLEAN_SCHEMA).build())
+                .field("arr_empty_nullable_str", ARRAY_OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        
+        Struct invalidStruct = new Struct(INVALID_SCHEMA)
+                .put("off16", (short) 1)
+                .put("arr_nullable_str", Arrays.asList(1, 2, 3))  // Wrong: Integer list for String field
+                .put("arr_nullable_int32", Arrays.asList(1, 2))
+                .put("arr_nullable_int8", Arrays.asList((byte)1, null))
+                .put("arr_nullable_int16", Arrays.asList((short)1, null))
+                .put("arr_nullable_int64", Arrays.asList((long)1, null))
+                .put("arr_nullable_float32", Arrays.asList((float)1, null))
+                .put("arr_nullable_float64", Arrays.asList((double)1, null))
+                .put("arr_nullable_bool", Arrays.asList(true, null))
+                .put("arr_empty_nullable_str", new ArrayList<String>())
+                ;
+        
+        SinkRecord sr = new SinkRecord(
+                topic,
+                0,
+                null,
+                null,
+                INVALID_SCHEMA,
+                invalidStruct,
+                0,
+                System.currentTimeMillis(),
+                TimestampType.CREATE_TIME
+        );
+        
+        array.add(sr);
+        return array;
+    }
 }
