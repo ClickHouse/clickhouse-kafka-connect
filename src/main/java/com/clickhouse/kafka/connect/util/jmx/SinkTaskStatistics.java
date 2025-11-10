@@ -1,39 +1,55 @@
 package com.clickhouse.kafka.connect.util.jmx;
 
+import com.clickhouse.kafka.connect.sink.ProxySinkTask;
 import com.clickhouse.kafka.connect.sink.Version;
+import com.codahale.metrics.ExponentialMovingAverages;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
 import java.util.Deque;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProxySinkTask.class);
+
     private final AtomicLong receivedRecords;
     private final AtomicLong recordProcessingTime;
     private final AtomicLong taskProcessingTime;
     private final AtomicLong insertedRecords;
-    private final Map<String, TopicStatistics> topicStatistics;
+    private final AtomicLong failedRecords;
+    private final AtomicLong receivedBatches;
+    private final ExponentialMovingAverages receiveLag;
     private final int taskId;
-
+    private final Map<String, TopicStatistics> topicStatistics;
     private final Deque<String> topicMBeans;
+
 
     public SinkTaskStatistics(int taskId) {
         this.taskId = taskId;
         this.topicMBeans = new ConcurrentLinkedDeque<>();
+        this.topicStatistics = new ConcurrentHashMap<>();
+
         this.receivedRecords = new AtomicLong(0);
         this.recordProcessingTime = new AtomicLong(0);
         this.taskProcessingTime = new AtomicLong(0);
         this.insertedRecords = new AtomicLong(0);
-        this.topicStatistics = new ConcurrentHashMap<>();
+        this.receivedBatches = new AtomicLong(0);
+        this.failedRecords = new AtomicLong(0);
+        this.receiveLag = new ExponentialMovingAverages();
     }
 
     public void registerMBean() {
-        MBeanServerUtils.registerMBean(this, getMBeanNAme(taskId));
+        MBeanServerUtils.registerMBean(this, getMBeanName(taskId));
     }
 
     public void unregisterMBean() {
-        MBeanServerUtils.unregisterMBean(getMBeanNAme(taskId));
+        MBeanServerUtils.unregisterMBean(getMBeanName(taskId));
         for (String topicMBean : topicMBeans) {
             MBeanServerUtils.unregisterMBean(topicMBean);
         }
@@ -59,8 +75,37 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         return insertedRecords.get();
     }
 
-    public void receivedRecords(final int n) {
-        this.receivedRecords.addAndGet(n);
+    @Override
+    public long getFailedRecords() {
+        return failedRecords.get();
+    }
+
+    @Override
+    public long getReceivedBatches() {
+        return receivedBatches.get();
+    }
+
+    @Override
+    public long getMeanReceiveLag() {
+        return Double.valueOf(receiveLag.getM1Rate()).longValue();
+    }
+
+    public void receivedRecords(final Collection<SinkRecord> records) {
+        this.receivedRecords.addAndGet(records.size());
+        this.receivedBatches.addAndGet(1);
+
+        try {
+            long receiveTime = System.currentTimeMillis();
+            long eventTime = receiveTime;
+            Optional<SinkRecord> first = records.stream().findFirst();
+            if (first.isPresent()) {
+                eventTime = first.get().timestamp();
+            }
+            receiveLag.update(receiveTime - eventTime);
+            receiveLag.tickIfNecessary();
+        } catch (Exception e) {
+            LOGGER.warn("Failed to calculate receive lag", e);
+        }
     }
 
     public void recordProcessingTime(ExecutionTimer timer) {
@@ -71,18 +116,17 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         this.taskProcessingTime.addAndGet(timer.nanosElapsed());
     }
 
+
     public void recordTopicStats(int n, String table, long eventReceiveLag) {
         insertedRecords.addAndGet(n);
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).recordsInserted(n);
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).batchInserted(1);
-        topicStatistics.computeIfAbsent(table, this::createTopicStatistics).eventReceiveLag(eventReceiveLag);
     }
 
     public void recordTopicStatsOnFailure(int n, String table, long eventReceiveLag) {
-        insertedRecords.addAndGet(n);
+        failedRecords.addAndGet(n);
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).recordsFailed(n);
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).batchesFailed(1);
-        topicStatistics.computeIfAbsent(table, this::createTopicStatistics).eventReceiveLag(eventReceiveLag);
     }
 
     private TopicStatistics createTopicStatistics(String topic) {
@@ -92,7 +136,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         return MBeanServerUtils.registerMBean(topicStatistics, topicMBeanName);
     }
 
-    public static String getMBeanNAme(int taskId) {
+    public static String getMBeanName(int taskId) {
         return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", taskId, Version.ARTIFACT_VERSION);
     }
 

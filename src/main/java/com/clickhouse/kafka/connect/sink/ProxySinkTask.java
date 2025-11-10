@@ -76,8 +76,8 @@ public class ProxySinkTask {
             return;
         }
         // Group by topic & partition
+        statistics.receivedRecords(records);
         ExecutionTimer taskTime = ExecutionTimer.start();
-        statistics.receivedRecords(records.size());
         LOGGER.trace(String.format("Got %d records from put API.", records.size()));
         ExecutionTimer processingTime = ExecutionTimer.start();
 

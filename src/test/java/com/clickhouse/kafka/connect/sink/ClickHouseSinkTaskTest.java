@@ -7,30 +7,24 @@ import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.query.GenericRecord;
-import com.clickhouse.client.api.query.Records;
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
-import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.Assert;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import javax.management.InstanceNotFoundException;
-import javax.management.MBeanInfo;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -241,37 +235,52 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
 
-        final String mbeanName = SinkTaskStatistics.getMBeanNAme(taskId);
-        ObjectName objectName = new ObjectName(mbeanName);
-        Object receivedRecords = mBeanServer.getAttribute(objectName, "ReceivedRecords");
+        // Task metrics
+        final String mbeanName = SinkTaskStatistics.getMBeanName(taskId);
+        ObjectName sinkMBean = new ObjectName(mbeanName);
+        Object receivedRecords = mBeanServer.getAttribute(sinkMBean, "ReceivedRecords");
         assertEquals(sr.size() * 2L, ((Long)receivedRecords).longValue());
+        Object totalProcessingTime = mBeanServer.getAttribute(sinkMBean, "RecordProcessingTime");
+        assertTrue((Long)totalProcessingTime > 1000L);
+        Object totalTaskProcessingTime = mBeanServer.getAttribute(sinkMBean, "TaskProcessingTime");
+        assertTrue((Long)totalTaskProcessingTime > 1000L);
+        Object totalInsertedRecords = mBeanServer.getAttribute(sinkMBean, "InsertedRecords");
+        assertEquals(sr.size() * 2L, ((Long)totalInsertedRecords).longValue());
+        Object receivedBatches = mBeanServer.getAttribute(sinkMBean, "ReceivedBatches");
+        assertEquals(2, ((Long)receivedBatches).longValue());
+        Object failedRecords = mBeanServer.getAttribute(sinkMBean, "FailedRecords");
+        assertEquals(0, ((Long)failedRecords).longValue());
+        Object eventReceiveLag = mBeanServer.getAttribute(sinkMBean, "MeanReceiveLag");
+        assertTrue((Long)eventReceiveLag > 0);
 
+
+
+        // Topic metrics
         final ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(taskId, topic));
         Object insertedRecords = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulRecords");
         assertEquals(sr.size() * 2L, ((Long)insertedRecords).longValue());
         Object insertedBatches = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulBatches");
         assertEquals(2, ((Long)insertedBatches).longValue());
-        Object eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
-        assertTrue((Long)eventReceiveLag > 0);
+
         Object insertTime = mBeanServer.getAttribute(topicMbeanName, "MeanInsertTime");
         assertTrue((Long)insertTime > 0);
 
-        Object failedRecords = mBeanServer.getAttribute(topicMbeanName, "TotalFailedRecords");
-        assertEquals(0, ((Long)failedRecords).longValue());
-        Object failedBatches = mBeanServer.getAttribute(topicMbeanName, "TotalFailedBatches");
-        assertEquals(0, ((Long)failedBatches).longValue());
+        Object failedTopicRecords = mBeanServer.getAttribute(topicMbeanName, "TotalFailedRecords");
+        assertEquals(0, ((Long)failedTopicRecords).longValue());
+        Object failedTopicBatches = mBeanServer.getAttribute(topicMbeanName, "TotalFailedBatches");
+        assertEquals(0, ((Long)failedTopicBatches).longValue());
 
         chst.stop();
         assertEquals(sr.size() * 2, ClickHouseTestHelpers.countRows(chc, topic));
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
 
-        assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(objectName));
+        assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(sinkMBean));
         assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(topicMbeanName));
     }
 
     @Test
-    public void meanLagTimeTest() throws Exception {
+    public void receiveLagTimeTest() throws Exception {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
@@ -307,7 +316,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
         MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
 
-        ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(taskId, topic));
+        ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getMBeanName(taskId));
         Object eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
         assertTrue((Long)eventReceiveLag < 2000L);
 

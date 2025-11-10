@@ -10,7 +10,7 @@ public class TopicStatistics implements TopicStatisticsMBean {
     private final AtomicLong totalNumberOfBatches;
     private final AtomicLong totalFailedBatches;
     private final AtomicLong totalFailedRecords;
-    private final ExponentialMovingAverages receiveLag;
+
     private final ExponentialMovingAverages insertTime;
 
     public TopicStatistics() {
@@ -18,7 +18,6 @@ public class TopicStatistics implements TopicStatisticsMBean {
         totalNumberOfBatches = new AtomicLong(0);
         totalFailedBatches = new AtomicLong(0);
         totalFailedRecords = new AtomicLong(0);
-        receiveLag = new ExponentialMovingAverages();
         insertTime = new ExponentialMovingAverages();
     }
 
@@ -33,14 +32,10 @@ public class TopicStatistics implements TopicStatisticsMBean {
         return totalNumberOfBatches.get();
     }
 
-    @Override
-    public long getMeanReceiveLag() {
-        return Double.valueOf(receiveLag.getM1Rate() ).longValue();
-    }
 
     @Override
     public long getMeanInsertTime() {
-        return Double.valueOf(insertTime.getM1Rate() ).longValue();
+        return Double.valueOf(insertTime.getM1Rate()).longValue();
     }
 
     @Override
@@ -67,11 +62,6 @@ public class TopicStatistics implements TopicStatisticsMBean {
 
     public void recordsFailed(long n) {
         totalFailedRecords.addAndGet(n);
-    }
-
-    public void eventReceiveLag(long eventReceiveLag) {
-        receiveLag.update(eventReceiveLag);
-        receiveLag.tickIfNecessary();
     }
 
     public void insertTime(long insertTime) {
