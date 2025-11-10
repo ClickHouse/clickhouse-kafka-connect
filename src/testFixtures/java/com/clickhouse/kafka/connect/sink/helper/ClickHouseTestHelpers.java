@@ -216,15 +216,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
-        return countRows(chc, tableName, false);
-    }
-
-    public static int countRows(ClickHouseHelperClient chc, String tableName, boolean isCloud) {
-        String actualTable = "`" + tableName + "`";
-        if (isCloud) {
-            actualTable = String.format("clusterAllReplicas('default', `%s`)", tableName);
-        }
-        String queryCount = String.format("SELECT COUNT(*) FROM %s", actualTable);
+        String queryCount = String.format("SELECT COUNT(*) FROM clusterAllReplicas('default', `%s`.`%s`)", chc.getDatabase(), tableName);
 
         try {
             optimizeTable(chc, tableName);
@@ -235,8 +227,10 @@ public class ClickHouseTestHelpers {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
+            LOGGER.error("Error while counting rows. Query was " + queryCount, e);
             throw new RuntimeException(e);
         } catch (Exception e) {
+            LOGGER.error("Error while counting rows. Query was " + queryCount, e);
             throw new RuntimeException(e);
         }
     }
