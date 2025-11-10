@@ -220,11 +220,11 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRows(ClickHouseHelperClient chc, String tableName, boolean isCloud) {
-        String actualTable = tableName;
+        String actualTable = "`" + tableName + "`";
         if (isCloud) {
             actualTable = String.format("clusterAllReplicas('default', `%s`)", tableName);
         }
-        String queryCount = String.format("SELECT COUNT(*) FROM `%s`", actualTable);
+        String queryCount = String.format("SELECT COUNT(*) FROM %s", actualTable);
 
         try {
             optimizeTable(chc, tableName);
