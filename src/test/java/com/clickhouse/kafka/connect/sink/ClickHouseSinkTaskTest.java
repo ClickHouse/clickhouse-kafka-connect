@@ -271,7 +271,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertEquals(0, ((Long)failedTopicBatches).longValue());
 
         chst.stop();
-        assertEquals(sr.size() * 2, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(sr.size() * 2, ClickHouseTestHelpers.countRows(chc, topic, isCloud));
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
 
