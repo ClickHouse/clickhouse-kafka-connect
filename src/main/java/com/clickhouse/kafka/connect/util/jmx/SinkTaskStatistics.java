@@ -47,12 +47,17 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
     }
 
     public void registerMBean() {
-        MBeanServerUtils.registerMBean(this, getMBeanName(taskId));
+        String name = getMBeanName(taskId);
+        LOGGER.info("Register MBean [{}]", name);
+        MBeanServerUtils.registerMBean(this, name);
     }
 
     public void unregisterMBean() {
+        String name = getMBeanName(taskId);
+        LOGGER.info("Unregister MBean [{}]", name);
         MBeanServerUtils.unregisterMBean(getMBeanName(taskId));
         for (String topicMBean : topicMBeans) {
+            LOGGER.info("Unregister topic MBean [{}]", topicMBean);
             MBeanServerUtils.unregisterMBean(topicMBean);
         }
     }
@@ -144,6 +149,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
     private TopicStatistics createTopicStatistics(String topic) {
         TopicStatistics topicStatistics = new TopicStatistics();
         String topicMBeanName = getTopicMBeanName(taskId, topic);
+        LOGGER.info("Register topic MBean [{}]", topicMBeanName);
         topicMBeans.add(topicMBeanName);
         return MBeanServerUtils.registerMBean(topicStatistics, topicMBeanName);
     }
