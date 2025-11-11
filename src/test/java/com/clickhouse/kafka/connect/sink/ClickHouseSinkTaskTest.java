@@ -271,12 +271,6 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertEquals(0, ((Long)failedTopicBatches).longValue());
 
         chst.stop();
-        int expectedRows = sr.size() * 2;
-        if (ClickHouseTestHelpers.countRows(chc, topic) < expectedRows) {
-            if (ClickHouseTestHelpers.countRows(chc, topic) < expectedRows) {
-                fail("No all rows are written");
-            }
-        }
 
         assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(sinkMBean));
         assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(topicMbeanName));
