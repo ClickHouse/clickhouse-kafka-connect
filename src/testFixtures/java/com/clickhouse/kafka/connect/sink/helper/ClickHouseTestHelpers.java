@@ -216,7 +216,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = String.format("SELECT COUNT(*) FROM clusterAllReplicas('default', `%s`.`%s`)", chc.getDatabase(), tableName);
+        String queryCount = String.format("SELECT COUNT(*) FROM `%s` SETTINGS select_sequential_consistency = 1", tableName);
 
         try {
             optimizeTable(chc, tableName);
