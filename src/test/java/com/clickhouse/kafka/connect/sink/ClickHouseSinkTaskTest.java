@@ -252,7 +252,8 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertEquals(0, ((Long)failedRecords).longValue());
         Object eventReceiveLag = mBeanServer.getAttribute(sinkMBean, "MeanReceiveLag");
         assertTrue((Long)eventReceiveLag > 0);
-
+        Object insertedBytes = mBeanServer.getAttribute(sinkMBean, "InsertedBytes");
+        assertTrue((Long)insertedBytes >= 872838);
 
 
         // Topic metrics

@@ -24,6 +24,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
     private final AtomicLong insertedRecords;
     private final AtomicLong failedRecords;
     private final AtomicLong receivedBatches;
+    private final AtomicLong insertedBytes;
     private final ExponentialMovingAverages receiveLag;
     private final int taskId;
     private final Map<String, TopicStatistics> topicStatistics;
@@ -42,6 +43,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         this.receivedBatches = new AtomicLong(0);
         this.failedRecords = new AtomicLong(0);
         this.receiveLag = new ExponentialMovingAverages();
+        this.insertedBytes = new AtomicLong(0);
     }
 
     public void registerMBean() {
@@ -85,9 +87,15 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         return receivedBatches.get();
     }
 
+
     @Override
     public long getMeanReceiveLag() {
         return Double.valueOf(receiveLag.getM1Rate()).longValue();
+    }
+
+    @Override
+    public long getInsertedBytes() {
+        return insertedBytes.get();
     }
 
     public void receivedRecords(final Collection<SinkRecord> records) {
@@ -127,6 +135,10 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         failedRecords.addAndGet(n);
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).recordsFailed(n);
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).batchesFailed(1);
+    }
+
+    public void bytesInserted(long n) {
+        insertedBytes.addAndGet(n);
     }
 
     private TopicStatistics createTopicStatistics(String topic) {

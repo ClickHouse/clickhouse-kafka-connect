@@ -955,12 +955,15 @@ public class ClickHouseWriter implements DBWriter {
                         long beforeSerialize = System.currentTimeMillis();
                         String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
                         dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
+
                         LOGGER.trace("topic {} partition {} offset {} payload {}",
                                 record.getTopic(),
                                 record.getRecordOffsetContainer().getPartition(),
                                 record.getRecordOffsetContainer().getOffset(),
                                 gsonString);
-                        BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+                        byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                        statistics.bytesInserted(bytes.length);
+                        BinaryStreamUtils.writeBytes(stream, bytes);
                     } else {
                         LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
                     }
@@ -1036,7 +1039,9 @@ public class ClickHouseWriter implements DBWriter {
                         record.getRecordOffsetContainer().getPartition(),
                         record.getRecordOffsetContainer().getOffset(),
                         gsonString);
-                BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+                byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                statistics.bytesInserted(bytes.length);
+                BinaryStreamUtils.writeBytes(stream, bytes);
             } else {
                 LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
             }
@@ -1114,6 +1119,7 @@ public class ClickHouseWriter implements DBWriter {
                         String data = (String)record.getSinkRecord().value();
                         LOGGER.debug(String.format("data: %s", data));
                         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                        statistics.bytesInserted(bytes.length);
                         long beforePushStream = System.currentTimeMillis();
                         BinaryStreamUtils.writeBytes(stream, bytes);
                         pushStreamTime += System.currentTimeMillis() - beforePushStream;
@@ -1189,6 +1195,7 @@ public class ClickHouseWriter implements DBWriter {
                 String data = (String)record.getSinkRecord().value();
                 LOGGER.debug(String.format("data: %s", data));
                 byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                statistics.bytesInserted(bytes.length);
                 long beforePushStream = System.currentTimeMillis();
                 BinaryStreamUtils.writeBytes(stream, bytes);
                 pushStreamTime += System.currentTimeMillis() - beforePushStream;

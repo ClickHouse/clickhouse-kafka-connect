@@ -35,6 +35,14 @@ public interface SinkTaskStatisticsMBean {
     long getInsertedRecords();
 
     /**
+     * Total number of inserted bytes. Limited to Long.MAX_VALUE (8192 PB);
+     * Implemented as counter and is reset on restart.
+     *
+     * @return counter value
+     */
+    long getInsertedBytes();
+
+    /**
      * Total number of failed records.
      * Implemented as counter and is reset on restart.
      *
