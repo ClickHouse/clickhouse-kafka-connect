@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.util.jmx;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Not thread-safe Exponential Moving Average implementation
@@ -11,27 +12,24 @@ public class SimpleMovingAverage {
 
     private final long[] values;
     private final AtomicInteger head;
+    private final AtomicLong sum;
+    private final int n;
 
     public SimpleMovingAverage(int numOfValues) {
         this.values = new long[numOfValues];
+        this.n = this.values.length - 1;
         this.head = new AtomicInteger();
+        this.sum = new AtomicLong();
     }
 
     public void add(long value) {
         int insertIndex = head.getAndIncrement() % values.length;
+        int oldestIndex = (insertIndex + values.length) % n;
+        sum.addAndGet(value - values[oldestIndex]);
         values[insertIndex] = value;
     }
 
     public double get() {
-       double sum = 0;
-       int count = head.get();
-       if (count >= values.length) {
-            count = values.length;
-       }
-
-       for (int i = 0; i < count; i++) {
-            sum += values[i];
-       }
-       return sum / count;
+       return (double) sum.get() / values.length;
     }
 }

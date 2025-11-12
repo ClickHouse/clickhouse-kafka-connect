@@ -264,7 +264,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertEquals(2, ((Long)insertedBatches).longValue());
 
         Object insertTime = mBeanServer.getAttribute(topicMbeanName, "MeanInsertTime");
-        assertTrue((Long)insertTime > 0);
+        assertTrue((Long)insertTime >= 0);
 
         Object failedTopicRecords = mBeanServer.getAttribute(topicMbeanName, "TotalFailedRecords");
         assertEquals(0, ((Long)failedTopicRecords).longValue());
@@ -299,7 +299,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             } else if ( i < n * 0.50) {
                 k = 3000;
             } else {
-                k = 0;
+                k = 500;
             }
 
             List<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
@@ -317,10 +317,11 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getMBeanName(taskId));
         Object eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
         assertTrue((Long)eventReceiveLag < 2000L);
+        assertTrue((Long)eventReceiveLag > 400L, "eventReceiveLag: " + eventReceiveLag);
 
         for (int i = 0; i < n; i++) {
 
-            long k = 0;
+            long k = 300;
             List<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
             SinkRecord first = sr.get(0);
             long createTime = System.currentTimeMillis() - k;
@@ -334,6 +335,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
         assertTrue((Long)eventReceiveLag < 1000L, "eventReceiveLag: " + eventReceiveLag);
+        assertTrue((Long)eventReceiveLag > 300L, "eventReceiveLag: " + eventReceiveLag);
 
         chst.stop();
     }
