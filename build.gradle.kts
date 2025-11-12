@@ -54,7 +54,6 @@ extra.apply {
     set("kafkaVersion", "2.7.0")
     set("gson", "2.13.1")
     set("jackson", "2.19.1")
-    set("dropwizardMetrics", "5.0.0")
 
     // Testing dependencies
     set("junitJupiterVersion", "5.9.2")
@@ -89,8 +88,6 @@ dependencies {
     implementation("com.google.code.gson:gson:${project.extra["gson"]}")
     implementation("org.apache.httpcomponents.client5:httpclient5:5.5")
 
-    implementation("io.dropwizard:dropwizard-core:${project.extra["dropwizardMetrics"]}")
-
     // Avoid telescoping constructors problem with the builder pattern using Lombok
     compileOnly("org.projectlombok:lombok:1.18.38")
     annotationProcessor("org.projectlombok:lombok:1.18.38")
@@ -111,7 +108,6 @@ dependencies {
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-databind:${project.extra["jackson"]}")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson"]}")
-    clickhouseDependencies("io.dropwizard:dropwizard-core:${project.extra["dropwizardMetrics"]}")
 
     // Unit Tests
     testImplementation(platform("org.junit:junit-bom:${project.extra["junitJupiterVersion"]}"))

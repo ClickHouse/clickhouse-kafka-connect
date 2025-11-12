@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.util.jmx;
 
 import com.clickhouse.kafka.connect.sink.ProxySinkTask;
 import com.clickhouse.kafka.connect.sink.Version;
-import com.codahale.metrics.ExponentialMovingAverages;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +24,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
     private final AtomicLong failedRecords;
     private final AtomicLong receivedBatches;
     private final AtomicLong insertedBytes;
-    private final ExponentialMovingAverages receiveLag;
+    private final SimpleMovingAverage receiveLag;
     private final int taskId;
     private final Map<String, TopicStatistics> topicStatistics;
     private final Deque<String> topicMBeans;
@@ -42,7 +41,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         this.insertedRecords = new AtomicLong(0);
         this.receivedBatches = new AtomicLong(0);
         this.failedRecords = new AtomicLong(0);
-        this.receiveLag = new ExponentialMovingAverages();
+        this.receiveLag = new SimpleMovingAverage(SimpleMovingAverage.DEFAULT_WINDOW_SIZE);
         this.insertedBytes = new AtomicLong(0);
     }
 
@@ -95,7 +94,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
 
     @Override
     public long getMeanReceiveLag() {
-        return Double.valueOf(receiveLag.getM1Rate()).longValue();
+        return Double.valueOf(receiveLag.get()).longValue();
     }
 
     @Override
@@ -114,8 +113,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
             if (first.isPresent()) {
                 eventTime = first.get().timestamp();
             }
-            receiveLag.update(receiveTime - eventTime);
-            receiveLag.tickIfNecessary();
+            receiveLag.add(receiveTime - eventTime);
         } catch (Exception e) {
             LOGGER.warn("Failed to calculate receive lag", e);
         }
@@ -136,9 +134,9 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).batchInserted(1);
     }
 
-    public void recordTopicStatsOnFailure(int n, String table, long eventReceiveLag) {
-        failedRecords.addAndGet(n);
-        topicStatistics.computeIfAbsent(table, this::createTopicStatistics).recordsFailed(n);
+    public void recordTopicStatsOnFailure(int numOfRecords, String table, long eventReceiveLag) {
+        failedRecords.addAndGet(numOfRecords);
+        topicStatistics.computeIfAbsent(table, this::createTopicStatistics).recordsFailed(numOfRecords);
         topicStatistics.computeIfAbsent(table, this::createTopicStatistics).batchesFailed(1);
     }
 

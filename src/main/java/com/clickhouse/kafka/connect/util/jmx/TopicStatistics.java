@@ -1,7 +1,5 @@
 package com.clickhouse.kafka.connect.util.jmx;
 
-import com.codahale.metrics.ExponentialMovingAverages;
-
 import java.util.concurrent.atomic.AtomicLong;
 
 public class TopicStatistics implements TopicStatisticsMBean {
@@ -11,14 +9,14 @@ public class TopicStatistics implements TopicStatisticsMBean {
     private final AtomicLong totalFailedBatches;
     private final AtomicLong totalFailedRecords;
 
-    private final ExponentialMovingAverages insertTime;
+    private final SimpleMovingAverage insertTime;
 
     public TopicStatistics() {
         totalInsertedRecords = new AtomicLong(0);
         totalNumberOfBatches = new AtomicLong(0);
         totalFailedBatches = new AtomicLong(0);
         totalFailedRecords = new AtomicLong(0);
-        insertTime = new ExponentialMovingAverages();
+        insertTime = new SimpleMovingAverage(SimpleMovingAverage.DEFAULT_WINDOW_SIZE);
     }
 
 
@@ -35,7 +33,7 @@ public class TopicStatistics implements TopicStatisticsMBean {
 
     @Override
     public long getMeanInsertTime() {
-        return Double.valueOf(insertTime.getM1Rate()).longValue();
+        return Double.valueOf(insertTime.get()).longValue();
     }
 
     @Override
@@ -65,7 +63,6 @@ public class TopicStatistics implements TopicStatisticsMBean {
     }
 
     public void insertTime(long insertTime) {
-        this.insertTime.update(insertTime);
-        this.insertTime.tickIfNecessary();
+        this.insertTime.add(insertTime);
     }
 }
