@@ -19,7 +19,12 @@ import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
+import org.apache.kafka.common.record.TimestampType;
+import org.apache.kafka.connect.data.Decimal;
+import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaAndValue;
+import org.apache.kafka.connect.data.SchemaBuilder;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
@@ -40,6 +45,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -475,6 +481,114 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
+    @Test
+    public void writeBooleanValueToIntTest() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("schema-with-boolean-and-int-test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
+                "ui1 UInt8, " +
+                "ui2 UInt16, " +
+                "ui3 UInt32, " +
+                "ui4 UInt64, " +
+                "i5 Int8, " +
+                "i6 Int16, " +
+                "i7 Int32, " +
+                "i8 Int64, " +
+                "b1 Boolean, " +
+                "b2 Boolean, " +
+                "b3 Boolean, " +
+                "b4 Boolean, " +
+                "ii UInt8" +
+                ") Engine = MergeTree ORDER BY off16");
+
+        int totalRecords = 100;
+        int partition = 1;
+        final List<SinkRecord> sr = new ArrayList<>();
+
+        {
+            Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                    .field("off16", Schema.INT16_SCHEMA)
+                    .field("ui1", Schema.BOOLEAN_SCHEMA)
+                    .field("ui2", Schema.BOOLEAN_SCHEMA)
+                    .field("ui3", Schema.BOOLEAN_SCHEMA)
+                    .field("ui4", Schema.BOOLEAN_SCHEMA)
+                    .field("i5", Schema.BOOLEAN_SCHEMA)
+                    .field("i6", Schema.BOOLEAN_SCHEMA)
+                    .field("i7", Schema.BOOLEAN_SCHEMA)
+                    .field("i8", Schema.BOOLEAN_SCHEMA)
+                    .field("b1", Schema.INT8_SCHEMA)
+                    .field("b2", Schema.INT16_SCHEMA)
+                    .field("b3", Schema.INT32_SCHEMA)
+                    .field("b4", Schema.INT64_SCHEMA)
+                    .field("ii", Schema.INT8_SCHEMA)
+                    .build();
+
+            LongStream.range(0, totalRecords).forEachOrdered(n -> {
+                Struct value_struct = new Struct(NESTED_SCHEMA)
+                        .put("off16", (short) n)
+                        .put("ui1", n % 2 == 0)
+                        .put("ui2", n % 2 == 0)
+                        .put("ui3", n % 2 == 0)
+                        .put("ui4", n % 2 == 0)
+                        .put("i5", n % 2 == 0)
+                        .put("i6", n % 2 == 0)
+                        .put("i7", n % 2 == 0)
+                        .put("i8", n % 2 == 0)
+                        .put("b1", (byte)(n % 2 == 0 ? 1 : 0))
+                        .put("b2", (short)(n % 2 == 0 ? 1 : 0))
+                        .put("b3", (int)(n % 2 == 0 ? 1 : 0))
+                        .put("b4", (long)(n % 2 == 0 ? 1 : 0))
+                        .put("ii", (byte)(n % 2 == 0 ? 1 : 0));
+
+                SinkRecord record = new SinkRecord(
+                        topic,
+                        partition,
+                        null,
+                        null, NESTED_SCHEMA,
+                        value_struct,
+                        n,
+                        System.currentTimeMillis(),
+                        TimestampType.CREATE_TIME
+                );
+
+                sr.add(record);
+            });
+        }
+
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        List<JSONObject> rows =ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        for (int i = 0; i < rows.size(); i++) {
+            JSONObject row = rows.get(i);
+            int off16 = row.getInt("off16");
+            boolean b = off16 % 2 == 0;
+            assertEquals(b, row.getBoolean("b1"));
+            assertEquals(b, row.getBoolean("b2"));
+            assertEquals(b, row.getBoolean("b3"));
+            assertEquals(b, row.getBoolean("b4"));
+
+            int intV = b ? 1 : 0;
+            assertEquals(intV, row.getInt("ui1"));
+            assertEquals(intV, row.getInt("ui2"));
+            assertEquals(intV, row.getInt("ui3"));
+            assertEquals(intV, row.getInt("ui4"));
+
+            assertEquals(intV, row.getInt("i5"));
+            assertEquals(intV, row.getInt("i6"));
+            assertEquals(intV, row.getInt("i7"));
+            assertEquals(intV, row.getInt("i8"));
+            assertEquals(intV, row.getInt("ii"));
+        }
     }
 
     @Test
