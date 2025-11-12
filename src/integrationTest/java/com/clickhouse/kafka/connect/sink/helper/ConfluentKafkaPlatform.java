@@ -3,7 +3,6 @@ package com.clickhouse.kafka.connect.sink.helper;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseCloudTest;
-import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.Version;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -140,7 +139,6 @@ public class ConfluentKafkaPlatform {
         String clientVersion = extractClientVersion();
         config.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
         config.put(ClickHouseSinkConnector.DATABASE, dbName);
-//        config.put(ClickHouseSinkConnector.DATABASE, "default");
 
         if (isCloud()) {
             config.put(ClickHouseSinkConnector.HOSTNAME, System.getenv("CLICKHOUSE_CLOUD_HOST"));
