@@ -277,7 +277,8 @@ public class ClickHouseWriter implements DBWriter {
                                     continue;
                                 }
 
-                                if (colTypeName.equals("BOOLEAN") && INT_TYPES.contains(dataTypeName)) {
+                                if (colTypeName.equalsIgnoreCase("BOOLEAN") &&
+                                        INT_TYPES.contains(dataTypeName.toUpperCase())) {
                                     continue;
                                 }
 

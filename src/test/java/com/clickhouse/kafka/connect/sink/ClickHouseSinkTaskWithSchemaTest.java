@@ -489,7 +489,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schema-with-boolean-and-int-test");
-        int fixedStringSize = RandomUtils.nextInt(1, 100);
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, " +
                 "ui1 UInt8, " +
@@ -544,9 +543,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         .put("b2", (short)(n % 2 == 0 ? 1 : 0))
                         .put("b3", (int)(n % 2 == 0 ? 1 : 0))
                         .put("b4", (long)(n % 2 == 0 ? 1 : 0))
-                        .put("ii", (byte)(n % 2 == 0 ? 1 : 0))
+                        .put("ii", (byte)(n % 2 == 0 ? 1 : 0));
 
-                        ;
                 SinkRecord record = new SinkRecord(
                         topic,
                         partition,
