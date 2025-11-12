@@ -24,8 +24,7 @@ public class SimpleMovingAverage {
 
     public void add(long value) {
         int insertIndex = head.getAndIncrement() % values.length;
-        int oldestIndex = (insertIndex + values.length) % n;
-        sum.addAndGet(value - values[oldestIndex]);
+        sum.addAndGet(value - values[insertIndex]);
         values[insertIndex] = value;
     }
 
