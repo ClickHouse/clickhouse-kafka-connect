@@ -54,6 +54,7 @@ extra.apply {
     set("kafkaVersion", "2.7.0")
     set("gson", "2.13.1")
     set("jackson", "2.19.1")
+    set("httpclient", "5.5.1")
 
     // Testing dependencies
     set("junitJupiterVersion", "5.9.2")
@@ -66,6 +67,7 @@ extra.apply {
     set("scalaVersion", "2.13")
     set("curatorVersion", "2.9.0")
     set("connectUtilsVersion", "0.4+")
+    set("okhttp", "5.3.0")
 
     // Test extra test dependencies
     set("kafkaPlatformSchemaRegistry", "7.9.1")
@@ -74,6 +76,8 @@ extra.apply {
     set("toxiproxy", "1.21.0")
     set("org.json", "20250517")
     set("libprotobuf", "3.25.8")
+    set("commons.lang3", "3.19.0")
+
 }
 
 val clickhouseDependencies: Configuration by configurations.creating
@@ -87,7 +91,7 @@ dependencies {
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.google.code.gson:gson:${project.extra["gson"]}")
 
-    implementation("org.apache.httpcomponents.client5:httpclient5:5.5")
+    implementation("org.apache.httpcomponents.client5:httpclient5:${project.extra["httpclient"]}")
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
     compileOnly("org.projectlombok:lombok:1.18.38")
@@ -101,7 +105,7 @@ dependencies {
     /*
         Will in side the Confluent Archive
      */
-    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.5")
+    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:${project.extra["httpclient"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
@@ -121,7 +125,7 @@ dependencies {
     // IntegrationTests
     testImplementation("org.testcontainers:clickhouse:${project.extra["testcontainers"]}")
     testImplementation("org.testcontainers:kafka:${project.extra["testcontainers"]}")
-    testImplementation("com.squareup.okhttp3:okhttp:5.1.0")
+    testImplementation("com.squareup.okhttp3:okhttp:${project.extra["okhttp"]}")
     testImplementation("org.json:json:${project.extra["org.json"]}")
     testImplementation("org.testcontainers:toxiproxy:${project.extra["toxiproxy"]}")
     testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5")
@@ -150,7 +154,7 @@ dependencies {
     testFixturesImplementation("org.junit.jupiter:junit-jupiter")
     testFixturesImplementation("org.junit.platform:junit-platform-runner")
     testFixturesImplementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
-    testFixturesImplementation("org.apache.commons:commons-lang3:3.18.0")
+    testFixturesImplementation("org.apache.commons:commons-lang3:${project.extra["commons.lang3"]}")
     testFixturesImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testFixturesImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     testFixturesImplementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
