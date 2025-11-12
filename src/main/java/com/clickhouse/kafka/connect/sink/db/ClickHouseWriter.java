@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -218,6 +219,8 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
+    private static final Set<String> INT_TYPES = Set.of("INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16", "UINT32", "UINT64");
+
     protected boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
         boolean validSchema = true;
         for (Column col : table.getRootColumnsList()) {
@@ -271,11 +274,14 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
                                     continue;
 
-                                if (colTypeName.equalsIgnoreCase("UINT8")
-                                        || colTypeName.equalsIgnoreCase("UINT16")
-                                        || colTypeName.equalsIgnoreCase("UINT32")
-                                        || colTypeName.equalsIgnoreCase("UINT64"))
+                                if (INT_TYPES.contains(colTypeName)) {
                                     continue;
+                                }
+
+                                if (colTypeName.equalsIgnoreCase("BOOLEAN") &&
+                                        INT_TYPES.contains(dataTypeName.toUpperCase())) {
+                                    continue;
+                                }
 
                                 if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
                                     continue;
@@ -597,83 +603,119 @@ public class ClickHouseWriter implements DBWriter {
             BinaryStreamUtils.writeNull(stream);
             return;
         }
-        switch (columnType) {
-            case INT8:
-                BinaryStreamUtils.writeInt8(stream, (Byte) value);
-                break;
-            case INT16:
-                BinaryStreamUtils.writeInt16(stream, (Short) value);
-                break;
-            case INT32:
-                if (value.getClass().getName().endsWith(".Date")) {
-                    Date date = (Date) value;
-                    int time = (int) date.getTime();
-                    BinaryStreamUtils.writeInt32(stream, time);
-                } else {
-                    BinaryStreamUtils.writeInt32(stream, (Integer) value);
-                }
-                break;
-            case DateTime64:
-            case INT64:
-                if (value.getClass().getName().endsWith(".Date")) {
-                    Date date = (Date) value;
-                    long time = date.getTime();
-                    BinaryStreamUtils.writeInt64(stream, time);
-                } else {
-                    BinaryStreamUtils.writeInt64(stream, (Long) value);
-                }
-                break;
-            case UINT8:
-                BinaryStreamUtils.writeUnsignedInt8(stream, (Byte) value);
-                break;
-            case UINT16:
-                BinaryStreamUtils.writeUnsignedInt16(stream, (Short) value);
-                break;
-            case UINT32:
-                BinaryStreamUtils.writeUnsignedInt32(stream, (Integer) value);
-                break;
-            case UINT64:
-                BinaryStreamUtils.writeUnsignedInt64(stream, (Long) value);
-                break;
-            case FLOAT32:
-                BinaryStreamUtils.writeFloat32(stream, (Float) value);
-                break;
-            case FLOAT64:
-                BinaryStreamUtils.writeFloat64(stream, (Double) value);
-                break;
-            case BOOLEAN:
-                BinaryStreamUtils.writeBoolean(stream, (Boolean) value);
-                break;
-            case STRING:
-                if (Schema.Type.BYTES.equals(dataType)) {
-                    BinaryStreamUtils.writeString(stream, (byte[]) value);
-                } else if (Schema.Type.STRUCT.equals(dataType)) {
-                    Map<String, Data> map = (Map<String, Data>) value;
-                    for (Data unionData : map.values()) {
-                        if (unionData != null && unionData.getObject() != null) {
-                            if (unionData.getObject() instanceof String) {
-                                BinaryStreamUtils.writeString(stream, ((String) unionData.getObject()).getBytes(StandardCharsets.UTF_8));
-                            } else if (unionData.getObject() instanceof byte[]) {
-                                BinaryStreamUtils.writeString(stream, (byte[]) unionData.getObject());
-                            } else {
-                                throw new DataException("Not implemented conversion from " + unionData.getObject().getClass() + " to String");
-                            }
-                            break;
-                        }
+        if (value instanceof Boolean && columnType != Type.BOOLEAN) {
+            Long boolVal = (Boolean) value ? 1L : 0L;
+            switch (columnType) {
+                case INT8:
+                    BinaryStreamUtils.writeInt8(stream, boolVal.byteValue());
+                    break;
+                case INT16:
+                    BinaryStreamUtils.writeInt16(stream, boolVal.shortValue());
+                    break;
+                case INT32:
+                    BinaryStreamUtils.writeInt32(stream, boolVal.intValue());
+                    break;
+                case INT64:
+                    BinaryStreamUtils.writeInt64(stream, boolVal.longValue());
+                    break;
+                case UINT8:
+                    BinaryStreamUtils.writeUnsignedInt8(stream, boolVal.byteValue());
+                    break;
+                case UINT16:
+                    BinaryStreamUtils.writeUnsignedInt16(stream, boolVal.shortValue());
+                    break;
+                case UINT32:
+                    BinaryStreamUtils.writeUnsignedInt32(stream, boolVal.intValue());
+                    break;
+                case UINT64:
+                    BinaryStreamUtils.writeUnsignedInt64(stream, boolVal.longValue());
+                    break;
+                default:
+                    throw new DataException("Not implemented conversion from Boolean to " + columnType);
+            }
+        } else {
+            switch (columnType) {
+                case INT8:
+                    BinaryStreamUtils.writeInt8(stream, (Byte) value);
+                    break;
+                case INT16:
+                    BinaryStreamUtils.writeInt16(stream, (Short) value);
+                    break;
+                case INT32:
+                    if (value.getClass().getName().endsWith(".Date")) {
+                        Date date = (Date) value;
+                        int time = (int) date.getTime();
+                        BinaryStreamUtils.writeInt32(stream, time);
+                    } else {
+                        BinaryStreamUtils.writeInt32(stream, (Integer) value);
                     }
-                } else {
-                    BinaryStreamUtils.writeString(stream, ((String) value).getBytes(StandardCharsets.UTF_8));
-                }
-                break;
-            case UUID:
-                BinaryStreamUtils.writeUuid(stream, UUID.fromString((String) value));
-                break;
-            case Enum8:
-                BinaryStreamUtils.writeEnum8(stream, col.convertEnumValues((String)value).byteValue());
-                break;
-            case Enum16:
-                BinaryStreamUtils.writeEnum16(stream, col.convertEnumValues((String)value).intValue());
-                break;
+                    break;
+                case DateTime64:
+                case INT64:
+                    if (value.getClass().getName().endsWith(".Date")) {
+                        Date date = (Date) value;
+                        long time = date.getTime();
+                        BinaryStreamUtils.writeInt64(stream, time);
+                    } else {
+                        BinaryStreamUtils.writeInt64(stream, (Long) value);
+                    }
+                    break;
+                case UINT8:
+                    BinaryStreamUtils.writeUnsignedInt8(stream, (Byte) value);
+                    break;
+                case UINT16:
+                    BinaryStreamUtils.writeUnsignedInt16(stream, (Short) value);
+                    break;
+                case UINT32:
+                    BinaryStreamUtils.writeUnsignedInt32(stream, (Integer) value);
+                    break;
+                case UINT64:
+                    BinaryStreamUtils.writeUnsignedInt64(stream, (Long) value);
+                    break;
+                case FLOAT32:
+                    BinaryStreamUtils.writeFloat32(stream, (Float) value);
+                    break;
+                case FLOAT64:
+                    BinaryStreamUtils.writeFloat64(stream, (Double) value);
+                    break;
+                case BOOLEAN:
+                    if (value instanceof Number) {
+                        BinaryStreamUtils.writeBoolean(stream, ((Number) value).longValue() != 0);
+                    } else {
+                        BinaryStreamUtils.writeBoolean(stream, (Boolean) value);
+                    }
+                    break;
+                case STRING:
+                    if (Schema.Type.BYTES.equals(dataType)) {
+                        BinaryStreamUtils.writeString(stream, (byte[]) value);
+                    } else if (Schema.Type.STRUCT.equals(dataType)) {
+                        Map<String, Data> map = (Map<String, Data>) value;
+                        for (Data unionData : map.values()) {
+                            if (unionData != null && unionData.getObject() != null) {
+                                if (unionData.getObject() instanceof String) {
+                                    BinaryStreamUtils.writeString(stream, ((String) unionData.getObject()).getBytes(StandardCharsets.UTF_8));
+                                } else if (unionData.getObject() instanceof byte[]) {
+                                    BinaryStreamUtils.writeString(stream, (byte[]) unionData.getObject());
+                                } else {
+                                    throw new DataException("Not implemented conversion from " + unionData.getObject().getClass() + " to String");
+                                }
+                                break;
+                            }
+                        }
+                    } else {
+                        BinaryStreamUtils.writeString(stream, ((String) value).getBytes(StandardCharsets.UTF_8));
+                    }
+                    break;
+                case UUID:
+                    BinaryStreamUtils.writeUuid(stream, UUID.fromString((String) value));
+                    break;
+                case Enum8:
+                    BinaryStreamUtils.writeEnum8(stream, col.convertEnumValues((String) value).byteValue());
+                    break;
+                case Enum16:
+                    BinaryStreamUtils.writeEnum16(stream, col.convertEnumValues((String) value).intValue());
+                    break;
+            }
         }
     }
 
