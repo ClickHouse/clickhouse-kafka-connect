@@ -126,7 +126,7 @@ public class ClickHouseBase {
         String clientVersion = csc.getClientVersion();
         boolean useClientV2 = clientVersion.equals("V1") ? false : true;
         ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
+                .setDatabase("default")
                 .setUsername(username)
                 .setPassword(password)
                 .sslEnable(sslEnabled)
@@ -269,7 +269,7 @@ public class ClickHouseBase {
         if (isCloud) {
             props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv("CLICKHOUSE_CLOUD_HOST"));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);
-            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
+            props.put(ClickHouseSinkConnector.DATABASE, database);
             props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
             props.put(ClickHouseSinkConnector.PASSWORD, System.getenv("CLICKHOUSE_CLOUD_PASSWORD"));
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
@@ -278,7 +278,7 @@ public class ClickHouseBase {
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
             props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());
-            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
+            props.put(ClickHouseSinkConnector.DATABASE, database);
             props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
             props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
