@@ -13,11 +13,9 @@ public class SimpleMovingAverage {
     private final long[] values;
     private final AtomicInteger head;
     private final AtomicLong sum;
-    private final int n;
 
     public SimpleMovingAverage(int numOfValues) {
         this.values = new long[numOfValues];
-        this.n = this.values.length - 1;
         this.head = new AtomicInteger();
         this.sum = new AtomicLong();
     }
