@@ -86,7 +86,7 @@ dependencies {
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.google.code.gson:gson:${project.extra["gson"]}")
-    implementation("org.apache.httpcomponents.client5:httpclient5:5.5")
+    implementation("org.apache.httpcomponents.client5:httpclient5:5.5.1")
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
     compileOnly("org.projectlombok:lombok:1.18.38")
@@ -100,7 +100,7 @@ dependencies {
     /*
         Will in side the Confluent Archive
      */
-    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.5")
+    clickhouseDependencies("org.apache.httpcomponents.client5:httpclient5:5.5.1")
     clickhouseDependencies("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     clickhouseDependencies("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
@@ -123,7 +123,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp:5.1.0")
     testImplementation("org.json:json:${project.extra["org.json"]}")
     testImplementation("org.testcontainers:toxiproxy:${project.extra["toxiproxy"]}")
-    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5.1")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
