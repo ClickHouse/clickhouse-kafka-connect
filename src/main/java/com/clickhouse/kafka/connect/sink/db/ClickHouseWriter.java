@@ -28,6 +28,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.ExclusionStrategy;
 import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
@@ -76,9 +77,10 @@ public class ClickHouseWriter implements DBWriter {
 
     private Map<String, Table> mapping = null;
     private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
-
-    public ClickHouseWriter() {
+    private final SinkTaskStatistics statistics;
+    public ClickHouseWriter(SinkTaskStatistics statistics) {
         this.mapping = new HashMap<String, Table>();
+        this.statistics = statistics;
     }
 
     protected void setClient(ClickHouseHelperClient chc) {
@@ -200,7 +202,6 @@ public class ClickHouseWriter implements DBWriter {
         Table table = getTable(database, topic);
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
         LOGGER.debug("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
-
         switch (first.getSchemaType()) {
             case SCHEMA:
                 if (csc.isBypassRowBinary()) {
@@ -879,6 +880,8 @@ public class ClickHouseWriter implements DBWriter {
         }
         long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
+        statistics.insertTime(s2 - s1, topic);
+
     }
     protected void doInsertRawBinaryV1(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
@@ -934,6 +937,7 @@ public class ClickHouseWriter implements DBWriter {
 
         long s3 = System.currentTimeMillis();
         LOGGER.info("topic :{} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
+        statistics.insertTime(s2 - s1, topic);
     }
 
     protected void doInsertJson(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
@@ -993,12 +997,15 @@ public class ClickHouseWriter implements DBWriter {
                         long beforeSerialize = System.currentTimeMillis();
                         String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
                         dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
+
                         LOGGER.trace("topic {} partition {} offset {} payload {}",
                                 record.getTopic(),
                                 record.getRecordOffsetContainer().getPartition(),
                                 record.getRecordOffsetContainer().getOffset(),
                                 gsonString);
-                        BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+                        byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                        statistics.bytesInserted(bytes.length);
+                        BinaryStreamUtils.writeBytes(stream, bytes);
                     } else {
                         LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
                     }
@@ -1014,6 +1021,7 @@ public class ClickHouseWriter implements DBWriter {
         }
         long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        statistics.insertTime(s2 - s1, topic);
     }
 
     protected void doInsertJsonV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
@@ -1073,7 +1081,9 @@ public class ClickHouseWriter implements DBWriter {
                         record.getRecordOffsetContainer().getPartition(),
                         record.getRecordOffsetContainer().getOffset(),
                         gsonString);
-                BinaryStreamUtils.writeBytes(stream, gsonString.getBytes(StandardCharsets.UTF_8));
+                byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                statistics.bytesInserted(bytes.length);
+                BinaryStreamUtils.writeBytes(stream, bytes);
             } else {
                 LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
             }
@@ -1086,6 +1096,7 @@ public class ClickHouseWriter implements DBWriter {
         }
         long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        statistics.insertTime(s2 - s1, topic);
     }
 
     protected Map<String, Object> cleanupExtraFields(Map<String, Object> m, Table t) {
@@ -1150,6 +1161,7 @@ public class ClickHouseWriter implements DBWriter {
                         String data = (String)record.getSinkRecord().value();
                         LOGGER.debug(String.format("data: %s", data));
                         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                        statistics.bytesInserted(bytes.length);
                         long beforePushStream = System.currentTimeMillis();
                         BinaryStreamUtils.writeBytes(stream, bytes);
                         pushStreamTime += System.currentTimeMillis() - beforePushStream;
@@ -1176,6 +1188,7 @@ public class ClickHouseWriter implements DBWriter {
         }
         long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        statistics.insertTime(s2 - s1, topic);
     }
     protected void doInsertStringV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         byte[] endingLine = new byte[]{'\n'};
@@ -1224,6 +1237,7 @@ public class ClickHouseWriter implements DBWriter {
                 String data = (String)record.getSinkRecord().value();
                 LOGGER.debug(String.format("data: %s", data));
                 byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                statistics.bytesInserted(bytes.length);
                 long beforePushStream = System.currentTimeMillis();
                 BinaryStreamUtils.writeBytes(stream, bytes);
                 pushStreamTime += System.currentTimeMillis() - beforePushStream;
@@ -1246,6 +1260,7 @@ public class ClickHouseWriter implements DBWriter {
         }
         long s3 = System.currentTimeMillis();
         LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        statistics.insertTime(s2 - s1, topic);
     }
 
 

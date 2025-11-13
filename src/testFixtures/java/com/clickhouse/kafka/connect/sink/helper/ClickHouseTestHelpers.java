@@ -227,8 +227,10 @@ public class ClickHouseTestHelpers {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
+            LOGGER.error("Error while counting rows. Query was " + queryCount, e);
             throw new RuntimeException(e);
         } catch (Exception e) {
+            LOGGER.error("Error while counting rows. Query was " + queryCount, e);
             throw new RuntimeException(e);
         }
     }

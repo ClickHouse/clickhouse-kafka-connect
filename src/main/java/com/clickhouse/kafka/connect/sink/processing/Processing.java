@@ -7,11 +7,11 @@ import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.kafka.RangeContainer;
 import com.clickhouse.kafka.connect.sink.kafka.RangeState;
-import com.clickhouse.kafka.connect.sink.state.State;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,15 +28,17 @@ public class Processing {
     private StateProvider stateProvider = null;
     private DBWriter dbWriter = null;
     private ClickHouseSinkConfig clickHouseSinkConfig;
-
+    private SinkTaskStatistics statistics;
 
     private ErrorReporter errorReporter = null;
 
-    public Processing(StateProvider stateProvider, DBWriter dbWriter, ErrorReporter errorReporter, ClickHouseSinkConfig clickHouseSinkConfig) {
+    public Processing(StateProvider stateProvider, DBWriter dbWriter, ErrorReporter errorReporter,
+                      ClickHouseSinkConfig clickHouseSinkConfig, SinkTaskStatistics statistics) {
         this.stateProvider = stateProvider;
         this.dbWriter = dbWriter;
         this.errorReporter = errorReporter;
         this.clickHouseSinkConfig = clickHouseSinkConfig;
+        this.statistics = statistics;
     }
     /**
      * the logic is only for topic partition scoop
@@ -49,14 +51,23 @@ public class Processing {
             LOGGER.trace("doInsert - No records to insert.");
             return;
         }
-        QueryIdentifier queryId = new QueryIdentifier(records.get(0).getRecordOffsetContainer().getTopic(), records.get(0).getRecordOffsetContainer().getPartition(),
+
+        final Record firstRecord = records.get(0);
+        long eventReceiveLag = 0;
+        if (firstRecord.getSinkRecord().timestamp() != null) {
+            eventReceiveLag = System.currentTimeMillis() - firstRecord.getSinkRecord().timestamp();
+        }
+        final String topic = firstRecord.getRecordOffsetContainer().getTopic();
+        QueryIdentifier queryId = new QueryIdentifier(topic, records.get(0).getRecordOffsetContainer().getPartition(),
                 rangeContainer.getMinOffset(), rangeContainer.getMaxOffset(),
                 UUID.randomUUID().toString());
 
         try {
             LOGGER.debug("doInsert - Records: [{}] - {}", records.size(), queryId);
             dbWriter.doInsert(records, queryId, errorReporter);
+            statistics.recordTopicStats(records.size(), queryId.getTopic(), eventReceiveLag);
         } catch (Exception e) {
+            statistics.recordTopicStatsOnFailure(records.size(), queryId.getTopic(), eventReceiveLag);
             throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
         }
     }
@@ -66,12 +77,21 @@ public class Processing {
             LOGGER.trace("doInsert - No records to insert.");
             return;
         }
-        QueryIdentifier queryId = new QueryIdentifier(records.get(0).getRecordOffsetContainer().getTopic(), UUID.randomUUID().toString());
+
+        final Record firstRecord = records.get(0);
+        long eventReceiveLag = 0;
+        if (firstRecord.getSinkRecord().timestamp() != null) {
+            eventReceiveLag = System.currentTimeMillis() - firstRecord.getSinkRecord().timestamp();
+        }
+        final String topic = firstRecord.getRecordOffsetContainer().getTopic();
+        QueryIdentifier queryId = new QueryIdentifier(topic, UUID.randomUUID().toString());
 
         try {
             LOGGER.info("doInsert - Records: [{}] - {}", records.size(), queryId);
             dbWriter.doInsert(records, queryId, errorReporter);
+            statistics.recordTopicStats(records.size(), topic, eventReceiveLag);
         } catch (Exception e) {
+            statistics.recordTopicStatsOnFailure(records.size(), topic, eventReceiveLag);
             throw new RuntimeException(queryId.toString(), e);//This way the queryId will propagate
         }
     }
