@@ -4,7 +4,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Not thread-safe Exponential Moving Average implementation
+ * Not thread-safe Simple Moving Average implementation.
+ * This class accumulates sum of values and calculates average on demand.
+ * Values are stored in circular buffer to guarantee only last N values are used.
+ * It is needed to keep metric responsive after long periods of measurement.
+ *
  */
 public class SimpleMovingAverage {
 
@@ -22,6 +26,7 @@ public class SimpleMovingAverage {
 
     public void add(long value) {
         int insertIndex = head.getAndIncrement() % values.length;
+        // update sum by subtracting the oldest value (at insertIndex) and adding new value.
         sum.addAndGet(value - values[insertIndex]);
         values[insertIndex] = value;
     }

@@ -38,7 +38,7 @@ public interface TopicStatisticsMBean {
     /**
      * Mean receive lag what is calculated as receive by task time - record timestamp.
      * Calculated using a first record timestamp in the batch.
-     * Implemented as exponential moving average. Reset on restart.
+     * Implemented as simple moving average. Reset on restart.
      *
      * @return counter value
      */
