@@ -1,0 +1,58 @@
+---
+database:
+  columns:
+    - name: offset
+      type: UInt32
+    - name: name
+      type: String
+    - name: int8_v1
+      type: Int8
+    - name: UInt8_v2
+      type: UInt8
+    - name: int16_v1
+      type: Int16
+    - name: UInt16_v2
+      type: UInt16
+    - name: int32_v1
+      type: Int32
+    - name: UInt32_v2
+      type: UInt32
+    - name: int64_v1
+      type: Int64
+    - name: UInt64_v2
+      type: UInt64
+    - name: float32_v1
+      type: Float32
+    - name: float64_v1
+      type: Float64
+    - name: bool_v1
+      type: Bool
+message:
+  fields:
+    - name: offset
+      type: INT32
+      value: $i
+    - name: name
+      type: STRING
+    - name: int8_v1
+      type: INT8
+    - name: UInt8_v2
+      type: INT8
+    - name: int16_v1
+      type: INT16
+    - name: UInt16_v2
+      type: INT16
+    - name: int32_v1
+      type: INT32
+    - name: UInt32_v2
+      type: INT32
+    - name: int64_v1
+      type: INT64
+    - name: UInt64_v2
+      type: INT64
+    - name: float32_v1
+      type: FLOAT32
+    - name: float64_v1
+      type: FLOAT64
+    - name: bool_v1
+      type: BOOLEAN

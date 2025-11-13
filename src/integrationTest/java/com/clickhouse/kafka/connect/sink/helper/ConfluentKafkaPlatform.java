@@ -25,18 +25,14 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class ConfluentKafkaPlatform {
+public abstract class ConfluentKafkaPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
-
-    private static final String CONFLUENT_VERSION = "7.7.x";
 
     private ComposeContainer platform;
     private String dbName;
     private int dbPort;
     private int connectPort;
 
-    @BeforeAll
     public void setup() {
 
         platform = new ComposeContainer(new File("src/integrationTest/resources/kafka_compose.yaml"))
@@ -55,34 +51,24 @@ public class ConfluentKafkaPlatform {
     }
 
 
-    @AfterAll
     public void teardown() {
         platform.stop();
     }
 
-    @Test
-    void printConnectors() {
-        Object response = queryConnect(connectPort, "/connector-plugins");
-        System.out.println(response);
-
+    public ComposeContainer getPlatform() {
+        return platform;
     }
 
-    @Test
-    void writeJson() {
-        String topic = "test_json_events";
+    public String getDbName() {
+        return dbName;
+    }
 
-        createDatabase(dbName, "default", "");
-        postDbQuery("CREATE TABLE " + dbName + "." + topic + "(id Int32, name String) ENGINE = MergeTree() ORDER BY id", "default", "");
+    public int getDbPort() {
+        return dbPort;
+    }
 
-        Map<String, String> config = createConnectorConfig();
-        config.put("errors.tolerance", "all");
-        config.put("exactlyOnce", "false");
-        config.put("topics", topic);
-        HttpResponse<String> createResponse = createConnector("test-connector", config);
-        System.out.print(createResponse.body());
-
-        Object response = queryConnect(connectPort, "/connectors");
-        System.out.println(response);
+    public int getConnectPort() {
+        return connectPort;
     }
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
@@ -118,14 +104,14 @@ public class ConfluentKafkaPlatform {
 
         try {
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:" + connectPort + "/connectors"))
-                .header("Content-Type", "application/json;charset=UTF-8")
-                .header("Accept", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestObj)))
-                .build();
-        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        return response;
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + connectPort + "/connectors"))
+                    .header("Content-Type", "application/json;charset=UTF-8")
+                    .header("Accept", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestObj)))
+                    .build();
+            HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            return response;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -163,7 +149,7 @@ public class ConfluentKafkaPlatform {
     }
 
     public void postDbQuery(String body, String user, String password) {
-        String requestUrl = String.format("http://%s:%d/", "localhost" , dbPort);
+        String requestUrl = String.format("http://%s:%d/", "localhost", dbPort);
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(requestUrl))

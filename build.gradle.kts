@@ -156,6 +156,11 @@ dependencies {
     testFixturesImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testFixturesImplementation("com.google.code.gson:gson:${project.extra["gson"]}")
     testFixturesImplementation("org.json:json:${project.extra["org.json"]}")
+    testFixturesImplementation("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
+    testFixturesImplementation("com.fasterxml.jackson.core:jackson-databind:${project.extra["jackson"]}")
+    testFixturesImplementation("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson"]}")
+    testFixturesImplementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${project.extra["jackson"]}")
+
 }
 
 
