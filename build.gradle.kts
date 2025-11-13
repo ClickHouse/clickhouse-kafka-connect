@@ -90,7 +90,6 @@ dependencies {
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.google.code.gson:gson:${project.extra["gson"]}")
-
     implementation("org.apache.httpcomponents.client5:httpclient5:${project.extra["httpclient"]}")
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok

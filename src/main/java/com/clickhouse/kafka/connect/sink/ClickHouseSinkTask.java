@@ -103,4 +103,7 @@ public class ClickHouseSinkTask extends SinkTask {
         };
     }
 
+    public int taskId() {
+        return this.proxySinkTask == null ? Integer.MAX_VALUE : this.proxySinkTask.getId();
+    }
 }

@@ -13,6 +13,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -46,7 +47,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void writeUTF8StringPrimitive() throws IOException {
-        ClickHouseWriter writer = new ClickHouseWriter();
+        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
         Column column = Column.extractColumn(newDescriptor("utf8String", "String"));
         ClickHousePipedOutputStream out = new ClickHousePipedOutputStream(null) {
             List<Byte> bytes = new ArrayList<>();
@@ -107,7 +108,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
 
-        ClickHouseWriter chw = new ClickHouseWriter();
+        ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(createConfig());
         chw.setClient(chc);
 
@@ -134,7 +135,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s (`_id` String, `result` Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32 )) Engine = MergeTree ORDER BY _id");
 
-        ClickHouseWriter chw = new ClickHouseWriter();
+        ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(createConfig());
         chw.setClient(chc);
 

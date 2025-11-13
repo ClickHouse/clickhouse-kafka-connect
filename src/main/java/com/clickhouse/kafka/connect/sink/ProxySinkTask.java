@@ -1,6 +1,5 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
@@ -11,7 +10,6 @@ import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import com.clickhouse.kafka.connect.util.jmx.ExecutionTimer;
-import com.clickhouse.kafka.connect.util.jmx.MBeanServerUtils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
@@ -30,14 +28,14 @@ public class ProxySinkTask {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProxySinkTask.class);
     private static final AtomicInteger NEXT_ID = new AtomicInteger();
-    private Processing processing = null;
-    private StateProvider stateProvider = null;
-    private DBWriter dbWriter = null;
-    private ClickHouseSinkConfig clickHouseSinkConfig = null;
+    private final Processing processing;
+    private final StateProvider stateProvider;
+    private final DBWriter dbWriter;
+    private final ClickHouseSinkConfig clickHouseSinkConfig;
     private Timer tableRefreshTimer;
 
     private final SinkTaskStatistics statistics;
-    private int id = NEXT_ID.getAndAdd(1);
+    private final int id = NEXT_ID.getAndAdd(1);
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
         this.clickHouseSinkConfig = clickHouseSinkConfig;
@@ -47,8 +45,10 @@ public class ProxySinkTask {
         } else {
             this.stateProvider = new InMemoryState();
         }
+        this.statistics = new SinkTaskStatistics(id);
+        this.statistics.registerMBean();
 
-        ClickHouseWriter chWriter = new ClickHouseWriter();
+        ClickHouseWriter chWriter = new ClickHouseWriter(this.statistics);
         this.dbWriter = chWriter;
 
         // Add table mapping refresher
@@ -62,26 +62,12 @@ public class ProxySinkTask {
         boolean isStarted = dbWriter.start(clickHouseSinkConfig);
         if (!isStarted)
             throw new RuntimeException("Connection to ClickHouse is not active.");
-        processing = new Processing(stateProvider, dbWriter, errorReporter, clickHouseSinkConfig);
+        processing = new Processing(stateProvider, dbWriter, errorReporter, clickHouseSinkConfig, statistics);
 
-        this.statistics = MBeanServerUtils.registerMBean(new SinkTaskStatistics(), getMBeanNAme());
-    }
-
-    private String getMBeanNAme() {
-        return String.format("com.clickhouse:type=ClickHouseKafkaConnector,name=SinkTask%d,version=%s", id, com.clickhouse.kafka.connect.sink.Version.ARTIFACT_VERSION);
     }
 
     public void stop() {
-        if (tableRefreshTimer != null) {
-            try {
-                tableRefreshTimer.cancel();
-            } catch (Exception e) {
-                LOGGER.error("Error canceling table refresh timer on com.clickhouse.kafka.connect.sink.ProxySinkTask.stop", e);
-            }
-        }
-
-        LOGGER.info("Stopping MBean server {}", getMBeanNAme());
-        MBeanServerUtils.unregisterMBean(getMBeanNAme());
+        statistics.unregisterMBean();
     }
 
     public void put(final Collection<SinkRecord> records) throws IOException, ExecutionException, InterruptedException {
@@ -90,8 +76,8 @@ public class ProxySinkTask {
             return;
         }
         // Group by topic & partition
+        statistics.receivedRecords(records);
         ExecutionTimer taskTime = ExecutionTimer.start();
-        statistics.receivedRecords(records.size());
         LOGGER.trace(String.format("Got %d records from put API.", records.size()));
         ExecutionTimer processingTime = ExecutionTimer.start();
 
@@ -111,5 +97,9 @@ public class ProxySinkTask {
             processing.doLogic(rec);
         }
         statistics.taskProcessingTime(taskTime);
+    }
+
+    public int getId() {
+        return id;
     }
 }
