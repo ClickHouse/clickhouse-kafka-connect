@@ -7,11 +7,10 @@ import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.query.GenericRecord;
-import com.clickhouse.client.api.query.Records;
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
@@ -19,10 +18,13 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import javax.management.InstanceNotFoundException;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -115,11 +117,12 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         createClient(props, false);
         String tableName = createTopicName("splitTopic");
         int dbRange = 10;
+        ClickHouseHelperClient chc = createClient(props);
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
             dropTable(chc, tmpTableName);
-            createDatabase(databaseName);
+            createDatabase(databaseName, chc);
             createTable(chc, tmpTableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         });
 
@@ -208,5 +211,132 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         for (GenericRecord record : records) {
             assertTrue(record.getString(1).startsWith(ClickHouseHelperClient.CONNECT_CLIENT_NAME));
         }
+    }
+
+    @Test
+    public void statisticsTest() throws Exception {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("topic.statistics_test-01");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
+        sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        final int taskId = chst.taskId();
+        chst.put(sr);
+        Thread.sleep(5000);
+        chst.put(sr);
+
+        final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+
+        // Task metrics
+        final String mbeanName = SinkTaskStatistics.getMBeanName(taskId);
+        ObjectName sinkMBean = new ObjectName(mbeanName);
+        Object receivedRecords = mBeanServer.getAttribute(sinkMBean, "ReceivedRecords");
+        assertEquals(sr.size() * 2L, ((Long)receivedRecords).longValue());
+        Object totalProcessingTime = mBeanServer.getAttribute(sinkMBean, "RecordProcessingTime");
+        assertTrue((Long)totalProcessingTime > 1000L);
+        Object totalTaskProcessingTime = mBeanServer.getAttribute(sinkMBean, "TaskProcessingTime");
+        assertTrue((Long)totalTaskProcessingTime > 1000L);
+        Object totalInsertedRecords = mBeanServer.getAttribute(sinkMBean, "InsertedRecords");
+        assertEquals(sr.size() * 2L, ((Long)totalInsertedRecords).longValue());
+        Object receivedBatches = mBeanServer.getAttribute(sinkMBean, "ReceivedBatches");
+        assertEquals(2, ((Long)receivedBatches).longValue());
+        Object failedRecords = mBeanServer.getAttribute(sinkMBean, "FailedRecords");
+        assertEquals(0, ((Long)failedRecords).longValue());
+        Object eventReceiveLag = mBeanServer.getAttribute(sinkMBean, "MeanReceiveLag");
+        assertTrue((Long)eventReceiveLag > 0);
+        Object insertedBytes = mBeanServer.getAttribute(sinkMBean, "InsertedBytes");
+        assertTrue((Long)insertedBytes >= 872838);
+
+
+        // Topic metrics
+        final ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getTopicMBeanName(taskId, topic));
+        Object insertedRecords = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulRecords");
+        assertEquals(sr.size() * 2L, ((Long)insertedRecords).longValue());
+        Object insertedBatches = mBeanServer.getAttribute(topicMbeanName, "TotalSuccessfulBatches");
+        assertEquals(2, ((Long)insertedBatches).longValue());
+
+        Object insertTime = mBeanServer.getAttribute(topicMbeanName, "MeanInsertTime");
+        assertTrue((Long)insertTime >= 0);
+
+        Object failedTopicRecords = mBeanServer.getAttribute(topicMbeanName, "TotalFailedRecords");
+        assertEquals(0, ((Long)failedTopicRecords).longValue());
+        Object failedTopicBatches = mBeanServer.getAttribute(topicMbeanName, "TotalFailedBatches");
+        assertEquals(0, ((Long)failedTopicBatches).longValue());
+
+        chst.stop();
+
+        assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(sinkMBean));
+        assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(topicMbeanName));
+    }
+
+    @Test
+    public void receiveLagTimeTest() throws Exception {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("schemaless_simple_batch_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        final int taskId = chst.taskId();
+        int n = 40;
+        for (int i = 0; i < n; i++) {
+
+            long k;
+            if ( i < n * 0.25) {
+                k = 2000;
+            } else if ( i < n * 0.50) {
+                k = 3000;
+            } else {
+                k = 500;
+            }
+
+            List<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+            SinkRecord first = sr.get(0);
+            long createTime = System.currentTimeMillis() - k;
+            first = first.newRecord(first.topic(), first.kafkaPartition(), first.keySchema(), first.key(), first.valueSchema(),
+                    first.value(), createTime);
+            sr.set(0, first);
+            chst.put(sr);
+
+            Thread.sleep(1000);
+        }
+        MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+
+        ObjectName topicMbeanName = new ObjectName(SinkTaskStatistics.getMBeanName(taskId));
+        Object eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
+        assertTrue((Long)eventReceiveLag < 2000L);
+        assertTrue((Long)eventReceiveLag > 400L, "eventReceiveLag: " + eventReceiveLag);
+
+        for (int i = 0; i < n; i++) {
+
+            long k = 300;
+            List<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
+            SinkRecord first = sr.get(0);
+            long createTime = System.currentTimeMillis() - k;
+            first = first.newRecord(first.topic(), first.kafkaPartition(), first.keySchema(), first.key(), first.valueSchema(),
+                    first.value(), createTime);
+            sr.set(0, first);
+            chst.put(sr);
+
+            Thread.sleep(1000);
+        }
+
+        eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
+        assertTrue((Long)eventReceiveLag < 1000L, "eventReceiveLag: " + eventReceiveLag);
+        assertTrue((Long)eventReceiveLag > 300L, "eventReceiveLag: " + eventReceiveLag);
+
+        chst.stop();
     }
 }

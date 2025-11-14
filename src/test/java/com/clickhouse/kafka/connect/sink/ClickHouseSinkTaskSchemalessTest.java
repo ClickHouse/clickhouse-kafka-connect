@@ -8,6 +8,7 @@ import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExt
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.Serializable;
@@ -15,11 +16,16 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
+
+    static {
+        System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "DEBUG");
+    }
 
     @Test
     public void primitiveTypesTest() {

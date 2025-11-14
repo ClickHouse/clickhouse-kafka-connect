@@ -50,7 +50,7 @@ repositories {
 }
 
 extra.apply {
-    set("clickHouseDriverVersion", "0.9.2")
+    set("clickHouseDriverVersion", "0.9.4")
     set("kafkaVersion", "2.7.0")
     set("gson", "2.13.1")
     set("jackson", "2.19.1")
@@ -86,7 +86,6 @@ dependencies {
     implementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     implementation("com.google.code.gson:gson:${project.extra["gson"]}")
-
     implementation("org.apache.httpcomponents.client5:httpclient5:5.5")
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
@@ -183,7 +182,7 @@ tasks.withType<JavaCompile> {
 tasks.withType<Test> {
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1
     tasks.getByName("check").dependsOn(this)
-    systemProperty("file.encoding", "windows-1252") // run tests with different encoding
+//    systemProperty("file.encoding", "windows-1252") // run tests with different encoding
     useJUnitPlatform()
     testLogging {
         events("passed", "skipped", "failed")
