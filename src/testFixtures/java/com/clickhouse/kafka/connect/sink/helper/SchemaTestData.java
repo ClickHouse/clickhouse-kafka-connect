@@ -1,10 +1,18 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.kafka.connect.test.TestProtos;
+import io.confluent.connect.avro.AvroConverter;
+import io.confluent.connect.protobuf.ProtobufConverterConfig;
+import io.confluent.connect.protobuf.ProtobufDataConfig;
+import io.confluent.kafka.schemaregistry.ParsedSchema;
+import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.data.Time;
@@ -23,10 +31,12 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
 public class SchemaTestData {
@@ -724,6 +734,9 @@ public class SchemaTestData {
                 .field("date32_number", Schema.OPTIONAL_INT32_SCHEMA)
                 .field("datetime_int", Schema.INT32_SCHEMA)
                 .field("datetime_number", Schema.INT64_SCHEMA)
+                .field("datetime64_3_number", Timestamp.SCHEMA)
+                .field("datetime64_6_number", Timestamp.SCHEMA)
+                .field("datetime64_9_number", Timestamp.SCHEMA)
                 .field("datetime64_number", Schema.INT64_SCHEMA)
                 .field("timestamp_int64",  Timestamp.SCHEMA)
                 .field("timestamp_date", Timestamp.SCHEMA)
@@ -746,7 +759,7 @@ public class SchemaTestData {
             LocalDateTime localDateTime = LocalDateTime.now();
             long localDateTimeLong = localDateTime.toEpochSecond(ZoneOffset.UTC);
             int localDateTimeInt = (int)localDateTime.toEpochSecond(ZoneOffset.UTC);
-
+            Date localDateTimeDate = Date.from(localDateTime.atZone(ZoneOffset.UTC).toInstant());
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short)n)
                     .put("date_number", localDateInt)
@@ -754,6 +767,9 @@ public class SchemaTestData {
                     .put("datetime_int", localDateTimeInt)
                     .put("datetime_number", localDateTimeLong)
                     .put("datetime64_number", currentTime)
+                    .put("datetime64_3_number", localDateTimeDate)
+                    .put("datetime64_6_number", localDateTimeDate)
+                    .put("datetime64_9_number", localDateTimeDate)
                     .put("timestamp_int64", new Date(System.currentTimeMillis()))
                     .put("timestamp_date",  new Date(System.currentTimeMillis()))
                     .put("time_int32", new Date(System.currentTimeMillis()))
@@ -784,6 +800,8 @@ public class SchemaTestData {
             Schema NESTED_SCHEMA = SchemaBuilder.struct()
                     .field("off16", Schema.INT16_SCHEMA)
                     .field("arr_datetime64_number", SchemaBuilder.array(Schema.INT64_SCHEMA).build())
+                    .field("arr_datetime64_3_number", SchemaBuilder.array(Schema.INT64_SCHEMA).build())
+                    .field("arr_datetime64_6_number", SchemaBuilder.array(Schema.INT64_SCHEMA).build())
                     .field("arr_timestamp_date", SchemaBuilder.array(Timestamp.SCHEMA).build())
                     .build();
 
@@ -800,6 +818,8 @@ public class SchemaTestData {
                 Struct value_struct = new Struct(NESTED_SCHEMA)
                         .put("off16", (short)n)
                         .put("arr_datetime64_number", arrayDateTime64Number)
+                        .put("arr_datetime64_3_number", arrayDateTime64Number)
+                        .put("arr_datetime64_6_number", arrayDateTime64Number)
                         .put("arr_timestamp_date", arrayTimestamps)
                         ;
 
@@ -1543,5 +1563,26 @@ public class SchemaTestData {
                                 .build()
                 )
                 .build();
+    }
+
+    public static List<SinkRecord> convertAvroToSinkRecord(String topic, ParsedSchema schema, List<Object> records) throws Exception {
+        MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
+        // Register your test schema
+        String subject = topic + "-value";
+        schemaRegistry.register(subject, schema);
+
+        AvroConverter converter = new AvroConverter(schemaRegistry);
+        Map<String, Object> converterConfig = new HashMap<>();
+        converterConfig.put(ProtobufConverterConfig.AUTO_REGISTER_SCHEMAS, true);
+        converterConfig.put(ProtobufDataConfig.GENERATE_INDEX_FOR_UNIONS_CONFIG, false);
+        converterConfig.put(KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-url");
+
+        converter.configure(converterConfig, false);
+        KafkaAvroSerializer serializer = new KafkaAvroSerializer(schemaRegistry);
+
+        return records.stream().map(r -> converter.toConnectData(topic, serializer.serialize(topic, r)))
+                .collect(ArrayList::new, (schemaAndValues, schemaAndValue) ->
+                        schemaAndValues.add(new SinkRecord(topic, 0, null, null, schemaAndValue.schema(), schemaAndValue.value(), schemaAndValues.size())),
+                        ArrayList::addAll);
     }
 }
