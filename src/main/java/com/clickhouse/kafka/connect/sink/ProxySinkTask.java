@@ -9,6 +9,7 @@ import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
+import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.ExecutionTimer;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -36,9 +37,11 @@ public class ProxySinkTask {
 
     private final SinkTaskStatistics statistics;
     private final int id = NEXT_ID.getAndAdd(1);
+    private final ErrorReporter errorReporter;
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
         this.clickHouseSinkConfig = clickHouseSinkConfig;
+        this.errorReporter = errorReporter;
         LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.isExactlyOnce());
         if ( clickHouseSinkConfig.isExactlyOnce() ) {
             this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
@@ -94,7 +97,19 @@ public class ProxySinkTask {
         for (String topicAndPartition : dataRecords.keySet()) {
             // Running on etch topic & partition
             List<Record> rec = dataRecords.get(topicAndPartition);
-            processing.doLogic(rec);
+            try {
+                processing.doLogic(rec);
+            } catch (Exception e) {
+                boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.isErrorsTolerance();
+                Utils.handleException(e, errorTolerance, records); // This will throw RetriableException and failed records will be retried. No need to continue with the next topic & partition
+                if (errorTolerance && errorReporter != null) {
+                    // At this point it is not a retriable exception and errorTolerance is enabled so we would continue with the next topic & partition
+                    // after sending failed ones to DLQ
+                    // we will report them as commited to connector runtime so failed records should be retried manually.
+                    LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
+                    rec.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
+                }
+            }
         }
         statistics.taskProcessingTime(taskTime);
     }
