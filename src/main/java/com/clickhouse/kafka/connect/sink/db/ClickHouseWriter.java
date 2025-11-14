@@ -306,6 +306,12 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
+    /**
+     * BASES array maps precision levels to scaling factors for date/time values.
+     * The index corresponds to the precision (e.g., index 3 = precision 3).
+     * Value at each index is the scaling factor (e.g., value 1 = no scaling).
+     * Example: BASES[3] == 1 means precision 3 uses no scaling.
+     */
     private int[] BASES = new int[] { 1_000, 100, 10, 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000 };
 
     protected void doWriteDates(Type type, OutputStream stream, Data value, int precision, String columnName) throws IOException {

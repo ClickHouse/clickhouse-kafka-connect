@@ -44,10 +44,16 @@ import org.testcontainers.shaded.org.apache.commons.lang3.RandomUtils;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.LongStream;
@@ -1291,17 +1297,18 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         final String topic = createTopicName("test_avro_timestamps");
         final ZoneId tz = ZoneId.of("UTC");
         final Instant now = Instant.now();
+
         List<Object> events = IntStream.range(0, 3).mapToObj(i -> {
+            Instant time = now.plus(i * 1000, ChronoUnit.MILLIS);
             Event event = Event.newBuilder()
                     .setId(i)
-                    .setTime1(now)
-                    .setTime2(LocalTime.ofInstant(now, tz))
+                    .setTime1(time)
+                    .setTime2(LocalTime.ofInstant(time, tz))
                     .build();
             return event;
         }).collect(Collectors.toList());
 
         List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(Event.getClassSchema()), events);
-        System.out.println(records);
 
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
@@ -1313,5 +1320,18 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.start(props);
         chst.put(records);
         chst.stop();
+
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(events.size(), rows.size());
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(tz);
+        DateTimeFormatter localFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+        for (int i = 0; i < events.size(); i++) {
+            Event event = (Event) events.get(i);
+            JSONObject row = rows.get(i);
+            assertEquals(event.getId(), row.getLong("id"));
+            assertEquals(formatter.format(event.getTime1()), row.get("time1"));
+            assertEquals(event.getTime2().atDate(LocalDate.of(1970, 1, 1)).format(localFormatter), row.get("time2"));
+        }
     }
 }
