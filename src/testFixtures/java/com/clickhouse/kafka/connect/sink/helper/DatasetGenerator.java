@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
+import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -10,6 +11,7 @@ import com.google.protobuf.DynamicMessage;
 import com.google.protobuf.Message;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -23,9 +25,8 @@ import java.util.Map;
 
 public class DatasetGenerator {
 
-
-    private final ObjectMapper objectMapper = new ObjectMapper(new YAMLFactory());
-
+    private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory());
+    private final ObjectMapper json = new ObjectMapper(new JsonFactory());
 
     public DatasetGenerator() {
     }
@@ -33,7 +34,7 @@ public class DatasetGenerator {
     public ObjectNode loadDatasetFromResources(String resourceName) {
         try (InputStream in = this.getClass().getResourceAsStream(resourceName)) {
 
-            return objectMapper.readValue(in, ObjectNode.class);
+            return yaml.readValue(in, ObjectNode.class);
 
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -45,7 +46,7 @@ public class DatasetGenerator {
         // Table definition
         StringBuilder tableDefinition = new StringBuilder();
         tableDefinition.append("CREATE TABLE ");
-        tableDefinition.append("{tableName}");
+        tableDefinition.append("`{tableName}`");
         tableDefinition.append(" (");
         dataset.get("database").get("columns").forEach(column -> {
             tableDefinition.append(column.get("name").asText());
@@ -169,9 +170,11 @@ public class DatasetGenerator {
                     break;
                 case BOOLEAN:
                     value.put(field.name(), offset % 2 == 0);
+                    break;
                 case FLOAT32:
                 case FLOAT64:
                     value.put(field.name(), offset * 10.123456);
+                    break;
                 case STRING:
                     value.put(field.name(), "value_" + offset);
                     break;
@@ -255,8 +258,8 @@ public class DatasetGenerator {
             this.schema = schema;
         }
 
-        public String getTableDefinition() {
-            return tableDefinition;
+        public String getTableDefinition(String tableName) {
+            return tableDefinition.replace("{tableName}", tableName);
         }
 
         public void setTableDefinition(String tableDefinition) {
@@ -288,6 +291,21 @@ public class DatasetGenerator {
 
             for (int i = 0; i < count; i++) {
                 records.add(generateProtobufMessage(i, protobufSchema));
+            }
+
+            return records;
+        }
+
+        public List<ProducerRecord<String, String>> generateStringProducerRecords(String topic, int count) {
+            List<ProducerRecord<String, String>> records = new ArrayList<>(count);
+
+            try {
+                for (int i = 0; i < count; i++) {
+                    Map<String, Object> value = generateRecordValue(i, schema);
+                    records.add(new ProducerRecord<>(topic, "id_" + i, json.writeValueAsString(value)));
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
 
             return records;
@@ -327,5 +345,9 @@ public class DatasetGenerator {
         data.generateAvroRecords(10).forEach(System.out::println);
         System.out.println("Protobuf Data -----");
         data.generateProtobufMessages(10).forEach(System.out::println);
+        System.out.println("String Data -----");
+        data.generateStringProducerRecords("test", 10).forEach(System.out::println);
+        System.out.println("Example table CREATE stmt ----");
+        System.out.println(data.getTableDefinition("test_table_01"));
     }
 }
