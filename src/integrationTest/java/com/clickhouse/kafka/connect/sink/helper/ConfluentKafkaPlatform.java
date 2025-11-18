@@ -38,7 +38,7 @@ import java.util.Map;
 import java.util.Properties;
 
 public abstract class ConfluentKafkaPlatform {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
+    protected static final Logger LOGGER = LoggerFactory.getLogger(ConfluentKafkaPlatform.class);
 
     private ComposeContainer platform;
     private String dbName;
