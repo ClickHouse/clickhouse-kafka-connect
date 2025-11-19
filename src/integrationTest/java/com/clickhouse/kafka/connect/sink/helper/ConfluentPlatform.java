@@ -1,7 +1,6 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 
-import com.clickhouse.client.ClickHouseProtocol;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -10,7 +9,6 @@ import okhttp3.Response;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -23,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalUnit;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +33,11 @@ public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
 
     public static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
+    public static final String DATA_GEN_CONNECTOR_CLASS = "io.confluent.kafka.connect.datagen.DatagenConnector";
+    public static final String KAFKA_STRING_CONVERTER = "org.apache.kafka.connect.storage.StringConverter";
+    public static final String KAFKA_JSON_CONVERTER = "org.apache.kafka.connect.json.JsonConverter";
+    public static final String CONNECTOR_MAX_TASKS_PROP = "tasks.max";
+    public static final String CONNECTOR_TASKS_MAX = "1";
 
     private static final String CONFLUENT_VERSION = "7.7.0";
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
@@ -506,7 +508,6 @@ public class ConfluentPlatform {
         LOGGER.info("Generated records for [{}]: Total (By Offset): [{}], Diff from Theoretical Total: [{}]", topicName, offsetTotal, runningTotal - offsetTotal);
         return (int) offsetTotal;
     }
-
 
     public boolean isConnectorRunning(String connectorName) throws IOException {
         String connectors = getConnectors();

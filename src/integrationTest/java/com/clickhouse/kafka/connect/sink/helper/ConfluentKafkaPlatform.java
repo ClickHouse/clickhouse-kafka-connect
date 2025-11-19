@@ -7,7 +7,6 @@ import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
-import com.clickhouse.kafka.connect.sink.ClickHouseCloudTest;
 import com.clickhouse.kafka.connect.sink.Version;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
