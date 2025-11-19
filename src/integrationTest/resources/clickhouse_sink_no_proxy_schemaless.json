@@ -9,10 +9,10 @@
     "topics": "%s",
     "hostname": "%s",
     "port": "%s",
-    "database": "%s",
+    "database": "default",
     "username": "%s",
     "password": "%s",
-    "ssl": "true",
+    "ssl": "false",
     "exactlyOnce" : "%b"
   }
 }

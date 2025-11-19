@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 
+import com.clickhouse.client.ClickHouseProtocol;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -9,6 +10,7 @@ import okhttp3.Response;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -32,6 +34,8 @@ import java.util.regex.Pattern;
 
 public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
+
+    public static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
 
     private static final String CONFLUENT_VERSION = "7.7.0";
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
@@ -147,7 +151,7 @@ public class ConfluentPlatform {
                 .withEnv("CONNECT_PRODUCER_INTERCEPTOR_CLASSES", "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor")
                 .withEnv("CONNECT_CONSUMER_INTERCEPTOR_CLASSES", "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor")
                 .withEnv("CONNECT_PLUGIN_PATH", "/usr/share/java,/usr/share/confluent-hub-components")
-                .withEnv("CONNECT_LOG4J_LOGGERS", "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR,com.clickhouse=DEBUG")
+                .withEnv("CONNECT_LOG4J_LOGGERS", "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR,com.clickhouse=DEBUG,org.apache.hc.client5=DEBUG")
                 .waitingFor(Wait.forHttp("/connectors").forStatusCode(200));
 
         if (connectorPathList != null) {

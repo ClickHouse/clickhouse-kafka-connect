@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
+import org.testcontainers.utility.MountableFile;
 
 import java.io.File;
 import java.io.IOException;
@@ -39,19 +40,24 @@ public class ClickHouseSinkConnectorIntegrationTest {
     public static Proxy clickhouseProxy;
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
 
+    private final boolean useProxy = false;
+
     @BeforeAll
-    public static void setup() {
+    public static void setup() throws IOException {
         Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
         String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse")
+                .withCopyFileToContainer(MountableFile.forClasspathResource("/keeper_map_config.xml"), "/etc/clickhouse-server/config.d/keeper_map_config.xml");
         db.start();
 
-        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
+        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.12.0").withNetwork(network).withNetworkAliases("toxiproxy");
         toxiproxy.start();
+        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
+        toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
 
         chcNoProxy = createClientNoProxy(getTestProperties());
     }
@@ -62,6 +68,13 @@ public class ClickHouseSinkConnectorIntegrationTest {
         toxiproxy.stop();
         confluentPlatform.close();
     }
+
+
+    @BeforeEach
+    public void beforeEach() throws IOException {
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+    }
+
 
     private static Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
@@ -93,13 +106,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
         return createClient(props);
     }
 
-
-
-
-
-
-
-
     private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen.json", topicName, numberOfPartitions, numberOfRecords);
     }
@@ -107,18 +113,22 @@ public class ClickHouseSinkConnectorIntegrationTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-
-
-
     private void setupConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
         createMergeTreeTable(chcNoProxy, topicName);
 
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
+        String jsonString;
+        if (useProxy) {
+            String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getUsername(), db.getPassword(), false, "toxiproxy", 8666);
+        } else {
+            String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_no_proxy.json")));
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getUsername(), db.getPassword(), false);
+        }
 
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
@@ -129,10 +139,16 @@ public class ClickHouseSinkConnectorIntegrationTest {
         dropTable(chcNoProxy, topicName);
         createMergeTreeTable(chcNoProxy, topicName);
 
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
-
+        String jsonString;
+        if (useProxy) {
+            String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getUsername(), db.getPassword(), false, "toxiproxy", 8666);
+        } else {
+            String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json")));
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getUsername(), db.getPassword(), false);
+        }
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
     }
@@ -143,30 +159,19 @@ public class ClickHouseSinkConnectorIntegrationTest {
         dropTable(chcNoProxy, topicName);
         createMergeTreeTable(chcNoProxy, topicName);
 
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getPassword(), "toxiproxy", 8666);
-
+        String jsonString;
+        if (useProxy) {
+            String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getUsername(), db.getPassword(), false, "toxiproxy", 8666);
+        } else {
+            String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_no_proxy_with_jdbc_prop.json")));
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort(), db.getUsername(), db.getPassword(), false);
+        }
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
     }
-
-
-    @BeforeEach
-    public void beforeEach() throws IOException {
-        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-
-        if (clickhouseProxy != null) {
-            clickhouseProxy.delete();
-        }
-
-        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
-    }
-
-
-
-
 
     @Test
     public void stockGenSingleTaskTest() throws IOException, InterruptedException {
