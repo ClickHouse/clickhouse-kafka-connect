@@ -19,6 +19,10 @@ import org.testcontainers.utility.MountableFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +33,7 @@ import java.util.regex.Pattern;
 public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
 
-    private static final String CONFLUENT_VERSION = "7.5.0";
+    private static final String CONFLUENT_VERSION = "7.7.0";
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
             "confluentinc/cp-kafka-rest:" + CONFLUENT_VERSION
     );
@@ -45,9 +49,9 @@ public class ConfluentPlatform {
     private static final DockerImageName CP_SCHEMA_REGISTRY = DockerImageName.parse(
             "confluentinc/cp-schema-registry:" + CONFLUENT_VERSION
     );
-    // 0.4.0-6.0.1
+    // 0.6.4-7.6.0
     private static final DockerImageName CP_DATA_GEN = DockerImageName.parse(
-            "cnfldemos/cp-server-connect-datagen:0.6.2-7.5.0"
+            "cnfldemos/cp-server-connect-datagen:0.6.4-7.6.0"
     );
 
     private static final DockerImageName CP_CONTROL_CENTER = DockerImageName.parse(
@@ -81,7 +85,8 @@ public class ConfluentPlatform {
                 .withNetwork(network)
                 .withExposedPorts(2181)
                 .withNetworkAliases("zookeeper")
-                .withEnv("ZOOKEEPER_CLIENT_PORT", "2181");
+                .withEnv("ZOOKEEPER_CLIENT_PORT", "2181")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
 
         cp_server = new GenericContainer<>(CP_SERVER_IMAGE)
                 .withNetwork(network)
@@ -102,11 +107,13 @@ public class ConfluentPlatform {
                 .withEnv("KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR","1")
                 .withEnv("KAFKA_JMX_PORT","9101")
                 .withEnv("KAFKA_JMX_HOSTNAME","localhost")
-                .withEnv("KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL","http://schema-registry:8081")
+//                .withEnv("KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL","http://schema-registry:8081")
                 .withEnv("CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS","broker:29092")
                 .withEnv("CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS","1")
                 .withEnv("CONFLUENT_METRICS_ENABLE","true")
-                .withEnv("CONFLUENT_SUPPORT_CUSTOMER_ID","anonymous'");
+                .withEnv("CONFLUENT_SUPPORT_CUSTOMER_ID","anonymous'")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
+
 
         cp_schema_registry = new GenericContainer<>(CP_SCHEMA_REGISTRY)
                 .withNetwork(network)
@@ -115,7 +122,8 @@ public class ConfluentPlatform {
                 .dependsOn(cp_server)
                 .withEnv("SCHEMA_REGISTRY_HOST_NAME", "schema-registry")
                 .withEnv("SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS", "broker:29092")
-                .withEnv("SCHEMA_REGISTRY_LISTENERS", "http://0.0.0.0:8081");
+                .withEnv("SCHEMA_REGISTRY_LISTENERS", "http://0.0.0.0:8081")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
 
         cp_data_gen = new GenericContainer<>(CP_DATA_GEN)
                 .withNetwork(network)
@@ -164,7 +172,9 @@ public class ConfluentPlatform {
                 .withEnv("CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS", "1")
                 .withEnv("CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS", "1")
                 .withEnv("CONFLUENT_METRICS_TOPIC_REPLICATION", "1")
-                .withEnv("PORT", "9021");
+                .withEnv("PORT", "9021")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
+
 
         cp_ksqldb_server = new GenericContainer<>(CP_KSQLDB_SERVER)
                 .withNetwork(network)
@@ -189,39 +199,42 @@ public class ConfluentPlatform {
                 .withNetwork(network)
                 .withNetworkAliases("rest-proxy")
                 .withExposedPorts(8082)
-                .dependsOn(cp_server, cp_schema_registry, cp_data_gen)
+                .dependsOn(cp_server, cp_schema_registry)
 
                 .withEnv("KAFKA_REST_HOST_NAME", "rest-proxy")
                 .withEnv("KAFKA_REST_BOOTSTRAP_SERVERS", "broker:29092")
                 .withEnv("KAFKA_REST_LISTENERS", "http://0.0.0.0:8082")
-                .withEnv("KAFKA_REST_SCHEMA_REGISTRY_URL", "http://schema-registry:8081");
+                .withEnv("KAFKA_REST_SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
 
         zookeeper.start();
         cp_server.start();
         cp_schema_registry.start();
-
+        System.out.println("Core started: " + new Date());
         cp_data_gen.start();
-        cp_control_center.start();
+        System.out.println("Data generator started: " + new Date());
+//        cp_control_center.start();
 
-        cp_ksqldb_server.start();
+//        cp_ksqldb_server.start();
         rest_proxy.start();
+        System.out.println("Rest proxy started: " + new Date());
 
 
         System.out.println("Done....");
-        this.controlCenterEndpoint = extractControlCenterURL(cp_control_center);
+//        this.controlCenterEndpoint = extractControlCenterURL(cp_control_center);
         this.restProxyEndpoint = extractRestProxyURL(rest_proxy);
         this.connectRestEndPoint = extractConnectURL(cp_data_gen);
-        this.ksqlRestEndPoint = extractKsqlURL(cp_ksqldb_server);
+//        this.ksqlRestEndPoint = extractKsqlURL(cp_ksqldb_server);
 
-        System.out.println(getKsqlRestEndPoint());
+//        System.out.println(getKsqlRestEndPoint());
         this.clusterId = extractClusterId();
     }
 
     public void close() {
         LOGGER.info("Stopping Confluent Platform...");
         rest_proxy.close();
-        cp_ksqldb_server.close();
-        cp_control_center.close();
+//        cp_ksqldb_server.close();
+//        cp_control_center.close();
         cp_data_gen.close();
         cp_schema_registry.close();
         cp_server.close();
