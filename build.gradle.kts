@@ -129,6 +129,7 @@ dependencies {
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("org.slf4j:slf4j-simple:2.0.17")
+    testImplementation("org.apache.kafka:kafka-clients:4.1.1")
 
 //    // Schema Registry client for testing
     testImplementation("io.confluent:kafka-schema-registry-client:${project.extra["kafkaPlatformSchemaRegistry"]}")
@@ -156,6 +157,11 @@ dependencies {
     testFixturesImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testFixturesImplementation("com.google.code.gson:gson:${project.extra["gson"]}")
     testFixturesImplementation("org.json:json:${project.extra["org.json"]}")
+    testFixturesImplementation("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
+    testFixturesImplementation("com.fasterxml.jackson.core:jackson-databind:${project.extra["jackson"]}")
+    testFixturesImplementation("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson"]}")
+    testFixturesImplementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${project.extra["jackson"]}")
+
 }
 
 
