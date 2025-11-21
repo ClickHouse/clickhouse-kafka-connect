@@ -95,17 +95,17 @@ public class ProxySinkTask {
         statistics.recordProcessingTime(processingTime);
         // TODO - Multi process???
         for (String topicAndPartition : dataRecords.keySet()) {
-            // Running on etch topic & partition
+            // Running on each topic & partition
             List<Record> rec = dataRecords.get(topicAndPartition);
             try {
                 processing.doLogic(rec);
             } catch (Exception e) {
-                boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.isErrorsTolerance();
+                boolean errorTolerance = clickHouseSinkConfig.isErrorsTolerance();
                 Utils.handleException(e, errorTolerance, records); // This will throw RetriableException and failed records will be retried. No need to continue with the next topic & partition
                 if (errorTolerance && errorReporter != null) {
                     // At this point it is not a retriable exception and errorTolerance is enabled so we would continue with the next topic & partition
                     // after sending failed ones to DLQ
-                    // we will report them as commited to connector runtime so failed records should be retried manually.
+                    // we will report them as committed to connector runtime so failed records should be retried manually.
                     LOGGER.warn("Sending [{}] records to DLQ for exception: {}", rec.size(), e.getLocalizedMessage());
                     rec.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
                 }

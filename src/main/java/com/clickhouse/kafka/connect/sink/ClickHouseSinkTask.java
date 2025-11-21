@@ -77,6 +77,10 @@ public class ClickHouseSinkTask extends SinkTask {
         }
     }
 
+    /**
+     * Should be run before start
+     * @param errorReporter
+     */
     public void setErrorReporter(ErrorReporter errorReporter) {
         this.errorReporter = errorReporter;
     }
