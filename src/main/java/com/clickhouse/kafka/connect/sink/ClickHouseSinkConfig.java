@@ -51,6 +51,8 @@ public class ClickHouseSinkConfig {
     public static final String BYPASS_SCHEMA_VALIDATION = "bypassSchemaValidation";
     public static final String BYPASS_FIELD_CLEANUP = "bypassFieldCleanup";
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
+    public static final String ERROR_TOLERANCE_ALL = "all";
+    public static final String ERROR_TOLERANCE_NONE = "none";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -184,8 +186,8 @@ public class ClickHouseSinkConfig {
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
         suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
 
-        String errorsToleranceString = props.getOrDefault("errors.tolerance", "none").trim();
-        errorsTolerance = errorsToleranceString.equalsIgnoreCase("all");
+        String errorsToleranceString = props.getOrDefault(ERRORS_TOLERANCE, ERROR_TOLERANCE_NONE).trim();
+        errorsTolerance = errorsToleranceString.equalsIgnoreCase(ERROR_TOLERANCE_ALL);
 
         Map<String, String> clickhouseSettings = new HashMap<>();
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
