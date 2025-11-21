@@ -106,7 +106,7 @@ public class ProxySinkTask {
                     // At this point it is not a retriable exception and errorTolerance is enabled so we would continue with the next topic & partition
                     // after sending failed ones to DLQ
                     // we will report them as commited to connector runtime so failed records should be retried manually.
-                    LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
+                    LOGGER.warn("Sending [{}] records to DLQ for exception: {}", rec.size(), e.getLocalizedMessage());
                     rec.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
                 }
             }

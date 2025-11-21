@@ -425,153 +425,158 @@ public class ClickHouseWriter implements DBWriter {
     protected void doWriteColValue(Column col, OutputStream stream, Data value, boolean defaultsSupport) throws IOException {
         Type columnType = col.getType();
 
-        switch (columnType) {
-            case INT8:
-            case INT16:
-            case INT32:
-            case INT64:
-            case UINT8:
-            case UINT16:
-            case UINT32:
-            case UINT64:
-            case FLOAT32:
-            case FLOAT64:
-            case BOOLEAN:
-            case UUID:
-            case STRING:
-            case Enum8:
-            case Enum16:
-                doWritePrimitive(columnType, value.getFieldType(), stream, value.getObject(), col);
-                break;
-            case FIXED_STRING:
-                doWriteFixedString(columnType, stream, value.getObject(), col.getPrecision());
-                break;
-            case Date:
-            case Date32:
-            case DateTime:
-            case DateTime64:
-                doWriteDates(columnType, stream, value, col.getPrecision(), col.getName());
-                break;
-            case Decimal:
-                if (value.getObject() == null) {
-                    BinaryStreamUtils.writeNull(stream);
-                    return;
-                } else {
-                    BigDecimal decimal = (BigDecimal) value.getObject();
-                    BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
-                }
-                break;
-            case MAP:
-                Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
-                int mapSize = mapTmp.size();
-                BinaryStreamUtils.writeVarInt(stream, mapSize);
-                mapTmp.forEach((key, mapValue) -> {
-                    try {
-                        doWritePrimitive(col.getMapKeyType(), value.getMapKeySchema().type(), stream, key, col);
-                        doWriteColValue(col.getMapValueType(), stream, new Data(value.getNestedValueSchema(), mapValue), defaultsSupport);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+        try {
+            switch (columnType) {
+                case INT8:
+                case INT16:
+                case INT32:
+                case INT64:
+                case UINT8:
+                case UINT16:
+                case UINT32:
+                case UINT64:
+                case FLOAT32:
+                case FLOAT64:
+                case BOOLEAN:
+                case UUID:
+                case STRING:
+                case Enum8:
+                case Enum16:
+                    doWritePrimitive(columnType, value.getFieldType(), stream, value.getObject(), col);
+                    break;
+                case FIXED_STRING:
+                    doWriteFixedString(columnType, stream, value.getObject(), col.getPrecision());
+                    break;
+                case Date:
+                case Date32:
+                case DateTime:
+                case DateTime64:
+                    doWriteDates(columnType, stream, value, col.getPrecision(), col.getName());
+                    break;
+                case Decimal:
+                    if (value.getObject() == null) {
+                        BinaryStreamUtils.writeNull(stream);
+                        return;
+                    } else {
+                        BigDecimal decimal = (BigDecimal) value.getObject();
+                        BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
                     }
-                });
-                break;
-            case ARRAY:
-                List<?> arrObject = (List<?>) value.getObject();
-
-                if (arrObject == null) {
-                    if (defaultsSupport) {
-                        BinaryStreamUtils.writeNonNull(stream);
-                    }
-                } else {
-                    int sizeArrObject = arrObject.size();
-                    BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
-                    arrObject.forEach(v -> {
+                    break;
+                case MAP:
+                    Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
+                    int mapSize = mapTmp.size();
+                    BinaryStreamUtils.writeVarInt(stream, mapSize);
+                    mapTmp.forEach((key, mapValue) -> {
                         try {
-                            if (col.getArrayType().isNullable() && v != null) {
-                                BinaryStreamUtils.writeNonNull(stream);
-                            }
-                            doWriteColValue(col.getArrayType(), stream, new Data(value.getNestedValueSchema(), v), defaultsSupport);
+                            doWritePrimitive(col.getMapKeyType(), value.getMapKeySchema().type(), stream, key, col);
+                            doWriteColValue(col.getMapValueType(), stream, new Data(value.getNestedValueSchema(), mapValue), defaultsSupport);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
                     });
-                }
-                break;
-            case TUPLE:
-                Map<?, ?> jsonMapValues;
+                    break;
+                case ARRAY:
+                    List<?> arrObject = (List<?>) value.getObject();
 
-                Object underlyingObject = value.getObject();
-                if (underlyingObject.getClass() != Struct.class) {
-                    // Tuples in the root structure are parsed using StructToJsonMap
-                    jsonMapValues = (Map<?, ?>) underlyingObject;
-                } else {
-                    jsonMapValues = StructToJsonMap.toJsonMap((Struct) underlyingObject);
-                }
-
-                col.getTupleFields().forEach(column -> {
-                    String[] colNameSplit = column.getName().split("\\.");
-                    String fieldName = colNameSplit.length > 0 ? colNameSplit[colNameSplit.length - 1] : column.getName();
-                    Data innerData = (Data) jsonMapValues.get(fieldName);
-                    try {
-                        // we need to apply here the default and nullable logic
-                        doWriteCol(innerData, jsonMapValues.containsKey(fieldName), column, stream, false);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-                break;
-            case VARIANT:
-                // https://github.com/ClickHouse/ClickHouse/pull/58047/files#diff-f56b7f61d5a82c440bb1a078ea8e5dcf2679dc92adbbc28bd89638cbe499363dR368-R384
-                // https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L10-L56
-                mapTmp = (Map<?, ?>) value.getObject();
-                Optional<Data> variantValueOption = mapTmp.values().stream()
-                        .map(o -> (Data) o)
-                        .filter(data -> data.getObject() != null)
-                        .findFirst();
-
-                // Null Discriminator (https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L65)
-                int nullDiscriminator = 255;
-                if (variantValueOption.isEmpty()) {
-                    BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
-                } else {
-                    Data variantValue = variantValueOption.get();
-
-                    String fieldTypeName = variantValue.getFieldType().getName();
-                    Optional<Integer> globalDiscriminator = col.getVariantGlobalDiscriminator(fieldTypeName);
-                    if (globalDiscriminator.isEmpty()) {
-                        LOGGER.error("Unable to determine the global discriminator of {} variant! Writing NULL variant instead.", fieldTypeName);
-                        BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
-                        return;
-                    }
-                    BinaryStreamUtils.writeUnsignedInt8(stream, globalDiscriminator.get());
-
-                    // Variants support parametrized types, such as Decimal(x, y). Because of that, we can't use
-                    // the doWritePrimitive method.
-                    doWriteColValue(
-                            col.getVariantGlobalDiscriminators().get(globalDiscriminator.get()).getT1(),
-                            stream,
-                            variantValue,
-                            defaultsSupport
-                    );
-                }
-                break;
-            case JSON:
-                if (csc.isBinaryFormatWrtiteJsonAsString()) {
-                    if (value.getFieldType() == Schema.Type.STRUCT) {
-                        byte[] jsonBytes = GSON.toJson(value).getBytes(StandardCharsets.UTF_8);
-                        BinaryStreamUtils.writeString(stream, jsonBytes);
-                    } else if (value.getFieldType() == Schema.Type.STRING) {
-                        BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
+                    if (arrObject == null) {
+                        if (defaultsSupport) {
+                            BinaryStreamUtils.writeNonNull(stream);
+                        }
                     } else {
-                        throw new RuntimeException("Unsupported field type: " + value.getFieldType() + " for column type [JSON]");
+                        int sizeArrObject = arrObject.size();
+                        BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
+                        arrObject.forEach(v -> {
+                            try {
+                                if (col.getArrayType().isNullable() && v != null) {
+                                    BinaryStreamUtils.writeNonNull(stream);
+                                }
+                                doWriteColValue(col.getArrayType(), stream, new Data(value.getNestedValueSchema(), v), defaultsSupport);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
                     }
                     break;
-                } else {
-                    throw new RuntimeException("Writing JSON in binary is not supported yet. Use `input_format_binary_read_json_as_string=1` in clickhouse settings to allow writing as string");
-                }
-            default:
-                // If you wonder, how NESTED works in JDBC:
-                // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
-                LOGGER.error("Cannot serialize unsupported type {}", columnType);
+                case TUPLE:
+                    Map<?, ?> jsonMapValues;
+
+                    Object underlyingObject = value.getObject();
+                    if (underlyingObject.getClass() != Struct.class) {
+                        // Tuples in the root structure are parsed using StructToJsonMap
+                        jsonMapValues = (Map<?, ?>) underlyingObject;
+                    } else {
+                        jsonMapValues = StructToJsonMap.toJsonMap((Struct) underlyingObject);
+                    }
+
+                    col.getTupleFields().forEach(column -> {
+                        String[] colNameSplit = column.getName().split("\\.");
+                        String fieldName = colNameSplit.length > 0 ? colNameSplit[colNameSplit.length - 1] : column.getName();
+                        Data innerData = (Data) jsonMapValues.get(fieldName);
+                        try {
+                            // we need to apply here the default and nullable logic
+                            doWriteCol(innerData, jsonMapValues.containsKey(fieldName), column, stream, false);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                    break;
+                case VARIANT:
+                    // https://github.com/ClickHouse/ClickHouse/pull/58047/files#diff-f56b7f61d5a82c440bb1a078ea8e5dcf2679dc92adbbc28bd89638cbe499363dR368-R384
+                    // https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L10-L56
+                    mapTmp = (Map<?, ?>) value.getObject();
+                    Optional<Data> variantValueOption = mapTmp.values().stream()
+                            .map(o -> (Data) o)
+                            .filter(data -> data.getObject() != null)
+                            .findFirst();
+
+                    // Null Discriminator (https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L65)
+                    int nullDiscriminator = 255;
+                    if (variantValueOption.isEmpty()) {
+                        BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
+                    } else {
+                        Data variantValue = variantValueOption.get();
+
+                        String fieldTypeName = variantValue.getFieldType().getName();
+                        Optional<Integer> globalDiscriminator = col.getVariantGlobalDiscriminator(fieldTypeName);
+                        if (globalDiscriminator.isEmpty()) {
+                            LOGGER.error("Unable to determine the global discriminator of {} variant! Writing NULL variant instead.", fieldTypeName);
+                            BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
+                            return;
+                        }
+                        BinaryStreamUtils.writeUnsignedInt8(stream, globalDiscriminator.get());
+
+                        // Variants support parametrized types, such as Decimal(x, y). Because of that, we can't use
+                        // the doWritePrimitive method.
+                        doWriteColValue(
+                                col.getVariantGlobalDiscriminators().get(globalDiscriminator.get()).getT1(),
+                                stream,
+                                variantValue,
+                                defaultsSupport
+                        );
+                    }
+                    break;
+                case JSON:
+                    if (csc.isBinaryFormatWrtiteJsonAsString()) {
+                        if (value.getFieldType() == Schema.Type.STRUCT) {
+                            byte[] jsonBytes = GSON.toJson(value).getBytes(StandardCharsets.UTF_8);
+                            BinaryStreamUtils.writeString(stream, jsonBytes);
+                        } else if (value.getFieldType() == Schema.Type.STRING) {
+                            BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
+                        } else {
+                            throw new RuntimeException("Unsupported field type: " + value.getFieldType() + " for column type [JSON]");
+                        }
+                        break;
+                    } else {
+                        throw new RuntimeException("Writing JSON in binary is not supported yet. Use `input_format_binary_read_json_as_string=1` in clickhouse settings to allow writing as string");
+                    }
+                default:
+                    // If you wonder, how NESTED works in JDBC:
+                    // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
+                    LOGGER.error("Cannot serialize unsupported type {}", columnType);
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error writing value of " + (value == null ? "<value null>" : value.getFieldType() ) + " to the column `" + col.getName() + "` of type " + columnType, e);
+            throw e;
         }
     }
 
