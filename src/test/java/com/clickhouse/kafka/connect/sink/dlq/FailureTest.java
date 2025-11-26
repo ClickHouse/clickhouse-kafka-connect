@@ -7,6 +7,7 @@ import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
+import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -14,6 +15,9 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
 
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -31,7 +35,7 @@ public class FailureTest extends ClickHouseBase {
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "DEBUG");
     }
     @Test
-    void testSchemaValidationFailure() {
+    void testSchemaValidationFailure() throws Exception {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
@@ -60,6 +64,14 @@ public class FailureTest extends ClickHouseBase {
         }
 
         assertEquals(100, dlq.size(), "Should have 100 records in DLQ");
+
+        // Check metric
+        final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+        final String mbeanName = SinkTaskStatistics.getMBeanName(task.taskId());
+        ObjectName sinkMBean = new ObjectName(mbeanName);
+        Object sentToDQL = mBeanServer.getAttribute(sinkMBean, "MessagesSentToDQL");
+        assertEquals(dlq.size(), ((Long)sentToDQL).longValue());
+
         task.stop();
         assertEquals(200, ClickHouseTestHelpers.countRows(chc, topic));
         List<SinkRecord> sr = new ArrayList<>(200);
