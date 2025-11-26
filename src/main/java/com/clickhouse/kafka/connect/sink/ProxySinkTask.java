@@ -9,6 +9,7 @@ import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
+import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.ExecutionTimer;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -36,9 +38,11 @@ public class ProxySinkTask {
 
     private final SinkTaskStatistics statistics;
     private final int id = NEXT_ID.getAndAdd(1);
+    private final ErrorReporter errorReporter;
 
     public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
         this.clickHouseSinkConfig = clickHouseSinkConfig;
+        this.errorReporter = errorReporter;
         LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.isExactlyOnce());
         if ( clickHouseSinkConfig.isExactlyOnce() ) {
             this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
@@ -91,12 +95,23 @@ public class ProxySinkTask {
 
         statistics.recordProcessingTime(processingTime);
         // TODO - Multi process???
+        List<Utils.FailedRecords> failedMessages = new ArrayList<>(dataRecords.size());
         for (String topicAndPartition : dataRecords.keySet()) {
-            // Running on etch topic & partition
+            // Running on each topic & partition
             List<Record> rec = dataRecords.get(topicAndPartition);
-            processing.doLogic(rec);
+            try {
+                processing.doLogic(rec);
+            } catch (Exception e) {
+                boolean errorTolerance = clickHouseSinkConfig.isErrorsTolerance();
+                Utils.handleException(e, errorTolerance, records); // This will throw RetriableException and failed records will be retried. No need to continue with the next topic & partition
+                if (errorTolerance) {
+                    failedMessages.add(new Utils.FailedRecords(rec, e));
+                    statistics.sentToDLQ(rec.size());
+                }
+            }
         }
         statistics.taskProcessingTime(taskTime);
+        Utils.sendTODLQ(failedMessages, errorReporter);
     }
 
     public int getId() {
