@@ -24,7 +24,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
     private final AtomicLong failedRecords;
     private final AtomicLong receivedBatches;
     private final AtomicLong insertedBytes;
-    private final AtomicLong sentToSQL;
+    private final AtomicLong sentToDLQ;
     private final SimpleMovingAverage receiveLag;
     private final int taskId;
     private final Map<String, TopicStatistics> topicStatistics;
@@ -44,7 +44,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         this.failedRecords = new AtomicLong(0);
         this.receiveLag = new SimpleMovingAverage(SimpleMovingAverage.DEFAULT_WINDOW_SIZE);
         this.insertedBytes = new AtomicLong(0);
-        this.sentToSQL = new AtomicLong(0);
+        this.sentToDLQ = new AtomicLong(0);
     }
 
     public void registerMBean() {
@@ -105,8 +105,8 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
     }
 
     @Override
-    public long getMessagesSentToDQL() {
-        return sentToSQL.get();
+    public long getMessagesSentToDLQ() {
+        return sentToDLQ.get();
     }
 
     public void receivedRecords(final Collection<SinkRecord> records) {
@@ -171,7 +171,7 @@ public class SinkTaskStatistics implements SinkTaskStatisticsMBean {
         topicStatistics.computeIfAbsent(topic, this::createTopicStatistics).insertTime(t);
     }
 
-    public void sentToSQL(long n) {
-        sentToSQL.addAndGet(n);
+    public void sentToDLQ(long n) {
+        sentToDLQ.addAndGet(n);
     }
 }

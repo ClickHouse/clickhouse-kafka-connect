@@ -74,5 +74,5 @@ public interface SinkTaskStatisticsMBean {
      *
      * @return counter value
      */
-    long getMessagesSentToDQL();
+    long getMessagesSentToDLQ();
 }

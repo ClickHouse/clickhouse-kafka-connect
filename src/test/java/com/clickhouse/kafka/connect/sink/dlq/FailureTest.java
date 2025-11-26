@@ -69,7 +69,7 @@ public class FailureTest extends ClickHouseBase {
         final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
         final String mbeanName = SinkTaskStatistics.getMBeanName(task.taskId());
         ObjectName sinkMBean = new ObjectName(mbeanName);
-        Object sentToDQL = mBeanServer.getAttribute(sinkMBean, "MessagesSentToDQL");
+        Object sentToDQL = mBeanServer.getAttribute(sinkMBean, "MessagesSentToDLQ");
         assertEquals(dlq.size(), ((Long)sentToDQL).longValue());
 
         task.stop();

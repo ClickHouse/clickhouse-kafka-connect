@@ -95,8 +95,7 @@ public class ProxySinkTask {
 
         statistics.recordProcessingTime(processingTime);
         // TODO - Multi process???
-        List<List<Record>> failedMessages = new ArrayList<>(dataRecords.size());
-        List<Exception> failedMessagesExceptions = new ArrayList<>(dataRecords.size());
+        List<Utils.FailedRecords> failedMessages = new ArrayList<>(dataRecords.size());
         for (String topicAndPartition : dataRecords.keySet()) {
             // Running on each topic & partition
             List<Record> rec = dataRecords.get(topicAndPartition);
@@ -106,32 +105,13 @@ public class ProxySinkTask {
                 boolean errorTolerance = clickHouseSinkConfig.isErrorsTolerance();
                 Utils.handleException(e, errorTolerance, records); // This will throw RetriableException and failed records will be retried. No need to continue with the next topic & partition
                 if (errorTolerance) {
-                    failedMessages.add(rec);
-                    failedMessagesExceptions.add(e);
+                    failedMessages.add(new Utils.FailedRecords(rec, e));
+                    statistics.sentToDLQ(rec.size());
                 }
             }
         }
         statistics.taskProcessingTime(taskTime);
-
-        if (!failedMessages.isEmpty() && clickHouseSinkConfig.isErrorsTolerance() && errorReporter != null) {
-            // At this point it is not a retriable exception and errorTolerance is enabled so we would continue with the next topic & partition
-            // after sending failed ones to DLQ
-            // we will report them as committed to connector runtime so failed records should be retried manually.
-            try {
-
-                for (int i = 0; i < failedMessages.size(); i++) {
-                    List<Record> failedRecords = failedMessages.get(i);
-                    Exception e = failedMessagesExceptions.get(i);
-                    LOGGER.warn("Sending [{}] records to DLQ for exception: {}", failedRecords.size(), e.getLocalizedMessage());
-                    for (Record rec : failedRecords) {
-                        Utils.sendTODlq(errorReporter, rec, e);
-                    }
-                    statistics.sentToSQL(failedRecords.size());
-                }
-            } catch (Exception e) {
-                LOGGER.error("failed to send messages to DLQ", e);
-            }
-        }
+        Utils.sendTODLQ(failedMessages, errorReporter);
     }
 
     public int getId() {
