@@ -551,8 +551,8 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         Collection<SinkRecord> sr = createCode25(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
         chst.setErrorReporter(er);
+        chst.start(props);
         chst.put(sr);
         chst.stop();
         assertEquals(sr.size(), er.size());

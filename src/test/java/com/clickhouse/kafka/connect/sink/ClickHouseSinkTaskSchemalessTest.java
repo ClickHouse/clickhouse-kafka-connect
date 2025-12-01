@@ -23,10 +23,6 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
 
-    static {
-        System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "DEBUG");
-    }
-
     @Test
     public void primitiveTypesTest() {
         Map<String, String> props = createProps();
