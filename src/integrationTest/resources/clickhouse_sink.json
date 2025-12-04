@@ -8,10 +8,10 @@
     "hostname": "%s",
     "port": "%s",
     "database": "default",
-    "username": "default",
+    "username": "%s",
     "password": "%s",
     "ssl": "false",
-    "exactlyOnce" : "false",
+    "exactlyOnce" : "%b",
     "proxyType": "http",
     "proxyHost": "%s",
     "proxyPort": "%s"
