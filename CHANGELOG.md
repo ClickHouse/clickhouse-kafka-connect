@@ -1,7 +1,7 @@
 # 1.3.5
 
 ## Improvements
-* Added topic metrics to JMX and extended task metrics (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/612)
+* Added topic metrics to JMX and extended task metrics. Topic metrics have partition granularity - each partition has its own metrics (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/612)
 * Improved failure handling when messages should be sent to DLQ. Previous implementation was sending whole batch to DLQ 
 when one message failed. Now it sends only failed group of messages to DLQ. If failed because of schema validation then 
 logs error message contains field name and schema type. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/590)
@@ -13,12 +13,12 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 * Fixed writing Avro timestamp value. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/599)
 * Fixed negative timestamp in logs. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/614)
 ## Dependencies
-* Updated clickhouse-java version. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/629)
+* Updated clickhouse-java version to `0.9.4` (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/629)
 
 # 1.3.4
 ## Bug Fixes
 * Added column named that causes error (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/607)
-* Updated clickhouse-java version (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/596)
+* Updated clickhouse-java version `0.9.2` (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/596)
 * Fixed Client Name reported for `query_log` (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/542)
 * Fixed writing Avro union of `string` and `bytes` to `String` column (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/572)
 
@@ -78,7 +78,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 
 # 1.2.4
 ## Improvements
-* Adjusting underlying client version to 0.7.0
+* Adjusting underlying client version to `0.7.0`
 * Bugfix for UINT handling
 
 # 1.2.3
@@ -131,7 +131,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 * Refactored Column class so that we use Builder pattern using Lombok
 * Refactored recursive Map type parsing to iterative approach using describe_include_subcolumns=1
 * Adjusted logging to reduce volume while keeping important information
-* Adjusted tests to be more reliable and self cleaning
+* Adjusted tests to be more reliable and self-cleaning
 
 # 1.0.17
 ## New Features
@@ -163,7 +163,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 ## New Features
 * Added support for multiple databases in single stream using a virtual topic  #41
 * Add support for configuring JDBC properties in connection URL (i.e. `?auto_discovery=true`)
-* Added minimum version check for ClickHouse (currently 23.3)
+* Added minimum version check for ClickHouse (currently `23.3`)
 * Added support for fixed_string type
 
 # 1.0.11
@@ -242,7 +242,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 * Updating Logo
 
 # 0.0.16
-##
+## Improvements
 * Updated state handling so that warnings are posted, rather than errors + exceptions.
 * Adding 285 TOO_FEW_LIVE_REPLICAS to the retry list
 * Tweaking the code to switch to JSON handling when default values are present. This should be more reliable (if the
