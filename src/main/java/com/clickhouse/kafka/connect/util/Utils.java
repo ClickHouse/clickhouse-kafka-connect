@@ -140,6 +140,33 @@ public class Utils {
         }
     }
 
+    public static void sendTODLQ(List<FailedRecords> failedRecords, ErrorReporter errorReporter) {
+
+        if (!failedRecords.isEmpty() && errorReporter != null) {
+            try {
+
+                for (FailedRecords records : failedRecords) {
+                    LOGGER.warn("Sending [{}] records to DLQ for exception: {}", failedRecords.size(), records.exception.getMessage());
+                    for (Record record :   records.records) {
+                        Utils.sendTODlq(errorReporter, record, records.exception);
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.error("failed to send messages to DLQ", e);
+            }
+        }
+    }
+
+    public static class FailedRecords {
+        List<Record> records;
+        Exception exception;
+
+        public FailedRecords(List<Record> records, Exception exception) {
+            this.records = records;
+            this.exception = exception;
+        }
+    }
+
     public static String getTableName(String database, String topicName, Map<String, String> topicToTableMap) {
         String tableName = topicToTableMap.get(topicName);
         LOGGER.debug("Topic name: {}, Table Name: {}", topicName, tableName);

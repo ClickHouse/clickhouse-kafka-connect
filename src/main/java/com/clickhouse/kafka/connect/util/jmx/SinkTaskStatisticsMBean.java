@@ -67,4 +67,12 @@ public interface SinkTaskStatisticsMBean {
      * @return counter value
      */
     long getMeanReceiveLag();
+
+    /**
+     * Total number of messages reported to DLQ.
+     * Implemented as counter and is reset on restart.
+     *
+     * @return counter value
+     */
+    long getMessagesSentToDLQ();
 }
