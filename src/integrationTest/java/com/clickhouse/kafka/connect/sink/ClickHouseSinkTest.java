@@ -85,11 +85,7 @@ public class ClickHouseSinkTest extends IntegrationTestBase {
 
         dropTable(dbClientNoProxy, topicName);
         createMergeTreeTable(dbClientNoProxy, topicName);
-
-        Map<String, String> connectorConfig = createConnectorConfig();
-        connectorConfig.put("value.converter.schemas.enable", "false");
-        connectorConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
-        String connectorName = runClickHouseConnector(connectorConfig, topicName);
+        String connectorName = runClickHouseConnector(createConnectorSchemalessConfig(), topicName);
 
         try {
             waitWhileCounting(dbClientNoProxy, topicName, 3);
@@ -191,9 +187,7 @@ public class ClickHouseSinkTest extends IntegrationTestBase {
         dropTable(dbClientNoProxy, topicName);
         createMergeTreeTable(dbClientNoProxy, topicName);
 
-        Map<String, String> connectorConfig = createConnectorConfig();
-        connectorConfig.put("value.converter.schemas.enable", "false");
-        connectorConfig.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+        Map<String, String> connectorConfig = createConnectorSchemalessConfig();
         connectorConfig.put("tasks.max", String.valueOf(parCount));
         String connectorName = runClickHouseConnector(connectorConfig, topicName);
 

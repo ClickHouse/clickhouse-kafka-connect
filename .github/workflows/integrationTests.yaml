@@ -49,7 +49,7 @@ jobs:
         uses: gradle/actions/setup-gradle@895252588e0dfbf80467d2d33f34a3ee85235009 # v3
       - name: Run integration tests
         run: |
-          ./gradlew integrationTest clickhouse.version=${{ matrix.clickhouse-version }} 
+          ./gradlew integrationTest -DlickhouseVersion=${{ matrix.clickhouse-version }} 
       - name: Upload integration test report on failure
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

@@ -113,6 +113,13 @@ public class IntegrationTestBase {
 
     }
 
+    public Map<String, String> createConnectorSchemalessConfig() {
+        Map<String, String> config = createConnectorConfig();
+        config.put("value.converter.schemas.enable", "false");
+        config.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+        return config;
+    }
+
     public Map<String, String> createConnectorConfig() {
         Map<String, String> config = new HashMap<>();
         config.put("connector.class", ClickHouseSinkConnector.class.getName());
@@ -178,11 +185,11 @@ public class IntegrationTestBase {
     }
 
     public static String getClickHouseVersion() {
-        return System.getProperty("clickHouseVersion", CLICKHOUSE_DEFAULT_VERSION);
+        return System.getProperty("lickhouseVersion", CLICKHOUSE_DEFAULT_VERSION);
     }
 
     public static boolean isCloud() {
-        return getClickHouseVersion().equals("cloud");
+        return "cloud".equalsIgnoreCase(getClickHouseVersion());
     }
 
     public boolean isUseProxy() {

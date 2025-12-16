@@ -6,6 +6,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 
@@ -367,8 +372,6 @@ public class ConfluentPlatform {
         }
     }
 
-
-
     public void deleteConnectors(String connectorName) throws IOException {
         LOGGER.info("Deleting connector: " + connectorName);
         String connectRestEndpoint = getConnectRestEndPoint();
@@ -384,10 +387,6 @@ public class ConfluentPlatform {
             String responseBody = response.body().string();
             LOGGER.debug("Delete connectors response body: {}", responseBody);
         }
-    }
-
-    public void printConnectors() {
-        LOGGER.info(getConnectors());
     }
 
     public String getConnectors() {
@@ -471,42 +470,6 @@ public class ConfluentPlatform {
         }
 
         return 0;
-    }
-
-
-    public int generateData(String templateFileName, String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
-        LOGGER.info("Generating data...");
-        String connectorName = "DatagenConnector_" + topicName + UUID.randomUUID();
-        int totalWorkers = numberOfPartitions * 10;
-
-        String payloadDataGen = String.join("", Files.readAllLines(Paths.get(templateFileName)));
-        createConnect(String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
-        String currentState = "";
-        int loopCount = 0;
-        do {
-            Thread.sleep(2 * 1000);
-            if (loopCount % 4 == 0) {
-                LOGGER.info("Generating...");
-            }
-            currentState = getConnectors();
-            LOGGER.debug(currentState);
-            loopCount++;
-        } while (Pattern.compile("Stopping connector: generated the configured").matcher(currentState).results().count() != totalWorkers && loopCount < 120);//We have to track multiple
-
-        if (loopCount >= 120) {
-            LOGGER.error("Data generation failed");
-            throw new RuntimeException("Data generation failed");
-        }
-
-        deleteConnectors(connectorName);
-        Thread.sleep(3 * 1000);//Wait for the connector to be deleted
-        long offsetTotal = 0;
-        for (int i=0; i < numberOfPartitions; i++) {
-            offsetTotal += getOffset(topicName, i);
-        }
-        int runningTotal = numberOfPartitions * numberOfRecords * 5;
-        LOGGER.info("Generated records for [{}]: Total (By Offset): [{}], Diff from Theoretical Total: [{}]", topicName, offsetTotal, runningTotal - offsetTotal);
-        return (int) offsetTotal;
     }
 
     public boolean isConnectorRunning(String connectorName) throws IOException {

@@ -69,9 +69,8 @@ public class ClickHouseAPI {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try {
             chc.getClient().queryRecords(dropTable).get(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
@@ -82,24 +81,24 @@ public class ClickHouseAPI {
         try {
             Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
             LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
 
     public static void createReplicatedMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
+
         String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
                 "Engine = ReplicatedMergeTree ORDER BY symbol", tableName);
         try {
             Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
             LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
-            throw new RuntimeException(e);
-        }    }
+        }
+    }
 
     public static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
@@ -107,18 +106,12 @@ public class ClickHouseAPI {
                 "GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` " +
                 "HAVING COUNT(*) > 1", tableName);
         try {
-            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
-            return records;
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (TimeoutException e) {
+            return chc.getClient().queryRecords(queryString).get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
-
-
 
     public static void clearTable(ClickHouseHelperClient chc, String tableName) {
         String sql = "TRUNCATE TABLE " + tableName;
@@ -127,30 +120,27 @@ public class ClickHouseAPI {
         try {
             records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS);
             LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (TimeoutException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
 
     public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return Arrays.stream(response.firstRecord().getValue(0).asString().split("\t")).mapToInt(Integer::parseInt).toArray();
-        } catch (ClickHouseException e) {
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
+            for (com.clickhouse.client.api.query.GenericRecord record : records) {
+                return new int[] { record.getInteger(1), record.getInteger(2), record.getInteger(3) };
+            }
+            return new int[] { 0, 0, 0 };
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
 
+    // Cloud instance management (DO NOT USE)
 
     public HttpResponse<String> stopInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {
         return updateServiceState(serviceId, "stop");
@@ -171,7 +161,6 @@ public class ClickHouseAPI {
                 .build();
         return HttpClient.newBuilder().proxy(ProxySelector.getDefault()).build().send(request, HttpResponse.BodyHandlers.ofString());
     }
-
 
     public String getServiceState(String serviceId) throws URISyntaxException, IOException, InterruptedException {
         String restURL = "https://" + properties.getProperty("clickhouse.cloud.host") + "/v1/organizations/" + properties.getProperty("clickhouse.cloud.organization") + "/services/" + serviceId;
@@ -223,6 +212,4 @@ public class ClickHouseAPI {
         LOGGER.info("Service restarted");
         return serviceState;
     }
-
-
 }
