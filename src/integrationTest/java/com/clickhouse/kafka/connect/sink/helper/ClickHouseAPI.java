@@ -212,4 +212,97 @@ public class ClickHouseAPI {
         LOGGER.info("Service restarted");
         return serviceState;
     }
+
+    /**
+     * Query system.query_log to get insert statistics for a specific table.
+     * Returns information about batch sizes used during inserts.
+     */
+    public static InsertStatistics getInsertStatistics(ClickHouseHelperClient chc, String tableName) {
+        // Flush query_log first to ensure all entries are visible
+        try {
+            chc.getClient().queryRecords("SYSTEM FLUSH LOGS").get(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to flush logs: {}", e.getMessage());
+        }
+
+        String query = String.format(
+                "SELECT " +
+                "    count() as total_inserts, " +
+                "    sum(written_rows) as total_rows, " +
+                "    min(written_rows) as min_batch_size, " +
+                "    max(written_rows) as max_batch_size, " +
+                "    avg(written_rows) as avg_batch_size, " +
+                "    groupArray(written_rows) as batch_sizes " +
+                "FROM system.query_log " +
+                "WHERE type = 'QueryFinish' " +
+                "  AND query_kind = 'Insert' " +
+                "  AND has(tables, 'default.%s') " +
+                "  AND written_rows > 0",
+                tableName
+        );
+
+        try {
+            Records records = chc.getClient().queryRecords(query).get(30, TimeUnit.SECONDS);
+            for (com.clickhouse.client.api.query.GenericRecord record : records) {
+                InsertStatistics stats = new InsertStatistics();
+                stats.totalInserts = record.getLong(1);
+                stats.totalRows = record.getLong(2);
+                stats.minBatchSize = record.getLong(3);
+                stats.maxBatchSize = record.getLong(4);
+                stats.avgBatchSize = record.getDouble(5);
+                stats.batchSizes = record.getString(6);
+                return stats;
+            }
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
+            LOGGER.error("Failed to get insert statistics: {}", e.getMessage());
+        }
+
+        return new InsertStatistics();
+    }
+
+    /**
+     * Print detailed insert statistics for a table from query_log
+     */
+    public static void printInsertStatistics(ClickHouseHelperClient chc, String tableName) {
+        InsertStatistics stats = getInsertStatistics(chc, tableName);
+        LOGGER.info("=== Insert Statistics for table '{}' ===", tableName);
+        LOGGER.info("Total INSERT queries: {}", stats.totalInserts);
+        LOGGER.info("Total rows inserted: {}", stats.totalRows);
+        LOGGER.info("Min batch size: {}", stats.minBatchSize);
+        LOGGER.info("Max batch size: {}", stats.maxBatchSize);
+        LOGGER.info("Avg batch size: {:.2f}", stats.avgBatchSize);
+        LOGGER.info("Batch sizes: {}", stats.batchSizes);
+        LOGGER.info("==========================================");
+
+        // Also print to stdout for test visibility
+        System.out.println("=== Insert Statistics for table '" + tableName + "' ===");
+        System.out.println("Total INSERT queries: " + stats.totalInserts);
+        System.out.println("Total rows inserted: " + stats.totalRows);
+        System.out.println("Min batch size: " + stats.minBatchSize);
+        System.out.println("Max batch size: " + stats.maxBatchSize);
+        System.out.println("Avg batch size: " + String.format("%.2f", stats.avgBatchSize));
+        System.out.println("Batch sizes: " + stats.batchSizes);
+        System.out.println("==========================================");
+    }
+
+    /**
+     * Statistics about INSERT operations from query_log
+     */
+    public static class InsertStatistics {
+        public long totalInserts = 0;
+        public long totalRows = 0;
+        public long minBatchSize = 0;
+        public long maxBatchSize = 0;
+        public double avgBatchSize = 0.0;
+        public String batchSizes = "[]";
+
+        @Override
+        public String toString() {
+            return String.format(
+                    "InsertStatistics{inserts=%d, rows=%d, min=%d, max=%d, avg=%.2f, batches=%s}",
+                    totalInserts, totalRows, minBatchSize, maxBatchSize, avgBatchSize, batchSizes
+            );
+        }
+    }
 }

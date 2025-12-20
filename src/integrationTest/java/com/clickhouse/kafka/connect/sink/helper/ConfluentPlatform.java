@@ -17,6 +17,11 @@ import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 
+import javax.management.MBeanServerConnection;
+import javax.management.ObjectName;
+import javax.management.remote.JMXConnector;
+import javax.management.remote.JMXConnectorFactory;
+import javax.management.remote.JMXServiceURL;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -26,6 +31,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -76,11 +82,13 @@ public class ConfluentPlatform {
     private static int CONTROL_CENTER_INTERNAL_PORT = 9021;
     private static int REST_PROXY_INTERNAL_PORT = 8082;
     private static int CONNECT_INTERNAL_PORT = 8083;
+    private static int CONNECT_JMX_PORT = 9102;
     private static int KSQL_INTERNAL_PORT = 8088;
     private String clusterId = null;
     private String controlCenterEndpoint = null;
     private String restProxyEndpoint = null;
     private String connectRestEndPoint = null;
+    private String connectJmxEndpoint = null;
     private String ksqlRestEndPoint = null;
 
     GenericContainer<?> zookeeper;
@@ -139,7 +147,7 @@ public class ConfluentPlatform {
         cp_data_gen = new GenericContainer<>(CP_DATA_GEN)
                 .withNetwork(network)
                 .withNetworkAliases("connect")
-                .withExposedPorts(8083)
+                .withExposedPorts(8083, 9102)  // 9102 for JMX
                 .dependsOn(cp_server, cp_schema_registry)
                 .withEnv("CONNECT_BOOTSTRAP_SERVERS", "broker:29092")
                 .withEnv("CONNECT_REST_ADVERTISED_HOST_NAME", "connect")
@@ -159,6 +167,10 @@ public class ConfluentPlatform {
                 .withEnv("CONNECT_CONSUMER_INTERCEPTOR_CLASSES", "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor")
                 .withEnv("CONNECT_PLUGIN_PATH", "/usr/share/java,/usr/share/confluent-hub-components")
                 .withEnv("CONNECT_LOG4J_LOGGERS", "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR,com.clickhouse=DEBUG,org.apache.hc.client5=DEBUG")
+                // Enable JMX for metrics monitoring
+                .withEnv("KAFKA_JMX_PORT", "9102")
+                .withEnv("KAFKA_JMX_HOSTNAME", "localhost")
+                .withEnv("KAFKA_OPTS", "-Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9102 -Dcom.sun.management.jmxremote.rmi.port=9102 -Djava.rmi.server.hostname=localhost")
                 .waitingFor(Wait.forHttp("/connectors").forStatusCode(200));
 
         if (connectorPathList != null) {
@@ -235,6 +247,7 @@ public class ConfluentPlatform {
 //        this.controlCenterEndpoint = extractControlCenterURL(cp_control_center);
         this.restProxyEndpoint = extractRestProxyURL(rest_proxy);
         this.connectRestEndPoint = extractConnectURL(cp_data_gen);
+        this.connectJmxEndpoint = extractConnectJmxURL(cp_data_gen);
 //        this.ksqlRestEndPoint = extractKsqlURL(cp_ksqldb_server);
 
 //        System.out.println(getKsqlRestEndPoint());
@@ -274,6 +287,15 @@ public class ConfluentPlatform {
 
     private String extractConnectURL(GenericContainer<?> connect) {
         return String.format("http://%s:%d", connect.getHost(), connect.getMappedPort(CONNECT_INTERNAL_PORT));
+    }
+
+    private String extractConnectJmxURL(GenericContainer<?> connect) {
+        return String.format("service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi",
+                connect.getHost(), connect.getMappedPort(CONNECT_JMX_PORT));
+    }
+
+    public String getConnectJmxEndpoint() {
+        return connectJmxEndpoint;
     }
 
     private String extractKsqlURL(GenericContainer<?> ksql) {
@@ -464,6 +486,7 @@ public class ConfluentPlatform {
             LOGGER.info("Get offset response code: {}", response.code());
             if (response.code() == 200) {
                 JSONObject obj = new JSONObject(response.body().string());
+                System.out.println(obj);
 //                long beginningOffset = obj.getLong("beginning_offset");
                 return obj.getLong("end_offset");
             }
@@ -483,4 +506,155 @@ public class ConfluentPlatform {
         return "RUNNING".equalsIgnoreCase(connectorState);
     }
 
+    /**
+     * Get sink task metrics from JMX for a specific connector.
+     * Returns metrics including sink-record-active-count, sink-record-send-total, etc.
+     *
+     * @param connectorName The name of the connector
+     * @param taskId The task ID (usually 0 for single task connectors)
+     * @return SinkTaskMetrics object with current metric values
+     */
+    public SinkTaskMetrics getSinkTaskMetrics(String connectorName, int taskId) {
+        SinkTaskMetrics metrics = new SinkTaskMetrics();
+
+        if (connectJmxEndpoint == null) {
+            LOGGER.warn("JMX endpoint not available");
+            return metrics;
+        }
+
+        try {
+            JMXServiceURL url = new JMXServiceURL(connectJmxEndpoint);
+            try (JMXConnector jmxConnector = JMXConnectorFactory.connect(url, null)) {
+                MBeanServerConnection mbsc = jmxConnector.getMBeanServerConnection();
+
+                // Query pattern for sink task metrics
+                // kafka.connect:type=sink-task-metrics,connector=<connector>,task=<task>
+                String objectNamePattern = String.format(
+                        "kafka.connect:type=sink-task-metrics,connector=%s,task=%d",
+                        connectorName, taskId
+                );
+
+                ObjectName mbeanName = new ObjectName(objectNamePattern);
+
+                // Get available attributes
+                try {
+                    metrics.sinkRecordActiveCount = getDoubleAttribute(mbsc, mbeanName, "sink-record-active-count");
+                    metrics.sinkRecordActiveCountMax = getDoubleAttribute(mbsc, mbeanName, "sink-record-active-count-max");
+                    metrics.sinkRecordActiveCountAvg = getDoubleAttribute(mbsc, mbeanName, "sink-record-active-count-avg");
+                    metrics.sinkRecordSendTotal = getDoubleAttribute(mbsc, mbeanName, "sink-record-send-total");
+                    metrics.sinkRecordSendRate = getDoubleAttribute(mbsc, mbeanName, "sink-record-send-rate");
+                    metrics.sinkRecordReadTotal = getDoubleAttribute(mbsc, mbeanName, "sink-record-read-total");
+                    metrics.sinkRecordReadRate = getDoubleAttribute(mbsc, mbeanName, "sink-record-read-rate");
+                    metrics.putBatchMaxTimeMs = getDoubleAttribute(mbsc, mbeanName, "put-batch-max-time-ms");
+                    metrics.putBatchAvgTimeMs = getDoubleAttribute(mbsc, mbeanName, "put-batch-avg-time-ms");
+                    metrics.partitionCount = getDoubleAttribute(mbsc, mbeanName, "partition-count");
+                    metrics.offsetCommitCompletionTotal = getDoubleAttribute(mbsc, mbeanName, "offset-commit-completion-total");
+                } catch (Exception e) {
+                    LOGGER.debug("Some metrics not available: {}", e.getMessage());
+                }
+
+                LOGGER.info("Retrieved sink task metrics for {}-{}: {}", connectorName, taskId, metrics);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to get JMX metrics: {}", e.getMessage());
+        }
+
+        return metrics;
+    }
+
+    private double getDoubleAttribute(MBeanServerConnection mbsc, ObjectName name, String attribute) {
+        try {
+            Object value = mbsc.getAttribute(name, attribute);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            }
+        } catch (Exception e) {
+            LOGGER.trace("Attribute {} not available: {}", attribute, e.getMessage());
+        }
+        return 0.0;
+    }
+
+    /**
+     * List all available MBeans matching a pattern (useful for debugging)
+     */
+    public void listAvailableMBeans(String pattern) {
+        if (connectJmxEndpoint == null) {
+            LOGGER.warn("JMX endpoint not available");
+            return;
+        }
+
+        try {
+            JMXServiceURL url = new JMXServiceURL(connectJmxEndpoint);
+            try (JMXConnector jmxConnector = JMXConnectorFactory.connect(url, null)) {
+                MBeanServerConnection mbsc = jmxConnector.getMBeanServerConnection();
+                ObjectName queryName = pattern != null ? new ObjectName(pattern) : null;
+                Set<ObjectName> names = mbsc.queryNames(queryName, null);
+
+                LOGGER.info("Available MBeans matching '{}': ", pattern);
+                for (ObjectName name : names) {
+                    LOGGER.info("  - {}", name);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to list MBeans: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Print sink task metrics to stdout for test visibility
+     */
+    public void printSinkTaskMetrics(String connectorName, int taskId) {
+        SinkTaskMetrics metrics = getSinkTaskMetrics(connectorName, taskId);
+        System.out.println("=== Kafka Connect Sink Task Metrics ===");
+        System.out.println("Connector: " + connectorName + ", Task: " + taskId);
+        System.out.println("----------------------------------------");
+        System.out.println("sink-record-active-count:     " + String.format("%.0f", metrics.sinkRecordActiveCount));
+        System.out.println("sink-record-active-count-max: " + String.format("%.0f", metrics.sinkRecordActiveCountMax));
+        System.out.println("sink-record-active-count-avg: " + String.format("%.2f", metrics.sinkRecordActiveCountAvg));
+        System.out.println("sink-record-send-total:       " + String.format("%.0f", metrics.sinkRecordSendTotal));
+        System.out.println("sink-record-send-rate:        " + String.format("%.2f", metrics.sinkRecordSendRate) + " records/sec");
+        System.out.println("sink-record-read-total:       " + String.format("%.0f", metrics.sinkRecordReadTotal));
+        System.out.println("sink-record-read-rate:        " + String.format("%.2f", metrics.sinkRecordReadRate) + " records/sec");
+        System.out.println("put-batch-max-time-ms:        " + String.format("%.2f", metrics.putBatchMaxTimeMs) + " ms");
+        System.out.println("put-batch-avg-time-ms:        " + String.format("%.2f", metrics.putBatchAvgTimeMs) + " ms");
+        System.out.println("partition-count:              " + String.format("%.0f", metrics.partitionCount));
+        System.out.println("offset-commit-completion-total: " + String.format("%.0f", metrics.offsetCommitCompletionTotal));
+        System.out.println("========================================");
+    }
+
+    /**
+     * Container class for Kafka Connect sink task metrics
+     */
+    public static class SinkTaskMetrics {
+        /** Number of records actively being processed (not yet committed) */
+        public double sinkRecordActiveCount = 0;
+        /** Maximum number of records actively being processed at any point */
+        public double sinkRecordActiveCountMax = 0;
+        /** Average number of records actively being processed */
+        public double sinkRecordActiveCountAvg = 0;
+        /** Total number of records sent to the sink */
+        public double sinkRecordSendTotal = 0;
+        /** Rate of records sent to the sink (records/sec) */
+        public double sinkRecordSendRate = 0;
+        /** Total number of records read from Kafka */
+        public double sinkRecordReadTotal = 0;
+        /** Rate of records read from Kafka (records/sec) */
+        public double sinkRecordReadRate = 0;
+        /** Maximum time spent in put() method (ms) */
+        public double putBatchMaxTimeMs = 0;
+        /** Average time spent in put() method (ms) */
+        public double putBatchAvgTimeMs = 0;
+        /** Number of partitions assigned to this task */
+        public double partitionCount = 0;
+        /** Total number of offset commits completed */
+        public double offsetCommitCompletionTotal = 0;
+
+        @Override
+        public String toString() {
+            return String.format(
+                    "SinkTaskMetrics{active=%.0f, activeMax=%.0f, sendTotal=%.0f, readTotal=%.0f, partitions=%.0f}",
+                    sinkRecordActiveCount, sinkRecordActiveCountMax, sinkRecordSendTotal, sinkRecordReadTotal, partitionCount
+            );
+        }
+    }
 }

@@ -27,6 +27,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class IntegrationTestBase {
@@ -233,26 +234,38 @@ public class IntegrationTestBase {
         LOGGER.info("Connector config: {}", json.writerWithDefaultPrettyPrinter().writeValueAsString(jsonConfig));
         confluentPlatform.createConnect(connectorConfig);
 
-        for (int i = 0; i < 10; i++) {
-            Thread.sleep(1000);
-
+        long startConnectorTime = System.currentTimeMillis();
+        while ((System.currentTimeMillis() - startConnectorTime) < TimeUnit.SECONDS.toMillis(10)) {
+            Thread.yield();
             String currentState = confluentPlatform.getConnectors();
-            LOGGER.debug(currentState);
+            if (currentState.contains("\"tasks\":[{\"connector\":\"DataGen_highThroughputConsumerConfigTest\",\"task\":0}")) {
+                LOGGER.info("DataGen started");
+                break;
+            }
+        }
+        long offsetTotal = 0;
+        final int runningTotal = numberOfPartitions * numberOfRecords;
+        while (runningTotal - offsetTotal > 100) {
+            offsetTotal = 0; // reset counter
+            for (int i = 0; i < numberOfPartitions; i++) {
+                offsetTotal += confluentPlatform.getOffset(topicName, i);
+                System.out.println("generated offset: " + offsetTotal + " partition " + i);
+            }
+            System.out.println("total diff "  + (runningTotal - offsetTotal) );
+            Thread.sleep(1000);
         }
 
         confluentPlatform.deleteConnectors(connectorName);
-        for (int i = 0; i < 10; i++) {
-            Thread.sleep(1000);
-
+        long stopConnectorTime = System.currentTimeMillis();
+        while ((System.currentTimeMillis() - stopConnectorTime) < TimeUnit.SECONDS.toMillis(10)) {
+            Thread.yield();
             String currentState = confluentPlatform.getConnectors();
-            LOGGER.debug(currentState);
+            if (currentState.equals("{}")) {
+                LOGGER.info("Data Gen Connector stopped");
+                break;
+            }
         }
 
-        long offsetTotal = 0;
-        for (int i = 0; i < numberOfPartitions; i++) {
-            offsetTotal += confluentPlatform.getOffset(topicName, i);
-        }
-        int runningTotal = numberOfPartitions * numberOfRecords * 5;
         LOGGER.info("Generated records for [{}]: Total (By Offset): [{}], Diff from Theoretical Total: [{}]", topicName, offsetTotal, runningTotal - offsetTotal);
         return (int) offsetTotal;
     }

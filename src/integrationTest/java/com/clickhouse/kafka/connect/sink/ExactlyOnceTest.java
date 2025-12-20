@@ -83,7 +83,7 @@ public class ExactlyOnceTest extends IntegrationTestBase {
             ClickHouseAPI.createMergeTreeTable(dbClientNoProxy, topicName);
             ClickHouseAPI.clearTable(dbClientNoProxy, topicName);
 
-//            int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
+            int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
 
             Map<String, String> connectorConfig = createConnectorSchemalessConfig();
             connectorConfig.put("tasks.max", String.valueOf(numberOfPartitions));
