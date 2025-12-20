@@ -69,9 +69,8 @@ public class ClickHouseAPI {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try {
             chc.getClient().queryRecords(dropTable).get(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
@@ -82,24 +81,24 @@ public class ClickHouseAPI {
         try {
             Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
             LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
 
     public static void createReplicatedMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
+
         String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
                 "Engine = ReplicatedMergeTree ORDER BY symbol", tableName);
         try {
             Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
             LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
-            throw new RuntimeException(e);
-        }    }
+        }
+    }
 
     public static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
@@ -107,18 +106,12 @@ public class ClickHouseAPI {
                 "GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` " +
                 "HAVING COUNT(*) > 1", tableName);
         try {
-            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
-            return records;
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (TimeoutException e) {
+            return chc.getClient().queryRecords(queryString).get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
-
-
 
     public static void clearTable(ClickHouseHelperClient chc, String tableName) {
         String sql = "TRUNCATE TABLE " + tableName;
@@ -127,30 +120,27 @@ public class ClickHouseAPI {
         try {
             records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS);
             LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (TimeoutException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
 
     public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return Arrays.stream(response.firstRecord().getValue(0).asString().split("\t")).mapToInt(Integer::parseInt).toArray();
-        } catch (ClickHouseException e) {
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get(10, TimeUnit.SECONDS);
+            for (com.clickhouse.client.api.query.GenericRecord record : records) {
+                return new int[] { record.getInteger(1), record.getInteger(2), record.getInteger(3) };
+            }
+            return new int[] { 0, 0, 0 };
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
 
+    // Cloud instance management (DO NOT USE)
 
     public HttpResponse<String> stopInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {
         return updateServiceState(serviceId, "stop");
@@ -171,7 +161,6 @@ public class ClickHouseAPI {
                 .build();
         return HttpClient.newBuilder().proxy(ProxySelector.getDefault()).build().send(request, HttpResponse.BodyHandlers.ofString());
     }
-
 
     public String getServiceState(String serviceId) throws URISyntaxException, IOException, InterruptedException {
         String restURL = "https://" + properties.getProperty("clickhouse.cloud.host") + "/v1/organizations/" + properties.getProperty("clickhouse.cloud.organization") + "/services/" + serviceId;
@@ -224,5 +213,96 @@ public class ClickHouseAPI {
         return serviceState;
     }
 
+    /**
+     * Query system.query_log to get insert statistics for a specific table.
+     * Returns information about batch sizes used during inserts.
+     */
+    public static InsertStatistics getInsertStatistics(ClickHouseHelperClient chc, String tableName) {
+        // Flush query_log first to ensure all entries are visible
+        try {
+            chc.getClient().queryRecords("SYSTEM FLUSH LOGS").get(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to flush logs: {}", e.getMessage());
+        }
 
+        String query = String.format(
+                "SELECT " +
+                "    count() as total_inserts, " +
+                "    sum(written_rows) as total_rows, " +
+                "    min(written_rows) as min_batch_size, " +
+                "    max(written_rows) as max_batch_size, " +
+                "    avg(written_rows) as avg_batch_size, " +
+                "    groupArray(written_rows) as batch_sizes " +
+                "FROM system.query_log " +
+                "WHERE type = 'QueryFinish' " +
+                "  AND query_kind = 'Insert' " +
+                "  AND has(tables, 'default.%s') " +
+                "  AND written_rows > 0",
+                tableName
+        );
+
+        try {
+            Records records = chc.getClient().queryRecords(query).get(30, TimeUnit.SECONDS);
+            for (com.clickhouse.client.api.query.GenericRecord record : records) {
+                InsertStatistics stats = new InsertStatistics();
+                stats.totalInserts = record.getLong(1);
+                stats.totalRows = record.getLong(2);
+                stats.minBatchSize = record.getLong(3);
+                stats.maxBatchSize = record.getLong(4);
+                stats.avgBatchSize = record.getDouble(5);
+                stats.batchSizes = record.getString(6);
+                return stats;
+            }
+        } catch (InterruptedException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException e) {
+            LOGGER.error("Failed to get insert statistics: {}", e.getMessage());
+        }
+
+        return new InsertStatistics();
+    }
+
+    /**
+     * Print detailed insert statistics for a table from query_log
+     */
+    public static void printInsertStatistics(ClickHouseHelperClient chc, String tableName) {
+        InsertStatistics stats = getInsertStatistics(chc, tableName);
+        LOGGER.info("=== Insert Statistics for table '{}' ===", tableName);
+        LOGGER.info("Total INSERT queries: {}", stats.totalInserts);
+        LOGGER.info("Total rows inserted: {}", stats.totalRows);
+        LOGGER.info("Min batch size: {}", stats.minBatchSize);
+        LOGGER.info("Max batch size: {}", stats.maxBatchSize);
+        LOGGER.info("Avg batch size: {:.2f}", stats.avgBatchSize);
+        LOGGER.info("Batch sizes: {}", stats.batchSizes);
+        LOGGER.info("==========================================");
+
+        // Also print to stdout for test visibility
+        System.out.println("=== Insert Statistics for table '" + tableName + "' ===");
+        System.out.println("Total INSERT queries: " + stats.totalInserts);
+        System.out.println("Total rows inserted: " + stats.totalRows);
+        System.out.println("Min batch size: " + stats.minBatchSize);
+        System.out.println("Max batch size: " + stats.maxBatchSize);
+        System.out.println("Avg batch size: " + String.format("%.2f", stats.avgBatchSize));
+        System.out.println("Batch sizes: " + stats.batchSizes);
+        System.out.println("==========================================");
+    }
+
+    /**
+     * Statistics about INSERT operations from query_log
+     */
+    public static class InsertStatistics {
+        public long totalInserts = 0;
+        public long totalRows = 0;
+        public long minBatchSize = 0;
+        public long maxBatchSize = 0;
+        public double avgBatchSize = 0.0;
+        public String batchSizes = "[]";
+
+        @Override
+        public String toString() {
+            return String.format(
+                    "InsertStatistics{inserts=%d, rows=%d, min=%d, max=%d, avg=%.2f, batches=%s}",
+                    totalInserts, totalRows, minBatchSize, maxBatchSize, avgBatchSize, batchSizes
+            );
+        }
+    }
 }

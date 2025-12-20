@@ -6,6 +6,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,20 +17,40 @@ import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 
+import javax.management.MBeanServerConnection;
+import javax.management.ObjectName;
+import javax.management.remote.JMXConnector;
+import javax.management.remote.JMXConnectorFactory;
+import javax.management.remote.JMXServiceURL;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 
 public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
 
-    private static final String CONFLUENT_VERSION = "7.5.0";
+    public static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
+    public static final String DATA_GEN_CONNECTOR_CLASS = "io.confluent.kafka.connect.datagen.DatagenConnector";
+    public static final String KAFKA_STRING_CONVERTER = "org.apache.kafka.connect.storage.StringConverter";
+    public static final String KAFKA_JSON_CONVERTER = "org.apache.kafka.connect.json.JsonConverter";
+    public static final String CONNECTOR_MAX_TASKS_PROP = "tasks.max";
+    public static final String CONNECTOR_TASKS_MAX = "1";
+
+    private static final String CONFLUENT_VERSION = "7.7.0";
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
             "confluentinc/cp-kafka-rest:" + CONFLUENT_VERSION
     );
@@ -45,9 +66,9 @@ public class ConfluentPlatform {
     private static final DockerImageName CP_SCHEMA_REGISTRY = DockerImageName.parse(
             "confluentinc/cp-schema-registry:" + CONFLUENT_VERSION
     );
-    // 0.4.0-6.0.1
+    // 0.6.4-7.6.0
     private static final DockerImageName CP_DATA_GEN = DockerImageName.parse(
-            "cnfldemos/cp-server-connect-datagen:0.6.2-7.5.0"
+            "cnfldemos/cp-server-connect-datagen:0.6.4-7.6.0"
     );
 
     private static final DockerImageName CP_CONTROL_CENTER = DockerImageName.parse(
@@ -61,11 +82,13 @@ public class ConfluentPlatform {
     private static int CONTROL_CENTER_INTERNAL_PORT = 9021;
     private static int REST_PROXY_INTERNAL_PORT = 8082;
     private static int CONNECT_INTERNAL_PORT = 8083;
+    private static int CONNECT_JMX_PORT = 9102;
     private static int KSQL_INTERNAL_PORT = 8088;
     private String clusterId = null;
     private String controlCenterEndpoint = null;
     private String restProxyEndpoint = null;
     private String connectRestEndPoint = null;
+    private String connectJmxEndpoint = null;
     private String ksqlRestEndPoint = null;
 
     GenericContainer<?> zookeeper;
@@ -81,7 +104,8 @@ public class ConfluentPlatform {
                 .withNetwork(network)
                 .withExposedPorts(2181)
                 .withNetworkAliases("zookeeper")
-                .withEnv("ZOOKEEPER_CLIENT_PORT", "2181");
+                .withEnv("ZOOKEEPER_CLIENT_PORT", "2181")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
 
         cp_server = new GenericContainer<>(CP_SERVER_IMAGE)
                 .withNetwork(network)
@@ -102,11 +126,13 @@ public class ConfluentPlatform {
                 .withEnv("KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR","1")
                 .withEnv("KAFKA_JMX_PORT","9101")
                 .withEnv("KAFKA_JMX_HOSTNAME","localhost")
-                .withEnv("KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL","http://schema-registry:8081")
+//                .withEnv("KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL","http://schema-registry:8081")
                 .withEnv("CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS","broker:29092")
                 .withEnv("CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS","1")
                 .withEnv("CONFLUENT_METRICS_ENABLE","true")
-                .withEnv("CONFLUENT_SUPPORT_CUSTOMER_ID","anonymous'");
+                .withEnv("CONFLUENT_SUPPORT_CUSTOMER_ID","anonymous'")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
+
 
         cp_schema_registry = new GenericContainer<>(CP_SCHEMA_REGISTRY)
                 .withNetwork(network)
@@ -115,12 +141,13 @@ public class ConfluentPlatform {
                 .dependsOn(cp_server)
                 .withEnv("SCHEMA_REGISTRY_HOST_NAME", "schema-registry")
                 .withEnv("SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS", "broker:29092")
-                .withEnv("SCHEMA_REGISTRY_LISTENERS", "http://0.0.0.0:8081");
+                .withEnv("SCHEMA_REGISTRY_LISTENERS", "http://0.0.0.0:8081")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
 
         cp_data_gen = new GenericContainer<>(CP_DATA_GEN)
                 .withNetwork(network)
                 .withNetworkAliases("connect")
-                .withExposedPorts(8083)
+                .withExposedPorts(8083, 9102)  // 9102 for JMX
                 .dependsOn(cp_server, cp_schema_registry)
                 .withEnv("CONNECT_BOOTSTRAP_SERVERS", "broker:29092")
                 .withEnv("CONNECT_REST_ADVERTISED_HOST_NAME", "connect")
@@ -139,7 +166,11 @@ public class ConfluentPlatform {
                 .withEnv("CONNECT_PRODUCER_INTERCEPTOR_CLASSES", "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor")
                 .withEnv("CONNECT_CONSUMER_INTERCEPTOR_CLASSES", "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor")
                 .withEnv("CONNECT_PLUGIN_PATH", "/usr/share/java,/usr/share/confluent-hub-components")
-                .withEnv("CONNECT_LOG4J_LOGGERS", "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR,com.clickhouse=DEBUG")
+                .withEnv("CONNECT_LOG4J_LOGGERS", "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR,com.clickhouse=DEBUG,org.apache.hc.client5=DEBUG")
+                // Enable JMX for metrics monitoring
+                .withEnv("KAFKA_JMX_PORT", "9102")
+                .withEnv("KAFKA_JMX_HOSTNAME", "localhost")
+                .withEnv("KAFKA_OPTS", "-Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9102 -Dcom.sun.management.jmxremote.rmi.port=9102 -Djava.rmi.server.hostname=localhost")
                 .waitingFor(Wait.forHttp("/connectors").forStatusCode(200));
 
         if (connectorPathList != null) {
@@ -164,7 +195,9 @@ public class ConfluentPlatform {
                 .withEnv("CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS", "1")
                 .withEnv("CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS", "1")
                 .withEnv("CONFLUENT_METRICS_TOPIC_REPLICATION", "1")
-                .withEnv("PORT", "9021");
+                .withEnv("PORT", "9021")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
+
 
         cp_ksqldb_server = new GenericContainer<>(CP_KSQLDB_SERVER)
                 .withNetwork(network)
@@ -189,39 +222,43 @@ public class ConfluentPlatform {
                 .withNetwork(network)
                 .withNetworkAliases("rest-proxy")
                 .withExposedPorts(8082)
-                .dependsOn(cp_server, cp_schema_registry, cp_data_gen)
+                .dependsOn(cp_server, cp_schema_registry)
 
                 .withEnv("KAFKA_REST_HOST_NAME", "rest-proxy")
                 .withEnv("KAFKA_REST_BOOTSTRAP_SERVERS", "broker:29092")
                 .withEnv("KAFKA_REST_LISTENERS", "http://0.0.0.0:8082")
-                .withEnv("KAFKA_REST_SCHEMA_REGISTRY_URL", "http://schema-registry:8081");
+                .withEnv("KAFKA_REST_SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
+                .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.of(10, ChronoUnit.SECONDS)));
 
         zookeeper.start();
         cp_server.start();
         cp_schema_registry.start();
-
+        System.out.println("Core started: " + new Date());
         cp_data_gen.start();
-        cp_control_center.start();
+        System.out.println("Data generator started: " + new Date());
+//        cp_control_center.start();
 
-        cp_ksqldb_server.start();
+//        cp_ksqldb_server.start();
         rest_proxy.start();
+        System.out.println("Rest proxy started: " + new Date());
 
 
         System.out.println("Done....");
-        this.controlCenterEndpoint = extractControlCenterURL(cp_control_center);
+//        this.controlCenterEndpoint = extractControlCenterURL(cp_control_center);
         this.restProxyEndpoint = extractRestProxyURL(rest_proxy);
         this.connectRestEndPoint = extractConnectURL(cp_data_gen);
-        this.ksqlRestEndPoint = extractKsqlURL(cp_ksqldb_server);
+        this.connectJmxEndpoint = extractConnectJmxURL(cp_data_gen);
+//        this.ksqlRestEndPoint = extractKsqlURL(cp_ksqldb_server);
 
-        System.out.println(getKsqlRestEndPoint());
+//        System.out.println(getKsqlRestEndPoint());
         this.clusterId = extractClusterId();
     }
 
     public void close() {
         LOGGER.info("Stopping Confluent Platform...");
         rest_proxy.close();
-        cp_ksqldb_server.close();
-        cp_control_center.close();
+//        cp_ksqldb_server.close();
+//        cp_control_center.close();
         cp_data_gen.close();
         cp_schema_registry.close();
         cp_server.close();
@@ -250,6 +287,15 @@ public class ConfluentPlatform {
 
     private String extractConnectURL(GenericContainer<?> connect) {
         return String.format("http://%s:%d", connect.getHost(), connect.getMappedPort(CONNECT_INTERNAL_PORT));
+    }
+
+    private String extractConnectJmxURL(GenericContainer<?> connect) {
+        return String.format("service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi",
+                connect.getHost(), connect.getMappedPort(CONNECT_JMX_PORT));
+    }
+
+    public String getConnectJmxEndpoint() {
+        return connectJmxEndpoint;
     }
 
     private String extractKsqlURL(GenericContainer<?> ksql) {
@@ -348,8 +394,6 @@ public class ConfluentPlatform {
         }
     }
 
-
-
     public void deleteConnectors(String connectorName) throws IOException {
         LOGGER.info("Deleting connector: " + connectorName);
         String connectRestEndpoint = getConnectRestEndPoint();
@@ -365,10 +409,6 @@ public class ConfluentPlatform {
             String responseBody = response.body().string();
             LOGGER.debug("Delete connectors response body: {}", responseBody);
         }
-    }
-
-    public void printConnectors() {
-        LOGGER.info(getConnectors());
     }
 
     public String getConnectors() {
@@ -446,6 +486,7 @@ public class ConfluentPlatform {
             LOGGER.info("Get offset response code: {}", response.code());
             if (response.code() == 200) {
                 JSONObject obj = new JSONObject(response.body().string());
+                System.out.println(obj);
 //                long beginningOffset = obj.getLong("beginning_offset");
                 return obj.getLong("end_offset");
             }
@@ -453,43 +494,6 @@ public class ConfluentPlatform {
 
         return 0;
     }
-
-
-    public int generateData(String templateFileName, String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
-        LOGGER.info("Generating data...");
-        String connectorName = "DatagenConnector_" + topicName + UUID.randomUUID();
-        int totalWorkers = numberOfPartitions * 10;
-
-        String payloadDataGen = String.join("", Files.readAllLines(Paths.get(templateFileName)));
-        createConnect(String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
-        String currentState = "";
-        int loopCount = 0;
-        do {
-            Thread.sleep(2 * 1000);
-            if (loopCount % 4 == 0) {
-                LOGGER.info("Generating...");
-            }
-            currentState = getConnectors();
-            LOGGER.debug(currentState);
-            loopCount++;
-        } while (Pattern.compile("Stopping connector: generated the configured").matcher(currentState).results().count() != totalWorkers && loopCount < 120);//We have to track multiple
-
-        if (loopCount >= 120) {
-            LOGGER.error("Data generation failed");
-            throw new RuntimeException("Data generation failed");
-        }
-
-        deleteConnectors(connectorName);
-        Thread.sleep(3 * 1000);//Wait for the connector to be deleted
-        long offsetTotal = 0;
-        for (int i=0; i < numberOfPartitions; i++) {
-            offsetTotal += getOffset(topicName, i);
-        }
-        int runningTotal = numberOfPartitions * numberOfRecords * 5;
-        LOGGER.info("Generated records for [{}]: Total (By Offset): [{}], Diff from Theoretical Total: [{}]", topicName, offsetTotal, runningTotal - offsetTotal);
-        return (int) offsetTotal;
-    }
-
 
     public boolean isConnectorRunning(String connectorName) throws IOException {
         String connectors = getConnectors();
@@ -502,4 +506,155 @@ public class ConfluentPlatform {
         return "RUNNING".equalsIgnoreCase(connectorState);
     }
 
+    /**
+     * Get sink task metrics from JMX for a specific connector.
+     * Returns metrics including sink-record-active-count, sink-record-send-total, etc.
+     *
+     * @param connectorName The name of the connector
+     * @param taskId The task ID (usually 0 for single task connectors)
+     * @return SinkTaskMetrics object with current metric values
+     */
+    public SinkTaskMetrics getSinkTaskMetrics(String connectorName, int taskId) {
+        SinkTaskMetrics metrics = new SinkTaskMetrics();
+
+        if (connectJmxEndpoint == null) {
+            LOGGER.warn("JMX endpoint not available");
+            return metrics;
+        }
+
+        try {
+            JMXServiceURL url = new JMXServiceURL(connectJmxEndpoint);
+            try (JMXConnector jmxConnector = JMXConnectorFactory.connect(url, null)) {
+                MBeanServerConnection mbsc = jmxConnector.getMBeanServerConnection();
+
+                // Query pattern for sink task metrics
+                // kafka.connect:type=sink-task-metrics,connector=<connector>,task=<task>
+                String objectNamePattern = String.format(
+                        "kafka.connect:type=sink-task-metrics,connector=%s,task=%d",
+                        connectorName, taskId
+                );
+
+                ObjectName mbeanName = new ObjectName(objectNamePattern);
+
+                // Get available attributes
+                try {
+                    metrics.sinkRecordActiveCount = getDoubleAttribute(mbsc, mbeanName, "sink-record-active-count");
+                    metrics.sinkRecordActiveCountMax = getDoubleAttribute(mbsc, mbeanName, "sink-record-active-count-max");
+                    metrics.sinkRecordActiveCountAvg = getDoubleAttribute(mbsc, mbeanName, "sink-record-active-count-avg");
+                    metrics.sinkRecordSendTotal = getDoubleAttribute(mbsc, mbeanName, "sink-record-send-total");
+                    metrics.sinkRecordSendRate = getDoubleAttribute(mbsc, mbeanName, "sink-record-send-rate");
+                    metrics.sinkRecordReadTotal = getDoubleAttribute(mbsc, mbeanName, "sink-record-read-total");
+                    metrics.sinkRecordReadRate = getDoubleAttribute(mbsc, mbeanName, "sink-record-read-rate");
+                    metrics.putBatchMaxTimeMs = getDoubleAttribute(mbsc, mbeanName, "put-batch-max-time-ms");
+                    metrics.putBatchAvgTimeMs = getDoubleAttribute(mbsc, mbeanName, "put-batch-avg-time-ms");
+                    metrics.partitionCount = getDoubleAttribute(mbsc, mbeanName, "partition-count");
+                    metrics.offsetCommitCompletionTotal = getDoubleAttribute(mbsc, mbeanName, "offset-commit-completion-total");
+                } catch (Exception e) {
+                    LOGGER.debug("Some metrics not available: {}", e.getMessage());
+                }
+
+                LOGGER.info("Retrieved sink task metrics for {}-{}: {}", connectorName, taskId, metrics);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to get JMX metrics: {}", e.getMessage());
+        }
+
+        return metrics;
+    }
+
+    private double getDoubleAttribute(MBeanServerConnection mbsc, ObjectName name, String attribute) {
+        try {
+            Object value = mbsc.getAttribute(name, attribute);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            }
+        } catch (Exception e) {
+            LOGGER.trace("Attribute {} not available: {}", attribute, e.getMessage());
+        }
+        return 0.0;
+    }
+
+    /**
+     * List all available MBeans matching a pattern (useful for debugging)
+     */
+    public void listAvailableMBeans(String pattern) {
+        if (connectJmxEndpoint == null) {
+            LOGGER.warn("JMX endpoint not available");
+            return;
+        }
+
+        try {
+            JMXServiceURL url = new JMXServiceURL(connectJmxEndpoint);
+            try (JMXConnector jmxConnector = JMXConnectorFactory.connect(url, null)) {
+                MBeanServerConnection mbsc = jmxConnector.getMBeanServerConnection();
+                ObjectName queryName = pattern != null ? new ObjectName(pattern) : null;
+                Set<ObjectName> names = mbsc.queryNames(queryName, null);
+
+                LOGGER.info("Available MBeans matching '{}': ", pattern);
+                for (ObjectName name : names) {
+                    LOGGER.info("  - {}", name);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to list MBeans: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Print sink task metrics to stdout for test visibility
+     */
+    public void printSinkTaskMetrics(String connectorName, int taskId) {
+        SinkTaskMetrics metrics = getSinkTaskMetrics(connectorName, taskId);
+        System.out.println("=== Kafka Connect Sink Task Metrics ===");
+        System.out.println("Connector: " + connectorName + ", Task: " + taskId);
+        System.out.println("----------------------------------------");
+        System.out.println("sink-record-active-count:     " + String.format("%.0f", metrics.sinkRecordActiveCount));
+        System.out.println("sink-record-active-count-max: " + String.format("%.0f", metrics.sinkRecordActiveCountMax));
+        System.out.println("sink-record-active-count-avg: " + String.format("%.2f", metrics.sinkRecordActiveCountAvg));
+        System.out.println("sink-record-send-total:       " + String.format("%.0f", metrics.sinkRecordSendTotal));
+        System.out.println("sink-record-send-rate:        " + String.format("%.2f", metrics.sinkRecordSendRate) + " records/sec");
+        System.out.println("sink-record-read-total:       " + String.format("%.0f", metrics.sinkRecordReadTotal));
+        System.out.println("sink-record-read-rate:        " + String.format("%.2f", metrics.sinkRecordReadRate) + " records/sec");
+        System.out.println("put-batch-max-time-ms:        " + String.format("%.2f", metrics.putBatchMaxTimeMs) + " ms");
+        System.out.println("put-batch-avg-time-ms:        " + String.format("%.2f", metrics.putBatchAvgTimeMs) + " ms");
+        System.out.println("partition-count:              " + String.format("%.0f", metrics.partitionCount));
+        System.out.println("offset-commit-completion-total: " + String.format("%.0f", metrics.offsetCommitCompletionTotal));
+        System.out.println("========================================");
+    }
+
+    /**
+     * Container class for Kafka Connect sink task metrics
+     */
+    public static class SinkTaskMetrics {
+        /** Number of records actively being processed (not yet committed) */
+        public double sinkRecordActiveCount = 0;
+        /** Maximum number of records actively being processed at any point */
+        public double sinkRecordActiveCountMax = 0;
+        /** Average number of records actively being processed */
+        public double sinkRecordActiveCountAvg = 0;
+        /** Total number of records sent to the sink */
+        public double sinkRecordSendTotal = 0;
+        /** Rate of records sent to the sink (records/sec) */
+        public double sinkRecordSendRate = 0;
+        /** Total number of records read from Kafka */
+        public double sinkRecordReadTotal = 0;
+        /** Rate of records read from Kafka (records/sec) */
+        public double sinkRecordReadRate = 0;
+        /** Maximum time spent in put() method (ms) */
+        public double putBatchMaxTimeMs = 0;
+        /** Average time spent in put() method (ms) */
+        public double putBatchAvgTimeMs = 0;
+        /** Number of partitions assigned to this task */
+        public double partitionCount = 0;
+        /** Total number of offset commits completed */
+        public double offsetCommitCompletionTotal = 0;
+
+        @Override
+        public String toString() {
+            return String.format(
+                    "SinkTaskMetrics{active=%.0f, activeMax=%.0f, sendTotal=%.0f, readTotal=%.0f, partitions=%.0f}",
+                    sinkRecordActiveCount, sinkRecordActiveCountMax, sinkRecordSendTotal, sinkRecordReadTotal, partitionCount
+            );
+        }
+    }
 }
