@@ -70,7 +70,7 @@ extra.apply {
     // Test extra test dependencies
     set("kafkaPlatformSchemaRegistry", "7.9.1")
     set("kafkaPlatformProtobuf", "7.9.1")
-    set("testcontainers", "1.21.3")
+    set("testcontainers", "1.21.4")
     set("toxiproxy", "1.21.0")
     set("org.json", "20250517")
     set("libprotobuf", "3.25.8")
