@@ -11,7 +11,9 @@ import org.apache.kafka.connect.sink.SinkTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 public class ClickHouseSinkTask extends SinkTask {
@@ -21,6 +23,13 @@ public class ClickHouseSinkTask extends SinkTask {
     private ProxySinkTask proxySinkTask;
     private ClickHouseSinkConfig clickHouseSinkConfig;
     private ErrorReporter errorReporter;
+
+    // Internal buffering
+    private List<SinkRecord> buffer;
+    private long lastFlushTime;
+    private int bufferCount;
+    private long bufferFlushTime;
+    private boolean bufferingEnabled;
 
     @Override
     public String version() {
@@ -40,11 +49,59 @@ public class ClickHouseSinkTask extends SinkTask {
         }
 
         this.proxySinkTask = new ProxySinkTask(clickHouseSinkConfig, errorReporter);
+
+        // Initialize buffering
+        this.bufferCount = clickHouseSinkConfig.getBufferCount();
+        this.bufferFlushTime = clickHouseSinkConfig.getBufferFlushTime();
+        this.bufferingEnabled = this.bufferCount > 0;
+        this.buffer = new ArrayList<>();
+        this.lastFlushTime = System.currentTimeMillis();
+
+        if (bufferingEnabled) {
+            LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms",
+                    bufferCount, bufferFlushTime);
+        }
     }
 
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        if (!bufferingEnabled) {
+            // Original behavior - no buffering
+            putDirect(records);
+            return;
+        }
+
+        // Buffering mode: accumulate records
+        if (!records.isEmpty()) {
+            buffer.addAll(records);
+            LOGGER.debug("Buffered {} records, total buffer size: {}", records.size(), buffer.size());
+        }
+
+        // Check if we should flush
+        boolean sizeThreshold = buffer.size() >= bufferCount;
+        boolean timeThreshold = bufferFlushTime > 0
+                && (System.currentTimeMillis() - lastFlushTime) >= bufferFlushTime
+                && !buffer.isEmpty();
+
+        if (sizeThreshold || timeThreshold) {
+            LOGGER.info("Buffer flush triggered: size={}, sizeThreshold={}, timeThreshold={}", buffer.size(), sizeThreshold, timeThreshold);
+            flushBuffer();
+        }
+    }
+
+    private void flushBuffer() {
+        if (buffer.isEmpty()) {
+            return;
+        }
+        List<SinkRecord> toFlush = new ArrayList<>(buffer);
+        putDirect(toFlush);
+        // Clear buffer only after successful flush to prevent data loss on failure
+        buffer.clear();
+        lastFlushTime = System.currentTimeMillis();
+    }
+
+    private void putDirect(Collection<SinkRecord> records) {
         try {
             long putStat = System.currentTimeMillis();
             this.proxySinkTask.put(records);
@@ -63,7 +120,6 @@ public class ClickHouseSinkTask extends SinkTask {
         }
     }
 
-
     // TODO: can be removed ss
     @Override
     public void flush(Map<TopicPartition, OffsetAndMetadata> offsets) {
@@ -72,6 +128,11 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void stop() {
+        // Flush remaining buffered records before stopping
+        if (bufferingEnabled && buffer != null && !buffer.isEmpty()) {
+            LOGGER.info("Stop called with {} buffered records - flushing", buffer.size());
+            flushBuffer();
+        }
         if (this.proxySinkTask != null) {
             this.proxySinkTask.stop();
         }
