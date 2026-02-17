@@ -129,15 +129,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 ") Engine = MergeTree ORDER BY off16");
 
         try {
-            Table table = chc.describeTableV1(chc.getDatabase(), topic);
-            Assertions.assertEquals(1, table.getAllColumnsMap().size());
-            Assertions.assertEquals(1, table.getAllColumnsList().size());
-            Assertions.assertEquals(1, table.getRootColumnsList().size());
-            Assertions.assertEquals(1, table.getRootColumnsMap().size());
-            Assertions.assertEquals("off16", table.getAllColumnsList().get(0).getName());
-            Assertions.assertEquals("off16", table.getRootColumnsList().get(0).getName());
-
-            table = chc.describeTableV2(chc.getDatabase(), topic);
+            Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertEquals(1, table.getAllColumnsMap().size());
             Assertions.assertEquals(1, table.getAllColumnsList().size());
             Assertions.assertEquals(1, table.getRootColumnsList().size());
