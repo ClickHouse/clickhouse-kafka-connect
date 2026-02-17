@@ -112,4 +112,40 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             ClickHouseTestHelpers.query(chc, "DROP USER IF EXISTS unflatten");
         }
     }
+
+    @Test
+    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
+        String topic = createTopicName("alias_ephemeral_subcol_test");
+
+        createTable(chc, topic, "CREATE TABLE %s (" +
+                "`off16` Int16," +
+                "`null_str_alias` Nullable(String) ALIAS formatReadableSize(`off16`)," +
+                "`null_str_eph` Nullable(String) EPHEMERAL," +
+                "`null_str_mat` Nullable(String) MATERIALIZED formatReadableSize(`off16`)," +
+                "`arr_eph` Array(Array(Array(UInt32))) EPHEMERAL," +
+                "`tuple_eph` Tuple(s String, i Int64) EPHEMERAL," +
+                "`map_eph` Map(String, UInt64) EPHEMERAL," +
+                "`nested_eph` Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL" +
+                ") Engine = MergeTree ORDER BY off16");
+
+        try {
+            Table table = chc.describeTableV1(chc.getDatabase(), topic);
+            Assertions.assertEquals(1, table.getAllColumnsMap().size());
+            Assertions.assertEquals(1, table.getAllColumnsList().size());
+            Assertions.assertEquals(1, table.getRootColumnsList().size());
+            Assertions.assertEquals(1, table.getRootColumnsMap().size());
+            Assertions.assertEquals("off16", table.getAllColumnsList().get(0).getName());
+            Assertions.assertEquals("off16", table.getRootColumnsList().get(0).getName());
+
+            table = chc.describeTableV2(chc.getDatabase(), topic);
+            Assertions.assertEquals(1, table.getAllColumnsMap().size());
+            Assertions.assertEquals(1, table.getAllColumnsList().size());
+            Assertions.assertEquals(1, table.getRootColumnsList().size());
+            Assertions.assertEquals(1, table.getRootColumnsMap().size());
+            Assertions.assertEquals("off16", table.getAllColumnsList().get(0).getName());
+            Assertions.assertEquals("off16", table.getRootColumnsList().get(0).getName());
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
 }
