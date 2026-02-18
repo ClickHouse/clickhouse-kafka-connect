@@ -626,6 +626,7 @@ public class ClickHouseSinkConfig {
         configDef.define(BUFFER_COUNT,
                 ConfigDef.Type.INT,
                 bufferCountDefault,
+                ConfigDef.Range.atLeast(0),
                 ConfigDef.Importance.LOW,
                 "Number of records to buffer before flushing to ClickHouse. 0 means no buffering (default). " +
                         "When enabled, records from multiple poll() calls are accumulated and flushed as a single large batch.",
@@ -637,6 +638,7 @@ public class ClickHouseSinkConfig {
         configDef.define(BUFFER_FLUSH_TIME,
                 ConfigDef.Type.LONG,
                 bufferFlushTimeDefault,
+                ConfigDef.Range.atLeast(0),
                 ConfigDef.Importance.LOW,
                 "Maximum time in milliseconds to buffer records before flushing, regardless of buffer count. " +
                         "0 means no time-based flushing (default). Only effective when bufferCount > 0.",
