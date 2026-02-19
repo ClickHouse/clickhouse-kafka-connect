@@ -386,6 +386,7 @@ public class ClickHouseHelperClient {
                     String parentName = fieldDescriptor.getName().substring(0, fieldDescriptor.getName().lastIndexOf("."));
                     if (skippedCols.contains(parentName)) {
                         LOGGER.debug("Skipping subcolumn {} as its parent column is either an alias, materialized view, or ephemeral", fieldDescriptor.getName());
+                        skippedCols.add(fieldDescriptor.getName());
                         continue;
                     }
                 }
@@ -436,6 +437,7 @@ public class ClickHouseHelperClient {
                         String parentName = fieldDescriptor.getName().substring(0, fieldDescriptor.getName().lastIndexOf("."));
                         if (skippedCols.contains(parentName)) {
                             LOGGER.debug("Skipping subcolumn {} as its parent column is either an alias, materialized view, or ephemeral", fieldDescriptor.getName());
+                            skippedCols.add(fieldDescriptor.getName());
                             continue;
                         }
                     }
