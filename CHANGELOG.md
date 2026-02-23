@@ -229,7 +229,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 # 1.0.0
 ## New Features
 * Additional tests for ExactlyOnce
-* Allows customized ClickHouse settings using `clickhouse.settings` property
+* Allows customized ClickHouse settings using `clickhouseSettings` property
 * Tweaked deduplication behavior to account for dynamic fields
 * Added support for `errors.tolerance` and the DLQ
 
