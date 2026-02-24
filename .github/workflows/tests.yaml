@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         client: ["V1", "V2"]
-        clickhouse: ["23.7", "24.3", "latest", "cloud"]
+        clickhouse: ["25.3", "25.8", "25.10", "25.11", "25.12", "latest", "cloud"]
     name: ClickHouse ${{ matrix.clickhouse }} Client version ${{ matrix.client }} tests
     steps:
       - name: Check for Cloud Credentials
