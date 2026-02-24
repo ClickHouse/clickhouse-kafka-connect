@@ -33,10 +33,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -106,10 +103,10 @@ public class ClickHouseHelperClient {
             tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
         }
 
-        String url = String.format("%s://%s:%d/%s%s", 
-                protocol, 
-                hostname, 
-                port, 
+        String url = String.format("%s://%s:%d/%s%s",
+                protocol,
+                hostname,
+                port,
                 database,
                 tmpJdbcConnectionProperties
         );
@@ -147,7 +144,6 @@ public class ClickHouseHelperClient {
         LOGGER.info("ClickHouse URL: {}", url);
 
 
-
         Client.Builder clientBuilder = new Client.Builder()
                 .addEndpoint(url)
                 .setUsername(this.username)
@@ -169,6 +165,7 @@ public class ClickHouseHelperClient {
             return pingV1();
         }
     }
+
     private boolean pingV1() {
         ClickHouseClient clientPing = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
@@ -190,6 +187,7 @@ public class ClickHouseHelperClient {
         clientPing.close();
         return false;
     }
+
     private boolean pingV2() {
         int retryCount = 0;
         while (retryCount < retry) {
@@ -211,6 +209,7 @@ public class ClickHouseHelperClient {
             return versionV1();
         }
     }
+
     public String versionV1() {
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(getDefaultClientOptions())
@@ -276,6 +275,7 @@ public class ClickHouseHelperClient {
         }
         throw new RuntimeException(ce);
     }
+
     public Records queryV2(String query, ClickHouseFormat clickHouseFormat) {
         int retryCount = 0;
         Exception ce = null;
@@ -308,6 +308,7 @@ public class ClickHouseHelperClient {
             return showTablesV1(database);
         }
     }
+
     public List<Table> showTablesV1(String database) {
         List<Table> tables = new ArrayList<>();
         try (ClickHouseClient client = ClickHouseClient.builder()
@@ -321,7 +322,7 @@ public class ClickHouseHelperClient {
             for (ClickHouseRecord r : response.records()) {
                 String databaseName = r.getValue(0).asString();
                 String tableName = r.getValue(1).asString();
-                int colCount =  r.getValue(2).asInteger();
+                int colCount = r.getValue(2).asInteger();
                 tables.add(new Table(databaseName, tableName, colCount));
             }
         } catch (ClickHouseException e) {
@@ -353,6 +354,7 @@ public class ClickHouseHelperClient {
             return describeTableV1(database, tableName);
         }
     }
+
     public Table describeTableV1(String database, String tableName) {
         if (tableName.startsWith(".inner"))
             return null;
@@ -370,13 +372,23 @@ public class ClickHouseHelperClient {
                      .executeAndWait()) {
 
             Table table = new Table(database, tableName);
+            Set<String> skippedCols = new HashSet<>();
             for (ClickHouseRecord r : response.records()) {
                 ClickHouseValue v = r.getValue(0);
 
                 ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(v.asString());
                 if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized() || fieldDescriptor.isEphemeral()) {
-                    LOGGER.debug("Skipping column {} as it is an alias or materialized view or ephemeral", fieldDescriptor.getName());
+                    LOGGER.debug("Skipping column {} as it is either an alias, materialized view, or ephemeral", fieldDescriptor.getName());
+                    skippedCols.add(fieldDescriptor.getName());
                     continue;
+                }
+                if (fieldDescriptor.isSubcolumn()) {
+                    String parentName = fieldDescriptor.getName().substring(0, fieldDescriptor.getName().lastIndexOf("."));
+                    if (skippedCols.contains(parentName)) {
+                        LOGGER.debug("Skipping subcolumn {} as its parent column is either an alias, materialized view, or ephemeral", fieldDescriptor.getName());
+                        skippedCols.add(fieldDescriptor.getName());
+                        continue;
+                    }
                 }
 
                 if (fieldDescriptor.hasDefault()) {
@@ -398,7 +410,7 @@ public class ClickHouseHelperClient {
         }
     }
 
-    public Table describeTableV2(String database, String tableName)  {
+    public Table describeTableV2(String database, String tableName) {
         if (tableName.startsWith(".inner"))
             return null;
         String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
@@ -411,13 +423,23 @@ public class ClickHouseHelperClient {
             settings.setDatabase(database);
 
             try (QueryResponse queryResponse = client.query(describeQuery, settings).get();
-                    BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
+                 BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
                 String line = null;
+                Set<String> skippedCols = new HashSet<>();
                 while ((line = br.readLine()) != null) {
                     ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(line);
-                    if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized() || fieldDescriptor.isEphemeral()) {
-                        LOGGER.debug("Skipping column {} as it is an alias or materialized view or ephemeral", fieldDescriptor.getName());
+                    if (fieldDescriptor.isAlias() || fieldDescriptor.isMaterialized() || fieldDescriptor.isEphemeral()) { // TODO: add subcolumn filter here?
+                        LOGGER.debug("Skipping column {} as it is either an alias, materialized view, or ephemeral", fieldDescriptor.getName());
+                        skippedCols.add(fieldDescriptor.getName());
                         continue;
+                    }
+                    if (fieldDescriptor.isSubcolumn()) {
+                        String parentName = fieldDescriptor.getName().substring(0, fieldDescriptor.getName().lastIndexOf("."));
+                        if (skippedCols.contains(parentName)) {
+                            LOGGER.debug("Skipping subcolumn {} as its parent column is either an alias, materialized view, or ephemeral", fieldDescriptor.getName());
+                            skippedCols.add(fieldDescriptor.getName());
+                            continue;
+                        }
                     }
 
                     if (fieldDescriptor.hasDefault()) {
@@ -430,7 +452,8 @@ public class ClickHouseHelperClient {
                         LOGGER.warn("Unable to handle column: {}", fieldDescriptor.getName());
                         return null;
                     }
-                    table.addColumn(column);                }
+                    table.addColumn(column);
+                }
             }
         } catch (Exception e) {
             LOGGER.error("describeTableV2 failed", e);
@@ -438,9 +461,10 @@ public class ClickHouseHelperClient {
         }
         return table;
     }
+
     public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
-        List<Table> tableList =  new ArrayList<>();
-        for (Table table : showTables(database) ) {
+        List<Table> tableList = new ArrayList<>();
+        for (Table table : showTables(database)) {
             // (Full) Table names are escaped in the cache
             String escapedTableName = Utils.escapeTableName(database, table.getCleanName());
 
@@ -524,11 +548,13 @@ public class ClickHouseHelperClient {
             this.retry = retry;
             return this;
         }
+
         public ClickHouseClientBuilder useClientV2(boolean useClientV2) {
             this.useClientV2 = useClientV2;
             return this;
         }
-        public ClickHouseHelperClient build(){
+
+        public ClickHouseHelperClient build() {
             return new ClickHouseHelperClient(this);
         }
 
