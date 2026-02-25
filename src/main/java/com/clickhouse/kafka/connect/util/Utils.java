@@ -86,6 +86,7 @@ public class Utils {
                 case 319: // UNKNOWN_STATUS_OF_INSERT
                 case 425: // SYSTEM_ERROR
                 case 999: // KEEPER_EXCEPTION
+                case 1002: // UNKNOWN_EXCEPTION
                     throw new RetriableException(e);
                 default:
                     LOGGER.error("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());
