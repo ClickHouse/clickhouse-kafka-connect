@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.ClickHouseClient;
 import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseNodeSelector;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
@@ -13,7 +12,6 @@ import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
-import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
@@ -47,8 +45,6 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_PROXY_VERSION_DEFAULT);
     public static final String CLICKHOUSE_HOST_SYSTEM_PROP = "clickhouse.host";
     public static final String CLICKHOUSE_PORT_SYSTEM_PROP = "clickhouse.port";
-    public static final String CLICKHOUSE_DB_SYSTEM_PROP = "clickhouse.database";
-    public static final String CLICKHOUSE_USERNAME_SYSTEM_PROP = "clickhouse.username";
     public static final String CLICKHOUSE_PASSWORD_SYSTEM_PROP = "clickhouse.password";
     public static final String MISSING_PROP_ERROR_FORMAT = "%s system property is required";
 
@@ -66,6 +62,7 @@ public class ClickHouseTestHelpers {
         }
         return clickHouseVersion;
     }
+
     public static boolean isCloud() {
         String version = System.getenv("CLICKHOUSE_VERSION");
         LOGGER.info("Version: {}", version);
@@ -105,6 +102,7 @@ public class ClickHouseTestHelpers {
 
         return null;
     }
+
     private static OperationMetrics dropTableLoop(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try {
@@ -113,7 +111,6 @@ public class ClickHouseTestHelpers {
             throw new RuntimeException(e);
         }
     }
-
 
 
     public static OperationMetrics createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
@@ -149,6 +146,7 @@ public class ClickHouseTestHelpers {
 
         return null;
     }
+
     private static OperationMetrics createTableLoop(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
         final String createTableQueryTmp = String.format(createTableQuery, tableName);
         QuerySettings settings = new QuerySettings();
@@ -163,7 +161,7 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName)  {
+    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName) {
         String query = String.format("SELECT * FROM `%s`", tableName);
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
@@ -186,7 +184,7 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName)  {
+    public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName) {
         String query = String.format("SELECT * FROM clusterAllReplicas('default', `%s`)", tableName);
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
@@ -246,7 +244,7 @@ public class ClickHouseTestHelpers {
         try {
             Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             String value = records.iterator().next().getString(1);
-            return (int)(Float.parseFloat(value));
+            return (int) (Float.parseFloat(value));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -257,7 +255,7 @@ public class ClickHouseTestHelpers {
         try {
             Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             String value = records.iterator().next().getString(1);
-            return (int)(Float.parseFloat(value));
+            return (int) (Float.parseFloat(value));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -285,15 +283,16 @@ public class ClickHouseTestHelpers {
                 }
 
                 String gsonString = gson.toJson(recordMap);
-                records.add(gsonString.replace(".0", "").replace(" ","").replace("'","").replace("\\u003d",":"));
+                records.add(gsonString.replace(".0", "").replace(" ", "").replace("'", "").replace("\\u003d", ":"));
             }
             List<String> results = new ArrayList<>();
             LOGGER.info("read rows [%d]", queryResponse.getReadRows());
             BufferedReader reader = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                String gsonString = line.replace("'","").replace(" ","").replace("\\u003d",":");
-                Map<String, String> resultMap = new TreeMap<>((Map<String, String>) gson.fromJson(gsonString, new TypeToken<Map<String, String>>() {}.getType()));
+                String gsonString = line.replace("'", "").replace(" ", "").replace("\\u003d", ":");
+                Map<String, String> resultMap = new TreeMap<>((Map<String, String>) gson.fromJson(gsonString, new TypeToken<Map<String, String>>() {
+                }.getType()));
                 results.add(gson.toJson(resultMap));
             }
             for (String record : records) {

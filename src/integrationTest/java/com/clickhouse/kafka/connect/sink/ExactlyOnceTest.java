@@ -1,6 +1,5 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -38,13 +37,11 @@ public class ExactlyOnceTest {
     public static void checkPropsExistAndSetUp() {
         Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
         Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP));
         Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
 
         chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP),
                 Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP)), ClickHouseProxyType.IGNORE, null, -1)
-                .setUsername(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP))
+                .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
                 .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP))
                 .sslEnable(true)
                 .build();
@@ -111,8 +108,8 @@ public class ExactlyOnceTest {
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
                 properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP),
                 properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP),
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP),
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP),
+                ClickHouseTestHelpers.DATABASE_DEFAULT,
+                ClickHouseTestHelpers.USERNAME_DEFAULT,
                 properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP),
                 true);
 

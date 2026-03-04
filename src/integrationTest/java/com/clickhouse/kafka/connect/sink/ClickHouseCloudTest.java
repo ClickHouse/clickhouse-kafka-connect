@@ -51,8 +51,8 @@ public class ClickHouseCloudTest {
         Map<String, String> props = new HashMap<>();
         props.put(ClickHouseSinkConnector.HOSTNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
         props.put(ClickHouseSinkConnector.PORT, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
-        props.put(ClickHouseSinkConnector.DATABASE, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP));
-        props.put(ClickHouseSinkConnector.USERNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
+        props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
         props.put(ClickHouseSinkConnector.PASSWORD, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
         return props;
@@ -62,8 +62,6 @@ public class ClickHouseCloudTest {
     public static void checkPropsExist() {
         Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
         Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP));
         Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
     }
 
