@@ -1,11 +1,15 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.*;
+import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +26,7 @@ public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
     private static final Properties properties = System.getProperties();
 
-    private ClickHouseHelperClient createClient(Map<String,String> props) {
+    private ClickHouseHelperClient createClient(Map<String, String> props) {
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
 
         String hostname = csc.getHostname();
@@ -32,7 +36,6 @@ public class ClickHouseCloudTest {
         String password = csc.getPassword();
         boolean sslEnabled = csc.isSslEnabled();
         int timeout = csc.getTimeout();
-
 
         return new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(database)
@@ -44,19 +47,25 @@ public class ClickHouseCloudTest {
                 .build();
     }
 
-
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, String.valueOf(properties.getOrDefault("clickhouse.host", "clickhouse")));
-        props.put(ClickHouseSinkConnector.PORT, String.valueOf(properties.getOrDefault("clickhouse.port", ClickHouseProtocol.HTTP.getDefaultPort())));
-        props.put(ClickHouseSinkConnector.DATABASE, String.valueOf(properties.getOrDefault("clickhouse.database", "default")));
-        props.put(ClickHouseSinkConnector.USERNAME, String.valueOf(properties.getOrDefault("clickhouse.username", "default")));
-        props.put(ClickHouseSinkConnector.PASSWORD, String.valueOf(properties.getOrDefault("clickhouse.password", "")));
+        props.put(ClickHouseSinkConnector.HOSTNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.PORT, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.DATABASE, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.USERNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.PASSWORD, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
         return props;
     }
 
-
+    @BeforeAll
+    public static void checkPropsExist() {
+        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
+        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
+        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_DB_SYSTEM_PROP));
+        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_USERNAME_SYSTEM_PROP));
+        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
+    }
 
     @Test
     public void overlappingDataTest() {
@@ -64,8 +73,7 @@ public class ClickHouseCloudTest {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_overlap_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `indexCount` Int64, `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = ReplicatedMergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = ReplicatedMergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         Collection<SinkRecord> firstBatch = new ArrayList<>();
         Collection<SinkRecord> secondBatch = new ArrayList<>();
@@ -102,8 +110,35 @@ public class ClickHouseCloudTest {
         chst.stop();
         LOGGER.info("Total Records: {}", sr.size());
         LOGGER.info("Row Count: {}", ClickHouseTestHelpers.countRows(chc, topic));
-        assertTrue(ClickHouseTestHelpers.countRows(chc, topic) >= sr.size());
-        assertTrue(ClickHouseTestHelpers.checkSequentialRows(chc, topic, sr.size()));
+        Assertions.assertTrue(ClickHouseTestHelpers.countRows(chc, topic) >= sr.size());
+        Assertions.assertTrue(checkSequentialRows(chc, topic, sr.size()));
         ClickHouseTestHelpers.dropTable(chc, topic);
+    }
+
+    private static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
+        String queryCount = String.format("SELECT DISTINCT `off16` FROM `%s` ORDER BY `off16` ASC", tableName);
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(chc.getServer())
+                     .query(queryCount)
+                     .executeAndWait()) {
+
+            int expectedIndexCount = 0;
+            for (ClickHouseRecord record : response.records()) {
+                int currentIndexCount = record.getValue(0).asInteger();
+                if (currentIndexCount != expectedIndexCount) {
+                    LOGGER.error("currentIndexCount: {}, expectedIndexCount: {}", currentIndexCount, expectedIndexCount);
+                    return false;
+                }
+                expectedIndexCount++;
+            }
+
+            LOGGER.info("Total Records: {}, expectedIndexCount: {}", totalRecords, expectedIndexCount);
+            return totalRecords == expectedIndexCount;
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

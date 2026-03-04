@@ -10,7 +10,7 @@
     "hostname": "%s",
     "port": "%s",
     "database": "default",
-    "username": "default",
+    "username": "%s",
     "password": "%s",
     "ssl": "false",
     "exactlyOnce" : "false",

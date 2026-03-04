@@ -45,6 +45,12 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_PROXY_VERSION_DEFAULT = "23.8";
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
     public static final String CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_PROXY_VERSION_DEFAULT);
+    public static final String CLICKHOUSE_HOST_SYSTEM_PROP = "clickhouse.host";
+    public static final String CLICKHOUSE_PORT_SYSTEM_PROP = "clickhouse.port";
+    public static final String CLICKHOUSE_DB_SYSTEM_PROP = "clickhouse.database";
+    public static final String CLICKHOUSE_USERNAME_SYSTEM_PROP = "clickhouse.username";
+    public static final String CLICKHOUSE_PASSWORD_SYSTEM_PROP = "clickhouse.password";
+    public static final String MISSING_PROP_ERROR_FORMAT = "%s system property is required";
 
     public static final String HTTPS_PORT = "8443";
     public static final String DATABASE_DEFAULT = "default";
@@ -361,32 +367,5 @@ public class ClickHouseTestHelpers {
 
     public static Column col(Type type, int precision, int scale) {
         return Column.builder().type(type).precision(precision).scale(scale).build();
-    }
-
-    public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
-        String queryCount = String.format("SELECT DISTINCT `indexCount` FROM `%s` ORDER BY `indexCount` ASC", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-
-            int expectedIndexCount = 0;
-            for (ClickHouseRecord record : response.records()) {
-                int currentIndexCount = record.getValue(0).asInteger();
-                if (currentIndexCount != expectedIndexCount) {
-                    LOGGER.error("currentIndexCount: {}, expectedIndexCount: {}", currentIndexCount, expectedIndexCount);
-                    return false;
-                }
-                expectedIndexCount++;
-            }
-
-            LOGGER.info("Total Records: {}, expectedIndexCount: {}", totalRecords, expectedIndexCount);
-            return totalRecords == expectedIndexCount;
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
     }
 }
