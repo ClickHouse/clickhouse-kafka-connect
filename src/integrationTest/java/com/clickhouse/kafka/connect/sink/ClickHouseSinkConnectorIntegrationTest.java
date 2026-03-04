@@ -64,7 +64,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
 
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", db.getHost(), db.getMappedPort(ClickHouseProtocol.HTTP.getDefaultPort())));
+        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort()));
     }
 
     @AfterAll
@@ -184,7 +184,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
         createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, db.getHost(), db.getMappedPort(ClickHouseProtocol.HTTP.getDefaultPort()), db.getUsername(), db.getPassword(), "toxiproxy", 8666);
+        // The V1 client makes requests with absolute URIs when a proxy is configured - currently, requests with absolute paths are rejected by CH server.
+        // To work around this, transparently connect to the toxiproxy endpoint and avoid configuring the proxy settings on the V1 client. The proxy will relay relative URIs, which the CH server expects.
+        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
 
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
@@ -196,7 +198,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, db.getHost(), db.getMappedPort(ClickHouseProtocol.HTTP.getDefaultPort()), db.getUsername(), db.getPassword(), "toxiproxy", 8666);
+        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
 
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
@@ -209,7 +211,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, db.getHost(), db.getMappedPort(ClickHouseProtocol.HTTP.getDefaultPort()), db.getUsername(), db.getPassword(), "toxiproxy", 8666);
+        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
 
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);

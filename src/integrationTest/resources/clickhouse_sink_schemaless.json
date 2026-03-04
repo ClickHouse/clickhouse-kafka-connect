@@ -13,9 +13,6 @@
     "username": "%s",
     "password": "%s",
     "ssl": "false",
-    "exactlyOnce" : "false",
-    "proxyType": "http",
-    "proxyHost": "%s",
-    "proxyPort": "%s"
+    "exactlyOnce" : "false"
   }
 }
