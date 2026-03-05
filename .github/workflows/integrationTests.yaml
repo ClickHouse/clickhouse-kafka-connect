@@ -1,6 +1,9 @@
 name: Integration Tests
 
-on: [workflow_dispatch]
+on:
+  schedule:
+    - cron: "55 15 * * *"
+  workflow_dispatch:
 
 jobs:
   build:
