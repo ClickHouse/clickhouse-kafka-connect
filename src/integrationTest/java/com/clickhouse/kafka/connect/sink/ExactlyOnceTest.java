@@ -35,15 +35,16 @@ public class ExactlyOnceTest {
 
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP);
 
         chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP),
                 Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP)), ClickHouseProxyType.IGNORE, null, -1)
                 .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
                 .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP))
                 .sslEnable(true)
+                .useClientV2(true)
                 .build();
         clickhouseAPI = new ClickHouseAPI(properties);
 

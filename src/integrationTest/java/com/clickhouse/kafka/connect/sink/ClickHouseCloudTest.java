@@ -7,10 +7,7 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +41,7 @@ public class ClickHouseCloudTest {
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .useClientV2(true)
                 .build();
     }
 
@@ -60,9 +58,9 @@ public class ClickHouseCloudTest {
 
     @BeforeAll
     public static void checkPropsExist() {
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
-        Assertions.assertNotNull(properties.get(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP), String.format(ClickHouseTestHelpers.MISSING_PROP_ERROR_FORMAT, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP);
     }
 
     @Test

@@ -21,6 +21,8 @@ import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
+import org.junit.jupiter.api.Assumptions;
+import org.opentest4j.TestAbortedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,12 +30,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -46,7 +43,6 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_HOST_SYSTEM_PROP = "clickhouse.host";
     public static final String CLICKHOUSE_PORT_SYSTEM_PROP = "clickhouse.port";
     public static final String CLICKHOUSE_PASSWORD_SYSTEM_PROP = "clickhouse.password";
-    public static final String MISSING_PROP_ERROR_FORMAT = "%s system property is required";
 
     public static final String HTTPS_PORT = "8443";
     public static final String DATABASE_DEFAULT = "default";
@@ -54,6 +50,8 @@ public class ClickHouseTestHelpers {
 
     private static final int CLOUD_TIMEOUT_VALUE = 900;
     private static final TimeUnit CLOUD_TIMEOUT_UNIT = TimeUnit.SECONDS;
+    private static final String MISSING_PROP_MESSAGE_FORMAT = "%s system property is required, skipping tests";
+
 
     public static String getClickhouseVersion() {
         String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
@@ -366,5 +364,15 @@ public class ClickHouseTestHelpers {
 
     public static Column col(Type type, int precision, int scale) {
         return Column.builder().type(type).precision(precision).scale(scale).build();
+    }
+
+    public static void logAndThrowIfPropNotExists(Logger logger, Properties properties, String property) throws TestAbortedException {
+        try {
+            Assumptions.assumeTrue(properties.get(property) != null);
+        } catch (TestAbortedException e) {
+            final String warning = String.format(MISSING_PROP_MESSAGE_FORMAT, property);
+            logger.warn(warning);
+            throw e;
+        }
     }
 }

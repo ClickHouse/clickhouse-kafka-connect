@@ -161,6 +161,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 .sslEnable(csc.isSslEnabled())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
+                .useClientV2(true)
                 .build();
     }
 
