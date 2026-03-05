@@ -4,7 +4,7 @@ on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Mask secure properties
         run: |
@@ -16,7 +16,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-          architecture: x64
       - name: Setup and execute Gradle 'integrationTest' task
         uses: gradle/gradle-build-action@v2
         with:
