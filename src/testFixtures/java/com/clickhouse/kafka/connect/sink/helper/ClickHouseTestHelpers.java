@@ -1,10 +1,6 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
-import com.clickhouse.client.ClickHouseClient;
-import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.metrics.OperationMetrics;
 import com.clickhouse.client.api.query.GenericRecord;
@@ -12,6 +8,7 @@ import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
+import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
@@ -364,6 +361,33 @@ public class ClickHouseTestHelpers {
 
     public static Column col(Type type, int precision, int scale) {
         return Column.builder().type(type).precision(precision).scale(scale).build();
+    }
+
+    public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
+        String queryCount = String.format("SELECT DISTINCT `off16` FROM `%s` ORDER BY `off16` ASC", tableName);
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(chc.getServer())
+                     .query(queryCount)
+                     .executeAndWait()) {
+
+            int expectedIndexCount = 0;
+            for (ClickHouseRecord record : response.records()) {
+                int currentIndexCount = record.getValue(0).asInteger();
+                if (currentIndexCount != expectedIndexCount) {
+                    LOGGER.error("currentIndexCount: {}, expectedIndexCount: {}", currentIndexCount, expectedIndexCount);
+                    return false;
+                }
+                expectedIndexCount++;
+            }
+
+            LOGGER.info("Total Records: {}, expectedIndexCount: {}", totalRecords, expectedIndexCount);
+            return totalRecords == expectedIndexCount;
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static void logAndThrowIfPropNotExists(Logger logger, Properties properties, String property) throws TestAbortedException {

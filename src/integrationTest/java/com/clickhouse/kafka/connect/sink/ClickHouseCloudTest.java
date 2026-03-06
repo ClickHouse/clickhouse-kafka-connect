@@ -107,34 +107,7 @@ public class ClickHouseCloudTest {
         LOGGER.info("Total Records: {}", sr.size());
         LOGGER.info("Row Count: {}", ClickHouseTestHelpers.countRows(chc, topic));
         Assertions.assertTrue(ClickHouseTestHelpers.countRows(chc, topic) >= sr.size());
-        Assertions.assertTrue(checkSequentialRows(chc, topic, sr.size()));
+        Assertions.assertTrue(ClickHouseTestHelpers.checkSequentialRows(chc, topic, sr.size()));
         ClickHouseTestHelpers.dropTable(chc, topic);
-    }
-
-    private static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
-        String queryCount = String.format("SELECT DISTINCT `off16` FROM `%s` ORDER BY `off16` ASC", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-
-            int expectedIndexCount = 0;
-            for (ClickHouseRecord record : response.records()) {
-                int currentIndexCount = record.getValue(0).asInteger();
-                if (currentIndexCount != expectedIndexCount) {
-                    LOGGER.error("currentIndexCount: {}, expectedIndexCount: {}", currentIndexCount, expectedIndexCount);
-                    return false;
-                }
-                expectedIndexCount++;
-            }
-
-            LOGGER.info("Total Records: {}, expectedIndexCount: {}", totalRecords, expectedIndexCount);
-            return totalRecords == expectedIndexCount;
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
     }
 }
