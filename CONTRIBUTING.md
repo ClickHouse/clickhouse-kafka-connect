@@ -1,14 +1,22 @@
 # Getting Started
 So you want to get started developing with our Kafka Connect Sink Connector, eh? Well welcome aboard!
 
-## Pre-Requisites
+## Prerequisites
 * [OpenJDK 17](https://aws.amazon.com/corretto/) or some other equivalent for compiling the connector code
 * [Docker Desktop](https://docs.docker.com/engine/install/) for running tests
 * [Github Desktop](https://desktop.github.com/) or some other equivalent git to download the repo
 * A local copy of the repo, pulled from git
 
 ## Building and Running Unit Tests
-You should be able to compile + run the unit tests locally by going to the root project folder and running `./gradlew clean test`. Note this doesn't produce a release artifact, you'll have to execute a later step for that.
+You can compile and run the unit tests locally by going to the root project folder and running `./gradlew clean test`. _Note: this doesn't produce a release artifact, you'll have to execute a later step for that._
+
+## Building and Running Integration Tests
+You can compile and run the integration test suite locally by going to the root project folder and running `./gradlew clean integrationTest`. The integration tests also run nightly as a GitHub action.
+
+_Note: `ClickHouseCloudTest` and `ExactlyOnceTest` run against cloud instances only - they will automatically be skipped if the required system options are not set, specifically:_
+- `clickhouse.host`
+- `clickhouse.port`
+- `clickhouse.password`
 
 ## Generating the Build Artifact
 To create the actual jar we need, run `./gradlew createConfluentArchive` from the project root. That should output a zip file into `/build/confluent/` that you can use to run the connector locally (or upload to a cloud service).
