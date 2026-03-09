@@ -1,11 +1,6 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
-import com.clickhouse.client.ClickHouseClient;
-import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseNodeSelector;
-import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.metrics.OperationMetrics;
 import com.clickhouse.client.api.query.GenericRecord;
@@ -23,6 +18,8 @@ import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
+import org.junit.jupiter.api.Assumptions;
+import org.opentest4j.TestAbortedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,12 +27,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -45,6 +37,9 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_PROXY_VERSION_DEFAULT = "23.8";
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
     public static final String CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_PROXY_VERSION_DEFAULT);
+    public static final String CLICKHOUSE_HOST_SYSTEM_PROP = "clickhouse.host";
+    public static final String CLICKHOUSE_PORT_SYSTEM_PROP = "clickhouse.port";
+    public static final String CLICKHOUSE_PASSWORD_SYSTEM_PROP = "clickhouse.password";
 
     public static final String HTTPS_PORT = "8443";
     public static final String DATABASE_DEFAULT = "default";
@@ -52,6 +47,8 @@ public class ClickHouseTestHelpers {
 
     private static final int CLOUD_TIMEOUT_VALUE = 900;
     private static final TimeUnit CLOUD_TIMEOUT_UNIT = TimeUnit.SECONDS;
+    private static final String MISSING_PROP_MESSAGE_FORMAT = "%s system property is required, skipping tests";
+
 
     public static String getClickhouseVersion() {
         String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
@@ -60,6 +57,7 @@ public class ClickHouseTestHelpers {
         }
         return clickHouseVersion;
     }
+
     public static boolean isCloud() {
         String version = System.getenv("CLICKHOUSE_VERSION");
         LOGGER.info("Version: {}", version);
@@ -99,6 +97,7 @@ public class ClickHouseTestHelpers {
 
         return null;
     }
+
     private static OperationMetrics dropTableLoop(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
         try {
@@ -107,7 +106,6 @@ public class ClickHouseTestHelpers {
             throw new RuntimeException(e);
         }
     }
-
 
 
     public static OperationMetrics createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
@@ -143,6 +141,7 @@ public class ClickHouseTestHelpers {
 
         return null;
     }
+
     private static OperationMetrics createTableLoop(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
         final String createTableQueryTmp = String.format(createTableQuery, tableName);
         QuerySettings settings = new QuerySettings();
@@ -157,7 +156,7 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName)  {
+    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName) {
         String query = String.format("SELECT * FROM `%s`", tableName);
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
@@ -180,7 +179,7 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName)  {
+    public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName) {
         String query = String.format("SELECT * FROM clusterAllReplicas('default', `%s`)", tableName);
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
@@ -240,7 +239,7 @@ public class ClickHouseTestHelpers {
         try {
             Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             String value = records.iterator().next().getString(1);
-            return (int)(Float.parseFloat(value));
+            return (int) (Float.parseFloat(value));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -251,7 +250,7 @@ public class ClickHouseTestHelpers {
         try {
             Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
             String value = records.iterator().next().getString(1);
-            return (int)(Float.parseFloat(value));
+            return (int) (Float.parseFloat(value));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -279,15 +278,16 @@ public class ClickHouseTestHelpers {
                 }
 
                 String gsonString = gson.toJson(recordMap);
-                records.add(gsonString.replace(".0", "").replace(" ","").replace("'","").replace("\\u003d",":"));
+                records.add(gsonString.replace(".0", "").replace(" ", "").replace("'", "").replace("\\u003d", ":"));
             }
             List<String> results = new ArrayList<>();
             LOGGER.info("read rows [%d]", queryResponse.getReadRows());
             BufferedReader reader = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                String gsonString = line.replace("'","").replace(" ","").replace("\\u003d",":");
-                Map<String, String> resultMap = new TreeMap<>((Map<String, String>) gson.fromJson(gsonString, new TypeToken<Map<String, String>>() {}.getType()));
+                String gsonString = line.replace("'", "").replace(" ", "").replace("\\u003d", ":");
+                Map<String, String> resultMap = new TreeMap<>((Map<String, String>) gson.fromJson(gsonString, new TypeToken<Map<String, String>>() {
+                }.getType()));
                 results.add(gson.toJson(resultMap));
             }
             for (String record : records) {
@@ -364,7 +364,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
-        String queryCount = String.format("SELECT DISTINCT `indexCount` FROM `%s` ORDER BY `indexCount` ASC", tableName);
+        String queryCount = String.format("SELECT DISTINCT `off16` FROM `%s` ORDER BY `off16` ASC", tableName);
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
@@ -387,6 +387,16 @@ public class ClickHouseTestHelpers {
             return totalRecords == expectedIndexCount;
         } catch (ClickHouseException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public static void logAndThrowIfPropNotExists(Logger logger, Properties properties, String property) throws TestAbortedException {
+        try {
+            Assumptions.assumeTrue(properties.get(property) != null);
+        } catch (TestAbortedException e) {
+            final String warning = String.format(MISSING_PROP_MESSAGE_FORMAT, property);
+            logger.warn(warning);
+            throw e;
         }
     }
 }

@@ -1,15 +1,12 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -37,12 +34,17 @@ public class ExactlyOnceTest {
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
 
     @BeforeAll
-    public static void setUp() {
-        chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty("clickhouse.host"), Integer.parseInt(properties.getProperty("clickhouse.port")),
-                ClickHouseProxyType.IGNORE, null, -1)
-                .setUsername((String) properties.getOrDefault("clickhouse.username", "default"))
-                .setPassword(properties.getProperty("clickhouse.password"))
+    public static void checkPropsExistAndSetUp() {
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP);
+
+        chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP),
+                Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP)), ClickHouseProxyType.IGNORE, null, -1)
+                .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
+                .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP))
                 .sslEnable(true)
+                .useClientV2(true)
                 .build();
         clickhouseAPI = new ClickHouseAPI(properties);
 
@@ -56,24 +58,48 @@ public class ExactlyOnceTest {
 
     @AfterAll
     public static void tearDown() {
-        confluentPlatform.close();
+        if (confluentPlatform != null) {
+            confluentPlatform.close();
+        }
     }
 
+    @BeforeEach
+    public void beforeEach() throws IOException {
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+    }
 
+    @Test
+    public void checkTotalsEqual() throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1));
+    }
 
+    @Test
+    public void checkTotalsEqualMulti() throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3));
+    }
 
+    @Test
+    public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
+        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1);
+    }
 
+    @Test
+    public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
+        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
+    }
 
     private static void setupSchemaConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
         setupConnector("src/integrationTest/resources/clickhouse_sink_no_proxy.json", topicName, taskCount);
         Thread.sleep(5 * 1000);
     }
+
     private static void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting schemaless up connector...");
         setupConnector("src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json", topicName, taskCount);
         Thread.sleep(5 * 1000);
     }
+
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chcNoProxy, topicName);
@@ -81,34 +107,24 @@ public class ExactlyOnceTest {
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                properties.getOrDefault("clickhouse.host", "clickhouse"),
-                properties.getOrDefault("clickhouse.port", ClickHouseProtocol.HTTP.getDefaultPort()),
-                properties.getOrDefault("clickhouse.database", "default"),
-                properties.getOrDefault("clickhouse.username", "default"),
-                properties.getOrDefault("clickhouse.password", ""),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP),
+                ClickHouseTestHelpers.DATABASE_DEFAULT,
+                ClickHouseTestHelpers.USERNAME_DEFAULT,
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP),
                 true);
 
         confluentPlatform.createConnect(jsonString);
     }
 
 
-
     private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen.json", topicName, numberOfPartitions, numberOfRecords);
     }
+
     private int generateSchemalessData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
-
-
-
-
-
-    @BeforeEach
-    public void beforeEach() throws IOException {
-        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-    }
-
 
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
         createReplicatedMergeTreeTable(chcNoProxy, topicName);
@@ -122,16 +138,6 @@ public class ExactlyOnceTest {
         int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName);//Essentially the final count
         ClickHouseAPI.dropTable(chcNoProxy, topicName);
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
-    }
-
-    @Test
-    public void checkTotalsEqual() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1));
-    }
-
-    @Test
-    public void checkTotalsEqualMulti() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3));
     }
 
 
@@ -168,15 +174,5 @@ public class ExactlyOnceTest {
         } while (runCount < 3 && allSuccess);
 
         assertTrue(allSuccess);
-    }
-
-    @Test
-    public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
-        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1);
-    }
-
-    @Test
-    public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
-        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
     }
 }
