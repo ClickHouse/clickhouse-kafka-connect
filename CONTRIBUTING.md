@@ -11,12 +11,22 @@ So you want to get started developing with our Kafka Connect Sink Connector, eh?
 You can compile and run the unit tests locally by going to the root project folder and running `./gradlew clean test`. _Note: this doesn't produce a release artifact, you'll have to execute a later step for that._
 
 ## Building and Running Integration Tests
-You can compile and run the integration test suite locally by going to the root project folder and running `./gradlew clean integrationTest`. The integration tests also run nightly as a GitHub action.
+Integration tests run against both a local Docker installation and ClickHouse Cloud. You can compile and run the integration test suite locally by going to the root project folder and running:
 
-_Note: `ClickHouseCloudTest` and `ExactlyOnceTest` run against cloud instances only - they will automatically be skipped if the required system options are not set, specifically:_
-- `clickhouse.host`
-- `clickhouse.port`
-- `clickhouse.password`
+```bash
+./gradlew clean integrationTest \
+  -Dclickhouse.host=<YOUR_CH_CLOUD_API_HOST> \
+  -Dclickhouse.port=<YOUR_CH_CLOUD_PORT> \
+  -Dclickhouse.password=<YOUR_CH_CLOUD_PASSWORD> \
+  -Dclickhouse.cloud.organization=<YOUR_CH_CLOUD_ORG> \
+  -Dclickhouse.cloud.id=<YOUR_CH_CLOUD_ID> \
+  -Dclickhouse.cloud.secret=<YOUR_CH_CLOUD_SECRET> \
+  -Dclickhouse.cloud.serviceId=<YOUR_CH_CLOUD_SERVICE_ID>
+```
+
+The integration tests also run nightly as a GitHub action.
+
+_Note: cloud integration tests will automatically be skipped if the `clickhouse.*`  properties are not set._ 
 
 ## Generating the Build Artifact
 To create the actual jar we need, run `./gradlew createConfluentArchive` from the project root. That should output a zip file into `/build/confluent/` that you can use to run the connector locally (or upload to a cloud service).
