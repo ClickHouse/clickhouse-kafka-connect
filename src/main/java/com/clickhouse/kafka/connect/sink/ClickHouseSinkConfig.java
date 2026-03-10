@@ -51,6 +51,8 @@ public class ClickHouseSinkConfig {
     public static final String BYPASS_SCHEMA_VALIDATION = "bypassSchemaValidation";
     public static final String BYPASS_FIELD_CLEANUP = "bypassFieldCleanup";
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
+    public static final String BUFFER_COUNT = "bufferCount";
+    public static final String BUFFER_FLUSH_TIME = "bufferFlushTime";
     public static final String ERROR_TOLERANCE_ALL = "all";
     public static final String ERROR_TOLERANCE_NONE = "none";
 
@@ -66,6 +68,8 @@ public class ClickHouseSinkConfig {
     public static final Integer tableRefreshIntervalDefault = 0;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
     public static final Boolean customInsertFormatDefault = Boolean.FALSE;
+    public static final Integer bufferCountDefault = 0;
+    public static final Long bufferFlushTimeDefault = 0L;
 
     private final String hostname;
     private final int port;
@@ -96,6 +100,8 @@ public class ClickHouseSinkConfig {
     private final boolean bypassSchemaValidation;
     private final boolean bypassFieldCleanup;
     private final boolean ignorePartitionsWhenBatching;
+    private final int bufferCount;
+    private final long bufferFlushTime;
     private final boolean binaryFormatWrtiteJsonAsString;
 
     public enum InsertFormats {
@@ -272,7 +278,12 @@ public class ClickHouseSinkConfig {
         this.bypassSchemaValidation = Boolean.parseBoolean(props.getOrDefault(BYPASS_SCHEMA_VALIDATION, "false"));
         this.bypassFieldCleanup = Boolean.parseBoolean(props.getOrDefault(BYPASS_FIELD_CLEANUP, "false"));
         this.ignorePartitionsWhenBatching = Boolean.parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
+        this.bufferCount = Integer.parseInt(props.getOrDefault(BUFFER_COUNT, bufferCountDefault.toString()));
+        this.bufferFlushTime = Long.parseLong(props.getOrDefault(BUFFER_FLUSH_TIME, bufferFlushTimeDefault.toString()));
 
+        if (this.bufferCount > 0) {
+            LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
+        }
 
         String jsonAsString = getClickhouseSettings().get("input_format_binary_read_json_as_string");
         this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
@@ -611,6 +622,30 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Ignore partitions when batching."
+        );
+        configDef.define(BUFFER_COUNT,
+                ConfigDef.Type.INT,
+                bufferCountDefault,
+                ConfigDef.Range.atLeast(0),
+                ConfigDef.Importance.LOW,
+                "Number of records to buffer before flushing to ClickHouse. 0 means no buffering (default). " +
+                        "When enabled, records from multiple poll() calls are accumulated and flushed as a single large batch.",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Buffer record count."
+        );
+        configDef.define(BUFFER_FLUSH_TIME,
+                ConfigDef.Type.LONG,
+                bufferFlushTimeDefault,
+                ConfigDef.Range.atLeast(0),
+                ConfigDef.Importance.LOW,
+                "Maximum time in milliseconds to buffer records before flushing, regardless of buffer count. " +
+                        "0 means no time-based flushing (default). Only effective when bufferCount > 0.",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Buffer flush time in ms."
         );
         return configDef;
     }

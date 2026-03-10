@@ -1,3 +1,8 @@
+# 1.3.6
+
+## New Features
+* Added internal record buffering support via `bufferCount` and `bufferFlushTime` configuration options. When enabled, records from multiple `poll()` calls are accumulated and flushed as a single large batch, reducing the number of insert operations to ClickHouse. Buffering is disabled by default (bufferCount=0) for full backward compatibility.
+
 # 1.3.5
 
 ## Improvements
