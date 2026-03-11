@@ -13,6 +13,8 @@ import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
@@ -336,6 +338,53 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
         assertTrue((Long)eventReceiveLag < 1000L, "eventReceiveLag: " + eventReceiveLag);
         assertTrue((Long)eventReceiveLag > 300L, "eventReceiveLag: " + eventReceiveLag);
+
+        chst.stop();
+    }
+
+    @Test
+    public void preCommitReturnsInsertedOffsetsForMultipleTopics() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic1 = createTopicName("precommit_offsets_t1");
+        String topic2 = createTopicName("precommit_offsets_t2");
+
+        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
+                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
+                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
+        ClickHouseTestHelpers.dropTable(chc, topic1);
+        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.createTable(chc, topic1, createTableSql);
+        ClickHouseTestHelpers.createTable(chc, topic2, createTableSql);
+
+        int totalRecordsTopic1 = 100;
+        int totalRecordsTopic2 = 200;
+        int partition = 0;
+
+        List<SinkRecord> allRecords = new ArrayList<>();
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic1, partition, totalRecordsTopic1));
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic2, partition, totalRecordsTopic2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(allRecords);
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(new TopicPartition(topic1, partition), new OffsetAndMetadata(0));
+        currentOffsets.put(new TopicPartition(topic2, partition), new OffsetAndMetadata(0));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        TopicPartition tp1 = new TopicPartition(topic1, partition);
+        assertTrue(committedOffsets.containsKey(tp1), "Should contain offset for topic1");
+        assertEquals(totalRecordsTopic1, committedOffsets.get(tp1).offset(),
+                "Committed offset for topic1 should be maxOffset + 1");
+
+        TopicPartition tp2 = new TopicPartition(topic2, partition);
+        assertTrue(committedOffsets.containsKey(tp2), "Should contain offset for topic2");
+        assertEquals(totalRecordsTopic2, committedOffsets.get(tp2).offset(),
+                "Committed offset for topic2 should be maxOffset + 1");
 
         chst.stop();
     }

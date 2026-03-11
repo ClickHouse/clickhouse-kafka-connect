@@ -273,7 +273,7 @@ public class Processing {
 
     private void onStateUpdate(StateRecord stateRecord) {
         lastInsertedOffsets.put(new TopicPartition(stateRecord.getTopic(), stateRecord.getPartition()),
-                new OffsetAndMetadata(stateRecord.getMaxOffset()));
+                new OffsetAndMetadata(stateRecord.getMaxOffset() + 1)); // +1 to store next record to send
     }
 
     public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsets() {
