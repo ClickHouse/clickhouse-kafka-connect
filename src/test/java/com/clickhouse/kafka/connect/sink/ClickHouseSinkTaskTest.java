@@ -388,4 +388,38 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         chst.stop();
     }
+
+    @Test
+    public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("precommit_ignore_partitions");
+
+        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
+                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
+                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, createTableSql);
+
+        int totalRecords = 100;
+        int partition = 0;
+
+        List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, partition, totalRecords);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(new TopicPartition(topic, partition), new OffsetAndMetadata(totalRecords));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertSame(currentOffsets, committedOffsets,
+                "preCommit should return the same currentOffsets map when ignorePartitionsWhenBatching is true");
+
+        chst.stop();
+    }
 }

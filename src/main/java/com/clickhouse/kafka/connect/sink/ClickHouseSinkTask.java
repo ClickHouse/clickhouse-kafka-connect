@@ -151,7 +151,7 @@ public class ClickHouseSinkTask extends SinkTask {
                 LOGGER.debug("preCommit: returning currentOffsets back");
                 return currentOffsets; // there is another way to reconcile data
             }
-            Map<TopicPartition, OffsetAndMetadata> inserted = proxySinkTask.getInsertedOffsets();
+            Map<TopicPartition, OffsetAndMetadata> inserted = new HashMap<>(proxySinkTask.getInsertedOffsets());
             LOGGER.debug("preCommit: inserted {}", inserted);
             return inserted;
         }

@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -272,8 +273,10 @@ public class Processing {
     }
 
     private void onStateUpdate(StateRecord stateRecord) {
-        lastInsertedOffsets.put(new TopicPartition(stateRecord.getTopic(), stateRecord.getPartition()),
-                new OffsetAndMetadata(stateRecord.getMaxOffset() + 1)); // +1 to store next record to send
+        if (stateRecord.getState() == AFTER_PROCESSING) {
+            lastInsertedOffsets.put(new TopicPartition(stateRecord.getTopic(), stateRecord.getPartition()),
+                    new OffsetAndMetadata(stateRecord.getMaxOffset() + 1)); // +1 to store next record to send
+        }
     }
 
     public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsets() {
