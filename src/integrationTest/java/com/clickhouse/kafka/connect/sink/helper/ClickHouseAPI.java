@@ -33,6 +33,11 @@ public class ClickHouseAPI {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseAPI.class);
 
     private final Properties properties;
+    private static final String CLICKHOUSE_CLOUD_API_HOST = "clickhouse.cloud.host";
+    private static final String CLICKHOUSE_CLOUD_ORGANIZATION = "clickhouse.cloud.organization";
+    private static final String CLICKHOUSE_CLOUD_API_KEY = "clickhouse.cloud.id";
+    private static final String CLICKHOUSE_CLOUD_API_SECRET = "clickhouse.cloud.secret";
+    private static final String CLICKHOUSE_CLOUD_SERVICE_ID = "clickhouse.cloud.serviceId";
 
     public ClickHouseAPI(Properties properties) {
         this.properties = properties;
@@ -88,18 +93,6 @@ public class ClickHouseAPI {
             throw new RuntimeException(e);
         }
     }
-
-    public static void createReplicatedMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
-        String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
-                "Engine = ReplicatedMergeTree ORDER BY symbol", tableName);
-        try {
-            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
-            LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
-            throw new RuntimeException(e);
-        }    }
 
     public static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
@@ -161,8 +154,8 @@ public class ClickHouseAPI {
     }
 
     public HttpResponse<String> updateServiceState(String serviceId, String command) throws URISyntaxException, IOException, InterruptedException {
-        String restURL = "https://" + properties.getProperty("clickhouse.cloud.host") + "/v1/organizations/" + properties.getProperty("clickhouse.cloud.organization") + "/services/" + serviceId + "/state";
-        String basicAuthCreds = Base64.getEncoder().encodeToString((properties.getProperty("clickhouse.cloud.id") + ":" + properties.getProperty("clickhouse.cloud.secret")).getBytes());
+        String restURL = "https://" + properties.getProperty(CLICKHOUSE_CLOUD_API_HOST) + "/v1/organizations/" + properties.getProperty(CLICKHOUSE_CLOUD_ORGANIZATION) + "/services/" + serviceId + "/state";
+        String basicAuthCreds = Base64.getEncoder().encodeToString((properties.getProperty(CLICKHOUSE_CLOUD_API_KEY) + ":" + properties.getProperty(CLICKHOUSE_CLOUD_API_SECRET)).getBytes());
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(restURL))
                 .header("Content-Type", "application/json;charset=UTF-8")
@@ -174,8 +167,8 @@ public class ClickHouseAPI {
 
 
     public String getServiceState(String serviceId) throws URISyntaxException, IOException, InterruptedException {
-        String restURL = "https://" + properties.getProperty("clickhouse.cloud.host") + "/v1/organizations/" + properties.getProperty("clickhouse.cloud.organization") + "/services/" + serviceId;
-        String basicAuthCreds = Base64.getEncoder().encodeToString((properties.getProperty("clickhouse.cloud.id") + ":" + properties.getProperty("clickhouse.cloud.secret")).getBytes());
+        String restURL = "https://" + properties.getProperty(CLICKHOUSE_CLOUD_API_HOST) + "/v1/organizations/" + properties.getProperty(CLICKHOUSE_CLOUD_ORGANIZATION) + "/services/" + serviceId;
+        String basicAuthCreds = Base64.getEncoder().encodeToString((properties.getProperty(CLICKHOUSE_CLOUD_API_KEY) + ":" + properties.getProperty(CLICKHOUSE_CLOUD_API_SECRET)).getBytes());
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(restURL))
                 .header("Content-Type", "application/json;charset=UTF-8")
@@ -190,7 +183,7 @@ public class ClickHouseAPI {
 
     public String restartService() throws URISyntaxException, IOException, InterruptedException {
         LOGGER.info("Restarting service...");
-        String serviceId = properties.getProperty("clickhouse.cloud.serviceId");
+        String serviceId = properties.getProperty(CLICKHOUSE_CLOUD_SERVICE_ID);
         //1. Stop Instance
         stopInstance(serviceId);
 

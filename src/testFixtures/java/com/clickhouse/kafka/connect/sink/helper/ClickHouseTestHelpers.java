@@ -37,9 +37,9 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_PROXY_VERSION_DEFAULT = "23.8";
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
     public static final String CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_PROXY_VERSION_DEFAULT);
-    public static final String CLICKHOUSE_HOST_SYSTEM_PROP = "clickhouse.host";
-    public static final String CLICKHOUSE_PORT_SYSTEM_PROP = "clickhouse.port";
-    public static final String CLICKHOUSE_PASSWORD_SYSTEM_PROP = "clickhouse.password";
+    public static final String CLICKHOUSE_HOST = "clickhouse.host";
+    public static final String CLICKHOUSE_PORT = "clickhouse.port";
+    public static final String CLICKHOUSE_PASSWORD = "clickhouse.password";
 
     public static final String HTTPS_PORT = "8443";
     public static final String DATABASE_DEFAULT = "default";
