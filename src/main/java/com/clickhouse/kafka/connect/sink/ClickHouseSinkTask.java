@@ -145,7 +145,11 @@ public class ClickHouseSinkTask extends SinkTask {
     @Override
     public Map<TopicPartition, OffsetAndMetadata> preCommit(Map<TopicPartition, OffsetAndMetadata> currentOffsets) {
         if (!bufferingEnabled) {
-            return currentOffsets;
+            if (!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()) {
+                // link to com.clickhouse.kafka.connect.sink.processing.Processing.doLogic
+                return currentOffsets; // there is another way to reconcile data
+            }
+           return proxySinkTask.getInsertedOffsets();
         }
         // Only commit offsets for records that have been successfully written to ClickHouse.
         // Records still in the buffer have NOT been written, so their offsets must not be committed.

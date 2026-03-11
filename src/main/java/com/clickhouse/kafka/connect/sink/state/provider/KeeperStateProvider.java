@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 public class KeeperStateProvider implements StateProvider {
 
@@ -32,6 +33,7 @@ public class KeeperStateProvider implements StateProvider {
     private ClickHouseSinkConfig csc = null;
 
     private Map<String, StateRecord> stateMap = null;
+    private Consumer<StateRecord> callback = null;
 
     public KeeperStateProvider(ClickHouseSinkConfig csc) {
         this.csc = csc;
@@ -157,5 +159,13 @@ public class KeeperStateProvider implements StateProvider {
         }
 
         stateMap.put(csc.getZkDatabase() + "-" + key, stateRecord);
+        if (callback != null) {
+            callback.accept(stateRecord);
+        }
+    }
+
+    @Override
+    public void setStateUpdateListener(Consumer<StateRecord> callback) {
+        this.callback = callback;
     }
 }
