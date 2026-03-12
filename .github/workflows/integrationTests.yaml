@@ -30,7 +30,7 @@ jobs:
             -Dclickhouse.port=${{vars.CLICKHOUSE_PORT}}
             -Dclickhouse.password=${{secrets.CLICKHOUSE_PASSWORD}}
             -Dclickhouse.cloud.organization=${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}}
-            -Dclickhouse.cloud.id=${{vars.CLICKHOUSE_CLOUD_ID}}
+            -Dclickhouse.cloud.apiKey=${{vars.CLICKHOUSE_CLOUD_API_KEY}}
             -Dclickhouse.cloud.secret=${{secrets.CLICKHOUSE_CLOUD_SECRET}}
             -Dclickhouse.cloud.serviceId=${{vars.CLICKHOUSE_CLOUD_SERVICE_ID}}
             -Dclickhouse.cloud.host=${{vars.CLICKHOUSE_CLOUD_API_HOST}}

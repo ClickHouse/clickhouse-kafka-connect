@@ -19,7 +19,7 @@ Integration tests run against both Docker and ClickHouse Cloud. You can compile 
   -Dclickhouse.port=<YOUR_CH_PORT> \
   -Dclickhouse.password=<YOUR_CH_PASSWORD> \
   -Dclickhouse.cloud.organization=<YOUR_CH_CLOUD_ORG> \
-  -Dclickhouse.cloud.id=<YOUR_CH_CLOUD_ID> \
+  -Dclickhouse.cloud.apiKey=<YOUR_CH_CLOUD_API_KEY> \
   -Dclickhouse.cloud.secret=<YOUR_CH_CLOUD_SECRET> \
   -Dclickhouse.cloud.serviceId=<YOUR_CH_CLOUD_SERVICE_ID> \
   -Dclickhouse.cloud.host=${{vars.CLICKHOUSE_CLOUD_API_HOST}}
@@ -30,7 +30,7 @@ where:
 - `clickhouse.port`: the port ClickHouse runs on (default: 8443)
 - `clickhouse.password`: the password associated with username `default`
 - `clickhouse.cloud.organization`: your ClickHouse Cloud organization ID. You can find this under "Organization details" in your cloud console.
-- `clickhouse.cloud.id`: your Cloud API key. See [this documentation page](https://clickhouse.com/docs/cloud/manage/openapi) for how to generate an API key/secret pair.
+- `clickhouse.cloud.apiKey`: your Cloud API key. See [this documentation page](https://clickhouse.com/docs/cloud/manage/openapi) for how to generate an API key/secret pair.
 - `clickhouse.cloud.secret`: the secret associated with your API key. See [this documentation page](https://clickhouse.com/docs/cloud/manage/openapi) for how to generate an API key/secret pair.
 - `clickhouse.cloud.serviceId`: your Cloud service ID. You can find this in the service URL, immediately after `/services/`.
 - `clickhouse.cloud.host`: your ClickHouse Cloud REST API endpoint. For most users, this will be `api.clickhouse.cloud`.

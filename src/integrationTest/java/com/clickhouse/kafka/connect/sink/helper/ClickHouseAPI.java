@@ -35,7 +35,7 @@ public class ClickHouseAPI {
     private final Properties properties;
     private static final String CLICKHOUSE_CLOUD_API_HOST = "clickhouse.cloud.host";
     private static final String CLICKHOUSE_CLOUD_ORGANIZATION = "clickhouse.cloud.organization";
-    private static final String CLICKHOUSE_CLOUD_API_KEY = "clickhouse.cloud.id";
+    private static final String CLICKHOUSE_CLOUD_API_KEY = "clickhouse.cloud.apiKey";
     private static final String CLICKHOUSE_CLOUD_API_SECRET = "clickhouse.cloud.secret";
     private static final String CLICKHOUSE_CLOUD_SERVICE_ID = "clickhouse.cloud.serviceId";
 
