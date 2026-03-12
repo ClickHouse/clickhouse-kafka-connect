@@ -29,7 +29,11 @@ import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -69,7 +73,30 @@ import static com.clickhouse.kafka.connect.util.DataJson.GSON;
 public class ClickHouseWriter implements DBWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
+
+    private static ObjectMapper createObjectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Struct.class, new JsonSerializer<Struct>() {
+            @Override
+            public void serialize(Struct struct, JsonGenerator gen, SerializerProvider provider) throws IOException {
+                gen.writeStartObject();
+                for (Field field : struct.schema().fields()) {
+                    gen.writeFieldName(field.name());
+                    Object value = struct.get(field);
+                    if (value == null) {
+                        gen.writeNull();
+                    } else {
+                        provider.defaultSerializeValue(value, gen);
+                    }
+                }
+                gen.writeEndObject();
+            }
+        });
+        mapper.registerModule(module);
+        return mapper;
+    }
 
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
