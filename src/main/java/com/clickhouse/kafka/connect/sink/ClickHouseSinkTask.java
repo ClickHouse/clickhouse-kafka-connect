@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class ClickHouseSinkTask extends SinkTask {
 
@@ -145,7 +146,19 @@ public class ClickHouseSinkTask extends SinkTask {
     @Override
     public Map<TopicPartition, OffsetAndMetadata> preCommit(Map<TopicPartition, OffsetAndMetadata> currentOffsets) {
         if (!bufferingEnabled) {
-            return currentOffsets;
+            LOGGER.debug("preCommit: {}", currentOffsets);
+            if (!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()) {
+                // link to com.clickhouse.kafka.connect.sink.processing.Processing.doLogic
+                LOGGER.debug("preCommit: returning currentOffsets back");
+                return currentOffsets; // there is another way to reconcile data
+            }
+            Map<TopicPartition, OffsetAndMetadata> inserted = proxySinkTask.getInsertedOffsets();
+            Map<TopicPartition, OffsetAndMetadata> toCommit =
+                    inserted.entrySet().stream().filter(e -> currentOffsets.containsKey(e.getKey()))
+                                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+            LOGGER.debug("preCommit: returned {}", toCommit);
+            return toCommit;
         }
         // Only commit offsets for records that have been successfully written to ClickHouse.
         // Records still in the buffer have NOT been written, so their offsets must not be committed.
@@ -163,6 +176,8 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void close(Collection<TopicPartition> partitions) {
+        LOGGER.debug("close: {}", partitions);
+        proxySinkTask.onPartitionRemoved(partitions);
         if (!bufferingEnabled) {
             return;
         }
@@ -183,6 +198,11 @@ public class ClickHouseSinkTask extends SinkTask {
         // Always clean up flushed offsets for revoked partitions so preCommit()
         // doesn't return offsets that this task no longer owns.
         flushedOffsets.keySet().removeAll(partitions);
+    }
+
+    @Override
+    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+        close(partitions); // call newer method in case we are running in older runtime
     }
 
     @Override

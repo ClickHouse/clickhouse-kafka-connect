@@ -12,6 +12,8 @@ import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.ExecutionTimer;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,5 +118,14 @@ public class ProxySinkTask {
 
     public int getId() {
         return id;
+    }
+
+
+    public void onPartitionRemoved(Collection<TopicPartition> removedPartitions) {
+        processing.onPartitionRemoved(removedPartitions);
+    }
+
+    public Map<TopicPartition, OffsetAndMetadata> getInsertedOffsets() {
+        return processing.getLastInsertedOffsets();
     }
 }
