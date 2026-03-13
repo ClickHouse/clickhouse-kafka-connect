@@ -20,8 +20,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.createReplicatedMergeTreeTable;
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.dropTable;
+import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -35,14 +34,14 @@ public class ExactlyOnceTest {
 
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD);
 
-        chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP),
-                Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP)), ClickHouseProxyType.IGNORE, null, -1)
+        chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST),
+                Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT)), ClickHouseProxyType.IGNORE, null, -1)
                 .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
-                .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP))
+                .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD))
                 .sslEnable(true)
                 .useClientV2(true)
                 .build();
@@ -103,15 +102,15 @@ public class ExactlyOnceTest {
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chcNoProxy, topicName);
-        createReplicatedMergeTreeTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP),
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT),
                 ClickHouseTestHelpers.DATABASE_DEFAULT,
                 ClickHouseTestHelpers.USERNAME_DEFAULT,
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD),
                 true);
 
         confluentPlatform.createConnect(jsonString);
@@ -127,7 +126,7 @@ public class ExactlyOnceTest {
     }
 
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
-        createReplicatedMergeTreeTable(chcNoProxy, topicName);
+        createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
         ClickHouseAPI.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
@@ -147,7 +146,7 @@ public class ExactlyOnceTest {
         do {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
-            createReplicatedMergeTreeTable(chcNoProxy, topicName);
+            createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
             ClickHouseAPI.clearTable(chcNoProxy, topicName);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);

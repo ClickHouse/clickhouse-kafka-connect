@@ -1,7 +1,5 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.*;
-import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -47,20 +45,20 @@ public class ClickHouseCloudTest {
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP));
-        props.put(ClickHouseSinkConnector.PORT, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.HOSTNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST));
+        props.put(ClickHouseSinkConnector.PORT, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT));
         props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
         props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
-        props.put(ClickHouseSinkConnector.PASSWORD, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.PASSWORD, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD));
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
         return props;
     }
 
     @BeforeAll
     public static void checkPropsExist() {
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST_SYSTEM_PROP);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT_SYSTEM_PROP);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT);
+        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD);
     }
 
     @Test
