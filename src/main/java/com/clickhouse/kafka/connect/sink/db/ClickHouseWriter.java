@@ -151,11 +151,11 @@ public class ClickHouseWriter implements DBWriter {
         return true;
     }
 
-    public void updateMapping(String database) {
+    public boolean updateMapping(String database) {
         // Do not start a new update cycle if one is already in progress
         // Atomically compare and set isUpdateMappingRunning
         if (!this.isUpdateMappingRunning.compareAndSet(false, true)) {
-            return;
+            return false; // in progress
         }
 
         LOGGER.debug("Update table mapping.");
@@ -163,16 +163,13 @@ public class ClickHouseWriter implements DBWriter {
         try {
             // Getting tables from ClickHouse
             List<Table> tableList = this.chc.extractTablesMapping(database, this.mapping);
-            if (tableList.isEmpty()) {
-                return;
-            }
-
             // Adding new tables to mapping, or update existing tables
             // TODO: check Kafka Connect's topics name or topics regex config and
             // only add tables to in-memory mapping that matches the topics we consume.
             for (Table table : tableList) {
                 this.mapping.put(table.getFullName(), table);
             }
+            return true;
         } finally {
             this.isUpdateMappingRunning.set(false);
         }
@@ -828,8 +825,7 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error("Error inserting records can cause by schema changes", e);
             if (e.getCode() == 33 && retry == true) {
                 LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
-                updateMapping(table.getDatabase());
-                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 throw e;
@@ -839,14 +835,24 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error("Error inserting records", e);
             if (e.getMessage().indexOf("ClickHouseException: Code: 33") != -1 && retry == true) {
                 LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
-                updateMapping(table.getDatabase());
-                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 throw e;
             }
         }
     }
+
+    private Table urgentTableUpdate(Table table) {
+        Table tableTmp;
+        if (updateMapping(table.getDatabase())) {
+            tableTmp = getTable(table.getDatabase(), table.getName());
+        } else {
+            tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
+        }
+        return tableTmp;
+    }
+
     protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
 

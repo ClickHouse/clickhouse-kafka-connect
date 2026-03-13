@@ -894,7 +894,18 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 ") Engine = MergeTree ORDER BY `off16`");
 
         Collection<SinkRecord> firstBatch = SchemaTestData.createSimpleData(topic, 1, 1000);
-        Collection<SinkRecord> secondBatch = SchemaTestData.createSimpleData(topic, 1, 1000);
+        Collection<SinkRecord> secondBatch = SchemaTestData.createSimpleData(topic, 1, 1000).stream()
+                .map(record -> new SinkRecord(
+                        record.topic(),
+                        record.kafkaPartition(),
+                        record.keySchema(),
+                        record.key(),
+                        record.valueSchema(),
+                        record.value(),
+                        record.kafkaOffset() + 1000,
+                        record.timestamp(),
+                        record.timestampType()))
+                .collect(Collectors.toList());
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
