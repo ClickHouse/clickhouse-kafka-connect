@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ public class Processing {
     private ErrorReporter errorReporter = null;
 
     // Topic_Partition Key, Last Max offset inserted
-    private Map<TopicPartition, OffsetAndMetadata> lastInsertedOffsets = new ConcurrentHashMap<>();
+    private final Map<TopicPartition, OffsetAndMetadata> lastInsertedOffsets = new ConcurrentHashMap<>();
 
     public Processing(StateProvider stateProvider, DBWriter dbWriter, ErrorReporter errorReporter,
                       ClickHouseSinkConfig clickHouseSinkConfig, SinkTaskStatistics statistics) {
@@ -277,6 +278,10 @@ public class Processing {
             lastInsertedOffsets.put(new TopicPartition(stateRecord.getTopic(), stateRecord.getPartition()),
                     new OffsetAndMetadata(stateRecord.getMaxOffset() + 1)); // +1 to store next record to send
         }
+    }
+
+    public void onPartitionRemoved(Collection<TopicPartition> removedPartitions) {
+        removedPartitions.stream().forEach(lastInsertedOffsets::remove);
     }
 
     public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsets() {

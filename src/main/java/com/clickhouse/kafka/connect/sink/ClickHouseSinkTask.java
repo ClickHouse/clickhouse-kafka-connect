@@ -176,6 +176,8 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void close(Collection<TopicPartition> partitions) {
+        LOGGER.debug("close: {}", partitions);
+        proxySinkTask.onPartitionRemoved(partitions);
         if (!bufferingEnabled) {
             return;
         }
@@ -196,6 +198,11 @@ public class ClickHouseSinkTask extends SinkTask {
         // Always clean up flushed offsets for revoked partitions so preCommit()
         // doesn't return offsets that this task no longer owns.
         flushedOffsets.keySet().removeAll(partitions);
+    }
+
+    @Override
+    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+        close(partitions); // call newer method in case we are running in older runtime
     }
 
     @Override
