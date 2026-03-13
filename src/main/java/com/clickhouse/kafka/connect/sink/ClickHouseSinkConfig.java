@@ -300,8 +300,10 @@ public class ClickHouseSinkConfig {
         try {
             long retryTimeout = Long.parseLong(props.getOrDefault(CONNECTOR_RETRY_TIMEOUT, "60000"));
             if (retryTimeout < MINIMAL_RETRY_TIMEOUT_THR_WARN) {
-                LOGGER.warn(CONNECTOR_RETRY_TIMEOUT + " is too low and can cause unstable work. Please check configuration. " +
-                        "Value should be in 'ms' and at least '10000' (10 seconds).");
+                LOGGER.warn("{} is too low and can cause unstable work. Please check configuration. " +
+                        "Value should be in 'ms' and at least '{}' ({} seconds).",
+                        CONNECTOR_RETRY_TIMEOUT, MINIMAL_RETRY_TIMEOUT_THR_WARN,
+                        TimeUnit.MILLISECONDS.toSeconds(MINIMAL_RETRY_TIMEOUT_THR_WARN));
             }
         } catch (Exception e) {
             LOGGER.warn("Failed to validate some configuration", e);
