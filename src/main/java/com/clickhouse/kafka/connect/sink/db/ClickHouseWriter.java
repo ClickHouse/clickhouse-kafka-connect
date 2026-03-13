@@ -62,6 +62,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -76,11 +77,11 @@ public class ClickHouseWriter implements DBWriter {
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
-    private Map<String, Table> mapping = null;
-    private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
+    private final Map<String, Table> mapping;
+    private final AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
     private final SinkTaskStatistics statistics;
     public ClickHouseWriter(SinkTaskStatistics statistics) {
-        this.mapping = new HashMap<String, Table>();
+        this.mapping = new ConcurrentHashMap<>();
         this.statistics = statistics;
     }
 
@@ -152,10 +153,10 @@ public class ClickHouseWriter implements DBWriter {
 
     public void updateMapping(String database) {
         // Do not start a new update cycle if one is already in progress
-        if (this.isUpdateMappingRunning.get()) {
+        // Atomically compare and set isUpdateMappingRunning
+        if (!this.isUpdateMappingRunning.compareAndSet(false, true)) {
             return;
         }
-        this.isUpdateMappingRunning.set(true);
 
         LOGGER.debug("Update table mapping.");
 
@@ -170,7 +171,7 @@ public class ClickHouseWriter implements DBWriter {
             // TODO: check Kafka Connect's topics name or topics regex config and
             // only add tables to in-memory mapping that matches the topics we consume.
             for (Table table : tableList) {
-                mapping.put(table.getFullName(), table);
+                this.mapping.put(table.getFullName(), table);
             }
         } finally {
             this.isUpdateMappingRunning.set(false);
