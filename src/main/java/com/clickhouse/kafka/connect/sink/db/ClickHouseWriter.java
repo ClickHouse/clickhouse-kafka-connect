@@ -29,11 +29,6 @@ import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -68,35 +63,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static com.clickhouse.kafka.connect.util.DataJson.GSON;
+import static com.clickhouse.kafka.connect.util.DataJson.OBJECT_MAPPER;
 
 public class ClickHouseWriter implements DBWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
-    private static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
-
-    private static ObjectMapper createObjectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        SimpleModule module = new SimpleModule();
-        module.addSerializer(Struct.class, new JsonSerializer<Struct>() {
-            @Override
-            public void serialize(Struct struct, JsonGenerator gen, SerializerProvider provider) throws IOException {
-                gen.writeStartObject();
-                for (Field field : struct.schema().fields()) {
-                    gen.writeFieldName(field.name());
-                    Object value = struct.get(field);
-                    if (value == null) {
-                        gen.writeNull();
-                    } else {
-                        provider.defaultSerializeValue(value, gen);
-                    }
-                }
-                gen.writeEndObject();
-            }
-        });
-        mapper.registerModule(module);
-        return mapper;
-    }
 
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
@@ -603,7 +574,7 @@ public class ClickHouseWriter implements DBWriter {
                 case JSON:
                     if (csc.isBinaryFormatWrtiteJsonAsString()) {
                         if (value.getFieldType() == Schema.Type.STRUCT) {
-                            byte[] jsonBytes = GSON.toJson(value).getBytes(StandardCharsets.UTF_8);
+                            byte[] jsonBytes = OBJECT_MAPPER.writeValueAsBytes(value);
                             BinaryStreamUtils.writeString(stream, jsonBytes);
                         } else if (value.getFieldType() == Schema.Type.STRING) {
                             BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
