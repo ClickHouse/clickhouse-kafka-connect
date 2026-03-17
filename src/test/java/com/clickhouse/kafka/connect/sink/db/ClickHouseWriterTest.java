@@ -130,24 +130,37 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     @Test
     public void getTableUsesTopicToTableMapping() {
         Map<String, String> props = createProps();
-        String topic = createTopicName("mapped_source_topic_test");
-        String mappedTable = createTopicName("mapped_target_table_test");
-        props.put(ClickHouseSinkConfig.TABLE_MAPPING, topic + "=" + mappedTable);
+        String topicWithoutBackticks = createTopicName("mapped_source_topic_plain_test");
+        String mappedTableWithoutBackticks = createTopicName("mapped_target_table_plain_test");
+        String topicWithBackticks = createTopicName("mapped_source_topic_backtick_test");
+        String mappedTableWithBackticksRaw = createTopicName("mapped_target_table_backtick_test");
+        String mappedTableWithBackticks = String.format("`%s`", mappedTableWithBackticksRaw);
+        props.put(ClickHouseSinkConfig.TABLE_MAPPING,
+                topicWithoutBackticks + "=" + mappedTableWithoutBackticks + ","
+                        + topicWithBackticks + "=" + mappedTableWithBackticks);
         ClickHouseHelperClient chc = createClient(props);
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.dropTable(chc, mappedTable);
-        ClickHouseTestHelpers.createTable(chc, mappedTable, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks);
+        ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
+        ClickHouseTestHelpers.createTable(chc, mappedTableWithoutBackticks, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, mappedTableWithBackticksRaw, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(new ClickHouseSinkConfig(props));
         chw.setClient(chc);
 
-        Table table = chw.getTable(chc.getDatabase(), topic);
-        assertNotNull(table);
-        assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTable), table.getFullName());
+        Table plainMappingTable = chw.getTable(chc.getDatabase(), topicWithoutBackticks);
+        assertNotNull(plainMappingTable);
+        assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTableWithoutBackticks), plainMappingTable.getFullName());
 
-        ClickHouseTestHelpers.dropTable(chc, mappedTable);
+        Table backtickedMappingTable = chw.getTable(chc.getDatabase(), topicWithBackticks);
+        assertNotNull(backtickedMappingTable);
+        assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTableWithBackticksRaw), backtickedMappingTable.getFullName());
+
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
     }
 
     @Test

@@ -1350,7 +1350,7 @@ public class ClickHouseWriter implements DBWriter {
                 table = this.mapping.get(tableName);//If null, update then do it again to be sure
             } else {
                 String cleanTopicName = Utils.getCleanTableName(topic, csc.getTopicToTableMap());
-                table = chc.describeTable(database, cleanTopicName);
+                table = chc.describeTable(database, cleanTopicName.replace("`", "").trim());
             }
         }
 
