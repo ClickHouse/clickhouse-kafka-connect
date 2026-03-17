@@ -846,8 +846,10 @@ public class ClickHouseWriter implements DBWriter {
     private Table urgentTableUpdate(Table table) {
         Table tableTmp;
         if (updateMapping(table.getDatabase())) {
+            LOGGER.debug("urgentTableUpdate: mapping updated");
             tableTmp = getTable(table.getDatabase(), table.getName());
         } else {
+            LOGGER.debug("urgentTableUpdate: using describeTable()");
             tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
         }
         return tableTmp;
@@ -1338,13 +1340,14 @@ public class ClickHouseWriter implements DBWriter {
         String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);
         if (table == null) {
-            this.updateMapping(database);
-            table = this.mapping.get(tableName);//If null, update then do it again to be sure
+            if (this.updateMapping(database)) {
+                table = this.mapping.get(tableName);//If null, update then do it again to be sure
+            } else {
+                table = chc.describeTable(database, tableName);
+            }
         }
 
         if (table == null) {
-            this.updateMapping(database);
-
             if (csc.isSuppressTableExistenceException()) {
                 LOGGER.warn("Table [{}] does not exist, but error was suppressed.", tableName);
             } else {
