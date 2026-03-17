@@ -128,6 +128,29 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     }
 
     @Test
+    public void getTableUsesTopicToTableMapping() {
+        Map<String, String> props = createProps();
+        String topic = createTopicName("mapped_source_topic_test");
+        String mappedTable = createTopicName("mapped_target_table_test");
+        props.put(ClickHouseSinkConfig.TABLE_MAPPING, topic + "=" + mappedTable);
+        ClickHouseHelperClient chc = createClient(props);
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, mappedTable);
+        ClickHouseTestHelpers.createTable(chc, mappedTable, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+
+        ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
+        chw.setSinkConfig(new ClickHouseSinkConfig(props));
+        chw.setClient(chc);
+
+        Table table = chw.getTable(chc.getDatabase(), topic);
+        assertNotNull(table);
+        assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTable), table.getFullName());
+
+        ClickHouseTestHelpers.dropTable(chc, mappedTable);
+    }
+
+    @Test
     public void getTableThrowsWhenMissingAndSuppressionDisabled() {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);

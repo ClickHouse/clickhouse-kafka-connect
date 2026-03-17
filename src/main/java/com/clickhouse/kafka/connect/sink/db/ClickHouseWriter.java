@@ -1349,7 +1349,8 @@ public class ClickHouseWriter implements DBWriter {
             if (this.updateMapping(database)) {
                 table = this.mapping.get(tableName);//If null, update then do it again to be sure
             } else {
-                table = chc.describeTable(database, tableName);
+                String cleanTopicName = Utils.getCleanTableName(topic, csc.getTopicToTableMap());
+                table = chc.describeTable(database, cleanTopicName);
             }
         }
 
