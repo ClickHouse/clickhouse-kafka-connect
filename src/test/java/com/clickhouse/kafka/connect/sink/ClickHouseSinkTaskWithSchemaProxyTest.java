@@ -37,7 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * NOTE: this test explicitly connects to the proxy endpoint and avoids the client proxy config because _____ - once ___ is fixed, we can revert this test to use the client proxy config
+ * NOTE: this test explicitly connects to the proxy endpoint and avoids setting PROXY_HOST/PROXY_PORT because the client makes requests with absolute URI's to the server when the proxy config is set.
+ * TODO: Once <a href="https://github.com/ClickHouse/ClickHouse/issues/58828">...</a> is fixed, we can revert this test to use the client proxy config.
  */
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -49,20 +50,19 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     private static Proxy proxy = null;
 
     private static final int PROXY_PORT = 8667;
+
     @BeforeAll
     public void setup() throws IOException {
         super.setup();
-        // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-//        super.setupContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
-//        Network network = getDb().getNetwork();
 
-        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(db.getNetwork()).withNetworkAliases("toxiproxy");
+        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(isCloud ? Network.newNetwork() : db.getNetwork()).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
         toxiproxy.start();
 
         log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        // TODO: make this work for cloud
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
+
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(createProps());
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, isCloud ? String.format("%s:%d", csc.getHostname(), csc.getPort()) : String.format("%s:%d", CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
         log.info("Proxy configured {}", proxy.getListen());
     }
 
@@ -78,28 +78,21 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     }
 
     private Map<String, String> getTestProperties() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.HOSTNAME, toxiproxy.getHost());
         props.put(ClickHouseSinkConfig.PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
-//        props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
-//        props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
-//        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
         return props;
     }
 
 
     @Test
     public void proxyPingTest() throws IOException {
-        ClickHouseHelperClient chc = createClient(getTestProperties());
+        ClickHouseHelperClient chc = createClient(getTestProperties(), false);
         assertTrue(chc.ping());
         proxy.disable();
         assertFalse(chc.ping());
         proxy.enable();
+        assertTrue(chc.ping());
     }
 
     @Test
@@ -227,6 +220,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
+
     @Test
     public void detectUnsupportedDataConversions() {
         Map<String, String> props = getTestProperties();
@@ -235,7 +229,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         String topic = "support-unsupported-dates-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, date_number Date, date32_number Date32, datetime_number DateTime, datetime64_number DateTime64) Engine = MergeTree ORDER BY off16");
-        
+
         Collection<SinkRecord> sr = SchemaTestData.createUnsupportedDataConversions(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -322,7 +316,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void schemaWithDecimalTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props, true);
-  
+
         String topic = "decimal-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `decimal_14_2` Decimal(14, 2) ) Engine = MergeTree ORDER BY off16");
@@ -364,11 +358,11 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         String topic = "tuple-like-influx-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
-                "`off16` Int16," +
-                "`payload` Tuple(" +
-                "  fields Map(String, Variant(Float64, Int64, String))," +
-                "  tags Map(String, String)" +
-                ")) Engine = MergeTree ORDER BY off16",
+                        "`off16` Int16," +
+                        "`payload` Tuple(" +
+                        "  fields Map(String, Variant(Float64, Int64, String))," +
+                        "  tags Map(String, String)" +
+                        ")) Engine = MergeTree ORDER BY off16",
                 Map.of("allow_experimental_variant_type", 1)
         );
 
