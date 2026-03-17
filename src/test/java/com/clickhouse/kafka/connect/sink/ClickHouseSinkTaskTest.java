@@ -345,6 +345,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @Test
     public void preCommitReturnsInsertedOffsetsForMultipleTopics() {
         Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
 
         String topic1 = createTopicName("precommit_offsets_t1");
@@ -426,6 +427,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @Test
     public void closeRemovesRevokedPartitionFromPreCommitOffsets() {
         Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
 
         String topic1 = createTopicName("precommit_close_remove_t1");
@@ -474,6 +476,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @Test
     public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets() {
         Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
 
         String topic1 = createTopicName("precommit_revoke_remove_t1");
@@ -515,6 +518,39 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
                 "preCommit should still return offsets for active partition");
         assertEquals(totalRecordsTopic2, committedOffsets.get(active).offset(),
                 "Committed offset for active partition should be maxOffset + 1");
+
+        chst.stop();
+    }
+
+    @Test
+    public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("precommit_report_offsets_off");
+        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
+                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
+                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, createTableSql);
+
+        int partition = 0;
+        int totalRecords = 100;
+        List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, partition, totalRecords);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(new TopicPartition(topic, partition), new OffsetAndMetadata(999));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertSame(currentOffsets, committedOffsets,
+                "preCommit should return currentOffsets when reportInsertedOffsets is false");
+        assertEquals(999, committedOffsets.get(new TopicPartition(topic, partition)).offset(),
+                "Offset should match the value from currentOffsets");
 
         chst.stop();
     }

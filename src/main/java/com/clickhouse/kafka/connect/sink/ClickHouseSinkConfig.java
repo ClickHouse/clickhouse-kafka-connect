@@ -54,6 +54,7 @@ public class ClickHouseSinkConfig {
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
     public static final String BUFFER_COUNT = "bufferCount";
     public static final String BUFFER_FLUSH_TIME = "bufferFlushTime";
+    public static final String REPORT_INSERTED_OFFSETS = "reportInsertedOffsets";
     public static final String ERROR_TOLERANCE_ALL = "all";
     public static final String ERROR_TOLERANCE_NONE = "none";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
@@ -74,6 +75,7 @@ public class ClickHouseSinkConfig {
     public static final Boolean customInsertFormatDefault = Boolean.FALSE;
     public static final Integer bufferCountDefault = 0;
     public static final Long bufferFlushTimeDefault = 0L;
+    public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
 
     private final String hostname;
     private final int port;
@@ -106,6 +108,7 @@ public class ClickHouseSinkConfig {
     private final boolean ignorePartitionsWhenBatching;
     private final int bufferCount;
     private final long bufferFlushTime;
+    private final boolean reportInsertedOffsets;
     private final boolean binaryFormatWrtiteJsonAsString;
 
     public enum InsertFormats {
@@ -284,6 +287,7 @@ public class ClickHouseSinkConfig {
         this.ignorePartitionsWhenBatching = Boolean.parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
         this.bufferCount = Integer.parseInt(props.getOrDefault(BUFFER_COUNT, bufferCountDefault.toString()));
         this.bufferFlushTime = Long.parseLong(props.getOrDefault(BUFFER_FLUSH_TIME, bufferFlushTimeDefault.toString()));
+        this.reportInsertedOffsets = Boolean.parseBoolean(props.getOrDefault(REPORT_INSERTED_OFFSETS, reportInsertedOffsetsDefault.toString()));
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -662,6 +666,17 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Buffer flush time in ms."
+        );
+        configDef.define(REPORT_INSERTED_OFFSETS,
+                ConfigDef.Type.BOOLEAN,
+                reportInsertedOffsetsDefault,
+                ConfigDef.Importance.LOW,
+                "Report only successfully inserted offsets in preCommit. default: " +
+                        reportInsertedOffsetsDefault,
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Report inserted offsets."
         );
         return configDef;
     }

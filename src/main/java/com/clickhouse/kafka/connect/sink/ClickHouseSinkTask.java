@@ -151,6 +151,10 @@ public class ClickHouseSinkTask extends SinkTask {
                 LOGGER.debug("preCommit: returning currentOffsets back");
                 return currentOffsets; // there is another way to reconcile data
             }
+            if (!clickHouseSinkConfig.isReportInsertedOffsets()) {
+                LOGGER.debug("preCommit: reportInsertedOffsets=false, returning currentOffsets");
+                return currentOffsets;
+            }
             Map<TopicPartition, OffsetAndMetadata> inserted = proxySinkTask.getInsertedOffsetsSnapshot();
             if (inserted.keySet().removeIf(key -> !currentOffsets.containsKey(key))) {
                 LOGGER.debug("preCommit: inserted offsets doesn't match currentOffsets. This is ok - seems result of rebalance.");
