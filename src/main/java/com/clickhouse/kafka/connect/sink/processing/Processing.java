@@ -19,11 +19,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static com.clickhouse.kafka.connect.sink.state.State.AFTER_PROCESSING;
@@ -38,9 +36,6 @@ public class Processing {
 
     private ErrorReporter errorReporter = null;
 
-    // Topic_Partition Key, Last Max offset inserted
-    private final Map<TopicPartition, OffsetAndMetadata> lastInsertedOffsets = new ConcurrentHashMap<>();
-
     public Processing(StateProvider stateProvider, DBWriter dbWriter, ErrorReporter errorReporter,
                       ClickHouseSinkConfig clickHouseSinkConfig, SinkTaskStatistics statistics) {
         this.stateProvider = stateProvider;
@@ -48,9 +43,8 @@ public class Processing {
         this.errorReporter = errorReporter;
         this.clickHouseSinkConfig = clickHouseSinkConfig;
         this.statistics = statistics;
-
-        stateProvider.setStateUpdateListener(this::onStateUpdate);
     }
+
     /**
      * the logic is only for topic partition scoop
      *
@@ -235,7 +229,7 @@ public class Processing {
                 switch (stateRecord.getOverLappingState(rangeContainer, AFTER_PROCESSING)) {
                     case SAME:
                     case CONTAINS:
-                        onStateUpdate(stateRecord);
+                        stateProvider.onStateUpdate(stateRecord);
                         break;
                     case ZERO:
                         LOGGER.warn(String.format("It seems you deleted the topic - resetting state for topic [%s] partition [%s].", topic, partition));
@@ -273,18 +267,11 @@ public class Processing {
         }
     }
 
-    private void onStateUpdate(StateRecord stateRecord) {
-        if (stateRecord.getState() == AFTER_PROCESSING) {
-            lastInsertedOffsets.put(new TopicPartition(stateRecord.getTopic(), stateRecord.getPartition()),
-                    new OffsetAndMetadata(stateRecord.getMaxOffset() + 1)); // +1 to store next record to send
-        }
-    }
-
-    public void onPartitionRemoved(Collection<TopicPartition> removedPartitions) {
-        removedPartitions.stream().forEach(lastInsertedOffsets::remove);
+    public void onPartitionRemoved(Collection<TopicPartition> partitions) {
+        stateProvider.onPartitionRemoved(partitions);
     }
 
     public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsets() {
-        return new HashMap<>(lastInsertedOffsets);
+        return stateProvider.getLastInsertedOffsets();
     }
 }

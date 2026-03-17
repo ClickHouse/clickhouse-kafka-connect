@@ -1,20 +1,18 @@
 package com.clickhouse.kafka.connect.sink.state.provider;
 
+import com.clickhouse.kafka.connect.sink.state.BaseStateProviderImpl;
 import com.clickhouse.kafka.connect.sink.state.State;
-import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Consumer;
 
-public class InMemoryState implements StateProvider {
+public class InMemoryState extends BaseStateProviderImpl {
 
     private Map<String, StateRecord> stateDB = null;
     public InMemoryState() {
         this.stateDB = new HashMap<>(10);
     }
-    private Consumer<StateRecord> callback;
 
     private String genKey(String topic, int partition) {
         return String.format("%s-%d", topic, partition);
@@ -29,15 +27,8 @@ public class InMemoryState implements StateProvider {
 
     @Override
     public void setStateRecord(StateRecord stateRecord) {
+        super.setStateRecord(stateRecord);
         String key = genKey(stateRecord.getTopic(), stateRecord.getPartition());
         stateDB.put(key, stateRecord);
-        if (callback != null) {
-            callback.accept(stateRecord);
-        }
-    }
-
-    @Override
-    public void setStateUpdateListener(Consumer<StateRecord> callback) {
-        this.callback = callback;
     }
 }

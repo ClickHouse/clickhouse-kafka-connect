@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink.state.provider;
 
 import com.clickhouse.client.ClickHouseClient;
 import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseNode;
 import com.clickhouse.client.ClickHouseNodeSelector;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
@@ -11,8 +10,8 @@ import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.state.BaseStateProviderImpl;
 import com.clickhouse.kafka.connect.sink.state.State;
-import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
@@ -20,20 +19,15 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
-public class KeeperStateProvider implements StateProvider {
+public class KeeperStateProvider extends BaseStateProviderImpl {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KeeperStateProvider.class);
-    private ClickHouseNode server = null;
-    private int pingTimeOut = 100;
-
 
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
     private Map<String, StateRecord> stateMap = null;
-    private Consumer<StateRecord> callback = null;
 
     public KeeperStateProvider(ClickHouseSinkConfig csc) {
         this.csc = csc;
@@ -139,6 +133,7 @@ public class KeeperStateProvider implements StateProvider {
 
     @Override
     public void setStateRecord(StateRecord stateRecord) {
+        super.setStateRecord(stateRecord);
         long minOffset = stateRecord.getMinOffset();
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
@@ -159,13 +154,5 @@ public class KeeperStateProvider implements StateProvider {
         }
 
         stateMap.put(csc.getZkDatabase() + "-" + key, stateRecord);
-        if (callback != null) {
-            callback.accept(stateRecord);
-        }
-    }
-
-    @Override
-    public void setStateUpdateListener(Consumer<StateRecord> callback) {
-        this.callback = callback;
     }
 }
