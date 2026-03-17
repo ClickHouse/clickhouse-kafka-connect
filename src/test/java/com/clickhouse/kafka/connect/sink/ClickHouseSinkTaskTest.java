@@ -422,4 +422,100 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         chst.stop();
     }
+
+    @Test
+    public void closeRemovesRevokedPartitionFromPreCommitOffsets() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic1 = createTopicName("precommit_close_remove_t1");
+        String topic2 = createTopicName("precommit_close_remove_t2");
+
+        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
+                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
+                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
+        ClickHouseTestHelpers.dropTable(chc, topic1);
+        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.createTable(chc, topic1, createTableSql);
+        ClickHouseTestHelpers.createTable(chc, topic2, createTableSql);
+
+        int totalRecordsTopic1 = 50;
+        int totalRecordsTopic2 = 70;
+        int partition = 0;
+
+        List<SinkRecord> allRecords = new ArrayList<>();
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic1, partition, totalRecordsTopic1));
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic2, partition, totalRecordsTopic2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(allRecords);
+
+        TopicPartition revoked = new TopicPartition(topic1, partition);
+        chst.close(List.of(revoked));
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(revoked, new OffsetAndMetadata(0));
+        TopicPartition active = new TopicPartition(topic2, partition);
+        currentOffsets.put(active, new OffsetAndMetadata(0));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertFalse(committedOffsets.containsKey(revoked),
+                "preCommit should not return offsets for revoked partition after close()");
+        assertTrue(committedOffsets.containsKey(active),
+                "preCommit should still return offsets for active partition");
+        assertEquals(totalRecordsTopic2, committedOffsets.get(active).offset(),
+                "Committed offset for active partition should be maxOffset + 1");
+
+        chst.stop();
+    }
+
+    @Test
+    public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic1 = createTopicName("precommit_revoke_remove_t1");
+        String topic2 = createTopicName("precommit_revoke_remove_t2");
+
+        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
+                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
+                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
+        ClickHouseTestHelpers.dropTable(chc, topic1);
+        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.createTable(chc, topic1, createTableSql);
+        ClickHouseTestHelpers.createTable(chc, topic2, createTableSql);
+
+        int totalRecordsTopic1 = 40;
+        int totalRecordsTopic2 = 60;
+        int partition = 0;
+
+        List<SinkRecord> allRecords = new ArrayList<>();
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic1, partition, totalRecordsTopic1));
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic2, partition, totalRecordsTopic2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(allRecords);
+
+        TopicPartition revoked = new TopicPartition(topic1, partition);
+        chst.onPartitionsRevoked(List.of(revoked));
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(revoked, new OffsetAndMetadata(0));
+        TopicPartition active = new TopicPartition(topic2, partition);
+        currentOffsets.put(active, new OffsetAndMetadata(0));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertFalse(committedOffsets.containsKey(revoked),
+                "preCommit should not return offsets for revoked partition after onPartitionsRevoked()");
+        assertTrue(committedOffsets.containsKey(active),
+                "preCommit should still return offsets for active partition");
+        assertEquals(totalRecordsTopic2, committedOffsets.get(active).offset(),
+                "Committed offset for active partition should be maxOffset + 1");
+
+        chst.stop();
+    }
 }
