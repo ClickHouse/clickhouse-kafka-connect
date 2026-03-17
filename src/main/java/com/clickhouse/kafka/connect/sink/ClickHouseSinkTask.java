@@ -153,7 +153,7 @@ public class ClickHouseSinkTask extends SinkTask {
                 return currentOffsets; // there is another way to reconcile data
             }
             Map<TopicPartition, OffsetAndMetadata> inserted = proxySinkTask.getInsertedOffsetsSnapshot();
-            if (inserted.keySet().retainAll(currentOffsets.keySet())) {
+            if (inserted.keySet().removeIf(key -> !currentOffsets.containsKey(key))) {
                 LOGGER.debug("preCommit: inserted offsets doesn't match currentOffsets. This is ok - seems result of rebalance.");
             }
 

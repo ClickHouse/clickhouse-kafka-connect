@@ -29,8 +29,9 @@ public abstract class BaseStateProviderImpl implements StateProvider {
         }
     }
 
+    @Override
     public void onPartitionRemoved(Collection<TopicPartition> removedPartitions) {
-        removedPartitions.stream().forEach(lastInsertedOffsets::remove);
+        removedPartitions.forEach(lastInsertedOffsets::remove);
     }
 
     public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsetsSnapshot() {
