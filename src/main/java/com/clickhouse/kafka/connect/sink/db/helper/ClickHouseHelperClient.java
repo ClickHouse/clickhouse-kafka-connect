@@ -60,6 +60,7 @@ public class ClickHouseHelperClient {
     private int proxyPort = -1;
     @Getter
     private boolean useClientV2 = false;
+    private final String sslSocketSni;
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -75,6 +76,7 @@ public class ClickHouseHelperClient {
         this.proxyHost = builder.proxyHost;
         this.proxyPort = builder.proxyPort;
         this.useClientV2 = builder.useClientV2;
+        this.sslSocketSni = builder.sslSocketSni;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -153,6 +155,9 @@ public class ClickHouseHelperClient {
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
+        }
+        if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
+            clientBuilder.sslSocketSNI(sslSocketSni);
         }
         client = clientBuilder.build();
         return client;
@@ -504,6 +509,7 @@ public class ClickHouseHelperClient {
         private String proxyHost = null;
         private int proxyPort = -1;
         private boolean useClientV2 = true;
+        private String sslSocketSni = "";
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -551,6 +557,11 @@ public class ClickHouseHelperClient {
 
         public ClickHouseClientBuilder useClientV2(boolean useClientV2) {
             this.useClientV2 = useClientV2;
+            return this;
+        }
+
+        public ClickHouseClientBuilder sslSocketSni(String sni) {
+            this.sslSocketSni = sni;
             return this;
         }
 

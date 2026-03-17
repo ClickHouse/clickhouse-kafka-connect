@@ -110,6 +110,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
+                .sslSocketSni(csc.getSslSocketSni())
                 .build();
 
         if (!chc.ping()) {

@@ -44,7 +44,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     public void setup() throws IOException {
         super.setup();
 
-        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(db.getNetwork()).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
+        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(isCloud ? Network.newNetwork() : db.getNetwork()).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
         toxiproxy.start();
 
         log.info("Started proxy container: {}", toxiproxy.getControlPort());
@@ -67,17 +67,18 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     }
 
     private Map<String, String> getTestProperties() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.DATABASE, database);
-        props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        Map<String, String> props = createProps();
+        if (isCloud) {
+            // Capture actual cloud hostname as SNI before overriding with ToxiProxy host.
+            // When SSL=true (cloud), ToxiProxy acts as a transparent TCP relay; the TLS
+            // ClientHello must carry the real cloud hostname as SNI so the server presents
+            // its certificate. Setting sslSocketSNI also disables client-side hostname
+            // verification (CustomSSLConnectionFactory in client-v2), allowing the cert to
+            // be accepted even though the TCP connection target is the proxy.
+            props.put(ClickHouseSinkConfig.SSL_SOCKET_SNI, props.get(ClickHouseSinkConfig.HOSTNAME));
+        }
         props.put(ClickHouseSinkConfig.HOSTNAME, toxiproxy.getHost());
         props.put(ClickHouseSinkConfig.PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
-//        props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
-//        props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
-//        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
         return props;
     }
 

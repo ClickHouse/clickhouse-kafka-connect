@@ -136,6 +136,7 @@ public class ClickHouseBase {
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
+                .sslSocketSni(csc.getSslSocketSni())
                 .build();
 
         if (withDatabase) {
@@ -149,6 +150,7 @@ public class ClickHouseBase {
                     .setTimeout(timeout)
                     .setRetry(csc.getRetry())
                     .useClientV2(useClientV2)
+                    .sslSocketSni(csc.getSslSocketSni())
                     .build();
             }
 
@@ -186,6 +188,7 @@ public class ClickHouseBase {
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .sslSocketSni(csc.getSslSocketSni())
                 .build();
 
         boolean ping;
@@ -225,6 +228,7 @@ public class ClickHouseBase {
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .sslSocketSni(csc.getSslSocketSni())
                 .build();
 
         dropDatabase(database, tmpChc);

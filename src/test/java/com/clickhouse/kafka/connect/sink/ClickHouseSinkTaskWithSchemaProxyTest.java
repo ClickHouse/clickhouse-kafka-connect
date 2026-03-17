@@ -79,6 +79,15 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = createProps();
+        if (isCloud) {
+            // Capture actual cloud hostname as SNI before overriding with ToxiProxy host.
+            // When SSL=true (cloud), ToxiProxy acts as a transparent TCP relay; the TLS
+            // ClientHello must carry the real cloud hostname as SNI so the server presents
+            // its certificate. Setting sslSocketSNI also disables client-side hostname
+            // verification (CustomSSLConnectionFactory in client-v2), allowing the cert to
+            // be accepted even though the TCP connection target is the proxy.
+            props.put(ClickHouseSinkConfig.SSL_SOCKET_SNI, props.get(ClickHouseSinkConfig.HOSTNAME));
+        }
         props.put(ClickHouseSinkConfig.HOSTNAME, toxiproxy.getHost());
         props.put(ClickHouseSinkConfig.PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
         return props;
