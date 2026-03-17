@@ -133,7 +133,6 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
 
     @Override
     public void setStateRecord(StateRecord stateRecord) {
-        super.setStateRecord(stateRecord);
         long minOffset = stateRecord.getMinOffset();
         long maxOffset = stateRecord.getMaxOffset();
         String key = stateRecord.getTopicAndPartitionKey();
@@ -153,6 +152,7 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
             response.close();
         }
 
+        super.setStateRecord(stateRecord);
         stateMap.put(csc.getZkDatabase() + "-" + key, stateRecord);
     }
 }

@@ -16,7 +16,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class ClickHouseSinkTask extends SinkTask {
 
@@ -177,7 +176,9 @@ public class ClickHouseSinkTask extends SinkTask {
     @Override
     public void close(Collection<TopicPartition> partitions) {
         LOGGER.debug("close: {}", partitions);
-        proxySinkTask.onPartitionRemoved(partitions);
+        if (proxySinkTask != null) {
+            proxySinkTask.onPartitionRemoved(partitions);
+        }
         if (!bufferingEnabled) {
             return;
         }
