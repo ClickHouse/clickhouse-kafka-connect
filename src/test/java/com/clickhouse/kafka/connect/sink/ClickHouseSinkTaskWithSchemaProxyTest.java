@@ -36,6 +36,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * NOTE: this test explicitly connects to the proxy endpoint and avoids the client proxy config because _____ - once ___ is fixed, we can revert this test to use the client proxy config
+ */
+
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
@@ -49,14 +53,15 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void setup() throws IOException {
         super.setup();
         // Note: we are using a different version of ClickHouse for the proxy - https://github.com/ClickHouse/ClickHouse/issues/58828
-        super.setupContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
-        Network network = getDb().getNetwork();
+//        super.setupContainer(ClickHouseTestHelpers.CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE);
+//        Network network = getDb().getNetwork();
 
-        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
+        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(db.getNetwork()).withNetworkAliases("toxiproxy");
         toxiproxy.start();
 
         log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
+        // TODO: make this work for cloud
         proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, "clickhouse:" + ClickHouseProtocol.HTTP.getDefaultPort());
         log.info("Proxy configured {}", proxy.getListen());
     }
@@ -78,15 +83,17 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
         props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-        props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
-        props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
-        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
+        props.put(ClickHouseSinkConfig.HOSTNAME, toxiproxy.getHost());
+        props.put(ClickHouseSinkConfig.PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
+//        props.put(ClickHouseSinkConfig.PROXY_TYPE, ClickHouseProxyType.HTTP.name());
+//        props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
+//        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
         return props;
     }
 
 
     @Test
-    @Disabled
     public void proxyPingTest() throws IOException {
         ClickHouseHelperClient chc = createClient(getTestProperties());
         assertTrue(chc.ping());
@@ -349,7 +356,6 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     }
 
     @Test
-    @Disabled("Since Variants are not supported in current ClickHouse version that is compatible with toxiproxy.")
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleLikeInfluxTest() {
         Map<String, String> props = getTestProperties();
@@ -385,7 +391,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
 
             assertEquals(1 / (float) (n + 1), fields.getFloat("field1"));
             assertEquals(n, fields.getBigInteger("field2").longValue());
-            assertEquals(String.format("Value: '%d'", n), fields.getString("field3"));
+            assertEquals(String.format("Value '%d'", n), fields.getString("field3"));
 
             JSONObject tags = payload.getJSONObject("tags");
             assertEquals("tag1", tags.getString("tag1"));

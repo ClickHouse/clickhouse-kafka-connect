@@ -694,7 +694,7 @@ public class SchemaTestData {
         LongStream.range(0, totalRecords).forEachOrdered(n -> {
             Struct payload = new Struct(payloadSchema)
                     .put("fields", Map.of(
-                            "field1", new Struct(variantSchema).put("float64", 1 / (float) (n + 1)),
+                            "field1", new Struct(variantSchema).put("float64", 1 / (double) (n + 1)),
                             "field2", new Struct(variantSchema).put("int64", n),
                             "field3", new Struct(variantSchema).put("string", String.format("Value '%d'", n))
                     ))

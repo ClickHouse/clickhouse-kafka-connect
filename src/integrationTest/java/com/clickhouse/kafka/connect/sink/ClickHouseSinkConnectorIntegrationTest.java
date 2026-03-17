@@ -185,8 +185,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         createMergeTreeTable(chcNoProxy, topicName);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-        // The V1 client makes requests with absolute URIs when a proxy is configured - currently, requests with absolute paths are rejected by CH server.
-        // To work around this, transparently connect to the toxiproxy endpoint and avoid configuring the proxy settings on the V1 client. The proxy will relay relative URIs, which the CH server expects.
+        // The client makes requests with absolute URIs when a proxy is configured - currently, requests with absolute paths are rejected by CH server.
+        // To work around this, transparently connect to the toxiproxy endpoint and avoid configuring the proxy settings on the client. The proxy will relay relative URIs, which the CH server expects.
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
 
         confluentPlatform.createConnect(jsonString);
