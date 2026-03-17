@@ -881,6 +881,48 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
         assertEquals(numRecords + numRecordsWithNullable + numRecordsWithDefault, ClickHouseTestHelpers.countRows(chc, topic));
     }
+
+    @Test
+    public void changeSchemaWhileRunningAddDefaultColumnOldSchemaData() throws InterruptedException {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("change-schema-add-default-old-schema-data-test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`string` String" +
+                ") Engine = MergeTree ORDER BY `off16`");
+
+        Collection<SinkRecord> firstBatch = SchemaTestData.createSimpleData(topic, 1, 1000);
+        Collection<SinkRecord> secondBatch = SchemaTestData.createSimpleData(topic, 1, 1000).stream()
+                .map(record -> new SinkRecord(
+                        record.topic(),
+                        record.kafkaPartition(),
+                        record.keySchema(),
+                        record.key(),
+                        record.valueSchema(),
+                        record.value(),
+                        record.kafkaOffset() + 1000,
+                        record.timestamp(),
+                        record.timestampType()))
+                .collect(Collectors.toList());
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(firstBatch);
+        assertEquals(firstBatch.size(), ClickHouseTestHelpers.countRows(chc, topic));
+
+        ClickHouseTestHelpers.createTable(chc, topic, "ALTER TABLE `%s` ADD COLUMN num32_default Int32 DEFAULT 42 AFTER string");
+        Thread.sleep(5000);
+
+        // Keep writing records with the old schema (without num32_default).
+        // Connector should write default markers for the new column.
+        chst.put(secondBatch);
+        chst.stop();
+
+        assertEquals(firstBatch.size() + secondBatch.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    }
+
     @Test
     public void changeSchemaWhileRunningWithRefreshEnabled() throws InterruptedException {
         Map<String, String> props = createProps();

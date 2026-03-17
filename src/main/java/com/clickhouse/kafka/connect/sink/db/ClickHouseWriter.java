@@ -59,7 +59,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -151,11 +150,11 @@ public class ClickHouseWriter implements DBWriter {
         return true;
     }
 
-    public void updateMapping(String database) {
+    public boolean updateMapping(String database) {
         // Do not start a new update cycle if one is already in progress
         // Atomically compare and set isUpdateMappingRunning
         if (!this.isUpdateMappingRunning.compareAndSet(false, true)) {
-            return;
+            return false; // in progress
         }
 
         LOGGER.debug("Update table mapping.");
@@ -163,16 +162,13 @@ public class ClickHouseWriter implements DBWriter {
         try {
             // Getting tables from ClickHouse
             List<Table> tableList = this.chc.extractTablesMapping(database, this.mapping);
-            if (tableList.isEmpty()) {
-                return;
-            }
-
             // Adding new tables to mapping, or update existing tables
             // TODO: check Kafka Connect's topics name or topics regex config and
             // only add tables to in-memory mapping that matches the topics we consume.
             for (Table table : tableList) {
                 this.mapping.put(table.getFullName(), table);
             }
+            return true;
         } finally {
             this.isUpdateMappingRunning.set(false);
         }
@@ -828,8 +824,7 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error("Error inserting records can cause by schema changes", e);
             if (e.getCode() == 33 && retry == true) {
                 LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
-                updateMapping(table.getDatabase());
-                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 throw e;
@@ -839,14 +834,34 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error("Error inserting records", e);
             if (e.getMessage().indexOf("ClickHouseException: Code: 33") != -1 && retry == true) {
                 LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
-                updateMapping(table.getDatabase());
-                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 throw e;
             }
         }
     }
+
+    private Table urgentTableUpdate(Table table) {
+        Table tableTmp;
+        if (updateMapping(table.getDatabase())) {
+            LOGGER.debug("urgentTableUpdate({}): update complete", table.getName());
+            tableTmp = getTable(table.getDatabase(), table.getName());
+        } else {
+            LOGGER.debug("urgentTableUpdate({}): update still running", table.getName());
+            tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
+            if (tableTmp == null) {
+                LOGGER.error("Failed to describe table {}.{} via ClickHouseHelperClient.describeTable(); falling back to existing mapping.",
+                        table.getDatabase(), table.getCleanName());
+                tableTmp = getTable(table.getDatabase(), table.getName());
+            }
+        }
+        if (tableTmp == null) {
+            throw new IllegalStateException("Unable to refresh table mapping for " + table.getDatabase() + "." + table.getName());
+        }
+        return tableTmp;
+    }
+
     protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
 
@@ -1332,13 +1347,15 @@ public class ClickHouseWriter implements DBWriter {
         String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);
         if (table == null) {
-            this.updateMapping(database);
-            table = this.mapping.get(tableName);//If null, update then do it again to be sure
+            if (this.updateMapping(database)) {
+                table = this.mapping.get(tableName);//If null, update then do it again to be sure
+            } else {
+                String cleanTopicName = Utils.getMappedOrTopicTableName(topic, csc.getTopicToTableMap());
+                table = chc.describeTable(database, cleanTopicName.replace("`", "").trim());
+            }
         }
 
         if (table == null) {
-            this.updateMapping(database);
-
             if (csc.isSuppressTableExistenceException()) {
                 LOGGER.warn("Table [{}] does not exist, but error was suppressed.", tableName);
             } else {
