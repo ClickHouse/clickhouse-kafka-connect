@@ -24,7 +24,7 @@ public abstract class BaseStateProviderImpl implements StateProvider {
     @Override
     public void onStateUpdate(StateRecord stateRecord) {
         if (stateRecord.getState() == AFTER_PROCESSING) {
-            lastInsertedOffsets.put(new TopicPartition(stateRecord.getTopic(), stateRecord.getPartition()),
+            lastInsertedOffsets.put(new TopicPartition(stateRecord.getOriginalTopic(), stateRecord.getPartition()),
                     new OffsetAndMetadata(stateRecord.getMaxOffset() + 1)); // +1 to store next record to send
         }
     }

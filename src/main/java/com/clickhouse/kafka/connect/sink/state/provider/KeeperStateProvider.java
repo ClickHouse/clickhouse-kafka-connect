@@ -107,7 +107,7 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
             long totalResultsFound = response.getSummary().getResultRows();
             if ( totalResultsFound == 0) {
                 LOGGER.info("Read state record: topic {} partition {} with NONE state", topic, partition);
-                return new StateRecord(topic, partition, 0, 0, State.NONE);
+                return new StateRecord(topic, partition, 0, 0, State.NONE, topic);
             } else if(totalResultsFound > 1){
                 LOGGER.warn("There was more than 1 state records for query: {} ({} found)", selectStr, totalResultsFound);
             }
@@ -118,7 +118,7 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
             State state = State.valueOf(r.getValue(3).asString());
             LOGGER.debug("read state record: topic {} partition {} with {} state max {} min {}", topic, partition, state, maxOffset, minOffset);
 
-            StateRecord stateRecord = new StateRecord(topic, partition, maxOffset, minOffset, state);
+            StateRecord stateRecord = new StateRecord(topic, partition, maxOffset, minOffset, state, topic);
             StateRecord storedRecord = stateMap.get(csc.getZkDatabase() + "-" + key);
             if (storedRecord != null && !stateRecord.equals(storedRecord)) {
                 LOGGER.warn("State record is changed: {} -> {}", storedRecord, stateRecord);

@@ -21,7 +21,7 @@ public class InMemoryState extends BaseStateProviderImpl {
     public StateRecord getStateRecord(String topic, int partition) {
         String key = genKey(topic, partition);
         if ( !stateDB.containsKey(key))
-            return new StateRecord(topic, partition, -1 , -1, State.NONE);
+            return new StateRecord(topic, partition, -1 , -1, State.NONE, topic);
         return stateDB.get(key);
     }
 
