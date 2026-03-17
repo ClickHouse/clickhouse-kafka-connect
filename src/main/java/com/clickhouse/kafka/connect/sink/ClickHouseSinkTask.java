@@ -152,13 +152,13 @@ public class ClickHouseSinkTask extends SinkTask {
                 LOGGER.debug("preCommit: returning currentOffsets back");
                 return currentOffsets; // there is another way to reconcile data
             }
-            Map<TopicPartition, OffsetAndMetadata> inserted = proxySinkTask.getInsertedOffsets();
-            Map<TopicPartition, OffsetAndMetadata> toCommit =
-                    inserted.entrySet().stream().filter(e -> currentOffsets.containsKey(e.getKey()))
-                                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            Map<TopicPartition, OffsetAndMetadata> inserted = proxySinkTask.getInsertedOffsetsSnapshot();
+            if (inserted.keySet().retainAll(currentOffsets.keySet())) {
+                LOGGER.debug("preCommit: inserted offsets doesn't match currentOffsets. This is ok - seems result of rebalance.");
+            }
 
-            LOGGER.debug("preCommit: returned {}", toCommit);
-            return toCommit;
+            LOGGER.debug("preCommit: returned {}", inserted);
+            return inserted;
         }
         // Only commit offsets for records that have been successfully written to ClickHouse.
         // Records still in the buffer have NOT been written, so their offsets must not be committed.

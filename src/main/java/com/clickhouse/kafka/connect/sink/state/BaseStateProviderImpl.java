@@ -33,7 +33,7 @@ public abstract class BaseStateProviderImpl implements StateProvider {
         removedPartitions.stream().forEach(lastInsertedOffsets::remove);
     }
 
-    public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsets() {
+    public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsetsSnapshot() {
         return new HashMap<>(lastInsertedOffsets);
     }
 }

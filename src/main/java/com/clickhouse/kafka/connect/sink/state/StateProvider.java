@@ -16,9 +16,9 @@ public interface StateProvider {
     /**
      * Implementation should keep mapping of last inserted offset and keep track of removed partitions.
      *
-     * @return copy of internal map.
+     * @return mutable copy of internal map.
      */
-    Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsets();
+    Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsetsSnapshot();
 
     /**
      * Implementation should update partition offsets only. It is called when state is the same and

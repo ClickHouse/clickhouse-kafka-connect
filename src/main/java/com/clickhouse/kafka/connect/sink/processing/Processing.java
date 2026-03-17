@@ -12,15 +12,11 @@ import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -265,13 +261,5 @@ public class Processing {
                                 records.size(), topic, partition, rangeContainer.getMinOffset(), rangeContainer.getMaxOffset(), stateRecord.getMinOffset(), stateRecord.getMaxOffset()));
                 }
         }
-    }
-
-    public void onPartitionRemoved(Collection<TopicPartition> partitions) {
-        stateProvider.onPartitionRemoved(partitions);
-    }
-
-    public Map<TopicPartition, OffsetAndMetadata> getLastInsertedOffsets() {
-        return stateProvider.getLastInsertedOffsets();
     }
 }

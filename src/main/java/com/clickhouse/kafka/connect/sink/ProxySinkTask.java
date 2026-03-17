@@ -121,11 +121,11 @@ public class ProxySinkTask {
     }
 
 
-    public void onPartitionRemoved(Collection<TopicPartition> removedPartitions) {
-        processing.onPartitionRemoved(removedPartitions);
+    public void onPartitionRemoved(Collection<TopicPartition> partitions) {
+        stateProvider.onPartitionRemoved(partitions);
     }
 
-    public Map<TopicPartition, OffsetAndMetadata> getInsertedOffsets() {
-        return processing.getLastInsertedOffsets();
+    public Map<TopicPartition, OffsetAndMetadata> getInsertedOffsetsSnapshot() {
+        return stateProvider.getLastInsertedOffsetsSnapshot();
     }
 }
