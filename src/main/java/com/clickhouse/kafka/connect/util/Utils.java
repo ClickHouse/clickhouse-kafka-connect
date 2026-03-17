@@ -168,11 +168,11 @@ public class Utils {
     }
 
     public static String getTableName(String database, String topicName, Map<String, String> topicToTableMap) {
-        String tableName = getCleanTableName(topicName, topicToTableMap);
+        String tableName = getMappedOrTopicTableName(topicName, topicToTableMap);
         return escapeTableName(database, tableName);
     }
 
-    public static String getCleanTableName(String topicName, Map<String, String> topicToTableMap) {
+    public static String getMappedOrTopicTableName(String topicName, Map<String, String> topicToTableMap) {
         String tableName = topicToTableMap.get(topicName);
         LOGGER.debug("Topic name: {}, Table Name: {}", topicName, tableName);
         if (tableName == null) {

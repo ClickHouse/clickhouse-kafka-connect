@@ -59,7 +59,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1349,7 +1348,7 @@ public class ClickHouseWriter implements DBWriter {
             if (this.updateMapping(database)) {
                 table = this.mapping.get(tableName);//If null, update then do it again to be sure
             } else {
-                String cleanTopicName = Utils.getCleanTableName(topic, csc.getTopicToTableMap());
+                String cleanTopicName = Utils.getMappedOrTopicTableName(topic, csc.getTopicToTableMap());
                 table = chc.describeTable(database, cleanTopicName.replace("`", "").trim());
             }
         }
