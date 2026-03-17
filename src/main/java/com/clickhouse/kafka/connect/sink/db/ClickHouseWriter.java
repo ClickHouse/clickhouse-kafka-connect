@@ -846,11 +846,17 @@ public class ClickHouseWriter implements DBWriter {
     private Table urgentTableUpdate(Table table) {
         Table tableTmp;
         if (updateMapping(table.getDatabase())) {
-            LOGGER.debug("urgentTableUpdate: mapping updated");
             tableTmp = getTable(table.getDatabase(), table.getName());
         } else {
-            LOGGER.debug("urgentTableUpdate: using describeTable()");
             tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
+            if (tableTmp == null) {
+                LOGGER.error("Failed to describe table {}.{} via ClickHouseHelperClient.describeTable(); falling back to existing mapping.",
+                        table.getDatabase(), table.getCleanName());
+                tableTmp = getTable(table.getDatabase(), table.getName());
+            }
+        }
+        if (tableTmp == null) {
+            throw new IllegalStateException("Unable to refresh table mapping for " + table.getDatabase() + "." + table.getName());
         }
         return tableTmp;
     }
