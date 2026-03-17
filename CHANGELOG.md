@@ -1,7 +1,19 @@
 # 1.3.6
 
 ## New Features
-* Added internal record buffering support via `bufferCount` and `bufferFlushTime` configuration options. When enabled, records from multiple `poll()` calls are accumulated and flushed as a single large batch, reducing the number of insert operations to ClickHouse. Buffering is disabled by default (bufferCount=0) for full backward compatibility.
+* Added internal record buffering support via `bufferCount` and `bufferFlushTime` configuration options. 
+When enabled, records from multiple `poll()` calls are accumulated and flushed as a single large batch, 
+reducing the number of insert operations to ClickHouse. Buffering is disabled by default (bufferCount=0) for full backward compatibility. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/658)
+
+## Improvements
+* Report inserted offsets in `preCommit()` method. Previously connector was returning same map that is passed to 
+the method. This may lead to missed offsets in a situation of partition rebalance. Feature is turned off 
+by default and `reportInsertedOffsets` property should be set to `true` to enable. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/669)
+
+## Bug Fixes 
+* Fixed invalid concurrency handling in `ClickHouseWriter.updateMapping`. Previously flag was set not in atomic way. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/678) 
+* Fixes handling server error "Code 33" after schema is updated. Previously logic did not wait for target table to be updated. 
+After the fix logic will use describe of a single table when detects that `updateMapping` is running. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/680)
 
 # 1.3.5
 
