@@ -17,7 +17,7 @@ public class LocalProviderTest {
     @DisplayName("Set & get state record")
     public void setAndGet() {
         StateProvider stateProvider = new InMemoryState();
-        stateProvider.setStateRecord(new StateRecord("test", 1, 10, 0, State.BEFORE_PROCESSING));
+        stateProvider.setStateRecord(new StateRecord("test", 1, 10, 0, State.BEFORE_PROCESSING, "test"));
         StateRecord stateRecord = stateProvider.getStateRecord("test", 1);
         assertEquals(10 , stateRecord.getMaxOffset());
         assertEquals(0 , stateRecord.getMinOffset());

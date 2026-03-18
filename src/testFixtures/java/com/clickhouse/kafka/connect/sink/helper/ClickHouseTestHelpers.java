@@ -180,7 +180,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName) {
-        String query = String.format("SELECT * FROM clusterAllReplicas('default', `%s`)", tableName);
+        String query = getClusterAllReplicasQuery(chc, tableName);
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
         try {
@@ -199,6 +199,43 @@ public class ClickHouseTestHelpers {
             throw new RuntimeException(e);
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private static String getClusterAllReplicasQuery(ClickHouseHelperClient chc, String tableName) {
+        if (isVersionAtLeast(chc.version(), 26, 2)) {
+            String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
+            String escapedTableName = escapeSingleQuotes(tableName);
+            return String.format("SELECT * FROM clusterAllReplicas('default', '%s', '%s')", escapedDatabase, escapedTableName);
+        }
+
+        return String.format("SELECT * FROM clusterAllReplicas('default', `%s`)", tableName);
+    }
+
+    private static String escapeSingleQuotes(String input) {
+        return input == null ? "" : input.replace("'", "''");
+    }
+
+    private static boolean isVersionAtLeast(String version, int requiredMajor, int requiredMinor) {
+        if (version == null || version.isBlank()) {
+            return false;
+        }
+
+        String[] parts = version.split("\\.");
+        if (parts.length < 2) {
+            return false;
+        }
+
+        try {
+            int major = Integer.parseInt(parts[0]);
+            int minor = Integer.parseInt(parts[1]);
+            if (major != requiredMajor) {
+                return major > requiredMajor;
+            }
+            return minor >= requiredMinor;
+        } catch (NumberFormatException e) {
+            LOGGER.warn("Failed to parse ClickHouse version '{}'", version, e);
+            return false;
         }
     }
 
