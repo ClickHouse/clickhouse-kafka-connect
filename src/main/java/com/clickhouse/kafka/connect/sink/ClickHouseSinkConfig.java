@@ -685,7 +685,7 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Type.STRING,
                 "",
                 ConfigDef.Importance.LOW,
-                "Override the SNI hostname sent in TLS ClientHello (v2 client only). When set, also disables client-side hostname verification. " +
+                "Override the SNI hostname sent in TLS ClientHello. When set, also disables client-side hostname verification. " +
                         "Useful when routing TLS traffic through a transparent TCP proxy. Default: ''",
                 group,
                 ++orderInGroup,

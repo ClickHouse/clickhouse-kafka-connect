@@ -14,6 +14,7 @@ import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
+import com.clickhouse.client.config.ClickHouseSslMode;
 import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
@@ -92,6 +93,10 @@ public class ClickHouseHelperClient {
             options.put(ClickHouseClientOption.PROXY_HOST, proxyHost);
             options.put(ClickHouseClientOption.PROXY_PORT, proxyPort);
         }
+        if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
+            options.put(ClickHouseClientOption.SSL_SOCKET_SNI, sslSocketSni);
+            options.put(ClickHouseClientOption.SSL_MODE, ClickHouseSslMode.NONE);
+        }
         return options;
     }
 
@@ -120,6 +125,10 @@ public class ClickHouseHelperClient {
             LOGGER.debug(String.format("Adding username [%s]", username));
             options.put("user", username);
             options.put("password", password);
+        }
+        if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
+            options.put(ClickHouseClientOption.SSL_SOCKET_SNI.getKey(), sslSocketSni);
+            options.put(ClickHouseClientOption.SSL_MODE.getKey(), ClickHouseSslMode.NONE.name().toLowerCase());
         }
         server = ClickHouseNode.of(url, options);
         return server;

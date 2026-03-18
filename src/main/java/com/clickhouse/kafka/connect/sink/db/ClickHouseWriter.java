@@ -1323,6 +1323,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
+                .sslSocketSni(csc.getSslSocketSni())
                 .build();
 
         ClickHouseNode server = chcTmp.getServer();
