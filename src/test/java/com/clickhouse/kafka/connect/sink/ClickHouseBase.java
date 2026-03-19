@@ -27,6 +27,7 @@ public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected ClickHouseContainer db;
     protected boolean isCloud = ClickHouseTestHelpers.isCloud();
+    protected boolean isCluster = ClickHouseTestHelpers.isCluster();
     protected String database;
     protected final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
     protected final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
@@ -38,6 +39,11 @@ public class ClickHouseBase {
         setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
 
         if (isCloud) {
+            initialPing();
+            return;
+        }
+
+        if (isCluster) {
             initialPing();
             return;
         }
@@ -64,7 +70,7 @@ public class ClickHouseBase {
     @AfterAll
     protected void tearDown() {
         // disable dropping database for debug
-        if (isCloud) {//We need to clean up databases in the cloud, we can ignore the local database
+        if (isCloud || isCluster) {//We need to clean up databases in the cloud/cluster, we can ignore the local database
             if (database != null) {
                 try {
                     dropDatabase(getDatabase());
@@ -266,6 +272,13 @@ public class ClickHouseBase {
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
+        } else if (isCluster) {
+            props.put(ClickHouseSinkConnector.HOSTNAME, "localhost");
+            props.put(ClickHouseSinkConnector.PORT, "8123");
+            props.put(ClickHouseSinkConnector.DATABASE, database);
+            props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
+            props.put(ClickHouseSinkConnector.PASSWORD, "");
+            props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
             props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());
