@@ -1,5 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db;
 
+import com.clickhouse.kafka.connect.util.DataJson;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -20,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies that the Gson→Jackson migration produces byte-equivalent output
- * for all Map shapes used in the JSON insert paths (doInsertJsonV1/V2).
+ * for all Map shapes used in the JSON insert paths (doInsertJsonV1/V2),
+ * and semantically equivalent output for Struct serialization.
  *
  * @author Gaurav Miglani
  */
@@ -29,6 +32,28 @@ public class JsonSerializationEquivalenceTest {
     private static final Gson GSON = new Gson();
     private static final java.lang.reflect.Type GSON_MAP_TYPE =
             new TypeToken<HashMap<String, Object>>() {}.getType();
+
+    /** DataJson.GSON has the StructSerializer registered (via StructToJsonMap). */
+    private static final Gson STRUCT_GSON = DataJson.GSON;
+
+    /** Shared reader for JSON tree comparisons. */
+    private static final ObjectMapper JSON_READER = new ObjectMapper();
+
+    /**
+     * Asserts that two JSON byte arrays are semantically equivalent (same
+     * key-value pairs regardless of field order).  Gson's StructSerializer
+     * converts Struct fields via StructToJsonMap into a HashMap whose
+     * iteration order is undefined, while Jackson iterates in schema-defined
+     * order.  The JSON is semantically identical — ClickHouse JSONEachRow
+     * matches by field name, not position.
+     */
+    private static void assertJsonEquivalent(byte[] gsonBytes, byte[] jacksonBytes, String message) throws Exception {
+        JsonNode gsonTree = JSON_READER.readTree(gsonBytes);
+        JsonNode jacksonTree = JSON_READER.readTree(jacksonBytes);
+        assertEquals(gsonTree, jacksonTree, message);
+    }
+
+    // ── Map equivalence tests (byte-identical) ──────────────────────────
 
     @Test
     void flatMapWithPrimitives() throws Exception {
@@ -133,6 +158,8 @@ public class JsonSerializationEquivalenceTest {
                 "Map with special characters should produce identical bytes");
     }
 
+    // ── Struct equivalence tests (Gson DataJson.GSON vs Jackson) ────────
+
     @Test
     void structSerializesToCleanJson() throws Exception {
         Schema schema = SchemaBuilder.struct()
@@ -146,10 +173,13 @@ public class JsonSerializationEquivalenceTest {
                 .put("age", 25)
                 .put("active", false);
 
+        byte[] gsonBytes = STRUCT_GSON.toJson(struct).getBytes(StandardCharsets.UTF_8);
         byte[] jacksonBytes = OBJECT_MAPPER.writeValueAsBytes(struct);
 
-        ObjectMapper reader = new ObjectMapper();
-        Map<?, ?> parsed = reader.readValue(jacksonBytes, Map.class);
+        assertJsonEquivalent(gsonBytes, jacksonBytes,
+                "Flat struct: Gson StructSerializer and Jackson JacksonStructSerializer should produce equivalent JSON");
+
+        Map<?, ?> parsed = JSON_READER.readValue(jacksonBytes, Map.class);
         assertEquals("Bob", parsed.get("name"));
         assertEquals(25, parsed.get("age"));
         assertEquals(false, parsed.get("active"));
@@ -175,10 +205,13 @@ public class JsonSerializationEquivalenceTest {
                 .put("name", "Charlie")
                 .put("address", address);
 
+        byte[] gsonBytes = STRUCT_GSON.toJson(person).getBytes(StandardCharsets.UTF_8);
         byte[] jacksonBytes = OBJECT_MAPPER.writeValueAsBytes(person);
-        ObjectMapper reader = new ObjectMapper();
-        Map<?, ?> parsed = reader.readValue(jacksonBytes, Map.class);
 
+        assertJsonEquivalent(gsonBytes, jacksonBytes,
+                "Nested struct: Gson and Jackson should produce equivalent JSON");
+
+        Map<?, ?> parsed = JSON_READER.readValue(jacksonBytes, Map.class);
         assertEquals("Charlie", parsed.get("name"));
         @SuppressWarnings("unchecked")
         Map<String, Object> addr = (Map<String, Object>) parsed.get("address");
@@ -228,10 +261,13 @@ public class JsonSerializationEquivalenceTest {
                 .put("age", 30)
                 .put("employer", company);
 
+        byte[] gsonBytes = STRUCT_GSON.toJson(person).getBytes(StandardCharsets.UTF_8);
         byte[] jacksonBytes = OBJECT_MAPPER.writeValueAsBytes(person);
-        ObjectMapper reader = new ObjectMapper();
-        Map<?, ?> parsed = reader.readValue(jacksonBytes, Map.class);
 
+        assertJsonEquivalent(gsonBytes, jacksonBytes,
+                "Deep nested struct: Gson and Jackson should produce equivalent JSON");
+
+        Map<?, ?> parsed = JSON_READER.readValue(jacksonBytes, Map.class);
         assertEquals("Eve", parsed.get("name"));
         assertEquals(30, parsed.get("age"));
 
@@ -277,19 +313,29 @@ public class JsonSerializationEquivalenceTest {
                 .put("label", "test")
                 .put("middle", middle);
 
+        byte[] gsonBytes = STRUCT_GSON.toJson(outer).getBytes(StandardCharsets.UTF_8);
         byte[] jacksonBytes = OBJECT_MAPPER.writeValueAsBytes(outer);
-        ObjectMapper reader = new ObjectMapper();
-        Map<?, ?> parsed = reader.readValue(jacksonBytes, Map.class);
 
-        assertEquals("test", parsed.get("label"));
+        // Behavioral difference for null Struct fields:
+        // Gson's StructSerializer (via StructToJsonMap) drops null fields,
+        // producing {"inner":{}} for a struct where all fields are null.
+        // Jackson writes them explicitly: {"inner":{"value":null}}.
+        // See structWithNullFieldSerializesToCleanJson for rationale.
+        JsonNode gsonTree = JSON_READER.readTree(gsonBytes);
+        JsonNode jacksonTree = JSON_READER.readTree(jacksonBytes);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> mid = (Map<String, Object>) parsed.get("middle");
-        assertEquals(7, mid.get("id"));
+        // Both agree on all non-null fields
+        assertEquals("test", jacksonTree.get("label").asText());
+        assertEquals("test", gsonTree.get("label").asText());
+        assertEquals(7, jacksonTree.get("middle").get("id").asInt());
+        assertEquals(7, gsonTree.get("middle").get("id").asInt());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> inn = (Map<String, Object>) mid.get("inner");
-        assertNull(inn.get("value"));
+        // Jackson preserves null explicitly; Gson drops it
+        assertTrue(jacksonTree.get("middle").get("inner").has("value"),
+                "Jackson retains null field in nested struct");
+        assertTrue(jacksonTree.get("middle").get("inner").get("value").isNull());
+        assertFalse(gsonTree.get("middle").get("inner").has("value"),
+                "Gson drops null field from nested struct");
     }
 
     @Test
@@ -303,12 +349,29 @@ public class JsonSerializationEquivalenceTest {
                 .put("name", "Dana")
                 .put("age", null);
 
+        byte[] gsonBytes = STRUCT_GSON.toJson(struct).getBytes(StandardCharsets.UTF_8);
         byte[] jacksonBytes = OBJECT_MAPPER.writeValueAsBytes(struct);
-        String json = new String(jacksonBytes, StandardCharsets.UTF_8);
 
-        assertTrue(json.contains("\"name\":\"Dana\""));
-        assertTrue(json.contains("\"age\":null"));
+        // Behavioral difference: Gson's StructSerializer (via StructToJsonMap)
+        // drops null fields, producing {"name":"Dana"}. Jackson's
+        // JacksonStructSerializer writes them explicitly, producing
+        // {"name":"Dana","age":null}. Both are valid for ClickHouse:
+        //   - Omitted field → column DEFAULT (null for Nullable with no default)
+        //   - Explicit null  → null value in column
+        // Jackson's explicit nulls are the safer choice: they prevent a
+        // Nullable column's non-null DEFAULT from silently overriding a
+        // user's intentional null.
+        String gsonJson = new String(gsonBytes, StandardCharsets.UTF_8);
+        String jacksonJson = new String(jacksonBytes, StandardCharsets.UTF_8);
+
+        assertFalse(gsonJson.contains("age"),
+                "Gson drops null struct fields");
+        assertTrue(jacksonJson.contains("\"age\":null"),
+                "Jackson writes null struct fields explicitly");
+        assertTrue(jacksonJson.contains("\"name\":\"Dana\""));
     }
+
+    // ── Map equivalence continued ───────────────────────────────────────
 
     @Test
     void mapWithMixedNestedList() throws Exception {
@@ -324,6 +387,8 @@ public class JsonSerializationEquivalenceTest {
         assertArrayEquals(gsonBytes, jacksonBytes,
                 "Map with nested list of maps should produce identical bytes");
     }
+
+    // ── Insert-path simulations (mirrors doInsertJsonV1/V2) ─────────────
 
     /**
      * Mirrors the exact serialization pattern from doInsertJsonV1/V2:
@@ -355,5 +420,94 @@ public class JsonSerializationEquivalenceTest {
 
         assertArrayEquals(gsonBytes, jacksonBytes,
                 "Insert-path simulation with flat struct should produce identical bytes");
+    }
+
+    /**
+     * Simulates the doInsertJsonV1/V2 path for a Struct with a nested Struct
+     * field (e.g. a Tuple column).  The outer fields are extracted into a
+     * LinkedHashMap, but the nested Struct stays as-is — Jackson serializes
+     * it via JacksonStructSerializer while DataJson.GSON uses StructSerializer.
+     */
+    @Test
+    void insertPathSimulation_nestedStruct() throws Exception {
+        Schema tupleSchema = SchemaBuilder.struct()
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema topSchema = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("string", Schema.STRING_SCHEMA)
+                .field("t", tupleSchema)
+                .build();
+
+        Struct tuple = new Struct(tupleSchema)
+                .put("off16", (short) 7)
+                .put("string", "inner");
+
+        Struct top = new Struct(topSchema)
+                .put("off16", (short) 1)
+                .put("string", "outer")
+                .put("t", tuple);
+
+        // Mirror the insert path: extract top-level fields into a map
+        Map<String, Object> data = new LinkedHashMap<>();
+        for (org.apache.kafka.connect.data.Field field : top.schema().fields()) {
+            data.put(field.name(), top.get(field));
+        }
+
+        byte[] gsonBytes = STRUCT_GSON.toJson(data).getBytes(StandardCharsets.UTF_8);
+        byte[] jacksonBytes = OBJECT_MAPPER.writeValueAsBytes(data);
+
+        assertJsonEquivalent(gsonBytes, jacksonBytes,
+                "Insert-path simulation with nested struct should produce equivalent JSON");
+    }
+
+    /**
+     * Same as above but with a deeply nested Struct (Tuple inside Tuple).
+     */
+    @Test
+    void insertPathSimulation_deepNestedStruct() throws Exception {
+        Schema innerTupleSchema = SchemaBuilder.struct()
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema tupleSchema = SchemaBuilder.struct()
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("n", innerTupleSchema)
+                .build();
+
+        Schema topSchema = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("string", Schema.STRING_SCHEMA)
+                .field("t", tupleSchema)
+                .build();
+
+        Struct innerTuple = new Struct(innerTupleSchema)
+                .put("off16", (short) 99)
+                .put("string", "leaf");
+
+        Struct tuple = new Struct(tupleSchema)
+                .put("off16", (short) 7)
+                .put("string", "middle")
+                .put("n", innerTuple);
+
+        Struct top = new Struct(topSchema)
+                .put("off16", (short) 1)
+                .put("string", "outer")
+                .put("t", tuple);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        for (org.apache.kafka.connect.data.Field field : top.schema().fields()) {
+            data.put(field.name(), top.get(field));
+        }
+
+        byte[] gsonBytes = STRUCT_GSON.toJson(data).getBytes(StandardCharsets.UTF_8);
+        byte[] jacksonBytes = OBJECT_MAPPER.writeValueAsBytes(data);
+
+        assertJsonEquivalent(gsonBytes, jacksonBytes,
+                "Insert-path simulation with deep nested struct should produce equivalent JSON");
     }
 }

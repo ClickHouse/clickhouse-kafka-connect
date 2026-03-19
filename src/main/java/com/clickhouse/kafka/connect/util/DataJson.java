@@ -38,6 +38,23 @@ public final class DataJson {
     return mapper;
   }
 
+  /**
+   * Serializes a Kafka Connect {@link Struct} as a flat JSON object
+   * ({@code {"field": value, ...}}) by iterating over schema fields.
+   *
+   * <p><b>Null-field handling (differs from Gson):</b> This serializer
+   * writes null fields as explicit JSON nulls (e.g. {@code {"age":null}}).
+   * The previous Gson {@link StructSerializer} (via {@code StructToJsonMap})
+   * dropped null fields entirely (e.g. {@code {}}). Both are valid for
+   * ClickHouse Nullable columns, but explicit nulls are safer — they
+   * prevent a Nullable column's non-null {@code DEFAULT} from silently
+   * overriding a user's intentional null.
+   *
+   * <p>Note: the {@code OBJECT_MAPPER} is configured with
+   * {@code NON_NULL} inclusion, but that only affects bean/Map
+   * serialization. This custom serializer bypasses that filter by
+   * calling {@code gen.writeNull()} directly.
+   */
   static final class JacksonStructSerializer extends com.fasterxml.jackson.databind.JsonSerializer<Struct> {
     @Override
     public void serialize(Struct struct, JsonGenerator gen, SerializerProvider provider) throws IOException {

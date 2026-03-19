@@ -1002,6 +1002,192 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
+    /**
+     * Validates that Jackson Struct serialization produces correct data in
+     * ClickHouse for flat, nested, and deeply nested Structs via the JSON
+     * insert path (JSONEachRow).  Covers the Gson→Jackson migration by
+     * verifying actual inserted values, not just row counts.
+     */
+    @Test
+    public void jacksonStructJsonInsertTest() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("jackson-struct-json-insert");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`name` String," +
+                "`active` Bool," +
+                "`score` Float64," +
+                "`t` Tuple(" +
+                "    `off16` Nullable(Int16)," +
+                "    `label` Nullable(String)," +
+                "    `n` Tuple(" +
+                "        `value` Nullable(Int32)," +
+                "        `tag` Nullable(String)" +
+                "    )" +
+                ")" +
+                ") Engine = MergeTree ORDER BY `off16`");
+
+        Schema innerTupleSchema = SchemaBuilder.struct()
+                .field("value", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("tag", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema tupleSchema = SchemaBuilder.struct()
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("label", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("n", innerTupleSchema)
+                .build();
+
+        Schema recordSchema = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("name", Schema.STRING_SCHEMA)
+                .field("active", Schema.BOOLEAN_SCHEMA)
+                .field("score", Schema.FLOAT64_SCHEMA)
+                .field("t", tupleSchema)
+                .build();
+
+        int totalRecords = 5;
+        List<SinkRecord> records = new ArrayList<>();
+        for (int i = 0; i < totalRecords; i++) {
+            Struct innerTuple = new Struct(innerTupleSchema)
+                    .put("value", i * 10)
+                    .put("tag", "tag_" + i);
+
+            Struct tuple = new Struct(tupleSchema)
+                    .put("off16", (short) i)
+                    .put("label", "label_" + i)
+                    .put("n", innerTuple);
+
+            Struct value = new Struct(recordSchema)
+                    .put("off16", (short) i)
+                    .put("name", "name_" + i)
+                    .put("active", i % 2 == 0)
+                    .put("score", i * 1.5)
+                    .put("t", tuple);
+
+            records.add(new SinkRecord(
+                    topic, 1, null, null,
+                    recordSchema, value, i,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME));
+        }
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        assertEquals(totalRecords, ClickHouseTestHelpers.countRows(chc, topic));
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(totalRecords, rows.size());
+
+        // Sort by off16 so we can assert deterministically
+        rows.sort((a, b) -> Integer.compare(a.getInt("off16"), b.getInt("off16")));
+
+        for (int i = 0; i < totalRecords; i++) {
+            JSONObject row = rows.get(i);
+            assertEquals(i, row.getInt("off16"));
+            assertEquals("name_" + i, row.getString("name"));
+            assertEquals(i % 2 == 0, row.getBoolean("active"));
+            assertEquals(i * 1.5, row.getDouble("score"), 0.001);
+
+            JSONObject t = row.getJSONObject("t");
+            assertEquals(i, t.getInt("off16"));
+            assertEquals("label_" + i, t.getString("label"));
+
+            JSONObject n = t.getJSONObject("n");
+            assertEquals(i * 10, n.getInt("value"));
+            assertEquals("tag_" + i, n.getString("tag"));
+        }
+    }
+
+    /**
+     * Validates Struct serialization with null fields in nested Tuples —
+     * Jackson's JacksonStructSerializer writes explicit nulls which
+     * ClickHouse Nullable columns accept correctly.
+     */
+    @Test
+    public void jacksonStructWithNullsJsonInsertTest() {
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        String topic = createTopicName("jackson-struct-nulls-json-insert");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` (" +
+                "`off16` Int16," +
+                "`name` Nullable(String)," +
+                "`t` Tuple(" +
+                "    `off16` Nullable(Int16)," +
+                "    `label` Nullable(String)" +
+                ")" +
+                ") Engine = MergeTree ORDER BY `off16`");
+
+        Schema tupleSchema = SchemaBuilder.struct()
+                .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
+                .field("label", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema recordSchema = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("t", tupleSchema)
+                .build();
+
+        // Record with non-null values
+        Struct tuple1 = new Struct(tupleSchema)
+                .put("off16", (short) 10)
+                .put("label", "hello");
+        Struct value1 = new Struct(recordSchema)
+                .put("off16", (short) 1)
+                .put("name", "Alice")
+                .put("t", tuple1);
+
+        // Record with null values in tuple and top-level
+        Struct tuple2 = new Struct(tupleSchema)
+                .put("off16", null)
+                .put("label", null);
+        Struct value2 = new Struct(recordSchema)
+                .put("off16", (short) 2)
+                .put("name", null)
+                .put("t", tuple2);
+
+        List<SinkRecord> records = new ArrayList<>();
+        records.add(new SinkRecord(topic, 1, null, null, recordSchema, value1, 0,
+                System.currentTimeMillis(), TimestampType.CREATE_TIME));
+        records.add(new SinkRecord(topic, 1, null, null, recordSchema, value2, 1,
+                System.currentTimeMillis(), TimestampType.CREATE_TIME));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        assertEquals(2, ClickHouseTestHelpers.countRows(chc, topic));
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        rows.sort((a, b) -> Integer.compare(a.getInt("off16"), b.getInt("off16")));
+
+        // Row 1: all non-null
+        JSONObject row1 = rows.get(0);
+        assertEquals(1, row1.getInt("off16"));
+        assertEquals("Alice", row1.getString("name"));
+        JSONObject t1 = row1.getJSONObject("t");
+        assertEquals(10, t1.getInt("off16"));
+        assertEquals("hello", t1.getString("label"));
+
+        // Row 2: nulls in name and tuple fields
+        JSONObject row2 = rows.get(1);
+        assertEquals(2, row2.getInt("off16"));
+        assertTrue(row2.isNull("name"));
+        JSONObject t2 = row2.getJSONObject("t");
+        assertTrue(t2.isNull("off16"));
+        assertTrue(t2.isNull("label"));
+    }
+
     @Test
     public void coolSchemaWithRandomFields() {
         Map<String, String> props = createProps();
