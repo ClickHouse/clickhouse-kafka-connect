@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * NOTE: this test explicitly connects to the proxy endpoint and avoids setting PROXY_HOST/PROXY_PORT because the client makes requests with absolute URI's to the server when the proxy config is set.
- * TODO: Once <a href="https://github.com/ClickHouse/ClickHouse/issues/58828">...</a> is fixed, we can revert this test to use the client proxy config.
+ * TODO: Once <a href="https://github.com/ClickHouse/ClickHouse/issues/58828">this issue</a> is fixed, we can revert this test to use the client proxy config.
  */
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
