@@ -64,6 +64,11 @@ public class ClickHouseTestHelpers {
         return version != null && version.equalsIgnoreCase("cloud");
     }
 
+    public static boolean isCluster() {
+        String version = System.getenv("CLICKHOUSE_VERSION");
+        return version != null && version.equalsIgnoreCase("cluster");
+    }
+
     public static void query(ClickHouseHelperClient chc, String query) {
         if (chc.isUseClientV2()) {
             try {
