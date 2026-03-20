@@ -62,6 +62,7 @@ public class ClickHouseSinkTask extends SinkTask {
         }
 
         this.proxySinkTask = new ProxySinkTask(clickHouseSinkConfig, errorReporter);
+        this.proxySinkTask.start();
 
         // Initialize buffering
         this.bufferCount = configBufferCount;

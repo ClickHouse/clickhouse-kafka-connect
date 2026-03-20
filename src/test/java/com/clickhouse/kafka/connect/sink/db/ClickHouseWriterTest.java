@@ -107,11 +107,11 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("missing_table_mapping_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
-        chw.setSinkConfig(createConfig());
-        chw.setClient(chc);
+        chw.start(new ClickHouseSinkConfig(props));
+
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
 
         chw.updateMapping("default");
         Map<String, Table> tables = chw.getMapping();
@@ -148,8 +148,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.createTable(chc, mappedTableWithBackticksRaw, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
-        chw.setSinkConfig(new ClickHouseSinkConfig(props));
-        chw.setClient(chc);
+        chw.start(new ClickHouseSinkConfig(props));
 
         Table plainMappingTable = chw.getTable(chc.getDatabase(), topicWithoutBackticks);
         assertNotNull(plainMappingTable);
@@ -172,8 +171,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
-        chw.setSinkConfig(new ClickHouseSinkConfig(props));
-        chw.setClient(chc);
+        chw.start(new ClickHouseSinkConfig(props));
 
         RuntimeException ex = assertThrows(RuntimeException.class, () -> chw.getTable(chc.getDatabase(), topic));
         assertTrue(ex.getMessage().contains("does not exist"));
@@ -189,8 +187,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
-        chw.setSinkConfig(new ClickHouseSinkConfig(props));
-        chw.setClient(chc);
+        chw.start(new ClickHouseSinkConfig(props));
 
         Table table = chw.getTable(chc.getDatabase(), topic);
         assertNull(table);
@@ -206,8 +203,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s (`_id` String, `result` Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32 )) Engine = MergeTree ORDER BY _id");
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
-        chw.setSinkConfig(createConfig());
-        chw.setClient(chc);
+        chw.start(new ClickHouseSinkConfig(props));
 
         Schema schema = SchemaBuilder.struct()
                 .field("id", Schema.STRING_SCHEMA)

@@ -55,6 +55,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Timer;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -80,12 +81,6 @@ public class ClickHouseWriter implements DBWriter {
         this.statistics = statistics;
     }
 
-    protected void setClient(ClickHouseHelperClient chc) {
-        this.chc = chc;
-    }
-    protected void setSinkConfig(ClickHouseSinkConfig csc) {
-        this.csc = csc;
-    }
     protected Map<String, Table> getMapping() {
         return mapping;
     }
@@ -93,7 +88,7 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
-        setSinkConfig(csc);
+        this.csc = csc;
         String clientVersion = csc.getClientVersion();
         boolean useClientV2 = clientVersion.equals("V1") ? false : true;
 
@@ -136,12 +131,14 @@ public class ClickHouseWriter implements DBWriter {
 
 
         LOGGER.debug("Ping was successful.");
-
+        tableRefreshTimer = new Timer();
         this.updateMapping(csc.getDatabase());
         if (mapping.isEmpty()) {
             LOGGER.error("Did not find any tables in destination Please create before running.");
             return false;
         }
+
+        startBackgroundTableSync(csc.getDatabase());
 
         return true;
     }
@@ -1367,6 +1364,17 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public long recordsInserted() {
         return 0;
+    }
+
+    private Timer tableRefreshTimer;
+
+
+    public void startBackgroundTableSync(String database) {
+        // Add table mapping refresher
+        if (csc.getTableRefreshInterval() > 0) {
+            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(database, this);
+            tableRefreshTimer.schedule(tableMappingRefresher, csc.getTableRefreshInterval(), csc.getTableRefreshInterval());
+        }
     }
 
 }

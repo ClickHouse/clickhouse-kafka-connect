@@ -106,9 +106,6 @@ public class ClickHouseBase {
             return "V2";
         }
     }
-    protected ClickHouseSinkConfig createConfig() {
-        return new ClickHouseSinkConfig(createProps());
-    }
 
     protected ClickHouseHelperClient createClient(Map<String,String> props) {
         return createClient(props, true);
