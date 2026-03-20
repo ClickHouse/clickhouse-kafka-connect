@@ -29,10 +29,6 @@ import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
-import com.google.gson.ExclusionStrategy;
-import com.google.gson.FieldAttributes;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -67,7 +63,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static com.clickhouse.kafka.connect.util.DataJson.GSON;
+import static com.clickhouse.kafka.connect.util.DataJson.OBJECT_MAPPER;
 
 public class ClickHouseWriter implements DBWriter {
 
@@ -575,7 +571,7 @@ public class ClickHouseWriter implements DBWriter {
                 case JSON:
                     if (csc.isBinaryFormatWrtiteJsonAsString()) {
                         if (value.getFieldType() == Schema.Type.STRUCT) {
-                            byte[] jsonBytes = GSON.toJson(value).getBytes(StandardCharsets.UTF_8);
+                            byte[] jsonBytes = OBJECT_MAPPER.writeValueAsBytes(value);
                             BinaryStreamUtils.writeString(stream, jsonBytes);
                         } else if (value.getFieldType() == Schema.Type.STRING) {
                             BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
@@ -686,13 +682,13 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeUnsignedInt8(stream, (Byte) value);
                     break;
                 case UINT16:
-                    BinaryStreamUtils.writeUnsignedInt16(stream, (Short) value);
+                    BinaryStreamUtils.writeUnsignedInt16(stream, ((Number) value).shortValue());
                     break;
                 case UINT32:
-                    BinaryStreamUtils.writeUnsignedInt32(stream, (Integer) value);
+                    BinaryStreamUtils.writeUnsignedInt32(stream, ((Number) value).intValue());
                     break;
                 case UINT64:
-                    BinaryStreamUtils.writeUnsignedInt64(stream, (Long) value);
+                    BinaryStreamUtils.writeUnsignedInt64(stream, ((Number) value).longValue());
                     break;
                 case FLOAT32:
                     BinaryStreamUtils.writeFloat32(stream, (Float) value);
@@ -989,11 +985,10 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
     protected void doInsertJsonV1(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
-        //https://devqa.io/how-to-convert-java-map-to-json/
         boolean enableDbTopicSplit = csc.isEnableDbTopicSplit();
         String dbTopicSplitChar = csc.getDbTopicSplitChar();
         LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
-        Gson gson = new Gson();
+
         long s1 = System.currentTimeMillis();
 
         long dataSerializeTime = 0;
@@ -1017,7 +1012,7 @@ public class ClickHouseWriter implements DBWriter {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
-                java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
+
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
                         LOGGER.trace("Record: {}", record.getTopicAndPartition());
@@ -1036,15 +1031,17 @@ public class ClickHouseWriter implements DBWriter {
                                 break;
                         }
                         long beforeSerialize = System.currentTimeMillis();
-                        String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
+                        Map<String, Object> cleaned = cleanupExtraFields(data, table);
+                        byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(cleaned);
                         dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
 
-                        LOGGER.trace("topic {} partition {} offset {} payload {}",
-                                record.getTopic(),
-                                record.getRecordOffsetContainer().getPartition(),
-                                record.getRecordOffsetContainer().getOffset(),
-                                gsonString);
-                        byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                        if (LOGGER.isTraceEnabled()) {
+                            LOGGER.trace("topic {} partition {} offset {} payload {}",
+                                    record.getTopic(),
+                                    record.getRecordOffsetContainer().getPartition(),
+                                    record.getRecordOffsetContainer().getOffset(),
+                                    new String(bytes, StandardCharsets.UTF_8));
+                        }
                         statistics.bytesInserted(bytes.length);
                         BinaryStreamUtils.writeBytes(stream, bytes);
                     } else {
@@ -1066,11 +1063,9 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     protected void doInsertJsonV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
-        //https://devqa.io/how-to-convert-java-map-to-json/
         boolean enableDbTopicSplit = csc.isEnableDbTopicSplit();
         String dbTopicSplitChar = csc.getDbTopicSplitChar();
         LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
-        Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
 
         Record first = records.get(0);
@@ -1094,10 +1089,8 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-        //insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
         long dataSerializeTime = 0;
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
@@ -1115,14 +1108,16 @@ public class ClickHouseWriter implements DBWriter {
                         break;
                 }
                 long beforeSerialize = System.currentTimeMillis();
-                String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
+                Map<String, Object> cleaned = cleanupExtraFields(data, table);
+                byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(cleaned);
                 dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
-                LOGGER.trace("topic {} partition {} offset {} payload {}",
-                        record.getTopic(),
-                        record.getRecordOffsetContainer().getPartition(),
-                        record.getRecordOffsetContainer().getOffset(),
-                        gsonString);
-                byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace("topic {} partition {} offset {} payload {}",
+                            record.getTopic(),
+                            record.getRecordOffsetContainer().getPartition(),
+                            record.getRecordOffsetContainer().getOffset(),
+                            new String(bytes, StandardCharsets.UTF_8));
+                }
                 statistics.bytesInserted(bytes.length);
                 BinaryStreamUtils.writeBytes(stream, bytes);
             } else {
@@ -1374,19 +1369,4 @@ public class ClickHouseWriter implements DBWriter {
         return 0;
     }
 
-    private static class SchemaFieldExclusionStrategy implements ExclusionStrategy {
-
-        @Override
-        public boolean shouldSkipField(FieldAttributes f) {
-            if (f.getDeclaringClass() == Data.class && f.getName().equals("schema"))  {
-                return true;
-            }
-            return false;
-        }
-
-        @Override
-        public boolean shouldSkipClass(Class<?> clazz) {
-            return false;
-        }
-    }
 }

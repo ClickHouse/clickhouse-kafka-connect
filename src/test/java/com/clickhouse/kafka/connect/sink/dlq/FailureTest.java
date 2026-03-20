@@ -85,7 +85,7 @@ public class FailureTest extends ClickHouseBase {
         Schema NESTED_SCHEMA = SchemaBuilder.struct()
                 .field("off16", Schema.INT16_SCHEMA)
                 .field("uint8", Schema.OPTIONAL_INT8_SCHEMA)
-                .field("uint16", Schema.INT64_SCHEMA)
+                .field("uint16", Schema.STRING_SCHEMA)
                 .field("uint32", Schema.OPTIONAL_INT32_SCHEMA)
                 .field("uint64", Schema.OPTIONAL_INT64_SCHEMA)
                 .build();
@@ -95,7 +95,7 @@ public class FailureTest extends ClickHouseBase {
             Struct value_struct = new Struct(NESTED_SCHEMA)
                     .put("off16", (short) n)
                     .put("uint8", (byte) ThreadLocalRandom.current().nextInt(0, 127))
-                    .put("uint16", (long) ThreadLocalRandom.current().nextInt(0, 32767))
+                    .put("uint16", "not_a_number_" + n)
                     .put("uint32", ThreadLocalRandom.current().nextInt(0, 2147483647))
                     .put("uint64", ThreadLocalRandom.current().nextLong(0, 2147483647));
 
