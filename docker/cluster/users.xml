@@ -1,0 +1,16 @@
+<clickhouse>
+    <users>
+        <default>
+            <password></password>
+            <access_management>1</access_management>
+            <profile>default</profile>
+            <quota>default</quota>
+        </default>
+    </users>
+
+    <profiles>
+        <default>
+            <allow_experimental_lightweight_delete>1</allow_experimental_lightweight_delete>
+        </default>
+    </profiles>
+</clickhouse>

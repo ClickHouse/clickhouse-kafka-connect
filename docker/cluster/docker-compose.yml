@@ -1,0 +1,62 @@
+version: "3.8"
+
+services:
+  ch0:
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_CLUSTER_VERSION:-latest}
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./config.xml:/etc/clickhouse-server/config.d/cluster.xml
+      - ./users.xml:/etc/clickhouse-server/users.d/test_users.xml
+    environment:
+      SERVER_INDEX: 0
+      SHARD_NUM: 1
+      REPLICA_NUM: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - cluster-test
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  ch1:
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_CLUSTER_VERSION:-latest}
+    volumes:
+      - ./config.xml:/etc/clickhouse-server/config.d/cluster.xml
+      - ./users.xml:/etc/clickhouse-server/users.d/test_users.xml
+    environment:
+      SERVER_INDEX: 1
+      SHARD_NUM: 1
+      REPLICA_NUM: 2
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - cluster-test
+
+  ch2:
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_CLUSTER_VERSION:-latest}
+    volumes:
+      - ./config.xml:/etc/clickhouse-server/config.d/cluster.xml
+      - ./users.xml:/etc/clickhouse-server/users.d/test_users.xml
+    environment:
+      SERVER_INDEX: 2
+      SHARD_NUM: 1
+      REPLICA_NUM: 3
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - cluster-test
+
+networks:
+  cluster-test:
+    driver: bridge
