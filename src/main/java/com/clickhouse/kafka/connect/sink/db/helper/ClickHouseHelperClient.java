@@ -15,7 +15,6 @@ import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.client.config.ClickHouseSslMode;
-import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
@@ -27,7 +26,6 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
-import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,7 +93,6 @@ public class ClickHouseHelperClient {
         }
         if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
             options.put(ClickHouseClientOption.SSL_SOCKET_SNI, sslSocketSni);
-            options.put(ClickHouseClientOption.SSL_MODE, ClickHouseSslMode.NONE);
         }
         return options;
     }
@@ -128,7 +125,6 @@ public class ClickHouseHelperClient {
         }
         if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
             options.put(ClickHouseClientOption.SSL_SOCKET_SNI.getKey(), sslSocketSni);
-            options.put(ClickHouseClientOption.SSL_MODE.getKey(), ClickHouseSslMode.NONE.name().toLowerCase());
         }
         server = ClickHouseNode.of(url, options);
         return server;
@@ -569,7 +565,7 @@ public class ClickHouseHelperClient {
             return this;
         }
 
-        public ClickHouseClientBuilder sslSocketSni(String sni) {
+        public ClickHouseClientBuilder setSslSocketSni(String sni) {
             this.sslSocketSni = sni;
             return this;
         }

@@ -37,6 +37,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
     public static ToxiproxyContainer toxiproxy;
     public static Proxy clickhouseProxy;
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
+    private static final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
+    private static final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
+    private static final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
 
     @BeforeAll
     public static void setup() {
@@ -46,10 +49,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases("clickhouse");
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases(CLICKHOUSE_DB_NETWORK_ALIAS);
         db.start();
 
-        toxiproxy = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:2.7.0").withNetwork(network).withNetworkAliases("toxiproxy");
+        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(network).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
         toxiproxy.start();
 
         chcNoProxy = createClientNoProxy(getTestProperties());
@@ -64,7 +67,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
 
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", "clickhouse", ClickHouseProtocol.HTTP.getDefaultPort()));
+        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
     }
 
     @AfterAll
