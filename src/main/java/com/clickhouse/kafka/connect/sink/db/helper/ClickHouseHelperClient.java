@@ -91,10 +91,6 @@ public class ClickHouseHelperClient {
             options.put(ClickHouseClientOption.PROXY_HOST, proxyHost);
             options.put(ClickHouseClientOption.PROXY_PORT, proxyPort);
         }
-        if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
-            options.put(ClickHouseClientOption.SSL_SOCKET_SNI, sslSocketSni);
-            options.put(ClickHouseClientOption.SSL_MODE, ClickHouseSslMode.NONE);
-        }
         return options;
     }
 
@@ -126,7 +122,7 @@ public class ClickHouseHelperClient {
         }
         if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
             options.put(ClickHouseClientOption.SSL_SOCKET_SNI.getKey(), sslSocketSni);
-            options.put(ClickHouseClientOption.SSL_MODE.getKey(), ClickHouseSslMode.NONE.name().toLowerCase());
+            options.put(ClickHouseClientOption.SSL_MODE.getKey(), ClickHouseSslMode.NONE.name().toLowerCase()); // disable hostname/cert validation (matches client v2 behavior - see HttpAPIClientHelper.createHttpClient)
         }
         server = ClickHouseNode.of(url, options);
         return server;
