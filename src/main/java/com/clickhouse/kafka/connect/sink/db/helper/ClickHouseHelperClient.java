@@ -93,6 +93,7 @@ public class ClickHouseHelperClient {
         }
         if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
             options.put(ClickHouseClientOption.SSL_SOCKET_SNI, sslSocketSni);
+            options.put(ClickHouseClientOption.SSL_MODE, ClickHouseSslMode.NONE);
         }
         return options;
     }
@@ -125,6 +126,7 @@ public class ClickHouseHelperClient {
         }
         if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
             options.put(ClickHouseClientOption.SSL_SOCKET_SNI.getKey(), sslSocketSni);
+            options.put(ClickHouseClientOption.SSL_MODE.getKey(), ClickHouseSslMode.NONE.name().toLowerCase());
         }
         server = ClickHouseNode.of(url, options);
         return server;
