@@ -14,7 +14,7 @@ import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
-import com.clickhouse.client.http.config.ClickHouseHttpOption;
+import com.clickhouse.client.config.ClickHouseSslMode;
 import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
@@ -26,7 +26,6 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
-import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,6 +59,7 @@ public class ClickHouseHelperClient {
     private int proxyPort = -1;
     @Getter
     private boolean useClientV2 = false;
+    private final String sslSocketSni;
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -75,6 +75,7 @@ public class ClickHouseHelperClient {
         this.proxyHost = builder.proxyHost;
         this.proxyPort = builder.proxyPort;
         this.useClientV2 = builder.useClientV2;
+        this.sslSocketSni = builder.sslSocketSni;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -119,6 +120,10 @@ public class ClickHouseHelperClient {
             options.put("user", username);
             options.put("password", password);
         }
+        if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
+            options.put(ClickHouseClientOption.SSL_SOCKET_SNI.getKey(), sslSocketSni);
+            options.put(ClickHouseClientOption.SSL_MODE.getKey(), ClickHouseSslMode.NONE.name().toLowerCase()); // disable hostname/cert validation (matches client v2 behavior - see HttpAPIClientHelper.createHttpClient)
+        }
         server = ClickHouseNode.of(url, options);
         return server;
     }
@@ -153,6 +158,9 @@ public class ClickHouseHelperClient {
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
+        }
+        if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
+            clientBuilder.sslSocketSNI(sslSocketSni);
         }
         client = clientBuilder.build();
         return client;
@@ -504,6 +512,7 @@ public class ClickHouseHelperClient {
         private String proxyHost = null;
         private int proxyPort = -1;
         private boolean useClientV2 = true;
+        private String sslSocketSni = "";
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -551,6 +560,11 @@ public class ClickHouseHelperClient {
 
         public ClickHouseClientBuilder useClientV2(boolean useClientV2) {
             this.useClientV2 = useClientV2;
+            return this;
+        }
+
+        public ClickHouseClientBuilder setSslSocketSni(String sni) {
+            this.sslSocketSni = sni;
             return this;
         }
 
