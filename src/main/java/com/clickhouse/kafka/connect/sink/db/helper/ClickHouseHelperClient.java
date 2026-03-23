@@ -469,6 +469,43 @@ public class ClickHouseHelperClient implements AutoCloseable {
         return table;
     }
 
+    public void alterTableAddColumns(String database, String tableName, List<String> columnDefs) {
+        for (String colDef : columnDefs) {
+            String sql = String.format("ALTER TABLE `%s`.`%s` ADD COLUMN IF NOT EXISTS %s", database, tableName, colDef);
+            LOGGER.info("Executing DDL: {}", sql);
+            if (useClientV2) {
+                alterTableAddColumnV2(sql);
+            } else {
+                alterTableAddColumnV1(sql);
+            }
+        }
+    }
+
+    private void alterTableAddColumnV1(String sql) {
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(server)
+                     .query(sql)
+                     .set("alter_sync", "1")
+                     .executeAndWait()) {
+            // DDL executed; alter_sync=1 waits for the local replica to apply
+        } catch (ClickHouseException e) {
+            throw new RuntimeException("Failed to execute ALTER TABLE: " + sql, e);
+        }
+    }
+
+    private void alterTableAddColumnV2(String sql) {
+        try {
+            QuerySettings settings = new QuerySettings();
+            settings.serverSetting("alter_sync", "1");
+            client.query(sql, settings).get();
+        } catch (ExecutionException | InterruptedException e) {
+            throw new RuntimeException("Failed to execute ALTER TABLE: " + sql, e);
+        }
+    }
+
     public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
         List<Table> tableList = new ArrayList<>();
         for (Table table : showTables(database)) {

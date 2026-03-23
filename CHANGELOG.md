@@ -1,5 +1,8 @@
 # Unreleased
 
+## New Features
+* Added `auto.evolve` configuration option for automatic table schema evolution. When enabled, the connector detects new fields in incoming records and issues `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` against ClickHouse. Disabled by default. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/277)
+
 ## Dependencies
 * Updated clickhouse-java version from `0.9.4` to `0.9.5`
 
@@ -10,7 +13,6 @@
 
 # Improvements
 * `Gson` replaced with `Jackson` for performance and better maintainability (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/676).
-
 
 # 1.3.6, 2026-03-18
 
