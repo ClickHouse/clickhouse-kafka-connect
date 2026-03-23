@@ -2210,6 +2210,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
     }
 
+
     @Test
     public void autoEvolveArrayAndMapFields() {
         Map<String, String> props = createProps();
