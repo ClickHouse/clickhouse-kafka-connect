@@ -57,6 +57,7 @@ public class ClickHouseSinkConfig {
     public static final String REPORT_INSERTED_OFFSETS = "reportInsertedOffsets";
     public static final String ERROR_TOLERANCE_ALL = "all";
     public static final String ERROR_TOLERANCE_NONE = "none";
+    public static final String AUTO_EVOLVE = "auto.evolve";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
@@ -109,6 +110,7 @@ public class ClickHouseSinkConfig {
     private final int bufferCount;
     private final long bufferFlushTime;
     private final boolean reportInsertedOffsets;
+    private final boolean autoEvolve;
     private final boolean binaryFormatWrtiteJsonAsString;
 
     public enum InsertFormats {
@@ -292,6 +294,8 @@ public class ClickHouseSinkConfig {
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
         }
+
+        this.autoEvolve = Boolean.parseBoolean(props.getOrDefault(AUTO_EVOLVE, "false"));
 
         String jsonAsString = getClickhouseSettings().get("input_format_binary_read_json_as_string");
         this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
@@ -677,6 +681,19 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Report inserted offsets."
+        );
+
+        String ddlGroup = "DDL";
+        int ddlOrderInGroup = 0;
+        configDef.define(AUTO_EVOLVE,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.MEDIUM,
+                "Whether to automatically add columns to the destination table when a record contains fields not present in the table. default: false",
+                ddlGroup,
+                ++ddlOrderInGroup,
+                ConfigDef.Width.SHORT,
+                "Auto evolve table schema."
         );
         return configDef;
     }
