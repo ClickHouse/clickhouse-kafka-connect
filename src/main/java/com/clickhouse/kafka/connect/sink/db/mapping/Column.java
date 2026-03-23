@@ -515,6 +515,7 @@ public class Column {
                 && connectSchema.parameters().containsKey(CONNECT_UNION_PARAMETER);
     }
 
+
     public Integer convertEnumValues(String value) {
         if ( this.enumValues != null ) {
             return enumValues.get(value);

@@ -1945,6 +1945,7 @@ public class SchemaTestData {
         return array;
     }
 
+
     public static Collection<SinkRecord> createSchemaV2WithLogicalTypes(String topic, int partition) {
         return createSchemaV2WithLogicalTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
     }
