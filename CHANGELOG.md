@@ -1,3 +1,11 @@
+# 1.3.8 (unreleased)
+
+## New Features
+* Added `auto.evolve` configuration option for automatic table schema evolution. When enabled, the connector detects new fields in incoming records and issues `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` against ClickHouse. Disabled by default. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/277)
+
+## Bug Fixes
+* Fixed RowBinary serialization for Map columns with Nullable value types. The nullable marker byte was missing when writing map values, causing `CANNOT_READ_ALL_DATA` errors for `Map(K, Nullable(V))` columns.
+
 # 1.3.7, 2026-03-25 
 
 ## Security
@@ -5,7 +13,6 @@
 
 # Improvements
 * `Gson` replaced with `Jackson` for performance and better maintainability (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/676).
-
 
 # 1.3.6, 2026-03-18
 

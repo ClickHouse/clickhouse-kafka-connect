@@ -6,6 +6,11 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import org.apache.kafka.connect.data.Date;
+import org.apache.kafka.connect.data.Decimal;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.Time;
+import org.apache.kafka.connect.data.Timestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.clickhouse.kafka.connect.util.reactor.function.Tuple2;
@@ -356,6 +361,71 @@ public class Column {
             data.put(key.substring(1, key.length() - 1), Integer.parseInt(val[1].trim()));
         }
         return data;
+    }
+
+    public static String connectTypeToClickHouseType(Schema connectSchema) {
+        // Check logical types first (same pattern as JDBC connector)
+        if (connectSchema.name() != null) {
+            switch (connectSchema.name()) {
+                case Decimal.LOGICAL_NAME:
+                    int precision = 38; // ClickHouse Decimal128 default
+                    int scale = 0;
+                    if (connectSchema.parameters() != null && connectSchema.parameters().containsKey("scale")) {
+                        scale = Integer.parseInt(connectSchema.parameters().get("scale"));
+                    }
+                    return String.format("Decimal(%d, %d)", precision, scale);
+                case Date.LOGICAL_NAME:
+                    return "Date32";
+                case Time.LOGICAL_NAME:
+                    return "Int64";
+                case Timestamp.LOGICAL_NAME:
+                    return "DateTime64(3)";
+            }
+        }
+
+        // Then check primitive types
+        switch (connectSchema.type()) {
+            case INT8:
+                return "Int8";
+            case INT16:
+                return "Int16";
+            case INT32:
+                return "Int32";
+            case INT64:
+                return "Int64";
+            case FLOAT32:
+                return "Float32";
+            case FLOAT64:
+                return "Float64";
+            case BOOLEAN:
+                return "Bool";
+            case STRING:
+                return "String";
+            case BYTES:
+                return "String";
+            case ARRAY:
+                if (connectSchema.valueSchema() == null) {
+                    return "Array(String)";
+                }
+                String elementType = connectTypeToClickHouseType(connectSchema.valueSchema());
+                if (connectSchema.valueSchema().isOptional()) {
+                    elementType = "Nullable(" + elementType + ")";
+                }
+                return "Array(" + elementType + ")";
+            case MAP:
+                String keyType = connectTypeToClickHouseType(connectSchema.keySchema());
+                String valType = connectTypeToClickHouseType(connectSchema.valueSchema());
+                if (connectSchema.valueSchema().isOptional()) {
+                    valType = "Nullable(" + valType + ")";
+                }
+                return "Map(" + keyType + ", " + valType + ")";
+            case STRUCT:
+                throw new RuntimeException(
+                        "Cannot auto-evolve STRUCT fields to ClickHouse columns. " +
+                        "STRUCT type requires manual mapping to Tuple, JSON, or Nested type.");
+            default:
+                throw new RuntimeException("Unsupported Connect type for auto-evolution: " + connectSchema.type());
+        }
     }
 
     public Integer convertEnumValues(String value) {

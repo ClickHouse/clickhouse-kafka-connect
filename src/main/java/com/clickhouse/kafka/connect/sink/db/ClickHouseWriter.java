@@ -33,6 +33,7 @@ import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -196,6 +197,52 @@ public class ClickHouseWriter implements DBWriter {
         String database = first.getDatabase();
         Table table = getTable(database, topic);
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
+
+        if (csc.isAutoEvolve()) {
+            table = doInsertWithSchemaEvolution(records, table, queryId);
+        } else {
+            doInsertBatch(records, table, queryId);
+        }
+    }
+
+    private Table doInsertWithSchemaEvolution(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
+        // Split records into sub batches at schema boundaries (like JDBC BufferedRecords.add pattern)
+        // When schema changes mid batch the current sub batch is flushed, the table is evolved, and the insertion continues.
+        Schema currentSchema = getValueSchema(records.get(0));
+        int batchStart = 0;
+
+        for (int i = 1; i <= records.size(); i++) {
+            Schema recordSchema = (i < records.size()) ? getValueSchema(records.get(i)) : null;
+
+            // Flush sub batch when schema changes or the end of the records is reached
+            if (i == records.size() || !Objects.equals(currentSchema, recordSchema)) {
+                List<Record> subBatch = records.subList(batchStart, i);
+                Record subFirst = subBatch.get(0);
+
+                // Evolve table for the sub batch schema
+                table = evolveTableSchema(table, subFirst);
+
+                LOGGER.debug("Inserting sub-batch [{}-{}) of {} records with schema evolution (QueryId: [{}])",
+                        batchStart, i, subBatch.size(), queryId.getQueryId());
+                doInsertBatch(subBatch, table, queryId);
+
+                if (i < records.size()) {
+                    currentSchema = recordSchema;
+                    batchStart = i;
+                }
+            }
+        }
+
+        return table;
+    }
+
+    private static Schema getValueSchema(Record record) {
+        SinkRecord sr = record.getSinkRecord();
+        return sr != null ? sr.valueSchema() : null;
+    }
+
+    private void doInsertBatch(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
+        Record first = records.get(0);
         LOGGER.debug("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
         switch (first.getSchemaType()) {
             case SCHEMA:
@@ -483,6 +530,9 @@ public class ClickHouseWriter implements DBWriter {
                     mapTmp.forEach((key, mapValue) -> {
                         try {
                             doWritePrimitive(col.getMapKeyType(), value.getMapKeySchema().type(), stream, key, col);
+                            if (col.getMapValueType() != null && col.getMapValueType().isNullable() && mapValue != null) {
+                                BinaryStreamUtils.writeNonNull(stream);
+                            }
                             doWriteColValue(col.getMapValueType(), stream, new Data(value.getNestedValueSchema(), mapValue), defaultsSupport);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
@@ -808,6 +858,88 @@ public class ClickHouseWriter implements DBWriter {
                 throw new RuntimeException();
             }
         }
+    }
+
+    protected Table evolveTableSchema(Table table, Record record) {
+        if (record.getFields() == null) {
+            LOGGER.warn("Cannot auto-evolve schema for records without a Connect schema (schemaless/string). Skipping schema evolution.");
+            return table;
+        }
+
+        List<String> fieldNames = record.getFields().stream().map(Field::name).collect(Collectors.toList());
+        Set<String> missingColumns = table.getMissingColumns(fieldNames);
+
+        if (missingColumns.isEmpty()) {
+            return table;
+        }
+
+        LOGGER.info("Detected {} new field(s) not present in table {}: {}", missingColumns.size(), table.getName(), missingColumns);
+
+        Map<String, Schema> schemaMap = record.getFields().stream().collect(Collectors.toMap(Field::name, Field::schema));
+        List<String> columnDefs = new java.util.ArrayList<>();
+
+        for (String fieldName : missingColumns) {
+            Schema fieldSchema = schemaMap.get(fieldName);
+            if (fieldSchema == null) {
+                continue;
+            }
+
+            if (!fieldSchema.isOptional() && fieldSchema.defaultValue() == null) {
+                throw new RuntimeException(String.format(
+                        "Cannot auto-evolve: field '%s' is not optional and has no default value. " +
+                        "ClickHouse requires new columns to be either Nullable or have a DEFAULT.", fieldName));
+            }
+
+            String chType;
+            try {
+                chType = Column.connectTypeToClickHouseType(fieldSchema);
+            } catch (RuntimeException e) {
+                throw new RuntimeException(String.format(
+                        "Cannot auto-evolve: field '%s' has unsupported type for auto-evolution. %s", fieldName, e.getMessage()), e);
+            }
+
+            // ClickHouse does not allow Nullable wrapping for Array and Map types
+            if (fieldSchema.isOptional()
+                    && fieldSchema.type() != Schema.Type.ARRAY
+                    && fieldSchema.type() != Schema.Type.MAP) {
+                chType = "Nullable(" + chType + ")";
+            }
+
+            columnDefs.add(String.format("`%s` %s", fieldName, chType));
+        }
+
+        if (!columnDefs.isEmpty()) {
+            chc.alterTableAddColumns(table.getDatabase(), table.getCleanName(), columnDefs);
+            LOGGER.info("Schema evolution complete for table {}. Added columns: {}", table.getName(), columnDefs);
+            table = refreshTableAfterDDL(table, missingColumns);
+        }
+
+        return table;
+    }
+
+    private static final int DDL_REFRESH_MAX_RETRIES = 5;
+    private static final long DDL_REFRESH_BACKOFF_MS = 200;
+
+    private Table refreshTableAfterDDL(Table table, Set<String> expectedNewColumns) {
+        for (int attempt = 0; attempt < DDL_REFRESH_MAX_RETRIES; attempt++) {
+            Table refreshed = urgentTableUpdate(table);
+            Set<String> stillMissing = refreshed.getMissingColumns(expectedNewColumns);
+            if (stillMissing.isEmpty()) {
+                return refreshed;
+            }
+            LOGGER.warn("DDL refresh attempt {}/{}: columns {} not yet visible, retrying in {}ms",
+                    attempt + 1, DDL_REFRESH_MAX_RETRIES, stillMissing, DDL_REFRESH_BACKOFF_MS);
+            try {
+                Thread.sleep(DDL_REFRESH_BACKOFF_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while waiting for DDL propagation", e);
+            }
+        }
+        // Final attempt, use whatever we have
+        LOGGER.error("DDL propagation timeout: some columns may not be visible yet after {} retries. Proceeding with latest table state.",
+                DDL_REFRESH_MAX_RETRIES);
+        return urgentTableUpdate(table);
     }
 
     protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults, boolean retry) throws IOException, ExecutionException, InterruptedException {
