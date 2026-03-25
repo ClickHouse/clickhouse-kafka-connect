@@ -365,6 +365,17 @@ public class Column {
     }
 
     public static String connectTypeToClickHouseType(Schema connectSchema) {
+        String baseType = resolveBaseType(connectSchema);
+
+        // ClickHouse forbids Nullable wrapping for Array and Map types
+        if (connectSchema.type() == Schema.Type.ARRAY || connectSchema.type() == Schema.Type.MAP) {
+            return baseType;
+        }
+
+        return "Nullable(" + baseType + ")";
+    }
+
+    private static String resolveBaseType(Schema connectSchema) {
         // Check logical types first (same pattern as JDBC connector)
         if (connectSchema.name() != null) {
             switch (connectSchema.name()) {
@@ -409,16 +420,10 @@ public class Column {
                     return "Array(String)";
                 }
                 String elementType = connectTypeToClickHouseType(connectSchema.valueSchema());
-                if (connectSchema.valueSchema().isOptional()) {
-                    elementType = "Nullable(" + elementType + ")";
-                }
                 return "Array(" + elementType + ")";
             case MAP:
-                String keyType = connectTypeToClickHouseType(connectSchema.keySchema());
+                String keyType = resolveBaseType(connectSchema.keySchema());
                 String valType = connectTypeToClickHouseType(connectSchema.valueSchema());
-                if (connectSchema.valueSchema().isOptional()) {
-                    valType = "Nullable(" + valType + ")";
-                }
                 return "Map(" + keyType + ", " + valType + ")";
             case STRUCT:
                 throw new SchemaTypeInferenceException(
