@@ -86,6 +86,7 @@ dockerCompose {
     // Don't probe TCP ports - ClickHouse doesn't listen on 8443 without SSL config.
     // ClickHouseCluster.verifyConnectivity() polls the HTTP /ping endpoint instead.
     waitForTcpPorts.set(false)
+    useDockerComposeV2.set(true)
 }
 
 if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
