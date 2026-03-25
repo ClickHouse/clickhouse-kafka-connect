@@ -36,7 +36,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void showTables() {
         String topic = createTopicName("simple_table_test");
-        ClickHouseTestHelpers.createTable(chc, topic,
+        createTable(chc, topic,
                 "CREATE TABLE %s ( `num` String ) Engine = MergeTree ORDER BY num");
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
@@ -50,7 +50,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void describeNestedFlattenedTable() {
         String topic = createTopicName("nested_flattened_table_test");
-        ClickHouseTestHelpers.createTable(chc, topic,
+        createTable(chc, topic,
                 "CREATE TABLE %s ( `num` String, " +
                         "`nested` Nested (innerInt Int32, innerString String)) " +
                         "Engine = MergeTree ORDER BY num");
@@ -66,7 +66,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void ignoreArrayWithNestedTable() {
         String topic = createTopicName("nested_table_test");
-        ClickHouseTestHelpers.createTable(chc, topic,
+        createTable(chc, topic,
                 "CREATE TABLE %s ( `num` String, " +
                         "`nested` Array(Nested (innerInt Int32, innerString String))) " +
                         "Engine = MergeTree ORDER BY num");
@@ -92,11 +92,11 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         props.put("password", "123FOURfive^&*91011");
         chc = createClient(props);
 
-        ClickHouseTestHelpers.createTable(chc, nestedTopic,
+        createTable(chc, nestedTopic,
                 "CREATE TABLE %s ( `num` String, " +
                         "`nested` Nested (innerInt Int32, innerString String)) " +
                         "Engine = MergeTree ORDER BY num");
-        ClickHouseTestHelpers.createTable(chc, normalTopic,
+        createTable(chc, normalTopic,
                 "CREATE TABLE %s ( `num` String ) " +
                         "Engine = MergeTree ORDER BY num");
 

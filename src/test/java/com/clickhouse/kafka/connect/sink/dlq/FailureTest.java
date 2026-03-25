@@ -40,7 +40,7 @@ public class FailureTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `uint8` UInt8, `uint16` UInt16, `uint32` UInt32, `uint64` UInt64) Engine = MergeTree ORDER BY off16");
+        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `uint8` UInt8, `uint16` UInt16, `uint32` UInt32, `uint64` UInt64) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> validRecordsPart1 = SchemaTestData.createUnsignedIntegers(topic, 1, 100);
         Collection<SinkRecord> invalidRecordsPart2 = createInvalidRecords(topic, 2, 100);
         Collection<SinkRecord> validRecordsPart3 =  SchemaTestData.createUnsignedIntegers(topic, 3, 100);

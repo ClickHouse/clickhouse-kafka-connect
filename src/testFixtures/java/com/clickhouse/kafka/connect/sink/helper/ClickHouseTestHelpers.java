@@ -26,7 +26,6 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -105,54 +104,6 @@ public class ClickHouseTestHelpers {
         }
     }
 
-
-    public static OperationMetrics createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery) {
-        LOGGER.info("Creating table: {}, Query: {}", tableName, createTableQuery);
-        OperationMetrics operationMetrics = createTable(chc, tableName, createTableQuery, new HashMap<>());
-        if (isCloud()) {
-            try {
-                Thread.sleep(2000);
-            } catch (InterruptedException e) {
-                LOGGER.error("Error while sleeping", e);
-            }
-        }
-        return operationMetrics;
-    }
-
-    public static OperationMetrics createTable(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
-        for (int i = 0; i < 5; i++) {
-            try {
-                OperationMetrics operationMetrics = createTableLoop(chc, tableName, createTableQuery, clientSettings);
-                if (operationMetrics != null) {
-                    return operationMetrics;
-                }
-            } catch (Exception e) {
-                LOGGER.error("Error while sleeping", e);
-            }
-
-            try {
-                Thread.sleep(30000);//Sleep for 30 seconds
-            } catch (InterruptedException e) {
-                LOGGER.error("Error while sleeping", e);
-            }
-        }
-
-        return null;
-    }
-
-    private static OperationMetrics createTableLoop(ClickHouseHelperClient chc, String tableName, String createTableQuery, Map<String, Serializable> clientSettings) {
-        final String createTableQueryTmp = String.format(createTableQuery, tableName);
-        QuerySettings settings = new QuerySettings();
-        for (Map.Entry<String, Serializable> entry : clientSettings.entrySet()) {
-            settings.setOption(entry.getKey(), entry.getValue());
-        }
-        try (Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT)) {
-            return records.getMetrics();
-        } catch (Exception e) {
-            LOGGER.error("Error table creation: {}, ", chc.getServer());
-            throw new RuntimeException(e);
-        }
-    }
 
     public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName) {
         String query = String.format("SELECT * FROM `%s`", tableName);
