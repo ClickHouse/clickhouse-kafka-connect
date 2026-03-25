@@ -2174,7 +2174,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     @Test
-    public void autoEvolveSchemalessRecordsSkipped() {
+    public void autoEvolveSchemalessRecordsThrowError() {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = createClient(props);
@@ -2195,7 +2195,23 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
-        chst.put(schemaless);
-        chst.stop();
+
+        try {
+            chst.put(schemaless);
+            assertTrue(false, "Expected exception for schemaless records with auto.evolve=true");
+        } catch (RuntimeException e) {
+            Throwable t = e;
+            boolean found = false;
+            while (t != null) {
+                if (t.getMessage() != null && t.getMessage().contains("auto.evolve requires a Connect schema")) {
+                    found = true;
+                    break;
+                }
+                t = t.getCause();
+            }
+            assertTrue(found, "Expected error about schemaless records in cause chain, got: " + e.getMessage());
+        } finally {
+            chst.stop();
+        }
     }
 }
