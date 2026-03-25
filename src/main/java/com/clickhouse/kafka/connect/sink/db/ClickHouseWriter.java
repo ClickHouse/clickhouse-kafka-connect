@@ -33,6 +33,7 @@ import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -827,7 +828,7 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    protected Table evolveTableSchema(Table table, Record record) {
+    protected Table evolveTableSchema(Table table, Record record) throws InterruptedException {
         if (record.getFields() == null) {
             LOGGER.warn("Cannot auto-evolve schema for records without a Connect schema (schemaless/string). Skipping schema evolution.");
             return table;
@@ -866,7 +867,7 @@ public class ClickHouseWriter implements DBWriter {
 
     private static final long DDL_REFRESH_BACKOFF_MS = 200;
 
-    private Table refreshTableAfterDDL(Table table, Set<String> expectedNewColumns) {
+    private Table refreshTableAfterDDL(Table table, Set<String> expectedNewColumns) throws InterruptedException {
         int maxRetries = csc.getAutoEvolveDdlRefreshRetries();
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             Table refreshed = urgentTableUpdate(table);
@@ -876,17 +877,10 @@ public class ClickHouseWriter implements DBWriter {
             }
             LOGGER.warn("DDL refresh attempt {}/{}: columns {} not yet visible, retrying in {}ms",
                     attempt + 1, maxRetries, stillMissing, DDL_REFRESH_BACKOFF_MS);
-            try {
-                Thread.sleep(DDL_REFRESH_BACKOFF_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while waiting for DDL propagation", e);
-            }
+            Thread.sleep(DDL_REFRESH_BACKOFF_MS);
         }
-        // Final attempt, use whatever we have
-        LOGGER.error("DDL propagation timeout: some columns may not be visible yet after {} retries. Proceeding with latest table state.",
-                maxRetries);
-        return urgentTableUpdate(table);
+        throw new RetriableException(String.format(
+                "DDL propagation timeout: columns not visible after %d retries", maxRetries));
     }
 
     protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults, boolean retry) throws IOException, ExecutionException, InterruptedException {
