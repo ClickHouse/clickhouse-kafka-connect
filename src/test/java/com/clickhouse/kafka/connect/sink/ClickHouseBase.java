@@ -26,6 +26,7 @@ import java.util.Map;
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected ClickHouseContainer db;
+    protected static ClickHouseCluster cluster = new ClickHouseCluster();
     protected boolean isCloud = ClickHouseTestHelpers.isCloud();
     protected boolean isCluster = ClickHouseTestHelpers.isCluster();
     protected String database;
@@ -36,25 +37,23 @@ public class ClickHouseBase {
 
     @BeforeAll
     public void setup() throws IOException  {
-        setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
-
-        if (isCloud) {
-            initialPing();
-            return;
-        }
-
         if (isCluster) {
-            initialPing();
-            return;
+            // ClickHouseCluster should be started before tests run - see ClickHouseCluster.SetupListenerForTests
+            if (!ClickHouseCluster.isStarted()) {
+                throw new IOException("cluster is not running - aborting tests");
+            }
+        } else if (!isCloud) {
+            setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         }
 
-        setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
+        setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
+        initialPing();
     }
 
     public void setupContainer(String clickhouseDockerImage) {
         Network network = Network.newNetwork();
 
-        ClickHouseContainer db = new ClickHouseContainer(clickhouseDockerImage)
+        this.db = new ClickHouseContainer(clickhouseDockerImage)
                 .withNetwork(network)
                 .withNetworkAliases(CLICKHOUSE_DB_NETWORK_ALIAS)
                 .withPassword("test_password")
@@ -64,13 +63,12 @@ public class ClickHouseBase {
                 .withExposedPorts(8123)
                 .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
         db.start();
-        setDb(db);
     }
 
     @AfterAll
     protected void tearDown() {
         // disable dropping database for debug
-        if (isCloud || isCluster) {//We need to clean up databases in the cloud/cluster, we can ignore the local database
+        if (isCloud) { // We need to clean up databases in the cloud, we can ignore the local database
             if (database != null) {
                 try {
                     dropDatabase(getDatabase());
@@ -78,16 +76,18 @@ public class ClickHouseBase {
                     LOGGER.error("Error dropping database", e);
                 }
             }
-        }
-
-        ClickHouseContainer ch = getDb();
-        if (ch != null) {
-            LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
-            ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.log",
-                    "./build/reports/tests/server_"+ + db.getMappedPort(8123) +".log");
-            ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.err.log",
-                    "./build/reports/tests/server-err_" + db.getMappedPort(8123) +  ".log");
-            ch.stop();
+        } else if (isCluster) {
+            // do nothing
+        } else {
+            ClickHouseContainer ch = getDb();
+            if (ch != null) {
+                LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
+                ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.log",
+                        "./build/reports/tests/server_" + +db.getMappedPort(8123) + ".log");
+                ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.err.log",
+                        "./build/reports/tests/server-err_" + db.getMappedPort(8123) + ".log");
+                ch.stop();
+            }
         }
     }
 
@@ -108,7 +108,7 @@ public class ClickHouseBase {
     }
 
     public static String extractClientVersion() {
-        String clientVersion = System.getenv("CLIENT_VERSION");
+        String clientVersion = System.getenv(ClickHouseTestHelpers.CLIENT_VERSION);
         if (clientVersion != null && clientVersion.equals("V1")) {
             return "V1";
         } else {
@@ -177,8 +177,8 @@ public class ClickHouseBase {
         }
     }
 
-    protected static void initialPing() {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(new ClickHouseBase().createProps());
+    protected void initialPing() {
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(createProps());
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -280,17 +280,17 @@ public class ClickHouseBase {
         String clientVersion = extractClientVersion();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
         if (isCloud) {
-            props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv("CLICKHOUSE_CLOUD_HOST"));
+            props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);
             props.put(ClickHouseSinkConnector.DATABASE, database);
             props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
-            props.put(ClickHouseSinkConnector.PASSWORD, System.getenv("CLICKHOUSE_CLOUD_PASSWORD"));
+            props.put(ClickHouseSinkConnector.PASSWORD, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD));
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
         } else if (isCluster) {
-            props.put(ClickHouseSinkConnector.HOSTNAME, "localhost");
-            props.put(ClickHouseSinkConnector.PORT, "8123");
+            props.put(ClickHouseSinkConnector.HOSTNAME, cluster.getHost());
+            props.put(ClickHouseSinkConnector.PORT, cluster.getPort().toString());
             props.put(ClickHouseSinkConnector.DATABASE, database);
             props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
             props.put(ClickHouseSinkConnector.PASSWORD, "");
