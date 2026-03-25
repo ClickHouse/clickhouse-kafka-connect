@@ -864,7 +864,7 @@ public class ClickHouseWriter implements DBWriter {
                 continue;
             }
 
-            String chType = Column.connectTypeToClickHouseType(fieldSchema);
+            String chType = Column.connectTypeToClickHouseType(fieldSchema, csc.isAutoEvolveStructToJson());
             columnDefs.add(String.format("`%s` %s", fieldName, chType));
         }
 
