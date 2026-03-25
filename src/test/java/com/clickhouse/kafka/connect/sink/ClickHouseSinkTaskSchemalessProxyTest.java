@@ -55,6 +55,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @BeforeAll
     public void setup() throws IOException {
+        org.junit.jupiter.api.Assumptions.assumeFalse(isCluster, "Proxy tests do not run in cluster mode");
         super.setup();
 
         toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(isCloud ? Network.newNetwork() : db.getNetwork()).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
