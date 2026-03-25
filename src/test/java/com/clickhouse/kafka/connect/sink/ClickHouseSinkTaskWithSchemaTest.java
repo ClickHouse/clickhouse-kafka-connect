@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.api.ClientConfigProperties;
+import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.avro.test.Event;
 import com.clickhouse.kafka.connect.avro.test.Image;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -1738,6 +1739,53 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
         assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
                 "Column 'new_string_field' should be added even when schema changes mid-batch");
+    }
+
+    @Test
+    public void autoEvolveMixedSchemaOlderRecordsGetNull() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_older_records_null_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // V1 records (no new_string_field) followed by V2 records (has new_string_field)
+        // Schema is evolved using last record (V2), then entire batch is inserted.
+        // V1 records should get NULL for the new column.
+        List<SinkRecord> mixedBatch = new ArrayList<>();
+        mixedBatch.addAll(SchemaTestData.createSchemaV1(topic, 1, 5));
+        mixedBatch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 5));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(mixedBatch);
+        chst.stop();
+
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // V1 records should have NULL for the new column
+        String nullCountQuery = String.format(
+                "SELECT COUNT(*) FROM `%s` WHERE `new_string_field` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+        try {
+            Records nullRecords = chc.getClient().queryRecords(nullCountQuery).get();
+            int nullCount = Integer.parseInt(nullRecords.iterator().next().getString(1));
+            assertEquals(5, nullCount, "V1 records should have NULL for new_string_field");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        // V2 records should have non-NULL values
+        String nonNullQuery = String.format(
+                "SELECT COUNT(*) FROM `%s` WHERE `new_string_field` IS NOT NULL SETTINGS select_sequential_consistency = 1", topic);
+        try {
+            Records nonNullRecords = chc.getClient().queryRecords(nonNullQuery).get();
+            int nonNullCount = Integer.parseInt(nonNullRecords.iterator().next().getString(1));
+            assertEquals(5, nonNullCount, "V2 records should have non-NULL values for new_string_field");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test
