@@ -54,7 +54,7 @@ extra.apply {
     set("clickHouseDriverVersion", "0.9.4")
     set("kafkaVersion", "2.7.0")
     set("gson", "2.13.1")
-    set("jackson", "2.19.1")
+    set("jackson", "2.21.2")
 
     // Testing dependencies
     set("junitJupiterVersion", "5.9.2")
@@ -95,7 +95,7 @@ dependencies {
     // To parse JSON response from ClickHouse to parse complex data types correctly
     implementation("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${project.extra["jackson"]}")
-    implementation("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson"]}")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:2.21}")
 
     /*
         Will in side the Confluent Archive
@@ -107,7 +107,7 @@ dependencies {
     clickhouseDependencies("com.google.code.gson:gson:${project.extra["gson"]}")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-databind:${project.extra["jackson"]}")
-    clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson"]}")
+    clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:2.21}")
 
     // Unit Tests
     testImplementation(platform("org.junit:junit-bom:${project.extra["junitJupiterVersion"]}"))
