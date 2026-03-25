@@ -421,11 +421,11 @@ public class Column {
                 }
                 return "Map(" + keyType + ", " + valType + ")";
             case STRUCT:
-                throw new RuntimeException(
+                throw new SchemaTypeInferenceException(
                         "Cannot auto-evolve STRUCT fields to ClickHouse columns. " +
                         "STRUCT type requires manual mapping to Tuple, JSON, or Nested type.");
             default:
-                throw new RuntimeException("Unsupported Connect type for auto-evolution: " + connectSchema.type());
+                throw new SchemaTypeInferenceException("Unsupported Connect type for auto-evolution: " + connectSchema.type());
         }
     }
 
