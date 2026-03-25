@@ -901,13 +901,7 @@ public class ClickHouseWriter implements DBWriter {
                         "ClickHouse requires new columns to be either Nullable or have a DEFAULT.", fieldName));
             }
 
-            String chType;
-            try {
-                chType = Column.connectTypeToClickHouseType(fieldSchema);
-            } catch (RuntimeException e) {
-                throw new RuntimeException(String.format(
-                        "Cannot auto-evolve: field '%s' has unsupported type for auto-evolution. %s", fieldName, e.getMessage()), e);
-            }
+            String chType = Column.connectTypeToClickHouseType(fieldSchema);
 
             // ClickHouse does not allow Nullable wrapping for Array and Map types
             if (fieldSchema.isOptional()
