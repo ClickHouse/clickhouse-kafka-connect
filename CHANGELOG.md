@@ -1,3 +1,12 @@
+# 1.3.7, 2026-03-25 
+
+## Security
+* Upgraded `com.fasterxml.jackson.core` dependencies to version with fix for https://github.com/advisories/GHSA-72hv-8253-57qq (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/690).
+
+# Improvements
+* `Gson` replaced with `Jackson` for performance and better maintainability (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/676).
+
+
 # 1.3.6, 2026-03-18
 
 ## New Features
