@@ -4,11 +4,11 @@ x-ch-common: &ch-common
   volumes:
     - /var/lib/clickhouse
     - type: bind
-      source: ${PROJECT_ROOT:-.}/test_settings.xml
-      target: /etc/clickhouse-server/users.d/test_settings.xml
+      source: ${PROJECT_ROOT:-.}/users.xml
+      target: /etc/clickhouse-server/users.d/users.xml
     - type: bind
-      source: ${PROJECT_ROOT:-.}/test_config.xml
-      target: /etc/clickhouse-server/config.d/test_config.xml
+      source: ${PROJECT_ROOT:-.}/config.xml
+      target: /etc/clickhouse-server/config.d/config.xml
   ulimits:
     nofile:
       soft: 262144
