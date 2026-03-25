@@ -34,6 +34,7 @@ public class Column {
     private static final Pattern DECIMAL_TYPE_PATTERN = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
     private static final Pattern SIMPLE_AGGREGATE_FUNCTION_TYPE_PATTERN = Pattern.compile("^SimpleAggregateFunction\\s*\\([^,]+,\\s*(.+)\\)$");
 
+    private static final int DECIMAL128_MAX_PRECISION = 38;
     private static final Logger LOGGER = LoggerFactory.getLogger(Column.class);
 
     private String name;
@@ -368,7 +369,7 @@ public class Column {
         if (connectSchema.name() != null) {
             switch (connectSchema.name()) {
                 case Decimal.LOGICAL_NAME:
-                    int precision = 38; // ClickHouse Decimal128 default
+                    int precision = DECIMAL128_MAX_PRECISION;
                     int scale = 0;
                     if (connectSchema.parameters() != null && connectSchema.parameters().containsKey("scale")) {
                         scale = Integer.parseInt(connectSchema.parameters().get("scale"));
