@@ -61,6 +61,7 @@ public class ClickHouseSinkConfig {
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
+    public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -112,6 +113,7 @@ public class ClickHouseSinkConfig {
     private final boolean reportInsertedOffsets;
     private final boolean autoEvolve;
     private final boolean binaryFormatWrtiteJsonAsString;
+    private final String sslSocketSni;
 
     public enum InsertFormats {
         NONE,
@@ -290,6 +292,7 @@ public class ClickHouseSinkConfig {
         this.bufferCount = Integer.parseInt(props.getOrDefault(BUFFER_COUNT, bufferCountDefault.toString()));
         this.bufferFlushTime = Long.parseLong(props.getOrDefault(BUFFER_FLUSH_TIME, bufferFlushTimeDefault.toString()));
         this.reportInsertedOffsets = Boolean.parseBoolean(props.getOrDefault(REPORT_INSERTED_OFFSETS, reportInsertedOffsetsDefault.toString()));
+        this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -694,6 +697,17 @@ public class ClickHouseSinkConfig {
                 ++ddlOrderInGroup,
                 ConfigDef.Width.SHORT,
                 "Auto evolve table schema."
+        );
+        configDef.define(SSL_SOCKET_SNI,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "Override the SNI hostname sent in the client handshake. When set, the client will explicitly include the specified name as the server_name extension in the TLS ClientHello." +
+                        "This is useful to avoid handshake failure when routing TLS traffic through a proxy, where the proxy hostname and the server hostname may differ. Default: ''",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "SSL Socket SNI"
         );
         return configDef;
     }
