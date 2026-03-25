@@ -47,9 +47,15 @@ public class ClickHouseTestHelpers {
     private static final TimeUnit CLOUD_TIMEOUT_UNIT = TimeUnit.SECONDS;
     private static final String MISSING_PROP_MESSAGE_FORMAT = "%s system property is required, skipping tests";
 
+    // env vars
+    public static final String CLIENT_VERSION = "CLIENT_VERSION";
+    public static final String CLICKHOUSE_CLOUD_HOST = "CLICKHOUSE_CLOUD_HOST";
+    public static final String CLICKHOUSE_CLOUD_PASSWORD = "CLICKHOUSE_CLOUD_PASSWORD";
+    private static final String CLICKHOUSE_VERSION = "CLICKHOUSE_VERSION";
+    private static final String CLICKHOUSE_CLUSTER_MODE = "CLICKHOUSE_CLUSTER_MODE";
 
     public static String getClickhouseVersion() {
-        String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
+        String clickHouseVersion = System.getenv(CLICKHOUSE_VERSION);
         if (clickHouseVersion == null) {
             clickHouseVersion = CLICKHOUSE_VERSION_DEFAULT;
         }
@@ -57,14 +63,14 @@ public class ClickHouseTestHelpers {
     }
 
     public static boolean isCloud() {
-        String version = System.getenv("CLICKHOUSE_VERSION");
+        String version = System.getenv(CLICKHOUSE_VERSION);
         LOGGER.info("Version: {}", version);
         return version != null && version.equalsIgnoreCase("cloud");
     }
 
     public static boolean isCluster() {
-        String version = System.getenv("CLICKHOUSE_VERSION");
-        return version != null && version.equalsIgnoreCase("cluster");
+        String isClusterMode = System.getenv(CLICKHOUSE_CLUSTER_MODE);
+        return isClusterMode != null && isClusterMode.equalsIgnoreCase("true");
     }
 
     public static void query(ClickHouseHelperClient chc, String query) {
