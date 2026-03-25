@@ -864,18 +864,18 @@ public class ClickHouseWriter implements DBWriter {
         return table;
     }
 
-    private static final int DDL_REFRESH_MAX_RETRIES = 5;
     private static final long DDL_REFRESH_BACKOFF_MS = 200;
 
     private Table refreshTableAfterDDL(Table table, Set<String> expectedNewColumns) {
-        for (int attempt = 0; attempt < DDL_REFRESH_MAX_RETRIES; attempt++) {
+        int maxRetries = csc.getAutoEvolveDdlRefreshRetries();
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
             Table refreshed = urgentTableUpdate(table);
             Set<String> stillMissing = refreshed.getMissingColumns(expectedNewColumns);
             if (stillMissing.isEmpty()) {
                 return refreshed;
             }
             LOGGER.warn("DDL refresh attempt {}/{}: columns {} not yet visible, retrying in {}ms",
-                    attempt + 1, DDL_REFRESH_MAX_RETRIES, stillMissing, DDL_REFRESH_BACKOFF_MS);
+                    attempt + 1, maxRetries, stillMissing, DDL_REFRESH_BACKOFF_MS);
             try {
                 Thread.sleep(DDL_REFRESH_BACKOFF_MS);
             } catch (InterruptedException e) {
@@ -885,7 +885,7 @@ public class ClickHouseWriter implements DBWriter {
         }
         // Final attempt, use whatever we have
         LOGGER.error("DDL propagation timeout: some columns may not be visible yet after {} retries. Proceeding with latest table state.",
-                DDL_REFRESH_MAX_RETRIES);
+                maxRetries);
         return urgentTableUpdate(table);
     }
 
