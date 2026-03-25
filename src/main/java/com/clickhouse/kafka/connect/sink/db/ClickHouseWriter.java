@@ -49,6 +49,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -210,46 +211,12 @@ public class ClickHouseWriter implements DBWriter {
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
 
         if (csc.isAutoEvolve()) {
-            table = doInsertWithSchemaEvolution(records, table, queryId);
-        } else {
-            doInsertBatch(records, table, queryId);
-        }
-    }
-
-    private Table doInsertWithSchemaEvolution(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
-        // Split records into sub batches at schema boundaries (like JDBC BufferedRecords.add pattern)
-        // When schema changes mid batch the current sub batch is flushed, the table is evolved, and the insertion continues.
-        Schema currentSchema = getValueSchema(records.get(0));
-        int batchStart = 0;
-
-        for (int i = 1; i <= records.size(); i++) {
-            Schema recordSchema = (i < records.size()) ? getValueSchema(records.get(i)) : null;
-
-            // Flush sub batch when schema changes or the end of the records is reached
-            if (i == records.size() || !Objects.equals(currentSchema, recordSchema)) {
-                List<Record> subBatch = records.subList(batchStart, i);
-                Record subFirst = subBatch.get(0);
-
-                // Evolve table for the sub batch schema
-                table = evolveTableSchema(table, subFirst);
-
-                LOGGER.debug("Inserting sub-batch [{}-{}) of {} records with schema evolution (QueryId: [{}])",
-                        batchStart, i, subBatch.size(), queryId.getQueryId());
-                doInsertBatch(subBatch, table, queryId);
-
-                if (i < records.size()) {
-                    currentSchema = recordSchema;
-                    batchStart = i;
-                }
-            }
+            // New columns are Nullable, so older records without the new fields insert with NULL.
+            Record last = records.get(records.size() - 1);
+            table = evolveTableSchema(table, last);
         }
 
-        return table;
-    }
-
-    private static Schema getValueSchema(Record record) {
-        SinkRecord sr = record.getSinkRecord();
-        return sr != null ? sr.valueSchema() : null;
+        doInsertBatch(records, table, queryId);
     }
 
     private void doInsertBatch(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
