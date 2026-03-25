@@ -36,6 +36,7 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 public class ClickHouseHelperClient {
 
@@ -476,14 +477,15 @@ public class ClickHouseHelperClient {
     }
 
     public void alterTableAddColumns(String database, String tableName, List<String> columnDefs) {
-        for (String colDef : columnDefs) {
-            String sql = String.format("ALTER TABLE `%s`.`%s` ADD COLUMN IF NOT EXISTS %s", database, tableName, colDef);
-            LOGGER.info("Executing DDL: {}", sql);
-            if (useClientV2) {
-                alterTableAddColumnV2(sql);
-            } else {
-                alterTableAddColumnV1(sql);
-            }
+        String addClauses = columnDefs.stream()
+                .map(colDef -> "ADD COLUMN IF NOT EXISTS " + colDef)
+                .collect(Collectors.joining(", "));
+        String sql = String.format("ALTER TABLE `%s`.`%s` %s", database, tableName, addClauses);
+        LOGGER.info("Executing DDL: {}", sql);
+        if (useClientV2) {
+            alterTableAddColumnV2(sql);
+        } else {
+            alterTableAddColumnV1(sql);
         }
     }
 
