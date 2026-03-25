@@ -884,21 +884,7 @@ public class ClickHouseWriter implements DBWriter {
                 continue;
             }
 
-            if (!fieldSchema.isOptional() && fieldSchema.defaultValue() == null) {
-                throw new RuntimeException(String.format(
-                        "Cannot auto-evolve: field '%s' is not optional and has no default value. " +
-                        "ClickHouse requires new columns to be either Nullable or have a DEFAULT.", fieldName));
-            }
-
             String chType = Column.connectTypeToClickHouseType(fieldSchema);
-
-            // ClickHouse does not allow Nullable wrapping for Array and Map types
-            if (fieldSchema.isOptional()
-                    && fieldSchema.type() != Schema.Type.ARRAY
-                    && fieldSchema.type() != Schema.Type.MAP) {
-                chType = "Nullable(" + chType + ")";
-            }
-
             columnDefs.add(String.format("`%s` %s", fieldName, chType));
         }
 
