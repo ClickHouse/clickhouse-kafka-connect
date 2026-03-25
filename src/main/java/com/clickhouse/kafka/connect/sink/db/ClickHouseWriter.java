@@ -830,8 +830,9 @@ public class ClickHouseWriter implements DBWriter {
 
     protected Table evolveTableSchema(Table table, Record record) throws InterruptedException {
         if (record.getFields() == null) {
-            LOGGER.warn("Cannot auto-evolve schema for records without a Connect schema (schemaless/string). Skipping schema evolution.");
-            return table;
+            throw new RuntimeException(
+                    "auto.evolve requires a Connect schema (Avro, Protobuf, or JSON Schema). " +
+                    "Schemaless or string records are not supported with auto.evolve=true.");
         }
 
         List<String> fieldNames = record.getFields().stream().map(Field::name).collect(Collectors.toList());
