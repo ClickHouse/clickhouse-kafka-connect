@@ -1861,38 +1861,28 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     @Test
-    public void autoEvolveRejectsNonNullableNoDefault() {
+    public void autoEvolveAddsNonNullableFieldAsNullable() {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = createClient(props);
 
-        String topic = "auto_evolve_reject_non_nullable_test";
+        String topic = "auto_evolve_non_nullable_as_nullable_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithNewNonNullableField(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
+        chst.put(srV2);
+        chst.stop();
 
-        try {
-            chst.put(srV2);
-            // Should have thrown
-            assertTrue(false, "Expected exception for non-nullable field without default");
-        } catch (RuntimeException e) {
-            // Walk the full cause chain. Utils.handleException wraps multiple times
-            Throwable t = e;
-            boolean found = false;
-            while (t != null) {
-                if (t.getMessage() != null && (t.getMessage().contains("not optional") || t.getMessage().contains("Cannot auto-evolve"))) {
-                    found = true;
-                    break;
-                }
-                t = t.getCause();
-            }
-            assertTrue(found, "Expected descriptive error about non-nullable field in cause chain, got: " + e.getMessage());
-        } finally {
-            chst.stop();
-        }
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Non-nullable fields are created as Nullable columns — mandatory fields always have a value,
+        // and Nullable allows old records (without this field) to insert with NULL
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("non_nullable_field"),
+                "New column 'non_nullable_field' should have been added by auto.evolve");
     }
 
     @Test
