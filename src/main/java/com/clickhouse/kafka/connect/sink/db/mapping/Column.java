@@ -8,6 +8,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.apache.kafka.connect.data.Date;
 import org.apache.kafka.connect.data.Decimal;
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Time;
 import org.apache.kafka.connect.data.Timestamp;
@@ -20,9 +21,11 @@ import com.clickhouse.kafka.connect.util.reactor.function.Tuples;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -36,6 +39,13 @@ public class Column {
 
     private static final int DECIMAL128_MAX_PRECISION = 38;
     private static final Logger LOGGER = LoggerFactory.getLogger(Column.class);
+
+
+    // Confluent converter union schema markers
+    static final String AVRO_UNION_SCHEMA_NAME = "io.confluent.connect.avro.Union";
+    static final String PROTOBUF_UNION_SCHEMA_PREFIX = "io.confluent.connect.protobuf.Union";
+    static final String GENERALIZED_UNION_PREFIX = "connect_union_";
+    static final String CONNECT_UNION_PARAMETER = "org.apache.kafka.connect.data.Union";
 
     private String name;
     private Type type;
@@ -365,17 +375,21 @@ public class Column {
     }
 
     public static String connectTypeToClickHouseType(Schema connectSchema) {
-        String baseType = resolveBaseType(connectSchema);
+        return connectTypeToClickHouseType(connectSchema, false);
+    }
 
-        // ClickHouse forbids Nullable wrapping for Array and Map types
-        if (connectSchema.type() == Schema.Type.ARRAY || connectSchema.type() == Schema.Type.MAP) {
+    public static String connectTypeToClickHouseType(Schema connectSchema, boolean structToJson) {
+        String baseType = resolveBaseType(connectSchema, structToJson);
+
+        // ClickHouse forbids Nullable wrapping for Array, Map, and Variant types.
+        if (connectSchema.type() == Schema.Type.ARRAY || connectSchema.type() == Schema.Type.MAP || baseType.startsWith("Variant(")) {
             return baseType;
         }
 
         return "Nullable(" + baseType + ")";
     }
 
-    private static String resolveBaseType(Schema connectSchema) {
+    private static String resolveBaseType(Schema connectSchema, boolean structToJson) {
         // Check logical types first (same pattern as JDBC connector)
         if (connectSchema.name() != null) {
             switch (connectSchema.name()) {
@@ -419,19 +433,86 @@ public class Column {
                 if (connectSchema.valueSchema() == null) {
                     return "Array(String)";
                 }
-                String elementType = connectTypeToClickHouseType(connectSchema.valueSchema());
+                String elementType = connectTypeToClickHouseType(connectSchema.valueSchema(), structToJson);
                 return "Array(" + elementType + ")";
             case MAP:
-                String keyType = resolveBaseType(connectSchema.keySchema());
-                String valType = connectTypeToClickHouseType(connectSchema.valueSchema());
+                String keyType = resolveBaseType(connectSchema.keySchema(), structToJson);
+                String valType = connectTypeToClickHouseType(connectSchema.valueSchema(), structToJson);
                 return "Map(" + keyType + ", " + valType + ")";
             case STRUCT:
+                if (isUnionSchema(connectSchema)) {
+                    return resolveUnionType(connectSchema, structToJson);
+                }
+                if (structToJson) {
+                    return "JSON";
+                }
                 throw new SchemaTypeInferenceException(
                         "Cannot auto-evolve STRUCT fields to ClickHouse columns. " +
-                        "STRUCT type requires manual mapping to Tuple, JSON, or Nested type.");
+                        "Set auto.evolve.struct.to.json=true to map STRUCT to JSON, " +
+                        "or manually create the column as Tuple, JSON, or Nested type.");
             default:
                 throw new SchemaTypeInferenceException("Unsupported Connect type for auto-evolution: " + connectSchema.type());
         }
+    }
+
+    // Type groups that ClickHouse considers suspicious when mixed inside a Variant.
+    // See: https://clickhouse.com/docs/sql-reference/data-types/variant
+    private static final Set<String> SUSPICIOUS_NUMERIC_TYPES = Set.of(
+            "Int8", "Int16", "Int32", "Int64",
+            "UInt8", "UInt16", "UInt32", "UInt64",
+            "Float32", "Float64"
+    );
+    private static final Set<String> SUSPICIOUS_DATE_TYPES = Set.of(
+            "Date32", "DateTime64(3)"
+    );
+
+    private static String resolveUnionType(Schema connectSchema, boolean structToJson) {
+        if (connectSchema.fields() == null || connectSchema.fields().isEmpty()) {
+            return "String";
+        }
+
+        LinkedHashSet<String> chTypes = new LinkedHashSet<>();
+        for (Field field : connectSchema.fields()) {
+            chTypes.add(resolveBaseType(field.schema(), structToJson));
+        }
+
+        // All branches resolve to the same ClickHouse type (e.g. union(string, bytes) → String)
+        if (chTypes.size() == 1) {
+            return chTypes.iterator().next();
+        }
+
+        // Check for suspicious similar types that ClickHouse rejects by default
+        if (hasSuspiciousSimilarTypes(chTypes)) {
+            return "String";
+        }
+
+        // Multiple distinct types map to Variant(T1, T2, ...) requires ClickHouse 24.1+.
+        return "Variant(" + String.join(", ", chTypes) + ")";
+    }
+
+    private static boolean hasSuspiciousSimilarTypes(Set<String> chTypes) {
+        int numericCount = 0;
+        int dateCount = 0;
+        for (String t : chTypes) {
+            if (SUSPICIOUS_NUMERIC_TYPES.contains(t)) numericCount++;
+            if (SUSPICIOUS_DATE_TYPES.contains(t)) dateCount++;
+        }
+        return numericCount > 1 || dateCount > 1;
+    }
+
+    static boolean isUnionSchema(Schema connectSchema) {
+        if (connectSchema.type() != Schema.Type.STRUCT) {
+            return false;
+        }
+        String name = connectSchema.name();
+        if (name != null
+                && (name.equals(AVRO_UNION_SCHEMA_NAME)
+                    || name.startsWith(PROTOBUF_UNION_SCHEMA_PREFIX)
+                    || name.startsWith(GENERALIZED_UNION_PREFIX))) {
+            return true;
+        }
+        return connectSchema.parameters() != null
+                && connectSchema.parameters().containsKey(CONNECT_UNION_PARAMETER);
     }
 
     public Integer convertEnumValues(String value) {
