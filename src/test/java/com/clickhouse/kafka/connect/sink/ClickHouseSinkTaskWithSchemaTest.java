@@ -2274,6 +2274,270 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "V3 column 'v3_bool_field' should exist");
     }
 
+    // auto-evolve adds columns for every supported primitive + logical type in a single batch
+    @Test
+    public void autoEvolveAllPrimitiveAndLogicalTypes() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_all_types_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Insert V1 first to ensure existing rows get NULL for new columns
+        Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 5);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(srV1);
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Insert V2 with all primitive + logical type fields
+        Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithAllPrimitiveTypes(topic, 1, 5);
+        chst.put(srV2);
+        chst.stop();
+
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify all columns were created with correct types
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        Map<String, com.clickhouse.kafka.connect.sink.db.mapping.Column> cols = described.getRootColumnsMap();
+
+        // Primitive types
+        assertTrue(cols.containsKey("new_int8"), "Column 'new_int8' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.INT8, cols.get("new_int8").getType());
+        assertTrue(cols.containsKey("new_int16"), "Column 'new_int16' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.INT16, cols.get("new_int16").getType());
+        assertTrue(cols.containsKey("new_int32"), "Column 'new_int32' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.INT32, cols.get("new_int32").getType());
+        assertTrue(cols.containsKey("new_int64"), "Column 'new_int64' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.INT64, cols.get("new_int64").getType());
+        assertTrue(cols.containsKey("new_float32"), "Column 'new_float32' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.FLOAT32, cols.get("new_float32").getType());
+        assertTrue(cols.containsKey("new_float64"), "Column 'new_float64' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.FLOAT64, cols.get("new_float64").getType());
+        assertTrue(cols.containsKey("new_bool"), "Column 'new_bool' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.BOOLEAN, cols.get("new_bool").getType());
+        assertTrue(cols.containsKey("new_string"), "Column 'new_string' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.STRING, cols.get("new_string").getType());
+        assertTrue(cols.containsKey("new_bytes"), "Column 'new_bytes' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.STRING, cols.get("new_bytes").getType());
+
+        // Logical types
+        assertTrue(cols.containsKey("new_decimal"), "Column 'new_decimal' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.Decimal, cols.get("new_decimal").getType());
+        assertTrue(cols.containsKey("new_date"), "Column 'new_date' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.Date32, cols.get("new_date").getType());
+        assertTrue(cols.containsKey("new_timestamp"), "Column 'new_timestamp' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.DateTime64, cols.get("new_timestamp").getType());
+    }
+
+    // auto-evolve creates Array columns with different element types (Int32, Float64, Bool, String)
+    @Test
+    public void autoEvolveTypedArrayColumns() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_typed_arrays_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithTypedArrays(topic, 1, 10);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(srV2);
+        chst.stop();
+
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify all array columns were created
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        Map<String, com.clickhouse.kafka.connect.sink.db.mapping.Column> cols = described.getRootColumnsMap();
+
+        assertTrue(cols.containsKey("arr_int32"), "Column 'arr_int32' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.ARRAY, cols.get("arr_int32").getType());
+        assertTrue(cols.containsKey("arr_float64"), "Column 'arr_float64' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.ARRAY, cols.get("arr_float64").getType());
+        assertTrue(cols.containsKey("arr_bool"), "Column 'arr_bool' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.ARRAY, cols.get("arr_bool").getType());
+        assertTrue(cols.containsKey("arr_string"), "Column 'arr_string' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.ARRAY, cols.get("arr_string").getType());
+    }
+
+    // DDL refresh timeout - retries set to 0 so refresh loop never runs, throws RetriableException
+    @Test
+    public void autoEvolveDdlRefreshTimeoutThrowsRetriable() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE_DDL_REFRESH_RETRIES, "0");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_ddl_timeout_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // V2 schema with a new field - DDL will succeed but refresh will timeout with 0 retries
+        Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 5);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+
+        try {
+            chst.put(srV2);
+            assertTrue(false, "Expected RetriableException due to DDL refresh timeout with 0 retries");
+        } catch (RuntimeException e) {
+            // Processing layer may wrap the RetriableException - walk the cause chain
+            Throwable t = e;
+            boolean found = false;
+            while (t != null) {
+                if (t instanceof org.apache.kafka.connect.errors.RetriableException
+                        && t.getMessage() != null && t.getMessage().contains("DDL propagation timeout")) {
+                    found = true;
+                    break;
+                }
+                t = t.getCause();
+            }
+            assertTrue(found, "Should contain RetriableException with DDL propagation timeout in cause chain, got: " + e);
+        } finally {
+            chst.stop();
+        }
+    }
+
+    // ALTER TABLE itself fails (table dropped externally after cache populated)
+    @Test
+    public void autoEvolveDdlExecutionFailureThrowsRuntimeException() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_ddl_exec_failure_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Insert V1 records to populate the connector's internal table mapping cache
+        Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 5);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(srV1);
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Drop the table externally - the connector still has it cached in memory
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        // V2 schema with a new field - ALTER TABLE will fail because the table no longer exists
+        Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 5);
+        try {
+            chst.put(srV2);
+            assertTrue(false, "Expected RuntimeException due to ALTER TABLE on dropped table");
+        } catch (RuntimeException e) {
+            // Processing layer wraps exceptions - walk the cause chain for the DDL failure
+            Throwable t = e;
+            boolean found = false;
+            while (t != null) {
+                if (t.getMessage() != null && (t.getMessage().contains("ALTER TABLE") || t.getMessage().contains("UNKNOWN_TABLE"))) {
+                    found = true;
+                    break;
+                }
+                t = t.getCause();
+            }
+            assertTrue(found, "Should indicate DDL failure in cause chain, got: " + e.getClass().getName() + ": " + e.getMessage());
+        } finally {
+            chst.stop();
+        }
+    }
+
+    // STRUCT field without struct-to-json flag throws SchemaTypeInferenceException with helpful message
+    @Test
+    public void autoEvolveUnsupportedStructTypeThrowsError() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        // auto.evolve.struct.to.json is false by default
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_unsupported_struct_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStructField(topic, 1, 5);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+
+        try {
+            chst.put(srV2);
+            assertTrue(false, "Expected SchemaTypeInferenceException for unsupported STRUCT type");
+        } catch (RuntimeException e) {
+            Throwable t = e;
+            boolean foundInference = false;
+            while (t != null) {
+                if (t instanceof com.clickhouse.kafka.connect.sink.db.mapping.SchemaTypeInferenceException) {
+                    foundInference = true;
+                    break;
+                }
+                t = t.getCause();
+            }
+            assertTrue(foundInference,
+                    "Should throw SchemaTypeInferenceException for unsupported STRUCT, got: " + e.getClass().getName() + ": " + e.getMessage());
+        } finally {
+            chst.stop();
+        }
+    }
+
+    // Avro-style union(string, bytes) STRUCT collapses to Nullable(String), not JSON
+    @Test
+    public void autoEvolveStringBytesUnionCollapsesToString() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_union_string_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStringBytesUnionField(topic, 1, 10);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(srV2);
+        chst.stop();
+
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify the union field was created as String (not JSON)
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        com.clickhouse.kafka.connect.sink.db.mapping.Column col = described.getRootColumnsMap().get("new_union_field");
+        assertNotNull(col, "Column 'new_union_field' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.STRING, col.getType(),
+                "Union(string, bytes) should collapse to String, not JSON");
+    }
+
+    // Avro union(string, int) auto-evolved as Variant(String, Int32) column
+    @Test
+    @SinceClickHouseVersion("24.1")
+    public void autoEvolveMixedUnionCreatesVariantColumn() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "allow_experimental_variant_type=1");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("auto_evolve_variant_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        Collection<SinkRecord> records = SchemaTestData.createSchemaV2WithMixedTypeUnionField(topic, 1, 10);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify the union field was created as Variant
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        com.clickhouse.kafka.connect.sink.db.mapping.Column col = described.getRootColumnsMap().get("mixed_union");
+        assertNotNull(col, "Column 'mixed_union' should exist");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.VARIANT, col.getType(),
+                "union(string, int) should map to Variant, not String or JSON");
+    }
+
     @Test
     public void autoEvolveThreeSeparateBatches() {
         Map<String, String> props = createProps();
