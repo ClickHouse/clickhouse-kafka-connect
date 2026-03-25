@@ -1857,4 +1857,168 @@ public class SchemaTestData {
         }
         return array;
     }
+
+    // Schema with all supported primitive types + logical types as new columns
+    public static Collection<SinkRecord> createSchemaV2WithAllPrimitiveTypes(String topic, int partition) {
+        return createSchemaV2WithAllPrimitiveTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithAllPrimitiveTypes(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_int8", SchemaBuilder.int8().optional().build())
+                .field("new_int16", SchemaBuilder.int16().optional().build())
+                .field("new_int32", SchemaBuilder.int32().optional().build())
+                .field("new_int64", SchemaBuilder.int64().optional().build())
+                .field("new_float32", SchemaBuilder.float32().optional().build())
+                .field("new_float64", SchemaBuilder.float64().optional().build())
+                .field("new_bool", SchemaBuilder.bool().optional().build())
+                .field("new_string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("new_bytes", Schema.OPTIONAL_BYTES_SCHEMA)
+                .field("new_decimal", Decimal.builder(4).optional().build())
+                .field("new_date", org.apache.kafka.connect.data.Date.builder().optional().build())
+                .field("new_timestamp", Timestamp.builder().optional().build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_int8", (byte) n)
+                    .put("new_int16", (short) n)
+                    .put("new_int32", (int) n)
+                    .put("new_int64", n * 100L)
+                    .put("new_float32", (float) n * 1.1f)
+                    .put("new_float64", n * 2.2)
+                    .put("new_bool", n % 2 == 0)
+                    .put("new_string", "str_" + n)
+                    .put("new_bytes", ("bytes_" + n).getBytes())
+                    .put("new_decimal", java.math.BigDecimal.valueOf(n * 100 + 50, 4))
+                    .put("new_date", Date.from(java.time.Instant.ofEpochMilli(n * 86400000L)))
+                    .put("new_timestamp", Date.from(java.time.Instant.ofEpochMilli(System.currentTimeMillis())));
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    // Schema with arrays of different element types
+    public static Collection<SinkRecord> createSchemaV2WithTypedArrays(String topic, int partition) {
+        return createSchemaV2WithTypedArrays(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithTypedArrays(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("arr_int32", SchemaBuilder.array(SchemaBuilder.int32().optional().build()).optional().build())
+                .field("arr_float64", SchemaBuilder.array(SchemaBuilder.float64().optional().build()).optional().build())
+                .field("arr_bool", SchemaBuilder.array(SchemaBuilder.bool().optional().build()).optional().build())
+                .field("arr_string", SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).optional().build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("arr_int32", Arrays.asList((int) n, (int) n + 1))
+                    .put("arr_float64", Arrays.asList(n * 1.1, n * 2.2))
+                    .put("arr_bool", Arrays.asList(n % 2 == 0, n % 2 != 0))
+                    .put("arr_string", Arrays.asList("a_" + n, "b_" + n));
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    // Schema with an Avro-style union STRUCT (all STRING/BYTES fields) that should collapse to String
+    public static Collection<SinkRecord> createSchemaV2WithStringBytesUnionField(String topic, int partition) {
+        return createSchemaV2WithStringBytesUnionField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithStringBytesUnionField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        // Simulates how Confluent AvroConverter represents union(string, bytes)
+        // AvroConverter sets schema.name() to "io.confluent.connect.avro.Union"
+        Schema UNION_SCHEMA = SchemaBuilder.struct()
+                .name("io.confluent.connect.avro.Union")
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("bytes", Schema.OPTIONAL_BYTES_SCHEMA)
+                .optional()
+                .build();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_union_field", UNION_SCHEMA)
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct unionValue = new Struct(UNION_SCHEMA)
+                    .put("string", "union_str_" + n);
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_union_field", unionValue);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    // Schema with an Avro-style union STRUCT (string + int) that should map to Variant(String, Int32)
+    public static Collection<SinkRecord> createSchemaV2WithMixedTypeUnionField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema UNION_SCHEMA = SchemaBuilder.struct()
+                .name("io.confluent.connect.avro.Union")
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .optional()
+                .build();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("mixed_union", UNION_SCHEMA)
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct unionValue;
+            if (n % 2 == 0) {
+                unionValue = new Struct(UNION_SCHEMA).put("string", "val_" + n);
+            } else {
+                unionValue = new Struct(UNION_SCHEMA).put("int", (int) n);
+            }
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("mixed_union", unionValue);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
 }

@@ -284,6 +284,9 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
                                     continue;
 
+                                if (colTypeName.equals("VARIANT") && dataTypeName.equals("STRUCT"))
+                                    continue;
+
                                 if (INT_TYPES.contains(colTypeName)) {
                                     continue;
                                 }
