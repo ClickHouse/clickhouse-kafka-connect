@@ -58,6 +58,7 @@ public class ClickHouseSinkConfig {
     public static final String ERROR_TOLERANCE_ALL = "all";
     public static final String ERROR_TOLERANCE_NONE = "none";
     public static final String AUTO_EVOLVE = "auto.evolve";
+    public static final String AUTO_EVOLVE_DDL_REFRESH_RETRIES = "auto.evolve.ddl.refresh.retries";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
@@ -112,6 +113,7 @@ public class ClickHouseSinkConfig {
     private final long bufferFlushTime;
     private final boolean reportInsertedOffsets;
     private final boolean autoEvolve;
+    private final int autoEvolveDdlRefreshRetries;
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
 
@@ -299,6 +301,7 @@ public class ClickHouseSinkConfig {
         }
 
         this.autoEvolve = Boolean.parseBoolean(props.getOrDefault(AUTO_EVOLVE, "false"));
+        this.autoEvolveDdlRefreshRetries = Integer.parseInt(props.getOrDefault(AUTO_EVOLVE_DDL_REFRESH_RETRIES, "3"));
 
         String jsonAsString = getClickhouseSettings().get("input_format_binary_read_json_as_string");
         this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
@@ -708,6 +711,17 @@ public class ClickHouseSinkConfig {
                 ++ddlOrderInGroup,
                 ConfigDef.Width.SHORT,
                 "Auto evolve table schema."
+        );
+        configDef.define(AUTO_EVOLVE_DDL_REFRESH_RETRIES,
+                ConfigDef.Type.INT,
+                3,
+                ConfigDef.Range.atLeast(0),
+                ConfigDef.Importance.LOW,
+                "Number of retries when waiting for DDL changes to propagate after schema evolution. default: 3",
+                ddlGroup,
+                ++ddlOrderInGroup,
+                ConfigDef.Width.SHORT,
+                "DDL refresh retries"
         );
         return configDef;
     }
