@@ -503,10 +503,8 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     private void alterTableAddColumnV2(String sql) {
-        try {
-            QuerySettings settings = new QuerySettings();
-            settings.serverSetting("alter_sync", "1");
-            client.query(sql, settings).get();
+        try (QueryResponse response = client.query(sql, new QuerySettings().serverSetting("alter_sync", "1")).get()) {
+            // DDL executed; alter_sync=1 waits for the local replica to apply
         } catch (ExecutionException | InterruptedException e) {
             throw new RuntimeException("Failed to execute ALTER TABLE: " + sql, e);
         }
