@@ -264,7 +264,7 @@ public class ClickHouseBase {
         for (Map.Entry<String, Serializable> entry : clientSettings.entrySet()) {
             settings.setOption(entry.getKey(), entry.getValue());
         }
-        try (Records records = chc.getClient().queryRecords(createTableQueryTmp, settings).get(900, TimeUnit.SECONDS)) {
+        try (Records records = chc.queryV2(createTableQueryTmp, settings)) {
             // success
         } catch (Exception e) {
             LOGGER.info("Failed to create table ", e);

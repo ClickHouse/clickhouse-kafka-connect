@@ -26,6 +26,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -259,7 +260,14 @@ public class ClickHouseHelperClient {
     }
 
     public Records queryV2(String query) {
-        return queryV2(query, null);
+        return queryV2(query, (ClickHouseFormat) null);
+    }
+
+    public Records queryV2(String query, @Nullable ClickHouseFormat clickHouseFormat) {
+        QuerySettings settings = new QuerySettings();
+        if (clickHouseFormat != null)
+            settings.setFormat(clickHouseFormat);
+        return queryV2(query, settings);
     }
 
     public ClickHouseResponse queryV1(String query, ClickHouseFormat clickHouseFormat) {
@@ -284,12 +292,9 @@ public class ClickHouseHelperClient {
         throw new RuntimeException(ce);
     }
 
-    public Records queryV2(String query, ClickHouseFormat clickHouseFormat) {
+    public Records queryV2(String query, QuerySettings settings) {
         int retryCount = 0;
         Exception ce = null;
-        QuerySettings settings = new QuerySettings();
-        if (clickHouseFormat != null)
-            settings.setFormat(clickHouseFormat);
         while (retryCount < retry) {
             System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
             CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
