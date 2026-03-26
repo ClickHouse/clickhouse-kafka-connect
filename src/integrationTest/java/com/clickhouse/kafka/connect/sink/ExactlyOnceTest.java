@@ -31,6 +31,7 @@ public class ExactlyOnceTest {
     private static ClickHouseHelperClient chcNoProxy;
     private static final Properties properties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
+    private static final String MERGE_TREE_TABLE_DDL = "CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) Engine = MergeTree ORDER BY symbol";
 
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
@@ -102,7 +103,7 @@ public class ExactlyOnceTest {
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chcNoProxy, topicName);
-        createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
+        ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL); // implicitly SharedMergeTree in CH Cloud
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
@@ -126,7 +127,7 @@ public class ExactlyOnceTest {
     }
 
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
-        createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
+        ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL); // implicitly SharedMergeTree in CH Cloud
         ClickHouseAPI.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
@@ -146,7 +147,7 @@ public class ExactlyOnceTest {
         do {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
-            createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
+            ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL); // implicitly SharedMergeTree in CH Cloud
             ClickHouseAPI.clearTable(chcNoProxy, topicName);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);

@@ -21,7 +21,6 @@ import org.testcontainers.containers.Network;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseBase {
