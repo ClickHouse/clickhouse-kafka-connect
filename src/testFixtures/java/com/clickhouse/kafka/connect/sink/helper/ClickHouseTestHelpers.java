@@ -399,10 +399,9 @@ public class ClickHouseTestHelpers {
 
     public static void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery, Map<String, Serializable> clientSettings) {
         String createTableQueryTmp = String.format(createTableQuery, topic);
+
         QuerySettings settings = new QuerySettings();
-        for (Map.Entry<String, Serializable> entry : clientSettings.entrySet()) {
-            settings.setOption(entry.getKey(), entry.getValue());
-        }
+        clientSettings.forEach(settings::setOption);
         try (Records records = chc.queryV2(createTableQueryTmp, settings)) {
             // success
         } catch (Exception e) {
