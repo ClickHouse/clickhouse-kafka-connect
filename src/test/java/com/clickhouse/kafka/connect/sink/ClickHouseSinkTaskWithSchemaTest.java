@@ -2759,4 +2759,144 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
         assertEquals(2, rows.size());
     }
+
+    @Test
+    public void autoEvolveMixedBatchLastRecordOlderSchema() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("auto_evolve_last_record_older_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Build batch where V2 records come first and V1 (older) records are last.
+        // Before the fix, only the last record was checked - V1 has no new fields, so ALTER TABLE was skipped.
+        List<SinkRecord> batch = new ArrayList<>();
+        batch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 3));
+        batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(batch);
+        chst.stop();
+
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // The new column from V2 should exist even though V1 was the last record
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
+                "Column 'new_string_field' should be added even when last record is V1 (older schema)");
+
+        // V1 records should have NULL for the new column
+        String nullCountQuery = String.format(
+                "SELECT COUNT(*) FROM `%s` WHERE `new_string_field` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+        try {
+            Records nullRecords = chc.getClient().queryRecords(nullCountQuery).get();
+            int nullCount = Integer.parseInt(nullRecords.iterator().next().getString(1));
+            assertEquals(2, nullCount, "V1 records should have NULL for new_string_field");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void autoEvolveMultiVersionUnionSemantics() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("auto_evolve_union_semantics_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Batch with V1, V2, V3, V4 - each version adds a different field.
+        // All new fields should be added in a single ALTER TABLE.
+        List<SinkRecord> batch = new ArrayList<>();
+        batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 2));
+        batch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 2));
+        batch.addAll(SchemaTestData.createSchemaV3WithExtraField(topic, 1, 2));
+        batch.addAll(SchemaTestData.createSchemaV4WithUniqueField(topic, 1, 2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(batch);
+        chst.stop();
+
+        assertEquals(8, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify all fields from V2, V3, V4 exist
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
+                "V2 column 'new_string_field' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("v3_bool_field"),
+                "V3 column 'v3_bool_field' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("v4_float_field"),
+                "V4 column 'v4_float_field' should exist");
+    }
+
+    @Test
+    public void autoEvolveInterleavedSchemaVersions() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("auto_evolve_non_monotonic_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Interleaved schema versions [V1, V3, V2, V1, V3]
+        List<SinkRecord> batch = new ArrayList<>();
+        batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 1));
+        batch.addAll(SchemaTestData.createSchemaV3WithExtraField(topic, 1, 1));
+        batch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 1));
+        batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 1));
+        batch.addAll(SchemaTestData.createSchemaV3WithExtraField(topic, 1, 1));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(batch);
+        chst.stop();
+
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
+                "V2 column 'new_string_field' should exist despite non-monotonic order");
+        assertTrue(described.getRootColumnsMap().containsKey("v3_bool_field"),
+                "V3 column 'v3_bool_field' should exist despite non-monotonic order");
+    }
+
+    @Test
+    public void autoEvolveCrossPartitionSchemaDrift() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("auto_evolve_cross_partition_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Records from different partitions with different schema versions.
+        // With ignorePartitionsWhenBatching=true, they are merged into a single batch.
+        // Partition 0: V2 records (has new_string_field)
+        // Partition 1: V1 records (no new_string_field) - these may end up last
+        List<SinkRecord> batch = new ArrayList<>();
+        batch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 0, 3));
+        batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 3));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(batch);
+        chst.stop();
+
+        assertEquals(6, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // The new column from V2 (partition 0) should exist even though
+        // V1 records from partition 1 may be last in the merged batch
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
+                "Column 'new_string_field' should be added with cross-partition schema drift");
+    }
 }

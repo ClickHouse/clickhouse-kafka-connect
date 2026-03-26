@@ -53,6 +53,7 @@ import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -212,9 +213,16 @@ public class ClickHouseWriter implements DBWriter {
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
 
         if (csc.isAutoEvolve()) {
-            // New columns are Nullable, so older records without the new fields insert with NULL.
-            Record last = records.get(records.size() - 1);
-            table = evolveTableSchema(table, last);
+            // Since auto-evolve only adds Nullable columns (never deletes), the superset is ok.
+            Map<String, Schema> allFields = new LinkedHashMap<>();
+            for (Record r : records) {
+                if (r.getFields() != null) {
+                    for (Field f : r.getFields()) {
+                        allFields.putIfAbsent(f.name(), f.schema());
+                    }
+                }
+            }
+            table = evolveTableSchema(table, allFields);
         }
 
         doInsertBatch(records, table, queryId);
@@ -842,15 +850,14 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    protected Table evolveTableSchema(Table table, Record record) throws InterruptedException {
-        if (record.getFields() == null) {
+    protected Table evolveTableSchema(Table table, Map<String, Schema> allFields) throws InterruptedException {
+        if (allFields.isEmpty()) {
             throw new RuntimeException(
                     "auto.evolve requires a Connect schema (Avro, Protobuf, or JSON Schema). " +
                     "Schemaless or string records are not supported with auto.evolve=true.");
         }
 
-        List<String> fieldNames = record.getFields().stream().map(Field::name).collect(Collectors.toList());
-        Set<String> missingColumns = table.getMissingColumns(fieldNames);
+        Set<String> missingColumns = table.getMissingColumns(allFields.keySet());
 
         if (missingColumns.isEmpty()) {
             return table;
@@ -858,11 +865,10 @@ public class ClickHouseWriter implements DBWriter {
 
         LOGGER.info("Detected {} new field(s) not present in table {}: {}", missingColumns.size(), table.getName(), missingColumns);
 
-        Map<String, Schema> schemaMap = record.getFields().stream().collect(Collectors.toMap(Field::name, Field::schema));
-        List<String> columnDefs = new java.util.ArrayList<>();
+        List<String> columnDefs = new ArrayList<>();
 
         for (String fieldName : missingColumns) {
-            Schema fieldSchema = schemaMap.get(fieldName);
+            Schema fieldSchema = allFields.get(fieldName);
             if (fieldSchema == null) {
                 continue;
             }
