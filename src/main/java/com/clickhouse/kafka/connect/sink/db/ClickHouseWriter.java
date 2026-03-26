@@ -173,7 +173,7 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     @Override
-    public void stop() {
+    public synchronized void stop() {
         LOGGER.debug("Stopping ClickHouseWriter");
         if (scheduledExecutor != null) {
             try {
@@ -183,6 +183,8 @@ public class ClickHouseWriter implements DBWriter {
                 }
             } catch (Exception e) {
                 LOGGER.error("Failed to shutdown scheduled executor", e);
+            } finally {
+                scheduledExecutor = null;
             }
         }
     }

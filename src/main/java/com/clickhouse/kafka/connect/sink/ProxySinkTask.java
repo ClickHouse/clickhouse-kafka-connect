@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
+import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
@@ -31,7 +32,7 @@ public final class ProxySinkTask {
     private static final AtomicInteger NEXT_ID = new AtomicInteger();
     private final Processing processing;
     private final StateProvider stateProvider;
-    private final ClickHouseWriter dbWriter;
+    private final DBWriter dbWriter;
     private final ClickHouseSinkConfig clickHouseSinkConfig;
 
     private final SinkTaskStatistics statistics;
