@@ -2031,6 +2031,134 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "V3 column 'v3_bool_field' should exist");
     }
 
+    @Test
+    public void autoEvolveThreeSeparateBatches() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_three_batches_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+
+        // Batch 1: Schema V1 (3 fields: off16, p_int64, name)
+        List<SinkRecord> batch1 = new ArrayList<>(SchemaTestData.createRichSchemaV1(topic, 1, 5, 0));
+        chst.put(batch1);
+
+        // Batch 2: Schema V2 (8 fields: off16, p_int64, name, email, age, score, active, city)
+        List<SinkRecord> batch2 = new ArrayList<>(SchemaTestData.createRichSchemaV2(topic, 1, 5, 5));
+        chst.put(batch2);
+
+        // Batch 3: Schema V3 (5 fields: off16, p_int64, name, email, country)
+        List<SinkRecord> batch3 = new ArrayList<>(SchemaTestData.createRichSchemaV3(topic, 1, 5, 10));
+        chst.put(batch3);
+
+        chst.stop();
+
+        assertEquals(15, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify all evolved columns exist
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("name"), "V1 column 'name' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("email"), "V2 column 'email' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("age"), "V2 column 'age' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("score"), "V2 column 'score' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("active"), "V2 column 'active' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("city"), "V2 column 'city' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("country"), "V3 column 'country' should exist");
+
+        // V1 records should have NULL for V2/V3 columns
+        String nullEmailQuery = String.format(
+                "SELECT COUNT(*) FROM `%s` WHERE `email` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+        // V3 records don't include age/score/active/city — those should be NULL
+        String nullAgeQuery = String.format(
+                "SELECT COUNT(*) FROM `%s` WHERE `age` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+        try {
+            Records emailNulls = chc.getClient().queryRecords(nullEmailQuery).get();
+            int emailNullCount = Integer.parseInt(emailNulls.iterator().next().getString(1));
+            assertEquals(5, emailNullCount, "V1 records should have NULL for email");
+
+            Records ageNulls = chc.getClient().queryRecords(nullAgeQuery).get();
+            int ageNullCount = Integer.parseInt(ageNulls.iterator().next().getString(1));
+            assertEquals(10, ageNullCount, "V1 + V3 records (10) should have NULL for age");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void autoEvolveMixedSchemasTenRecordsInOneBatch() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = "auto_evolve_mixed_ten_records_test";
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Single batch with 10 records spanning 3 schema versions:
+        //   Records 1–5:  Schema V1 (3 fields: off16, p_int64, name)
+        //   Records 6–7:  Schema V2 (8 fields: off16, p_int64, name, email, age, score, active, city)
+        //   Records 8–10: Schema V3 (5 fields: off16, p_int64, name, email, country)
+        List<SinkRecord> batch = new ArrayList<>();
+        batch.addAll(SchemaTestData.createRichSchemaV1(topic, 1, 5, 0));
+        batch.addAll(SchemaTestData.createRichSchemaV2(topic, 1, 2, 5));
+        batch.addAll(SchemaTestData.createRichSchemaV3(topic, 1, 3, 7));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(batch);
+        chst.stop();
+
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify all evolved columns from all versions exist
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("name"), "V1 column 'name' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("email"), "V2 column 'email' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("age"), "V2 column 'age' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("score"), "V2 column 'score' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("active"), "V2 column 'active' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("city"), "V2 column 'city' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("country"), "V3 column 'country' should exist");
+
+        // Verify NULL distribution:
+        //   name: all 10 records have it - 0 NULLs
+        //   email: V1 records (5) lack it - 5 NULLs
+        //   age: only V2 records (2) have it - 8 NULLs
+        //   country: only V3 records (3) have it - 7 NULLs
+        try {
+            String nameNullQuery = String.format(
+                    "SELECT COUNT(*) FROM `%s` WHERE `name` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+            Records nameNulls = chc.getClient().queryRecords(nameNullQuery).get();
+            assertEquals(0, Integer.parseInt(nameNulls.iterator().next().getString(1)),
+                    "All records have name, so 0 NULLs expected");
+
+            String emailNullQuery = String.format(
+                    "SELECT COUNT(*) FROM `%s` WHERE `email` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+            Records emailNulls = chc.getClient().queryRecords(emailNullQuery).get();
+            assertEquals(5, Integer.parseInt(emailNulls.iterator().next().getString(1)),
+                    "V1 records (5) should have NULL for email");
+
+            String ageNullQuery = String.format(
+                    "SELECT COUNT(*) FROM `%s` WHERE `age` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+            Records ageNulls = chc.getClient().queryRecords(ageNullQuery).get();
+            assertEquals(8, Integer.parseInt(ageNulls.iterator().next().getString(1)),
+                    "V1 (5) + V3 (3) records should have NULL for age");
+
+            String countryNullQuery = String.format(
+                    "SELECT COUNT(*) FROM `%s` WHERE `country` IS NULL SETTINGS select_sequential_consistency = 1", topic);
+            Records countryNulls = chc.getClient().queryRecords(countryNullQuery).get();
+            assertEquals(7, Integer.parseInt(countryNulls.iterator().next().getString(1)),
+                    "V1 (5) + V2 (2) records should have NULL for country");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     // auto-evolve adds columns for every supported primitive + logical type in a single batch
     @Test
     public void autoEvolveAllPrimitiveAndLogicalTypes() {
