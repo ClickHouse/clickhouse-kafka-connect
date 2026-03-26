@@ -243,16 +243,6 @@ public class ClickHouseBase {
         }
     }
 
-    protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-        try {
-            chc.queryV2(createTableQueryTmp).close();
-        } catch (Exception e) {
-            LOGGER.info("Failed to create table ", e);
-            throw new RuntimeException(e);
-        }
-    }
-
     protected int countRows(ClickHouseHelperClient chc, String database, String topic) {
         String queryCount = String.format("select count(*) from `%s.%s`", database, topic);
         try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);

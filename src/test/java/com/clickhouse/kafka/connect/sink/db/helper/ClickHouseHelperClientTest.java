@@ -117,7 +117,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
-        createTable(chc, topic, "CREATE TABLE %s (" +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s (" +
                 "`off16` Int16," +
                 "`null_str_alias` Nullable(String) ALIAS formatReadableSize(`off16`)," +
                 "`null_str_eph` Nullable(String) EPHEMERAL," +

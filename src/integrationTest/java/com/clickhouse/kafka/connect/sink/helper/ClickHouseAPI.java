@@ -81,19 +81,6 @@ public class ClickHouseAPI {
         }
     }
 
-    public static void createMergeTreeTable(ClickHouseHelperClient chc, String tableName) {
-        String queryString = String.format("CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) " +
-                "Engine = MergeTree ORDER BY symbol", tableName);
-        try {
-            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
-            LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     public static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
         String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
                 "FROM %s " +

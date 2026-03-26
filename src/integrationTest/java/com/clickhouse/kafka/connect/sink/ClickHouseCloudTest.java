@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static org.junit.Assert.assertTrue;
 
 public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
