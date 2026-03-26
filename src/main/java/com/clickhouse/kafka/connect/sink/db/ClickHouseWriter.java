@@ -55,7 +55,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.Timer;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -176,13 +175,15 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public void stop() {
         LOGGER.debug("Stopping ClickHouseWriter");
-        try {
-            scheduledExecutor.shutdownNow();
-            if (!scheduledExecutor.awaitTermination(TIMEOUT_FOR_SHUTDOWN, TimeUnit.SECONDS)) {
-                LOGGER.error("Failed to shutdown scheduled executor after " + TIMEOUT_FOR_SHUTDOWN + " seconds");
+        if (scheduledExecutor != null) {
+            try {
+                scheduledExecutor.shutdownNow();
+                if (!scheduledExecutor.awaitTermination(TIMEOUT_FOR_SHUTDOWN, TimeUnit.SECONDS)) {
+                    LOGGER.error("Failed to shutdown scheduled executor after " + TIMEOUT_FOR_SHUTDOWN + " seconds");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to shutdown scheduled executor", e);
             }
-        } catch (Exception e) {
-            LOGGER.error("Failed to shutdown scheduled executor", e);
         }
     }
 
@@ -1381,13 +1382,22 @@ public class ClickHouseWriter implements DBWriter {
 
     private synchronized void startBackgroundTableSync(String database) {
         // Add table mapping refresher
-        if (scheduledExecutor == null && csc.getTableRefreshInterval() > 0) {
-            scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
+        if (csc.getTableRefreshInterval() > 0) {
+            if (scheduledExecutor == null) {
+                scheduledExecutor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = Executors.defaultThreadFactory().newThread(r);
+                        t.setDaemon(true);
+                        t.setName("clickhouse-table-sync");
+                        return t;
+                    }
+                });
+            }
+
             TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(database, this);
             scheduledExecutor.scheduleAtFixedRate(tableMappingRefresher, csc.getTableRefreshInterval(), csc.getTableRefreshInterval(),
                     TimeUnit.MILLISECONDS);
-        } else if (scheduledExecutor != null) {
-            LOGGER.warn("Double start of background table sync. Scheduler already running");
         }
     }
 }

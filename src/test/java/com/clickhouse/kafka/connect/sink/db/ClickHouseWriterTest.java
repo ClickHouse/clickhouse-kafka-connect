@@ -16,11 +16,11 @@ import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExt
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.apache.kafka.common.record.TimestampType;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,12 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseWriterTest extends ClickHouseBase {
@@ -247,8 +252,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 TimestampType.CREATE_TIME);
         Record record = Record.convert(sinkRecord, false, ".", chc.getDatabase());
 
-        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
-        writer.start(new ClickHouseSinkConfig(props));
         runWithWriter(props, (chw) -> {
             try {
                 chw.doInsert(List.of(record), new QueryIdentifier(topic, "tuple-order-mismatch-" + System.nanoTime()));
