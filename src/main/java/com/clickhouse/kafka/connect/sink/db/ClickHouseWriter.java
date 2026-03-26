@@ -59,6 +59,9 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -69,23 +72,22 @@ public class ClickHouseWriter implements DBWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
+    private static final long TIMEOUT_FOR_SHUTDOWN = 5; // seconds
+
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
     private final Map<String, Table> mapping;
     private final AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
     private final SinkTaskStatistics statistics;
+
+    private ScheduledExecutorService scheduledExecutor;
+
     public ClickHouseWriter(SinkTaskStatistics statistics) {
         this.mapping = new ConcurrentHashMap<>();
         this.statistics = statistics;
     }
 
-    protected void setClient(ClickHouseHelperClient chc) {
-        this.chc = chc;
-    }
-    protected void setSinkConfig(ClickHouseSinkConfig csc) {
-        this.csc = csc;
-    }
     protected Map<String, Table> getMapping() {
         return mapping;
     }
@@ -93,7 +95,7 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
-        setSinkConfig(csc);
+        this.csc = csc;
         String clientVersion = csc.getClientVersion();
         boolean useClientV2 = clientVersion.equals("V1") ? false : true;
 
@@ -134,15 +136,14 @@ public class ClickHouseWriter implements DBWriter {
             return false;
         }
 
-
-
         LOGGER.debug("Ping was successful.");
-
         this.updateMapping(csc.getDatabase());
         if (mapping.isEmpty()) {
             LOGGER.error("Did not find any tables in destination Please create before running.");
             return false;
         }
+
+        startBackgroundTableSync(csc.getDatabase());
 
         return true;
     }
@@ -172,11 +173,21 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     @Override
-    public void stop() {
+    public synchronized void stop() {
         LOGGER.debug("Stopping ClickHouseWriter");
+        if (scheduledExecutor != null) {
+            try {
+                scheduledExecutor.shutdownNow();
+                if (!scheduledExecutor.awaitTermination(TIMEOUT_FOR_SHUTDOWN, TimeUnit.SECONDS)) {
+                    LOGGER.error("Failed to shutdown scheduled executor after " + TIMEOUT_FOR_SHUTDOWN + " seconds");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to shutdown scheduled executor", e);
+            } finally {
+                scheduledExecutor = null;
+            }
+        }
     }
-
-
 
     public ClickHouseNode getServer() {
         return chc.getServer();
@@ -1371,4 +1382,24 @@ public class ClickHouseWriter implements DBWriter {
         return 0;
     }
 
+    private synchronized void startBackgroundTableSync(String database) {
+        // Add table mapping refresher
+        if (csc.getTableRefreshInterval() > 0) {
+            if (scheduledExecutor == null) {
+                scheduledExecutor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = Executors.defaultThreadFactory().newThread(r);
+                        t.setDaemon(true);
+                        t.setName("clickhouse-table-sync");
+                        return t;
+                    }
+                });
+            }
+
+            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(database, this);
+            scheduledExecutor.scheduleAtFixedRate(tableMappingRefresher, csc.getTableRefreshInterval(), csc.getTableRefreshInterval(),
+                    TimeUnit.MILLISECONDS);
+        }
+    }
 }
