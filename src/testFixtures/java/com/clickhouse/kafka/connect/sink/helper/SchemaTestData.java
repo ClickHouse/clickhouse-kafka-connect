@@ -1820,6 +1820,99 @@ public class SchemaTestData {
         return array;
     }
 
+    /**
+     * Rich V1 schema with 3 fields: off16, p_int64, name.
+     */
+    public static Collection<SinkRecord> createRichSchemaV1(String topic, int partition, int totalRecords, long startOffset) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("name", "user_" + n);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA, value_struct,
+                    startOffset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    /**
+     * Rich V2 schema with 8 fields: off16, p_int64, name, email, age, score, active, city.
+     */
+    public static Collection<SinkRecord> createRichSchemaV2(String topic, int partition, int totalRecords, long startOffset) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("email", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("age", SchemaBuilder.int32().optional().build())
+                .field("score", SchemaBuilder.float64().optional().build())
+                .field("active", SchemaBuilder.bool().optional().build())
+                .field("city", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("name", "user_" + n)
+                    .put("email", "user_" + n + "@example.com")
+                    .put("age", 20 + (int) n)
+                    .put("score", n * 1.5)
+                    .put("active", n % 2 == 0)
+                    .put("city", "city_" + n);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA, value_struct,
+                    startOffset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    /**
+     * Rich V3 schema with 5 fields: off16, p_int64, name, email, country.
+     * Drops some V2 fields (age, score, active, city) and adds country.
+     */
+    public static Collection<SinkRecord> createRichSchemaV3(String topic, int partition, int totalRecords, long startOffset) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("email", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("country", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("name", "user_" + n)
+                    .put("email", "user_" + n + "@example.com")
+                    .put("country", "country_" + n);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA, value_struct,
+                    startOffset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
     public static Collection<SinkRecord> createSchemaV2WithLogicalTypes(String topic, int partition) {
         return createSchemaV2WithLogicalTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
     }
