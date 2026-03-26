@@ -100,7 +100,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_primitive_types_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
                 "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
@@ -117,7 +117,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_empty_records_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
                 "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemalessTestData.createWithEmptyDataRecords(topic, 1);
 
@@ -134,7 +134,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_nullable_values_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `null_str` Nullable(String), `p_int8` Int8, `p_int16` Int16, " +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `null_str` Nullable(String), `p_int8` Int8, `p_int16` Int16, " +
                 "`p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypesWithNulls(topic, 1);
 
@@ -152,7 +152,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "schemaless_array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), " +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), " +
                 "`arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)," +
                 "`arr_str_arr` Array(Array(String)), `arr_arr_str_arr` Array(Array(Array(String))), `arr_map` Array(Map(String, String))  ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -172,7 +172,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "schemaless_map_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
                 "map_int64_string Map(Int64, String), map_string_map Map(String, Map(String, Int64)), map_string_array Map(String, Array(String)), " +
                 "map_map_map Map(String, Map(String, Map(String, String)))   ) Engine = MergeTree ORDER BY off16");
 
@@ -194,7 +194,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "special-char-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), " +
                 "map_int64_string Map(Int64, String), map_string_map Map(String, Map(String, Int64)), map_string_array Map(String, Array(String)), " +
                 "map_map_map Map(String, Map(String, Map(String, String)))   ) Engine = MergeTree ORDER BY off16");
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -214,7 +214,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "emojis_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemalessTestData.createDataWithEmojis(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -233,7 +233,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        createTable(chc, tableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
+        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
                 "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
@@ -251,7 +251,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "decimal_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        createTable(chc, topic, "CREATE TABLE %s ( `num` String, `decimal_14_2` Decimal(14, 2)) Engine = MergeTree ORDER BY num");
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `num` String, `decimal_14_2` Decimal(14, 2)) Engine = MergeTree ORDER BY num");
         Collection<SinkRecord> sr = SchemalessTestData.createDecimalTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();

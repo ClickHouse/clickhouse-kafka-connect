@@ -18,11 +18,7 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 
-import com.clickhouse.client.api.query.QuerySettings;
-import com.clickhouse.client.api.query.Records;
-
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -244,30 +240,6 @@ public class ClickHouseBase {
             chc.queryV2(dropDatabaseQuery).close();
         } catch (Exception e) {
             LOGGER.info("Failed to drop database ", e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-        try {
-            chc.queryV2(createTableQueryTmp).close();
-        } catch (Exception e) {
-            LOGGER.info("Failed to create table ", e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    protected void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery, Map<String, Serializable> clientSettings) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-        QuerySettings settings = new QuerySettings();
-        for (Map.Entry<String, Serializable> entry : clientSettings.entrySet()) {
-            settings.setOption(entry.getKey(), entry.getValue());
-        }
-        try (Records records = chc.queryV2(createTableQueryTmp, settings)) {
-            // success
-        } catch (Exception e) {
-            LOGGER.info("Failed to create table ", e);
             throw new RuntimeException(e);
         }
     }

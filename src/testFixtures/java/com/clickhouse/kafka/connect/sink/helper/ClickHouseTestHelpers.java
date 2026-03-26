@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -383,6 +384,30 @@ public class ClickHouseTestHelpers {
             final String warning = String.format(MISSING_PROP_MESSAGE_FORMAT, property);
             logger.warn(warning);
             throw e;
+        }
+    }
+
+    public static void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
+        String createTableQueryTmp = String.format(createTableQuery, topic);
+        try {
+            chc.queryV2(createTableQueryTmp).close();
+        } catch (Exception e) {
+            LOGGER.info("Failed to create table ", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery, Map<String, Serializable> clientSettings) {
+        String createTableQueryTmp = String.format(createTableQuery, topic);
+        QuerySettings settings = new QuerySettings();
+        for (Map.Entry<String, Serializable> entry : clientSettings.entrySet()) {
+            settings.setOption(entry.getKey(), entry.getValue());
+        }
+        try (Records records = chc.queryV2(createTableQueryTmp, settings)) {
+            // success
+        } catch (Exception e) {
+            LOGGER.info("Failed to create table ", e);
+            throw new RuntimeException(e);
         }
     }
 }

@@ -40,7 +40,7 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        createTable(chc, tableName, "CREATE TABLE `%s` (`off16` Int16, date_number Nullable(Date)) Engine = MergeTree ORDER BY off16");
+        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE `%s` (`off16` Int16, date_number Nullable(Date)) Engine = MergeTree ORDER BY off16");
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
@@ -57,7 +57,7 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        createTable(chc, tableName, "CREATE TABLE `%s` ( c String COMMENT '\\\\', d String COMMENT '\\n'" +
+        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE `%s` ( c String COMMENT '\\\\', d String COMMENT '\\n'" +
                 ")" +
                 "ENGINE = MergeTree()" +
                 "ORDER BY tuple()");

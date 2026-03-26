@@ -36,7 +36,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void showTables() {
         String topic = createTopicName("simple_table_test");
-        createTable(chc, topic,
+        ClickHouseTestHelpers.createTable(chc, topic,
                 "CREATE TABLE %s ( `num` String ) Engine = MergeTree ORDER BY num");
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
@@ -50,7 +50,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void describeNestedFlattenedTable() {
         String topic = createTopicName("nested_flattened_table_test");
-        createTable(chc, topic,
+        ClickHouseTestHelpers.createTable(chc, topic,
                 "CREATE TABLE %s ( `num` String, " +
                         "`nested` Nested (innerInt Int32, innerString String)) " +
                         "Engine = MergeTree ORDER BY num");
@@ -66,7 +66,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void ignoreArrayWithNestedTable() {
         String topic = createTopicName("nested_table_test");
-        createTable(chc, topic,
+        ClickHouseTestHelpers.createTable(chc, topic,
                 "CREATE TABLE %s ( `num` String, " +
                         "`nested` Array(Nested (innerInt Int32, innerString String))) " +
                         "Engine = MergeTree ORDER BY num");
@@ -92,11 +92,11 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         props.put("password", "123FOURfive^&*91011");
         chc = createClient(props);
 
-        createTable(chc, nestedTopic,
+        ClickHouseTestHelpers.createTable(chc, nestedTopic,
                 "CREATE TABLE %s ( `num` String, " +
                         "`nested` Nested (innerInt Int32, innerString String)) " +
                         "Engine = MergeTree ORDER BY num");
-        createTable(chc, normalTopic,
+        ClickHouseTestHelpers.createTable(chc, normalTopic,
                 "CREATE TABLE %s ( `num` String ) " +
                         "Engine = MergeTree ORDER BY num");
 
@@ -117,7 +117,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
-        createTable(chc, topic, "CREATE TABLE %s (" +
+        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s (" +
                 "`off16` Int16," +
                 "`null_str_alias` Nullable(String) ALIAS formatReadableSize(`off16`)," +
                 "`null_str_eph` Nullable(String) EPHEMERAL," +
