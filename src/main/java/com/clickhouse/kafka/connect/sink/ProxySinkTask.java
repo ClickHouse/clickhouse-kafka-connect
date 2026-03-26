@@ -63,6 +63,7 @@ public final class ProxySinkTask {
     }
 
     public void stop() {
+        dbWriter.stop();
         statistics.unregisterMBean();
     }
 

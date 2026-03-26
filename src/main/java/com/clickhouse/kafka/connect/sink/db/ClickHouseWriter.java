@@ -60,6 +60,9 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -70,12 +73,17 @@ public class ClickHouseWriter implements DBWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
+    private static final long TIMEOUT_FOR_SHUTDOWN = 5; // seconds
+
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
     private final Map<String, Table> mapping;
     private final AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
     private final SinkTaskStatistics statistics;
+
+    private ScheduledExecutorService scheduledExecutor;
+
     public ClickHouseWriter(SinkTaskStatistics statistics) {
         this.mapping = new ConcurrentHashMap<>();
         this.statistics = statistics;
@@ -129,10 +137,7 @@ public class ClickHouseWriter implements DBWriter {
             return false;
         }
 
-
-
         LOGGER.debug("Ping was successful.");
-        tableRefreshTimer = new Timer();
         this.updateMapping(csc.getDatabase());
         if (mapping.isEmpty()) {
             LOGGER.error("Did not find any tables in destination Please create before running.");
@@ -171,9 +176,15 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public void stop() {
         LOGGER.debug("Stopping ClickHouseWriter");
+        try {
+            scheduledExecutor.shutdownNow();
+            if (!scheduledExecutor.awaitTermination(TIMEOUT_FOR_SHUTDOWN, TimeUnit.SECONDS)) {
+                LOGGER.error("Failed to shutdown scheduled executor after " + TIMEOUT_FOR_SHUTDOWN + " seconds");
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to shutdown scheduled executor", e);
+        }
     }
-
-
 
     public ClickHouseNode getServer() {
         return chc.getServer();
@@ -1368,15 +1379,15 @@ public class ClickHouseWriter implements DBWriter {
         return 0;
     }
 
-    private Timer tableRefreshTimer;
-
-
-    public void startBackgroundTableSync(String database) {
+    private synchronized void startBackgroundTableSync(String database) {
         // Add table mapping refresher
-        if (csc.getTableRefreshInterval() > 0) {
+        if (scheduledExecutor == null && csc.getTableRefreshInterval() > 0) {
+            scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
             TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(database, this);
-            tableRefreshTimer.schedule(tableMappingRefresher, csc.getTableRefreshInterval(), csc.getTableRefreshInterval());
+            scheduledExecutor.scheduleAtFixedRate(tableMappingRefresher, csc.getTableRefreshInterval(), csc.getTableRefreshInterval(),
+                    TimeUnit.MILLISECONDS);
+        } else if (scheduledExecutor != null) {
+            LOGGER.warn("Double start of background table sync. Scheduler already running");
         }
     }
-
 }
