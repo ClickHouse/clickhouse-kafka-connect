@@ -28,10 +28,13 @@ public class ClickHouseBase {
     protected ClickHouseContainer db;
     protected boolean isCloud = ClickHouseTestHelpers.isCloud();
     protected String database;
+    protected final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
+    protected final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
+    protected final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
 
 
     @BeforeAll
-    public  void setup() throws IOException  {
+    public void setup() throws IOException  {
         setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
 
         if (isCloud) {
@@ -47,7 +50,7 @@ public class ClickHouseBase {
 
         ClickHouseContainer db = new ClickHouseContainer(clickhouseDockerImage)
                 .withNetwork(network)
-                .withNetworkAliases("clickhouse")
+                .withNetworkAliases(CLICKHOUSE_DB_NETWORK_ALIAS)
                 .withPassword("test_password")
                 .withCreateContainerCmdModifier(cmd -> {
                     cmd.getHostConfig().withMemory(1024 * 1024 * 1024 * 2L);
@@ -130,6 +133,7 @@ public class ClickHouseBase {
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
+                .setSslSocketSni(csc.getSslSocketSni())
                 .build();
 
         if (withDatabase) {
@@ -143,6 +147,7 @@ public class ClickHouseBase {
                     .setTimeout(timeout)
                     .setRetry(csc.getRetry())
                     .useClientV2(useClientV2)
+                    .setSslSocketSni(csc.getSslSocketSni())
                     .build();
             }
 
@@ -180,6 +185,7 @@ public class ClickHouseBase {
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .setSslSocketSni(csc.getSslSocketSni())
                 .build();
 
         boolean ping;
@@ -219,6 +225,7 @@ public class ClickHouseBase {
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
+                .setSslSocketSni(csc.getSslSocketSni())
                 .build();
 
         dropDatabase(database, tmpChc);

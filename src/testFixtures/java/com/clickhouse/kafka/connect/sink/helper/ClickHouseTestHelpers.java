@@ -33,10 +33,8 @@ import java.util.concurrent.TimeUnit;
 
 public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
-    public static final String CLICKHOUSE_VERSION_DEFAULT = "24.10";
-    public static final String CLICKHOUSE_PROXY_VERSION_DEFAULT = "23.8";
+    public static final String CLICKHOUSE_VERSION_DEFAULT = "25.8.18.1"; // keep this as close to the latest LTS version
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
-    public static final String CLICKHOUSE_FOR_PROXY_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", CLICKHOUSE_PROXY_VERSION_DEFAULT);
     public static final String CLICKHOUSE_HOST = "clickhouse.host";
     public static final String CLICKHOUSE_PORT = "clickhouse.port";
     public static final String CLICKHOUSE_PASSWORD = "clickhouse.password";
