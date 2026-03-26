@@ -1,1 +1,1 @@
-com.clickhouse.kafka.connect.sink.ClickHouseCluster$SetupListenerForTests
+com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster$SetupListenerForTests

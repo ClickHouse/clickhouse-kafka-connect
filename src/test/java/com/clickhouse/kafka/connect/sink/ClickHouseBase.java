@@ -8,6 +8,7 @@ import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
 import org.junit.jupiter.api.AfterAll;
@@ -38,7 +39,7 @@ public class ClickHouseBase {
     @BeforeAll
     public void setup() throws IOException  {
         if (isCluster) {
-            // ClickHouseCluster should be started before tests run - see ClickHouseCluster.SetupListenerForTests
+            // cluster lifecycle is managed by Gradle and must be started before tests run
             if (!ClickHouseCluster.isStarted()) {
                 throw new IOException("cluster is not running - aborting tests");
             }
