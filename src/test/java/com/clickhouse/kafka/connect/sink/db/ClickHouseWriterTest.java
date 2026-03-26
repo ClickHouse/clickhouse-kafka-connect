@@ -129,11 +129,12 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
 
         runWithWriter(props, (chw) -> {
-                    ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
 
                     chw.updateMapping(chc.getDatabase());
                     Map<String, Table> tables = chw.getMapping();
                     assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+
+                    ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
 
                     Table table = chw.getTable(chc.getDatabase(), topic);
                     assertNotNull(table);
