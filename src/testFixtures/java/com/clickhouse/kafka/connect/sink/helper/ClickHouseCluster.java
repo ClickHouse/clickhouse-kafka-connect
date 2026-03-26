@@ -1,6 +1,5 @@
-package com.clickhouse.kafka.connect.sink;
+package com.clickhouse.kafka.connect.sink.helper;
 
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import org.junit.platform.launcher.LauncherSession;
 import org.junit.platform.launcher.LauncherSessionListener;
 import org.slf4j.Logger;
@@ -10,6 +9,8 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+// This class represents a CH cluster that runs locally as defined by src/testFixtures/docker/cluster/docker-compose.yml
+// For tests, the cluster lifecycle is managed by Gradle.
 public class ClickHouseCluster {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCluster.class);
 
@@ -38,7 +39,7 @@ public class ClickHouseCluster {
 
     /**
      * Pings the cluster HTTP endpoint with retries. Throws RuntimeException if
-     * not reachable after all attempts (prevents tests from running against a dead cluster).
+     * not reachable after all attempts.
      */
     private static void verifyConnectivity() {
         int maxAttempts = 10;
@@ -75,8 +76,7 @@ public class ClickHouseCluster {
         @Override
         public void launcherSessionOpened(LauncherSession session) {
             if (ClickHouseTestHelpers.isCluster()) {
-                // Gradle started Docker via dockerComposeUp before this JVM launched.
-                // Verify connectivity before allowing tests to proceed.
+                // Cluster should already be started, so verify connectivity before allowing tests to proceed.
                 verifyConnectivity();
                 markStarted();
                 LOGGER.info("Cluster mode: Gradle-managed cluster at {}:{}", CLUSTER_HOST, CLUSTER_PORT);
@@ -85,7 +85,6 @@ public class ClickHouseCluster {
 
         @Override
         public void launcherSessionClosed(LauncherSession session) {
-            // Teardown is handled by Gradle's finalizedBy("dockerComposeDown").
             LOGGER.info("Cluster mode: cluster teardown delegated to Gradle");
         }
     }

@@ -79,7 +79,7 @@ extra.apply {
 }
 
 dockerCompose {
-    useComposeFiles.set(listOf("docker/cluster/docker-compose.yml"))
+    useComposeFiles.set(listOf("src/testFixtures/docker/cluster/docker-compose.yml"))
     environment.putAll(mapOf(
         "CH_VERSION" to (System.getenv("CLICKHOUSE_VERSION") ?: "latest"),
         "PROJECT_ROOT" to "${project.projectDir}/docker/cluster"
@@ -93,7 +93,7 @@ dockerCompose {
 if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
     tasks.named("test") {
         dependsOn("composeUp")
-        finalizedBy("composeDown")
+        finalizedBy("composeDownForce")
         outputs.upToDateWhen { false }
     }
 }
