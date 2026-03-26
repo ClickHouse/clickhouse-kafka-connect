@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -107,7 +108,9 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("missing_table_mapping_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); }})
+                .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(createConfig());
@@ -144,8 +147,12 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
-        ClickHouseTestHelpers.createTable(chc, mappedTableWithoutBackticks, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
-        ClickHouseTestHelpers.createTable(chc, mappedTableWithBackticksRaw, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(mappedTableWithoutBackticks).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); }})
+                .setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(mappedTableWithBackticksRaw).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); }})
+                .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(new ClickHouseSinkConfig(props));
@@ -203,7 +210,11 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("do_write_col_value_tuples_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s (`_id` String, `result` Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32 )) Engine = MergeTree ORDER BY _id");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
+                    put("_id", "String");
+                    put("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)");
+                }}).setEngine("MergeTree").setOrderByColumn("_id").execute();
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(createConfig());

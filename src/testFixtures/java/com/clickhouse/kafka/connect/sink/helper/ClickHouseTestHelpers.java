@@ -387,22 +387,8 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-        try {
-            chc.queryV2(createTableQueryTmp).close();
-        } catch (Exception e) {
-            LOGGER.info("Failed to create table ", e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery, Map<String, Serializable> clientSettings) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        QuerySettings settings = new QuerySettings();
-        clientSettings.forEach(settings::setOption);
-        try (Records records = chc.queryV2(createTableQueryTmp, settings)) {
+    public static void runQuery(ClickHouseHelperClient chc, String query) {
+        try (Records ignored = chc.queryV2(query)) {
             // success
         } catch (Exception e) {
             LOGGER.info("Failed to create table ", e);
@@ -417,6 +403,7 @@ public class ClickHouseTestHelpers {
         private String engine;
         private String orderByColumn;
         private Map<String, Serializable> settings;
+        private boolean ifNotExists = false;
 
         public CreateTableStatement(ClickHouseHelperClient chc) {
             this.chc = chc;
@@ -447,14 +434,19 @@ public class ClickHouseTestHelpers {
             return this;
         }
 
+        public CreateTableStatement setIfNotExists(boolean ifNotExists) {
+            this.ifNotExists = ifNotExists;
+            return this;
+        }
+
         public void execute() {
             StringBuilder columns = new StringBuilder();
             for (Map.Entry<String, String> entry : schema.entrySet()) {
                 if (columns.length() > 0) columns.append(", ");
                 columns.append("`").append(entry.getKey()).append("` ").append(entry.getValue());
             }
-            String sql = String.format("CREATE TABLE `%s` (%s) Engine = %s ORDER BY %s",
-                    tableName, columns, engine, orderByColumn);
+            String sql = String.format("CREATE TABLE %s`%s` (%s) Engine = %s ORDER BY %s",
+                    ifNotExists ? "IF NOT EXISTS " : "", tableName, columns, engine, orderByColumn);
             try {
                 if (settings != null && !settings.isEmpty()) {
                     QuerySettings querySettings = new QuerySettings();

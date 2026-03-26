@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -366,7 +367,22 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                    put("p_int8", "Int8");
+                    put("p_int16", "Int16");
+                    put("p_int32", "Int32");
+                    put("p_int64", "Int64");
+                    put("p_float32", "Float32");
+                    put("p_float64", "Float64");
+                    put("p_bool", "Bool");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -383,7 +399,22 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                    put("p_int8", "Int8");
+                    put("p_int16", "Int16");
+                    put("p_int32", "Int32");
+                    put("p_int64", "Int64");
+                    put("p_float32", "Float32");
+                    put("p_float64", "Float64");
+                    put("p_bool", "Bool");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -400,7 +431,23 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_nullable_values_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `null_str` Nullable(String), `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                    put("null_str", "Nullable(String)");
+                    put("p_int8", "Int8");
+                    put("p_int16", "Int16");
+                    put("p_int32", "Int32");
+                    put("p_int64", "Int64");
+                    put("p_float32", "Float32");
+                    put("p_float64", "Float64");
+                    put("p_bool", "Bool");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createPrimitiveTypesWithNulls(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -417,7 +464,23 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("schemaless_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `arr` Array(String), `arr_empty` Array(String), `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)  ) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("arr", "Array(String)");
+                    put("arr_empty", "Array(String)");
+                    put("arr_int8", "Array(Int8)");
+                    put("arr_int16", "Array(Int16)");
+                    put("arr_int32", "Array(Int32)");
+                    put("arr_int64", "Array(Int64)");
+                    put("arr_float32", "Array(Float32)");
+                    put("arr_float64", "Array(Float64)");
+                    put("arr_bool", "Array(Bool)");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createArrayType(topic, 1);
 
@@ -435,7 +498,17 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("schemaless_map_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("map_string_string", "Map(String, String)");
+                    put("map_string_int64", "Map(String, Int64)");
+                    put("map_int64_string", "Map(Int64, String)");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
 
@@ -454,7 +527,17 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("special-char-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, map_string_string Map(String, String), map_string_int64 Map(String, Int64), map_int64_string Map(Int64, String)  ) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("map_string_string", "Map(String, String)");
+                    put("map_string_int64", "Map(String, Int64)");
+                    put("map_int64_string", "Map(Int64, String)");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
 
@@ -472,7 +555,15 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("emojis_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createDataWithEmojis(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -492,7 +583,22 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        ClickHouseTestHelpers.createTable(chc, tableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(tableName)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                    put("p_int8", "Int8");
+                    put("p_int16", "Int16");
+                    put("p_int32", "Int32");
+                    put("p_int64", "Int64");
+                    put("p_float32", "Float32");
+                    put("p_float64", "Float64");
+                    put("p_bool", "Bool");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -510,7 +616,22 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("csv_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                    put("p_int8", "Int8");
+                    put("p_int16", "Int16");
+                    put("p_int32", "Int32");
+                    put("p_int64", "Int64");
+                    put("p_float32", "Float32");
+                    put("p_float64", "Float64");
+                    put("p_bool", "Bool");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createCSV(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -528,7 +649,22 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("tsv_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                    put("p_int8", "Int8");
+                    put("p_int16", "Int16");
+                    put("p_int32", "Int32");
+                    put("p_int64", "Int64");
+                    put("p_float32", "Float32");
+                    put("p_float64", "Float64");
+                    put("p_bool", "Bool");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createTSV(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -547,7 +683,15 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("code_25_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic)
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                    put("str", "String");
+                }})
+                .setEngine("MergeTree")
+                .setOrderByColumn("off16")
+                .execute();
         Collection<SinkRecord> sr = createCode25(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();

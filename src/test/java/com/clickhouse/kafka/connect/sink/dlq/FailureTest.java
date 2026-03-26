@@ -20,6 +20,7 @@ import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -40,7 +41,11 @@ public class FailureTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `uint8` UInt8, `uint16` UInt16, `uint32` UInt32, `uint64` UInt64) Engine = MergeTree ORDER BY off16");
+        new ClickHouseTestHelpers.CreateTableStatement(chc)
+                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16"); put("uint8", "UInt8"); put("uint16", "UInt16");
+                    put("uint32", "UInt32"); put("uint64", "UInt64");
+                }}).setEngine("MergeTree").setOrderByColumn("off16").execute();
         Collection<SinkRecord> validRecordsPart1 = SchemaTestData.createUnsignedIntegers(topic, 1, 100);
         Collection<SinkRecord> invalidRecordsPart2 = createInvalidRecords(topic, 2, 100);
         Collection<SinkRecord> validRecordsPart3 =  SchemaTestData.createUnsignedIntegers(topic, 3, 100);

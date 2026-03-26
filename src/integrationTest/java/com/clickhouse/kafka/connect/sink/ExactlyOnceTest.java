@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
@@ -31,7 +32,13 @@ public class ExactlyOnceTest {
     private static ClickHouseHelperClient chcNoProxy;
     private static final Properties properties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
-    private static final String MERGE_TREE_TABLE_DDL = "CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) Engine = MergeTree ORDER BY symbol";
+    private static LinkedHashMap<String, String> stockSchema() {
+        LinkedHashMap<String, String> s = new LinkedHashMap<>();
+        s.put("side", "String"); s.put("quantity", "Int32"); s.put("symbol", "String");
+        s.put("price", "Int32"); s.put("account", "String"); s.put("userid", "String");
+        s.put("insertTime", "DateTime DEFAULT now()");
+        return s;
+    }
 
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
@@ -103,7 +110,9 @@ public class ExactlyOnceTest {
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chcNoProxy, topicName);
-        ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL); // implicitly SharedMergeTree in CH Cloud
+        new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
+                .setTableName(topicName).setSchema(stockSchema())
+                .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
@@ -127,7 +136,9 @@ public class ExactlyOnceTest {
     }
 
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
-        ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL); // implicitly SharedMergeTree in CH Cloud
+        new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
+                .setTableName(topicName).setSchema(stockSchema()).setIfNotExists(true)
+                .setEngine("MergeTree").setOrderByColumn("symbol").execute();
         ClickHouseAPI.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
@@ -147,7 +158,9 @@ public class ExactlyOnceTest {
         do {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
-            ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL); // implicitly SharedMergeTree in CH Cloud
+            new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
+                .setTableName(topicName).setSchema(stockSchema()).setIfNotExists(true)
+                .setEngine("MergeTree").setOrderByColumn("symbol").execute();
             ClickHouseAPI.clearTable(chcNoProxy, topicName);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
