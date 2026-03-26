@@ -1821,6 +1821,38 @@ public class SchemaTestData {
     }
 
     /**
+     * Schema V4 with a unique field (v4_float_field) not in V2 or V3.
+     * Fields: off16, p_int64, v4_float_field.
+     */
+    public static Collection<SinkRecord> createSchemaV4WithUniqueField(String topic, int partition) {
+        return createSchemaV4WithUniqueField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV4WithUniqueField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V4 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("v4_float_field", SchemaBuilder.float64().optional().build())
+                .build();
+
+        long offset = totalRecords * 3L; // after V1, V2, V3 offsets
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V4)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("v4_float_field", (double) n * 1.5);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V4, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    /**
      * Rich V1 schema with 3 fields: off16, p_int64, name.
      */
     public static Collection<SinkRecord> createRichSchemaV1(String topic, int partition, int totalRecords, long startOffset) {
