@@ -12,6 +12,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
@@ -108,7 +109,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("missing_table_mapping_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); }})
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -147,10 +148,10 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(mappedTableWithoutBackticks).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); }})
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(mappedTableWithBackticksRaw).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); }})
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -210,7 +211,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("do_write_col_value_tuples_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{
                     put("_id", "String");
                     put("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)");

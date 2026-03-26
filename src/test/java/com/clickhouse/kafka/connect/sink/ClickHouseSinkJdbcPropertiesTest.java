@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
@@ -159,7 +160,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new java.util.LinkedHashMap<>() {{
                     put("off16", "Int16"); put("str", "String");
                     put("p_int8", "Int8"); put("p_int16", "Int16"); put("p_int32", "Int32");
@@ -187,7 +188,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new java.util.LinkedHashMap<>() {{
                     put("off16", "Int16"); put("str", "String");
                     put("p_int8", "Int8"); put("p_int16", "Int16"); put("p_int32", "Int32");

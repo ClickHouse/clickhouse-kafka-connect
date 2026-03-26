@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,6 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.errors.ConnectException;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -44,7 +44,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_disabled_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -65,7 +65,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_size_flush_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -95,7 +95,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_shutdown_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -125,7 +125,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_rebalance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -168,7 +168,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_time_flush_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -199,7 +199,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_multi_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -252,7 +252,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_empty_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -284,7 +284,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_offset_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -323,7 +323,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_reset_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -353,7 +353,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_rebalance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -394,7 +394,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("crash_after_flush_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -439,7 +439,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("insert_fail_no_tolerance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -480,7 +480,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("insert_fail_tolerance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -519,7 +519,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_multi_partition_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 

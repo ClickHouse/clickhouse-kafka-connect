@@ -4,6 +4,7 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -41,7 +42,7 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); put("date_number", "Nullable(Date)"); }})
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
 
@@ -60,7 +61,7 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName).setSchema(new LinkedHashMap<>() {{
                     put("c", "String COMMENT '\\\\'"); put("d", "String COMMENT '\\n'");
                 }}).setEngine("MergeTree()").setOrderByColumn("tuple()").execute();

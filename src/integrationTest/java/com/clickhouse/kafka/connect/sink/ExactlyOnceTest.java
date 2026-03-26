@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,7 +111,7 @@ public class ExactlyOnceTest {
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chcNoProxy, topicName);
-        new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
+        new CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
                 .setTableName(topicName).setSchema(stockSchema())
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 
@@ -136,7 +137,7 @@ public class ExactlyOnceTest {
     }
 
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
-        new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
+        new CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
                 .setTableName(topicName).setSchema(stockSchema()).setIfNotExists(true)
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
         ClickHouseAPI.clearTable(chcNoProxy, topicName);
@@ -158,7 +159,7 @@ public class ExactlyOnceTest {
         do {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
-            new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
+            new CreateTableStatement(chcNoProxy) // implicitly SharedMergeTree in CH Cloud
                 .setTableName(topicName).setSchema(stockSchema()).setIfNotExists(true)
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
             ClickHouseAPI.clearTable(chcNoProxy, topicName);

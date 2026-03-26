@@ -5,6 +5,7 @@ import com.clickhouse.kafka.connect.avro.test.Event;
 import com.clickhouse.kafka.connect.avro.test.Image;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.test.TestProtos;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
@@ -74,7 +75,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -113,7 +114,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "array_nullable_subtypes_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -147,7 +148,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "map_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -179,7 +180,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("nullable_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -205,7 +206,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("nullable_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -233,7 +234,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("m_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic + "mate");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -250,6 +251,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
                 .execute();
+
+
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s_mate ( `off16` Int16 ) Engine = Null", topic));
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE MATERIALIZED VIEW %s_mv TO " + topic + "_mate AS SELECT off16 FROM " + topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
@@ -270,7 +273,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("special-char-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -303,7 +306,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("null-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -332,7 +335,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -381,7 +384,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-array-datetime64-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -408,7 +411,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-unsupported-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -441,7 +444,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-dates-string-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -470,7 +473,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-formatted-dates-string-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -511,7 +514,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -536,7 +539,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -563,7 +566,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -588,7 +591,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -616,7 +619,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -644,7 +647,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -672,7 +675,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
   
         String topic = createTopicName("decimal-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -702,7 +705,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         LOGGER.info("FixedString size: " + fixedStringSize);
         ClickHouseTestHelpers.dropTable(chc, topic);
         final int fss = fixedStringSize;
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -729,7 +732,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema-with-boolean-and-int-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -846,7 +849,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         LOGGER.info("FixedString size: " + fixedStringSize);
         ClickHouseTestHelpers.dropTable(chc, topic);
         final int fss = fixedStringSize;
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -874,7 +877,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("nullable-decimal-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -900,7 +903,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("bytes-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("string", "String");
@@ -924,7 +927,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("enum-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -976,7 +979,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "  `array_map_tuple` Array(Map(String, " + simpleTuple + "))," +
                 "  `map_array_tuple` Map(String, Array(" + simpleTuple + "))" +
                 ")";
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1019,7 +1022,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = "nested-tuple-map-array-and-variant-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
 
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1090,7 +1093,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("unsigned-integers-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1117,7 +1120,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-while-running-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1161,7 +1164,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-add-default-old-schema-data-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1208,7 +1211,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL, "1");
         String topic = createTopicName("change-schema-while-running-table-test-with-refresh-enabled");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1252,7 +1255,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("tuple-table-test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1279,7 +1282,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("tuple-table-test-default");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1308,7 +1311,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("nested-tuple-table-test-default");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1346,7 +1349,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("jackson-struct-json-insert");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1449,7 +1452,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("jackson-struct-nulls-json-insert");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1529,7 +1532,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("cool-schema-with-random-field");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("processing_time", "DateTime");
@@ -1569,7 +1572,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         Map<String, Serializable> clientSettings = new HashMap<>();
         clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1631,7 +1634,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Map<String, Serializable> clientSettings = new HashMap<>();
         clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
 
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("id", "Int32");
@@ -1762,7 +1765,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "exactly_once_state_mismatch_test_" + split + "_" + batch + "_" + System.currentTimeMillis();
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -1823,7 +1826,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("name", "String");
@@ -1880,7 +1883,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("id", "Int64");

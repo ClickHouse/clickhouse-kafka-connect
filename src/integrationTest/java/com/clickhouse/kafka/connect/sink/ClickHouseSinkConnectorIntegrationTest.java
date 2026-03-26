@@ -5,6 +5,7 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.junit.jupiter.api.AfterAll;
@@ -193,7 +194,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy)
+        new CreateTableStatement(chcNoProxy)
                 .setTableName(topicName).setSchema(stockSchema())
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 
@@ -209,7 +210,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         dropTable(chcNoProxy, topicName);
-        new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy)
+        new CreateTableStatement(chcNoProxy)
                 .setTableName(topicName).setSchema(stockSchema())
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 
@@ -224,7 +225,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        new ClickHouseTestHelpers.CreateTableStatement(chcNoProxy)
+        new CreateTableStatement(chcNoProxy)
                 .setTableName(topicName).setSchema(stockSchema())
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 

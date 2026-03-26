@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -41,7 +42,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
@@ -65,10 +66,10 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String tableName2 = "table_mapping_test2";
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName1).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName2).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         Collection<SinkRecord> sr1 = SchemalessTestData.createPrimitiveTypes(topic1, 1);
@@ -93,7 +94,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic2 = "mapping_table_test2";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         Collection<SinkRecord> sr1 = SchemalessTestData.createPrimitiveTypes(topic1, 1);
@@ -121,13 +122,13 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
         ClickHouseTestHelpers.dropTable(chc, topic3);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName1).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName2).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic3).setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         Collection<SinkRecord> sr1 = SchemalessTestData.createPrimitiveTypes(topic1, 1);
@@ -154,7 +155,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic = "array_string_table_test";
         String tableName = "array_string_mapping_table_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName).setSchema(arrayTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -180,10 +181,10 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String tableName2 = "array_string_mapping_table_test2";
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName1).setSchema(arrayTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName2).setSchema(arrayTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -211,7 +212,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic2 = "array_string_table_test2";
         String tableName = "array_string_mapping_table_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName).setSchema(arrayTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -241,13 +242,13 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
         ClickHouseTestHelpers.dropTable(chc, topic3);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName1).setSchema(arrayTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName2).setSchema(arrayTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic3).setSchema(arrayTypesSchema())
                 .setEngine("MergeTree").setOrderByColumn("off16").execute();
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98

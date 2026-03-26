@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import org.junit.jupiter.api.Assertions;
@@ -37,7 +38,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void showTables() {
         String topic = createTopicName("simple_table_test");
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{ put("num", "String"); }})
                 .setEngine("MergeTree").setOrderByColumn("num").execute();
         try {
@@ -52,7 +53,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void describeNestedFlattenedTable() {
         String topic = createTopicName("nested_flattened_table_test");
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{
                     put("num", "String"); put("nested", "Nested (innerInt Int32, innerString String)");
                 }}).setEngine("MergeTree").setOrderByColumn("num").execute();
@@ -68,7 +69,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void ignoreArrayWithNestedTable() {
         String topic = createTopicName("nested_table_test");
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{
                     put("num", "String"); put("nested", "Array(Nested (innerInt Int32, innerString String))");
                 }}).setEngine("MergeTree").setOrderByColumn("num").execute();
@@ -94,11 +95,11 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         props.put("password", "123FOURfive^&*91011");
         chc = createClient(props);
 
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(nestedTopic).setSchema(new LinkedHashMap<>() {{
                     put("num", "String"); put("nested", "Nested (innerInt Int32, innerString String)");
                 }}).setEngine("MergeTree").setOrderByColumn("num").execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(normalTopic).setSchema(new LinkedHashMap<>() {{ put("num", "String"); }})
                 .setEngine("MergeTree").setOrderByColumn("num").execute();
 
@@ -119,7 +120,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
                     put("null_str_alias", "Nullable(String) ALIAS formatReadableSize(`off16`)");

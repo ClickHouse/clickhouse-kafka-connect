@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.*;
@@ -67,7 +68,7 @@ public class ClickHouseCloudTest {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_overlap_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16"); put("str", "String");
                     put("p_int8", "Int8"); put("p_int16", "Int16"); put("p_int32", "Int32");

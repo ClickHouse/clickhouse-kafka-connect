@@ -4,6 +4,7 @@ import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
@@ -367,7 +368,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -399,7 +400,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -431,7 +432,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_nullable_values_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -464,7 +465,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("schemaless_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -498,7 +499,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("schemaless_map_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -527,7 +528,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("special-char-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -555,7 +556,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         String topic = createTopicName("emojis_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -583,7 +584,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(tableName)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -616,7 +617,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("csv_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -649,7 +650,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("tsv_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");
@@ -683,7 +684,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("code_25_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16");

@@ -9,6 +9,7 @@ import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.Gson;
@@ -136,7 +137,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
             dropTable(chc, tmpTableName);
             createDatabase(databaseName, chc);
-            new ClickHouseTestHelpers.CreateTableStatement(chc)
+            new CreateTableStatement(chc)
                     .setTableName(tmpTableName)
                     .setSchema(primitiveTypesSchema())
                     .setEngine("MergeTree")
@@ -167,7 +168,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -199,7 +200,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -246,7 +247,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("topic.statistics_test-01");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -314,7 +315,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -385,13 +386,13 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic1)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
                 .execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic2)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -438,7 +439,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic = createTopicName("precommit_ignore_partitions");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -476,13 +477,13 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic1)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
                 .execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic2)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -532,13 +533,13 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic1)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
                 .execute();
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic2)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
@@ -584,7 +585,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         String topic = createTopicName("precommit_report_offsets_off");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new ClickHouseTestHelpers.CreateTableStatement(chc)
+        new CreateTableStatement(chc)
                 .setTableName(topic)
                 .setSchema(primitiveTypesSchema())
                 .setEngine("MergeTree")
