@@ -251,9 +251,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
                 .execute();
-
-
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s_mate ( `off16` Int16 ) Engine = Null", topic));
+        new CreateTableStatement(chc)
+                .setTableName(topic + "_mate")
+                .setSchema(new LinkedHashMap<>() {{
+                    put("off16", "Int16");
+                }})
+                .setEngine("Null")
+                .execute();
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE MATERIALIZED VIEW %s_mv TO " + topic + "_mate AS SELECT off16 FROM " + topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 

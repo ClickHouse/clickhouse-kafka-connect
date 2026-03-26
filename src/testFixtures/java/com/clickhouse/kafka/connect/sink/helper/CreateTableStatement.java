@@ -54,11 +54,16 @@ public class CreateTableStatement {
     public void execute() {
         StringBuilder columns = new StringBuilder();
         for (Map.Entry<String, String> entry : schema.entrySet()) {
-            if (columns.length() > 0) columns.append(", ");
+            if (columns.length() > 0)
+                columns.append(", ");
             columns.append("`").append(entry.getKey()).append("` ").append(entry.getValue());
         }
-        String sql = String.format("CREATE TABLE %s`%s` (%s) Engine = %s ORDER BY %s",
-                ifNotExists ? "IF NOT EXISTS " : "", tableName, columns, engine, orderByColumn);
+        String sql = String.format("CREATE TABLE %s`%s` (%s) Engine = %s", ifNotExists ? "IF NOT EXISTS " : "", tableName, columns, engine);
+
+        if (orderByColumn != null) {
+            sql += " ORDER BY " + orderByColumn;
+        }
+
         try {
             if (settings != null && !settings.isEmpty()) {
                 QuerySettings querySettings = new QuerySettings();
