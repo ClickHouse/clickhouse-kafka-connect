@@ -549,4 +549,14 @@ public class Column {
                 String.format(", variantTypes=%s", variantTypes.stream().map(Tuple2::getT2).collect(Collectors.joining(", ", "[", "]")))
         ) + "}";
     }
+
+    // Returns a DEFAULT expression for non-Nullable types (Array, Map) so RowBinaryWithDefaults can handle missing fields.
+    public static String defaultExpressionForType(String chType) {
+        if (chType.startsWith("Array(")) {
+            return " DEFAULT []";
+        } else if (chType.startsWith("Map(")) {
+            return " DEFAULT map()";
+        }
+        return "";
+    }
 }

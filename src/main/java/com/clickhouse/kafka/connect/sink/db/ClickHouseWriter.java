@@ -874,7 +874,8 @@ public class ClickHouseWriter implements DBWriter {
             }
 
             String chType = Column.connectTypeToClickHouseType(fieldSchema, csc.isAutoEvolveStructToJson());
-            columnDefs.add(String.format("%s %s", Utils.escapeName(fieldName), chType));
+            String defaultExpr = Column.defaultExpressionForType(chType);
+            columnDefs.add(String.format("%s %s%s", Utils.escapeName(fieldName), chType, defaultExpr));
         }
 
         if (!columnDefs.isEmpty()) {
