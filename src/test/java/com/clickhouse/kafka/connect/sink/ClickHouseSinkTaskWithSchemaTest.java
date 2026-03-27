@@ -19,6 +19,7 @@ import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
+import org.apache.avro.generic.GenericData;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
@@ -1801,5 +1802,421 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             assertEquals(formatter.format(event.getTime1()), row.get("time1"));
             assertEquals(event.getTime2().atDate(LocalDate.of(1970, 1, 1)).format(localFormatter), row.get("time2"));
         }
+    }
+
+    @Test
+    public void testAvroAllPrimitiveTypes() throws Exception {
+        final String topic = createTopicName("test_avro_primitives");
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"PrimitiveRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"boolField\",\"type\":\"boolean\"}," +
+                "{\"name\":\"intField\",\"type\":\"int\"}," +
+                "{\"name\":\"longField\",\"type\":\"long\"}," +
+                "{\"name\":\"floatField\",\"type\":\"float\"}," +
+                "{\"name\":\"doubleField\",\"type\":\"double\"}," +
+                "{\"name\":\"strField\",\"type\":\"string\"}" +
+                "]}");
+
+        List<Object> avroRecords = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            GenericData.Record rec = new GenericData.Record(avroSchema);
+            rec.put("id", i);
+            rec.put("boolField", i % 2 == 0);
+            rec.put("intField", i * 10);
+            rec.put("longField", (long) i * 100);
+            rec.put("floatField", i * 1.5f);
+            rec.put("doubleField", i * 2.5);
+            rec.put("strField", "row_" + i);
+            avroRecords.add(rec);
+        }
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema), avroRecords);
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("boolField", "Bool")
+                .column("intField", "Int32")
+                .column("longField", "Int64")
+                .column("floatField", "Float32")
+                .column("doubleField", "Float64")
+                .column("strField", "String")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(avroRecords.size(), rows.size());
+        for (int i = 0; i < avroRecords.size(); i++) {
+            JSONObject row = rows.get(i);
+            assertEquals(i % 2 == 0, row.getBoolean("boolField"));
+            assertEquals(i * 10, row.getInt("intField"));
+            assertEquals((long) i * 100, row.getLong("longField"));
+            assertEquals(i * 2.5, row.getDouble("doubleField"), 0.001);
+            assertEquals("row_" + i, row.getString("strField"));
+        }
+    }
+
+    @Test
+    public void testAvroNullableFields() throws Exception {
+        final String topic = createTopicName("test_avro_nullable");
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"NullableRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"nullableInt\",\"type\":[\"null\",\"int\"],\"default\":null}," +
+                "{\"name\":\"nullableLong\",\"type\":[\"null\",\"long\"],\"default\":null}," +
+                "{\"name\":\"nullableBool\",\"type\":[\"null\",\"boolean\"],\"default\":null}" +
+                "]}");
+
+        GenericData.Record rec1 = new GenericData.Record(avroSchema);
+        rec1.put("id", 0);
+        rec1.put("nullableInt", null);
+        rec1.put("nullableLong", null);
+        rec1.put("nullableBool", null);
+
+        GenericData.Record rec2 = new GenericData.Record(avroSchema);
+        rec2.put("id", 1);
+        rec2.put("nullableInt", 42);
+        rec2.put("nullableLong", 9876543210L);
+        rec2.put("nullableBool", true);
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema),
+                Arrays.asList(rec1, rec2));
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("nullableInt", "Nullable(Int32)")
+                .column("nullableLong", "Nullable(Int64)")
+                .column("nullableBool", "Nullable(Bool)")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(2, rows.size());
+        JSONObject row0 = rows.get(0);
+        assertTrue(row0.isNull("nullableInt"));
+        assertTrue(row0.isNull("nullableLong"));
+        assertTrue(row0.isNull("nullableBool"));
+        JSONObject row1 = rows.get(1);
+        assertEquals(42, row1.getInt("nullableInt"));
+        assertEquals(9876543210L, row1.getLong("nullableLong"));
+        assertTrue(row1.getBoolean("nullableBool"));
+    }
+
+    @Test
+    public void testAvroDecimalLogicalType() throws Exception {
+        final String topic = createTopicName("test_avro_decimal");
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"ProductRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"price\",\"type\":{\"type\":\"bytes\",\"logicalType\":\"decimal\",\"precision\":10,\"scale\":4}}" +
+                "]}");
+
+        org.apache.avro.Schema priceSchema = avroSchema.getField("price").schema();
+        org.apache.avro.Conversions.DecimalConversion decimalConv = new org.apache.avro.Conversions.DecimalConversion();
+        org.apache.avro.LogicalTypes.Decimal decimalLogicalType =
+                (org.apache.avro.LogicalTypes.Decimal) priceSchema.getLogicalType();
+
+        BigDecimal[] prices = {new BigDecimal("9.9900"), new BigDecimal("24.9900"), new BigDecimal("199.0000")};
+
+        List<Object> avroRecords = new ArrayList<>();
+        for (int i = 0; i < prices.length; i++) {
+            GenericData.Record rec = new GenericData.Record(avroSchema);
+            rec.put("id", i);
+            rec.put("price", decimalConv.toBytes(prices[i], priceSchema, decimalLogicalType));
+            avroRecords.add(rec);
+        }
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema), avroRecords);
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("price", "Decimal(10, 4)")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(prices.length, rows.size());
+        for (int i = 0; i < prices.length; i++) {
+            assertEquals(0, prices[i].compareTo(rows.get(i).getBigDecimal("price")));
+        }
+    }
+
+    @Test
+    public void testAvroDateLogicalType() throws Exception {
+        final String topic = createTopicName("test_avro_date");
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"DateRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"eventDate\",\"type\":{\"type\":\"int\",\"logicalType\":\"date\"}}" +
+                "]}");
+
+        LocalDate[] dates = {LocalDate.of(2024, 1, 15), LocalDate.of(2024, 6, 30), LocalDate.of(2025, 12, 31)};
+
+        List<Object> avroRecords = new ArrayList<>();
+        for (int i = 0; i < dates.length; i++) {
+            GenericData.Record rec = new GenericData.Record(avroSchema);
+            rec.put("id", i);
+            rec.put("eventDate", (int) dates[i].toEpochDay());
+            avroRecords.add(rec);
+        }
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema), avroRecords);
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("eventDate", "Date32")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(dates.length, rows.size());
+        for (int i = 0; i < dates.length; i++) {
+            assertEquals(dates[i].toString(), rows.get(i).getString("eventDate"));
+        }
+    }
+
+    @Test
+    public void testAvroEnumType() throws Exception {
+        final String topic = createTopicName("test_avro_enum");
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"OrderRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"status\",\"type\":{\"type\":\"enum\",\"name\":\"OrderStatus\"," +
+                "\"symbols\":[\"PENDING\",\"ACTIVE\",\"COMPLETED\",\"CANCELLED\"]}}" +
+                "]}");
+
+        org.apache.avro.Schema statusSchema = avroSchema.getField("status").schema();
+        String[] statuses = {"PENDING", "ACTIVE", "COMPLETED"};
+
+        List<Object> avroRecords = new ArrayList<>();
+        for (int i = 0; i < statuses.length; i++) {
+            GenericData.Record rec = new GenericData.Record(avroSchema);
+            rec.put("id", i);
+            rec.put("status", new GenericData.EnumSymbol(statusSchema, statuses[i]));
+            avroRecords.add(rec);
+        }
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema), avroRecords);
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("status", "LowCardinality(String)")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(statuses.length, rows.size());
+        for (int i = 0; i < statuses.length; i++) {
+            assertEquals(statuses[i], rows.get(i).getString("status"));
+        }
+    }
+
+    @Test
+    public void testAvroArrayOfInts() throws Exception {
+        final String topic = createTopicName("test_avro_array_int");
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"ArrayRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"scores\",\"type\":{\"type\":\"array\",\"items\":\"int\"}}" +
+                "]}");
+
+        List<List<Integer>> scoresList = Arrays.asList(
+                Arrays.asList(10, 20, 30),
+                Arrays.asList(100, 200),
+                Arrays.asList(1, 2, 3, 4, 5)
+        );
+
+        List<Object> avroRecords = new ArrayList<>();
+        for (int i = 0; i < scoresList.size(); i++) {
+            GenericData.Record rec = new GenericData.Record(avroSchema);
+            rec.put("id", i);
+            rec.put("scores", scoresList.get(i));
+            avroRecords.add(rec);
+        }
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema), avroRecords);
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("scores", "Array(Int32)")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(scoresList.size(), rows.size());
+        for (int i = 0; i < scoresList.size(); i++) {
+            JSONArray arr = rows.get(i).getJSONArray("scores");
+            List<Integer> expected = scoresList.get(i);
+            assertEquals(expected.size(), arr.length());
+            for (int j = 0; j < expected.size(); j++) {
+                assertEquals(expected.get(j).intValue(), arr.getInt(j));
+            }
+        }
+    }
+
+    @Test
+    public void testAvroMapStringToString() throws Exception {
+        final String topic = createTopicName("test_avro_map_str");
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"MapRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"attributes\",\"type\":{\"type\":\"map\",\"values\":\"string\"}}" +
+                "]}");
+
+        Map<String, String> attrs1 = new HashMap<>();
+        attrs1.put("color", "red");
+        attrs1.put("size", "large");
+        Map<String, String> attrs2 = new HashMap<>();
+        attrs2.put("material", "cotton");
+        attrs2.put("brand", "acme");
+        List<Map<String, String>> attrsList = Arrays.asList(attrs1, attrs2);
+
+        List<Object> avroRecords = new ArrayList<>();
+        for (int i = 0; i < attrsList.size(); i++) {
+            GenericData.Record rec = new GenericData.Record(avroSchema);
+            rec.put("id", i);
+            rec.put("attributes", attrsList.get(i));
+            avroRecords.add(rec);
+        }
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema), avroRecords);
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("attributes", "Map(String, String)")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(attrsList.size(), rows.size());
+        for (int i = 0; i < attrsList.size(); i++) {
+            JSONObject rowAttrs = rows.get(i).getJSONObject("attributes");
+            for (Map.Entry<String, String> entry : attrsList.get(i).entrySet()) {
+                assertEquals(entry.getValue(), rowAttrs.getString(entry.getKey()));
+            }
+        }
+    }
+
+    @Test
+    public void testAvroNullableTimestamp() throws Exception {
+        final String topic = createTopicName("test_avro_nullable_ts");
+        final ZoneId tz = ZoneId.of("UTC");
+        final Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+
+        org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(
+                "{\"type\":\"record\",\"name\":\"TimestampRecord\",\"namespace\":\"com.clickhouse.test\"," +
+                "\"fields\":[" +
+                "{\"name\":\"id\",\"type\":\"int\"}," +
+                "{\"name\":\"createdAt\",\"type\":[\"null\",{\"type\":\"long\",\"logicalType\":\"timestamp-millis\"}],\"default\":null}" +
+                "]}");
+
+        GenericData.Record rec1 = new GenericData.Record(avroSchema);
+        rec1.put("id", 0);
+        rec1.put("createdAt", null);
+
+        GenericData.Record rec2 = new GenericData.Record(avroSchema);
+        rec2.put("id", 1);
+        rec2.put("createdAt", now.toEpochMilli());
+
+        List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema),
+                Arrays.asList(rec1, rec2));
+        Map<String, String> props = createProps();
+        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("createdAt", "Nullable(DateTime64(3))")
+                .engine("MergeTree")
+                .orderByColumn("()")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(2, rows.size());
+        assertTrue(rows.get(0).isNull("createdAt"));
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(tz);
+        assertEquals(formatter.format(now), rows.get(1).getString("createdAt"));
     }
 }
