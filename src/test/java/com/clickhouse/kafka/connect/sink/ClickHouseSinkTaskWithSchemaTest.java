@@ -3326,4 +3326,38 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertTrue(described.getRootColumnsMap().containsKey("new_map_field"),
                 "Column 'new_map_field' should exist after auto-evolve");
     }
+
+    // Mixed batch where older records lack an auto-evolved Variant column.
+    @Test
+    public void autoEvolveMixedBatchVariantFieldMissingInOlderRecords() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "allow_experimental_variant_type=1");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("auto_evolve_mixed_variant_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // V1 records (off16 + p_int64 only) followed by V2 records (off16 + p_int64 + mixed_union Variant)
+        List<SinkRecord> mixedBatch = new ArrayList<>();
+        mixedBatch.addAll(SchemaTestData.createSchemaV1(topic, 1, 5));
+        mixedBatch.addAll(SchemaTestData.createSchemaV2WithMixedTypeUnionField(topic, 1, 5));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(mixedBatch);
+        chst.stop();
+
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // Verify the Variant column was created
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described =
+                chc.describeTable(chc.getDatabase(), topic);
+        com.clickhouse.kafka.connect.sink.db.mapping.Column col = described.getRootColumnsMap().get("mixed_union");
+        assertNotNull(col, "Column 'mixed_union' should exist after auto-evolve");
+        assertEquals(com.clickhouse.kafka.connect.sink.db.mapping.Type.VARIANT, col.getType(),
+                "mixed_union should be Variant type");
+    }
 }
