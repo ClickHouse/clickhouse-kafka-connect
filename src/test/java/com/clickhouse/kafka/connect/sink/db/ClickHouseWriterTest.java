@@ -40,9 +40,9 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriterTest.class);
 
     private static final CreateTableStatement SINGLE_INT16_TABLE = new CreateTableStatement()
-            .setColumn("off16", "Int16")
-            .setEngine("MergeTree")
-            .setOrderByColumn("off16");
+            .column("off16", "Int16")
+            .engine("MergeTree")
+            .orderByColumn("off16");
 
     ClickHouseHelperClient chc = null;
 
@@ -114,7 +114,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("missing_table_mapping_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(SINGLE_INT16_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(createConfig());
@@ -151,8 +151,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
-        new CreateTableStatement(SINGLE_INT16_TABLE).setTableName(mappedTableWithoutBackticks).execute(chc);
-        new CreateTableStatement(SINGLE_INT16_TABLE).setTableName(mappedTableWithBackticksRaw).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithoutBackticks).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithBackticksRaw).execute(chc);
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(new ClickHouseSinkConfig(props));
@@ -211,10 +211,10 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
-                .setTableName(topic)
-                .setColumn("_id", "String")
-                .setColumn("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
-                .setEngine("MergeTree").setOrderByColumn("_id").execute(chc);
+                .tableName(topic)
+                .column("_id", "String")
+                .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
+                .engine("MergeTree").orderByColumn("_id").execute(chc);
 
         ClickHouseWriter chw = new ClickHouseWriter(new SinkTaskStatistics(0));
         chw.setSinkConfig(createConfig());

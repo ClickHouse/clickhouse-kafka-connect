@@ -29,17 +29,17 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTaskBufferTest.class);
 
     private static final CreateTableStatement PRIMITIVE_TYPES_TABLE = new CreateTableStatement()
-            .setColumn("off16", "Int16")
-            .setColumn("str", "String")
-            .setColumn("p_int8", "Int8")
-            .setColumn("p_int16", "Int16")
-            .setColumn("p_int32", "Int32")
-            .setColumn("p_int64", "Int64")
-            .setColumn("p_float32", "Float32")
-            .setColumn("p_float64", "Float64")
-            .setColumn("p_bool", "Bool")
-            .setEngine("MergeTree")
-            .setOrderByColumn("off16");
+            .column("off16", "Int16")
+            .column("str", "String")
+            .column("p_int8", "Int8")
+            .column("p_int16", "Int16")
+            .column("p_int32", "Int32")
+            .column("p_int64", "Int64")
+            .column("p_float32", "Float32")
+            .column("p_float64", "Float64")
+            .column("p_bool", "Bool")
+            .engine("MergeTree")
+            .orderByColumn("off16");
 
     @Test
     public void bufferingDisabledByDefault() {
@@ -47,7 +47,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_disabled_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
@@ -66,7 +66,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_size_flush_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         // Send 300 records (below threshold of 500) - should NOT be flushed yet
         List<SinkRecord> batch1 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
@@ -94,7 +94,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_shutdown_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, 1, 100);
         ClickHouseSinkTask task = new ClickHouseSinkTask();
@@ -122,7 +122,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_rebalance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -163,7 +163,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_time_flush_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, 1, 100);
         ClickHouseSinkTask task = new ClickHouseSinkTask();
@@ -192,7 +192,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_multi_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -243,7 +243,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_empty_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -273,7 +273,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_offset_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -310,7 +310,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_reset_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -338,7 +338,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_rebalance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -377,7 +377,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("crash_after_flush_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -420,7 +420,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("insert_fail_no_tolerance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -459,7 +459,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("insert_fail_tolerance_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -496,7 +496,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_multi_partition_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);

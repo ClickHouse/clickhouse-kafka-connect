@@ -42,10 +42,10 @@ public class FailureTest extends ClickHouseBase {
         String topic = createTopicName("test_schema_validation_failure");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
-                .setTableName(topic)
-                .setColumn("off16", "Int16").setColumn("uint8", "UInt8").setColumn("uint16", "UInt16")
-                .setColumn("uint32", "UInt32").setColumn("uint64", "UInt64")
-                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
+                .tableName(topic)
+                .column("off16", "Int16").column("uint8", "UInt8").column("uint16", "UInt16")
+                .column("uint32", "UInt32").column("uint64", "UInt64")
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
         Collection<SinkRecord> validRecordsPart1 = SchemaTestData.createUnsignedIntegers(topic, 1, 100);
         Collection<SinkRecord> invalidRecordsPart2 = createInvalidRecords(topic, 2, 100);
         Collection<SinkRecord> validRecordsPart3 =  SchemaTestData.createUnsignedIntegers(topic, 3, 100);

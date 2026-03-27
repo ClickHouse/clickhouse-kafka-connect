@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 
@@ -69,12 +68,12 @@ public class ClickHouseCloudTest {
         String topic = "schemaless_overlap_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16"); put("str", "String");
-                    put("p_int8", "Int8"); put("p_int16", "Int16"); put("p_int32", "Int32");
-                    put("p_int64", "Int64"); put("p_float32", "Float32");
-                    put("p_float64", "Float64"); put("p_bool", "Bool");
-                }}).setEngine("ReplicatedMergeTree").setOrderByColumn("off16").execute();
+                .tableName(topic)
+                .column("off16", "Int16").column("str", "String")
+                .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
+                .column("p_int64", "Int64").column("p_float32", "Float32")
+                .column("p_float64", "Float64").column("p_bool", "Bool")
+                .engine("ReplicatedMergeTree").orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         Collection<SinkRecord> firstBatch = new ArrayList<>();
         Collection<SinkRecord> secondBatch = new ArrayList<>();

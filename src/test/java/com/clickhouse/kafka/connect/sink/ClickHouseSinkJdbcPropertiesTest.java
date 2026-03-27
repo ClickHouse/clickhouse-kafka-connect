@@ -22,17 +22,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
 
     private static final CreateTableStatement SMALL_INT_TABLE = new CreateTableStatement()
-            .setColumn("off16", "Int16")
-            .setColumn("str", "String")
-            .setColumn("p_int8", "Int8")
-            .setColumn("p_int16", "Int16")
-            .setColumn("p_int32", "Int32")
-            .setColumn("p_int64", "Int64")
-            .setColumn("p_float32", "Float32")
-            .setColumn("p_float64", "Float64")
-            .setColumn("p_bool", "Bool")
-            .setEngine("MergeTree")
-            .setOrderByColumn("off16");
+            .column("off16", "Int16")
+            .column("str", "String")
+            .column("p_int8", "Int8")
+            .column("p_int16", "Int16")
+            .column("p_int32", "Int32")
+            .column("p_int64", "Int64")
+            .column("p_float32", "Float32")
+            .column("p_float64", "Float64")
+            .column("p_bool", "Bool")
+            .engine("MergeTree")
+            .orderByColumn("off16");
 
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
         Gson gson = new Gson();
@@ -174,7 +174,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(SMALL_INT_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(SMALL_INT_TABLE).tableName(topic).execute(chc);
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -196,7 +196,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(SMALL_INT_TABLE).setTableName(topic).execute(chc);
+        new CreateTableStatement(SMALL_INT_TABLE).tableName(topic).execute(chc);
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();

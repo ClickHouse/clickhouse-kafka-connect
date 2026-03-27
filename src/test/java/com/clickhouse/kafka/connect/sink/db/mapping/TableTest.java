@@ -42,10 +42,10 @@ class TableTest extends ClickHouseBase {
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
         new CreateTableStatement()
-                .setTableName(tableName)
-                .setColumn("off16", "Int16")
-                .setColumn("date_number", "Nullable(Date)")
-                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
+                .tableName(tableName)
+                .column("off16", "Int16")
+                .column("date_number", "Nullable(Date)")
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
@@ -63,10 +63,10 @@ class TableTest extends ClickHouseBase {
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
         new CreateTableStatement()
-                .setTableName(tableName)
-                .setColumn("c", "String COMMENT '\\\\'")
-                .setColumn("d", "String COMMENT '\\n'")
-                .setEngine("MergeTree()").setOrderByColumn("tuple()").execute(chc);
+                .tableName(tableName)
+                .column("c", "String COMMENT '\\\\'")
+                .column("d", "String COMMENT '\\n'")
+                .engine("MergeTree()").orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);

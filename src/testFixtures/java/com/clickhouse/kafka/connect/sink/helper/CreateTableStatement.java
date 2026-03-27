@@ -27,32 +27,32 @@ public class CreateTableStatement {
         this.ifNotExists = template.ifNotExists;
     }
 
-    public CreateTableStatement setTableName(String tableName) {
+    public CreateTableStatement tableName(String tableName) {
         this.tableName = tableName;
         return this;
     }
 
-    public CreateTableStatement setColumn(String name, String type) {
+    public CreateTableStatement column(String name, String type) {
         this.schema.put(name, type);
         return this;
     }
 
-    public CreateTableStatement setEngine(String engine) {
+    public CreateTableStatement engine(String engine) {
         this.engine = engine;
         return this;
     }
 
-    public CreateTableStatement setOrderByColumn(String orderByColumn) {
+    public CreateTableStatement orderByColumn(String orderByColumn) {
         this.orderByColumn = orderByColumn;
         return this;
     }
 
-    public CreateTableStatement setSettings(Map<String, Serializable> settings) {
+    public CreateTableStatement settings(Map<String, Serializable> settings) {
         this.settings = settings;
         return this;
     }
 
-    public CreateTableStatement setIfNotExists(boolean ifNotExists) {
+    public CreateTableStatement ifNotExists(boolean ifNotExists) {
         this.ifNotExists = ifNotExists;
         return this;
     }

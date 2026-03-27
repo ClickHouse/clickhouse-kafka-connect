@@ -41,17 +41,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     public static final int DEFAULT_TOTAL_RECORDS = 1000;
 
     private static final CreateTableStatement PRIMITIVE_TYPES_TABLE = new CreateTableStatement()
-            .setColumn("off16", "Int16")
-            .setColumn("str", "String")
-            .setColumn("p_int8", "Int8")
-            .setColumn("p_int16", "Int16")
-            .setColumn("p_int32", "Int32")
-            .setColumn("p_int64", "Int64")
-            .setColumn("p_float32", "Float32")
-            .setColumn("p_float64", "Float64")
-            .setColumn("p_bool", "Bool")
-            .setEngine("MergeTree")
-            .setOrderByColumn("off16");
+            .column("off16", "Int16")
+            .column("str", "String")
+            .column("p_int8", "Int8")
+            .column("p_int16", "Int16")
+            .column("p_int32", "Int32")
+            .column("p_int64", "Int64")
+            .column("p_float32", "Float32")
+            .column("p_float64", "Float64")
+            .column("p_bool", "Bool")
+            .engine("MergeTree")
+            .orderByColumn("off16");
 
     public Collection<SinkRecord> createDBTopicSplit(int dbRange, long timeStamp, String topic, int partition, String splitChar) {
         Gson gson = new Gson();
@@ -141,7 +141,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             dropTable(chc, tmpTableName);
             createDatabase(databaseName, chc);
             new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                    .setTableName(tmpTableName)
+                    .tableName(tmpTableName)
                     .execute(chc);
         });
 
@@ -169,7 +169,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic)
+                .tableName(topic)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -198,7 +198,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic)
+                .tableName(topic)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -242,7 +242,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic = createTopicName("topic.statistics_test-01");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic)
+                .tableName(topic)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -307,7 +307,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic)
+                .tableName(topic)
                 .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -375,10 +375,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic1)
+                .tableName(topic1)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic2)
+                .tableName(topic2)
                 .execute(chc);
 
         int totalRecordsTopic1 = 100;
@@ -422,7 +422,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic)
+                .tableName(topic)
                 .execute(chc);
 
         int totalRecords = 100;
@@ -457,10 +457,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic1)
+                .tableName(topic1)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic2)
+                .tableName(topic2)
                 .execute(chc);
 
         int totalRecordsTopic1 = 50;
@@ -507,10 +507,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic1)
+                .tableName(topic1)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic2)
+                .tableName(topic2)
                 .execute(chc);
 
         int totalRecordsTopic1 = 40;
@@ -553,7 +553,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic = createTopicName("precommit_report_offsets_off");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                .setTableName(topic)
+                .tableName(topic)
                 .execute(chc);
 
         int partition = 0;

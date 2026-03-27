@@ -16,18 +16,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     private static final CreateTableStatement PRIMITIVE_TYPES_TABLE = new CreateTableStatement()
-            .setColumn("off16", "Int16").setColumn("str", "String")
-            .setColumn("p_int8", "Int8").setColumn("p_int16", "Int16").setColumn("p_int32", "Int32")
-            .setColumn("p_int64", "Int64").setColumn("p_float32", "Float32")
-            .setColumn("p_float64", "Float64").setColumn("p_bool", "Bool")
-            .setEngine("MergeTree").setOrderByColumn("off16");
+            .column("off16", "Int16").column("str", "String")
+            .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
+            .column("p_int64", "Int64").column("p_float32", "Float32")
+            .column("p_float64", "Float64").column("p_bool", "Bool")
+            .engine("MergeTree").orderByColumn("off16");
 
     private static final CreateTableStatement ARRAY_TYPES_TABLE = new CreateTableStatement()
-            .setColumn("off16", "Int16").setColumn("arr", "Array(String)").setColumn("arr_empty", "Array(String)")
-            .setColumn("arr_int8", "Array(Int8)").setColumn("arr_int16", "Array(Int16)").setColumn("arr_int32", "Array(Int32)")
-            .setColumn("arr_int64", "Array(Int64)").setColumn("arr_float32", "Array(Float32)")
-            .setColumn("arr_float64", "Array(Float64)").setColumn("arr_bool", "Array(Bool)")
-            .setEngine("MergeTree").setOrderByColumn("off16");
+            .column("off16", "Int16").column("arr", "Array(String)").column("arr_empty", "Array(String)")
+            .column("arr_int8", "Array(Int8)").column("arr_int16", "Array(Int16)").column("arr_int32", "Array(Int32)")
+            .column("arr_int64", "Array(Int64)").column("arr_float32", "Array(Float32)")
+            .column("arr_float64", "Array(Float64)").column("arr_bool", "Array(Bool)")
+            .engine("MergeTree").orderByColumn("off16");
 
     @Test
     public void schemalessSingleTableMappingTest() {
@@ -38,7 +38,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(tableName).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -60,8 +60,8 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String tableName2 = "table_mapping_test2";
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(tableName1).execute(chc);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(tableName2).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName1).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName2).execute(chc);
         Collection<SinkRecord> sr1 = SchemalessTestData.createPrimitiveTypes(topic1, 1);
         Collection<SinkRecord> sr2 = SchemalessTestData.createPrimitiveTypes(topic2, 1);
 
@@ -84,7 +84,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic2 = "mapping_table_test2";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(tableName).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName).execute(chc);
         Collection<SinkRecord> sr1 = SchemalessTestData.createPrimitiveTypes(topic1, 1);
         Collection<SinkRecord> sr2 = SchemalessTestData.createPrimitiveTypes(topic2, 1);
 
@@ -110,9 +110,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
         ClickHouseTestHelpers.dropTable(chc, topic3);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(tableName1).execute(chc);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(tableName2).execute(chc);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic3).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName1).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName2).execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic3).execute(chc);
         Collection<SinkRecord> sr1 = SchemalessTestData.createPrimitiveTypes(topic1, 1);
         Collection<SinkRecord> sr2 = SchemalessTestData.createPrimitiveTypes(topic2, 1);
         Collection<SinkRecord> sr3 = SchemalessTestData.createPrimitiveTypes(topic3, 1);
@@ -137,7 +137,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic = "array_string_table_test";
         String tableName = "array_string_mapping_table_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).setTableName(tableName).execute(chc);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(tableName).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
@@ -161,8 +161,8 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String tableName2 = "array_string_mapping_table_test2";
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).setTableName(tableName1).execute(chc);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).setTableName(tableName2).execute(chc);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(tableName1).execute(chc);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(tableName2).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr1 = SchemaTestData.createArrayType(topic1, 1);
         Collection<SinkRecord> sr2 = SchemaTestData.createArrayType(topic2, 1);
@@ -188,7 +188,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         String topic2 = "array_string_table_test2";
         String tableName = "array_string_mapping_table_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).setTableName(tableName).execute(chc);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(tableName).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr1 = SchemaTestData.createArrayType(topic1, 1);
         Collection<SinkRecord> sr2 = SchemaTestData.createArrayType(topic2, 1);
@@ -216,9 +216,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
         ClickHouseTestHelpers.dropTable(chc, tableName1);
         ClickHouseTestHelpers.dropTable(chc, tableName2);
         ClickHouseTestHelpers.dropTable(chc, topic3);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).setTableName(tableName1).execute(chc);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).setTableName(tableName2).execute(chc);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).setTableName(topic3).execute(chc);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(tableName1).execute(chc);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(tableName2).execute(chc);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic3).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr1 = SchemaTestData.createArrayType(topic1, 1);
         Collection<SinkRecord> sr2 = SchemaTestData.createArrayType(topic2, 1);
