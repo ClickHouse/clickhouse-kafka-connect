@@ -5,6 +5,7 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.junit.jupiter.api.AfterAll;
@@ -40,7 +41,16 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
     private static final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
     private static final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
-    private static final String MERGE_TREE_TABLE_DDL = "CREATE TABLE IF NOT EXISTS %s ( `side` String, `quantity` Int32, `symbol` String, `price` Int32, `account` String, `userid` String, `insertTime` DateTime DEFAULT now() ) Engine = MergeTree ORDER BY symbol";
+    private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
+            .column("side", "String")
+            .column("quantity", "Int32")
+            .column("symbol", "String")
+            .column("price", "Int32")
+            .column("account", "String")
+            .column("userid", "String")
+            .column("insertTime", "DateTime DEFAULT now()")
+            .engine("MergeTree")
+            .orderByColumn("symbol");
 
     @BeforeAll
     public static void setup() {
@@ -186,7 +196,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
         // The client makes requests with absolute URIs when a proxy is configured - currently, requests with absolute paths are rejected by CH server.
@@ -200,7 +210,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         dropTable(chcNoProxy, topicName);
-        ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
@@ -213,7 +223,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        ClickHouseTestHelpers.createTable(chcNoProxy, topicName, MERGE_TREE_TABLE_DDL);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());

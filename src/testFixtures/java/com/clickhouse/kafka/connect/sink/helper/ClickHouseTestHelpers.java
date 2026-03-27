@@ -387,22 +387,8 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-        try {
-            chc.queryV2(createTableQueryTmp).close();
-        } catch (Exception e) {
-            LOGGER.info("Failed to create table ", e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static void createTable(ClickHouseHelperClient chc, String topic, String createTableQuery, Map<String, Serializable> clientSettings) {
-        String createTableQueryTmp = String.format(createTableQuery, topic);
-
-        QuerySettings settings = new QuerySettings();
-        clientSettings.forEach(settings::setOption);
-        try (Records records = chc.queryV2(createTableQueryTmp, settings)) {
+    public static void runQuery(ClickHouseHelperClient chc, String query) {
+        try (Records ignored = chc.queryV2(query)) {
             // success
         } catch (Exception e) {
             LOGGER.info("Failed to create table ", e);
