@@ -691,6 +691,40 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Report inserted offsets."
         );
+
+        String ddlGroup = "DDL";
+        int ddlOrderInGroup = 0;
+        configDef.define(AUTO_EVOLVE,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.MEDIUM,
+                "Whether to automatically add columns to the destination table when a record contains fields not present in the table. default: false",
+                ddlGroup,
+                ++ddlOrderInGroup,
+                ConfigDef.Width.SHORT,
+                "Auto evolve table schema."
+        );
+        configDef.define(AUTO_EVOLVE_DDL_REFRESH_RETRIES,
+                ConfigDef.Type.INT,
+                3,
+                ConfigDef.Range.atLeast(0),
+                ConfigDef.Importance.LOW,
+                "Number of retries when waiting for DDL changes to propagate after schema evolution. default: 3",
+                ddlGroup,
+                ++ddlOrderInGroup,
+                ConfigDef.Width.SHORT,
+                "DDL refresh retries"
+        );
+        configDef.define(AUTO_EVOLVE_STRUCT_TO_JSON,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.MEDIUM,
+                "Whether to map Connect STRUCT fields to ClickHouse JSON columns during schema evolution. default: false",
+                ddlGroup,
+                ++ddlOrderInGroup,
+                ConfigDef.Width.SHORT,
+                "Map STRUCT to JSON"
+        );
         configDef.define(SSL_SOCKET_SNI,
                 ConfigDef.Type.STRING,
                 "",
