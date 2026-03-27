@@ -4,7 +4,6 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
 import java.util.List;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.col;
