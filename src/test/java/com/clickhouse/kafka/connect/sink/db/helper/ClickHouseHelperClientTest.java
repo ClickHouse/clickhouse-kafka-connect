@@ -13,7 +13,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -21,6 +20,12 @@ import java.util.stream.Collectors;
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseHelperClientTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseHelperClientTest.class);
+
+    private static final CreateTableStatement SINGLE_NUM_TABLE = new CreateTableStatement()
+            .setColumn("num", "String")
+            .setEngine("MergeTree")
+            .setOrderByColumn("num");
+
     ClickHouseHelperClient chc = null;
 
     @BeforeEach
@@ -38,9 +43,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void showTables() {
         String topic = createTopicName("simple_table_test");
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{ put("num", "String"); }})
-                .setEngine("MergeTree").setOrderByColumn("num").execute();
+        new CreateTableStatement(SINGLE_NUM_TABLE).setTableName(topic).execute(chc);
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
             List<String> tableNames = table.stream().map(item -> item.getCleanName()).collect(Collectors.toList());
@@ -53,10 +56,11 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void describeNestedFlattenedTable() {
         String topic = createTopicName("nested_flattened_table_test");
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("num", "String"); put("nested", "Nested (innerInt Int32, innerString String)");
-                }}).setEngine("MergeTree").setOrderByColumn("num").execute();
+        new CreateTableStatement()
+                .setTableName(topic)
+                .setColumn("num", "String")
+                .setColumn("nested", "Nested (innerInt Int32, innerString String)")
+                .setEngine("MergeTree").setOrderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -69,10 +73,11 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void ignoreArrayWithNestedTable() {
         String topic = createTopicName("nested_table_test");
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("num", "String"); put("nested", "Array(Nested (innerInt Int32, innerString String))");
-                }}).setEngine("MergeTree").setOrderByColumn("num").execute();
+        new CreateTableStatement()
+                .setTableName(topic)
+                .setColumn("num", "String")
+                .setColumn("nested", "Array(Nested (innerInt Int32, innerString String))")
+                .setEngine("MergeTree").setOrderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -95,13 +100,12 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         props.put("password", "123FOURfive^&*91011");
         chc = createClient(props);
 
-        new CreateTableStatement(chc)
-                .setTableName(nestedTopic).setSchema(new LinkedHashMap<>() {{
-                    put("num", "String"); put("nested", "Nested (innerInt Int32, innerString String)");
-                }}).setEngine("MergeTree").setOrderByColumn("num").execute();
-        new CreateTableStatement(chc)
-                .setTableName(normalTopic).setSchema(new LinkedHashMap<>() {{ put("num", "String"); }})
-                .setEngine("MergeTree").setOrderByColumn("num").execute();
+        new CreateTableStatement()
+                .setTableName(nestedTopic)
+                .setColumn("num", "String")
+                .setColumn("nested", "Nested (innerInt Int32, innerString String)")
+                .setEngine("MergeTree").setOrderByColumn("num").execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).setTableName(normalTopic).execute(chc);
 
         try {
             Table nestedTable = chc.describeTable(chc.getDatabase(), nestedTopic);
@@ -120,17 +124,17 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("null_str_alias", "Nullable(String) ALIAS formatReadableSize(`off16`)");
-                    put("null_str_eph", "Nullable(String) EPHEMERAL");
-                    put("null_str_mat", "Nullable(String) MATERIALIZED formatReadableSize(`off16`)");
-                    put("arr_eph", "Array(Array(Array(UInt32))) EPHEMERAL");
-                    put("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL");
-                    put("map_eph", "Map(String, UInt64) EPHEMERAL");
-                    put("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL");
-                }}).setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement()
+                .setTableName(topic)
+                .setColumn("off16", "Int16")
+                .setColumn("null_str_alias", "Nullable(String) ALIAS formatReadableSize(`off16`)")
+                .setColumn("null_str_eph", "Nullable(String) EPHEMERAL")
+                .setColumn("null_str_mat", "Nullable(String) MATERIALIZED formatReadableSize(`off16`)")
+                .setColumn("arr_eph", "Array(Array(Array(UInt32))) EPHEMERAL")
+                .setColumn("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL")
+                .setColumn("map_eph", "Map(String, UInt64) EPHEMERAL")
+                .setColumn("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL")
+                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);

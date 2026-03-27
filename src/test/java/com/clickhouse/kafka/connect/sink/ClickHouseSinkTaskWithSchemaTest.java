@@ -52,7 +52,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -68,6 +67,41 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaTest.class);
+
+    private static final CreateTableStatement ARRAY_TYPES_TABLE = new CreateTableStatement()
+            .setColumn("off16", "Int16")
+            .setColumn("arr", "Array(String)")
+            .setColumn("arr_empty", "Array(String)")
+            .setColumn("arr_int8", "Array(Int8)")
+            .setColumn("arr_int16", "Array(Int16)")
+            .setColumn("arr_int32", "Array(Int32)")
+            .setColumn("arr_int64", "Array(Int64)")
+            .setColumn("arr_float32", "Array(Float32)")
+            .setColumn("arr_float64", "Array(Float64)")
+            .setColumn("arr_bool", "Array(Bool)")
+            .setColumn("arr_str_arr", "Array(Array(String))")
+            .setColumn("arr_arr_str_arr", "Array(Array(Array(String)))")
+            .setColumn("arr_map", "Array(Map(String, String))")
+            .setEngine("MergeTree")
+            .setOrderByColumn("off16");
+
+    private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
+            .setColumn("off16", "Int16")
+            .setColumn("map_string_string", "Map(String, String)")
+            .setColumn("map_string_int64", "Map(String, Int64)")
+            .setColumn("map_int64_string", "Map(Int64, String)")
+            .setColumn("map_string_map", "Map(String, Map(String, Int64))")
+            .setColumn("map_string_array", "Map(String, Array(String))")
+            .setColumn("map_map_map", "Map(String, Map(String, Map(String, String)))")
+            .setEngine("MergeTree")
+            .setOrderByColumn("off16");
+
+    private static final CreateTableStatement CHANGE_SCHEMA_TABLE = new CreateTableStatement()
+            .setColumn("off16", "Int16")
+            .setColumn("string", "String")
+            .setEngine("MergeTree")
+            .setOrderByColumn("`off16`");
+
     @Test
     public void arrayTypesTest() {
         Map<String, String> props = createProps();
@@ -75,26 +109,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement(ARRAY_TYPES_TABLE)
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("arr", "Array(String)");
-                    put("arr_empty", "Array(String)");
-                    put("arr_int8", "Array(Int8)");
-                    put("arr_int16", "Array(Int16)");
-                    put("arr_int32", "Array(Int32)");
-                    put("arr_int64", "Array(Int64)");
-                    put("arr_float32", "Array(Float32)");
-                    put("arr_float64", "Array(Float64)");
-                    put("arr_bool", "Array(Bool)");
-                    put("arr_str_arr", "Array(Array(String))");
-                    put("arr_arr_str_arr", "Array(Array(Array(String)))");
-                    put("arr_map", "Array(Map(String, String))");
-                }})
-                .setEngine("MergeTree")
-                .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
@@ -114,23 +131,21 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "array_nullable_subtypes_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("arr_nullable_str", "Array(Nullable(String))");
-                    put("arr_empty_nullable_str", "Array(Nullable(String))");
-                    put("arr_nullable_int8", "Array(Nullable(Int8))");
-                    put("arr_nullable_int16", "Array(Nullable(Int16))");
-                    put("arr_nullable_int32", "Array(Nullable(Int32))");
-                    put("arr_nullable_int64", "Array(Nullable(Int64))");
-                    put("arr_nullable_float32", "Array(Nullable(Float32))");
-                    put("arr_nullable_float64", "Array(Nullable(Float64))");
-                    put("arr_nullable_bool", "Array(Nullable(Bool))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("arr_nullable_str", "Array(Nullable(String))")
+                .setColumn("arr_empty_nullable_str", "Array(Nullable(String))")
+                .setColumn("arr_nullable_int8", "Array(Nullable(Int8))")
+                .setColumn("arr_nullable_int16", "Array(Nullable(Int16))")
+                .setColumn("arr_nullable_int32", "Array(Nullable(Int32))")
+                .setColumn("arr_nullable_int64", "Array(Nullable(Int64))")
+                .setColumn("arr_nullable_float32", "Array(Nullable(Float32))")
+                .setColumn("arr_nullable_float64", "Array(Nullable(Float64))")
+                .setColumn("arr_nullable_bool", "Array(Nullable(Bool))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createArrayNullableSubtypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -140,7 +155,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-    
+
     @Test
     public void mapTypesTest() {
         Map<String, String> props = createProps();
@@ -148,20 +163,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "map_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement(MAP_TYPES_TABLE)
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("map_string_string", "Map(String, String)");
-                    put("map_string_int64", "Map(String, Int64)");
-                    put("map_int64_string", "Map(Int64, String)");
-                    put("map_string_map", "Map(String, Map(String, Int64))");
-                    put("map_string_array", "Map(String, Array(String))");
-                    put("map_map_map", "Map(String, Map(String, Map(String, String)))");
-                }})
-                .setEngine("MergeTree")
-                .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
 
@@ -180,15 +184,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("nullable_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("arr", "Array(String)");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("arr", "Array(String)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -206,15 +208,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("nullable_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("arr", "Array(Nullable(String))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("arr", "Array(Nullable(String))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -234,30 +234,26 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("m_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic + "mate");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("arr", "Array(String)");
-                    put("arr_empty", "Array(String)");
-                    put("arr_int8", "Array(Int8)");
-                    put("arr_int16", "Array(Int16)");
-                    put("arr_int32", "Array(Int32)");
-                    put("arr_int64", "Array(Int64)");
-                    put("arr_float32", "Array(Float32)");
-                    put("arr_float64", "Array(Float64)");
-                    put("arr_bool", "Array(Bool)");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("arr", "Array(String)")
+                .setColumn("arr_empty", "Array(String)")
+                .setColumn("arr_int8", "Array(Int8)")
+                .setColumn("arr_int16", "Array(Int16)")
+                .setColumn("arr_int32", "Array(Int32)")
+                .setColumn("arr_int64", "Array(Int64)")
+                .setColumn("arr_float32", "Array(Float32)")
+                .setColumn("arr_float64", "Array(Float64)")
+                .setColumn("arr_bool", "Array(Bool)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
-        new CreateTableStatement(chc)
+                .execute(chc);
+        new CreateTableStatement()
                 .setTableName(topic + "_mate")
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                }})
+                .setColumn("off16", "Int16")
                 .setEngine("Null")
-                .execute();
+                .execute(chc);
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE MATERIALIZED VIEW %s_mv TO " + topic + "_mate AS SELECT off16 FROM " + topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
@@ -277,20 +273,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("special-char-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement(MAP_TYPES_TABLE)
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("map_string_string", "Map(String, String)");
-                    put("map_string_int64", "Map(String, Int64)");
-                    put("map_int64_string", "Map(Int64, String)");
-                    put("map_string_map", "Map(String, Map(String, Int64))");
-                    put("map_string_array", "Map(String, Array(String))");
-                    put("map_map_map", "Map(String, Map(String, Map(String, String)))");
-                }})
-                .setEngine("MergeTree")
-                .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
 
@@ -310,15 +295,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("null-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("null_value_data", "Nullable(DateTime64(6, 'UTC'))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
@@ -339,27 +322,25 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("date_number", "Nullable(Date)");
-                    put("date32_number", "Nullable(Date32)");
-                    put("datetime_number", "DateTime");
-                    put("datetime64_number", "DateTime64");
-                    put("datetime64_3_number", "DateTime64(3)");
-                    put("datetime64_6_number", "DateTime64(6)");
-                    put("datetime64_9_number", "DateTime64(9)");
-                    put("timestamp_int64", "Int64");
-                    put("timestamp_date", "DateTime64");
-                    put("time_int32", "Int32");
-                    put("time_date32", "Date32");
-                    put("date_date", "Date");
-                    put("datetime_date", "DateTime");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("date_number", "Nullable(Date)")
+                .setColumn("date32_number", "Nullable(Date32)")
+                .setColumn("datetime_number", "DateTime")
+                .setColumn("datetime64_number", "DateTime64")
+                .setColumn("datetime64_3_number", "DateTime64(3)")
+                .setColumn("datetime64_6_number", "DateTime64(6)")
+                .setColumn("datetime64_9_number", "DateTime64(9)")
+                .setColumn("timestamp_int64", "Int64")
+                .setColumn("timestamp_date", "DateTime64")
+                .setColumn("time_int32", "Int32")
+                .setColumn("time_date32", "Date32")
+                .setColumn("date_date", "Date")
+                .setColumn("datetime_date", "DateTime")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createDateType(topic, 1);
 
@@ -388,16 +369,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-array-datetime64-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("arr_datetime64_number", "Array(DateTime64)");
-                    put("arr_timestamp_date", "Array(DateTime64)");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("arr_datetime64_number", "Array(DateTime64)")
+                .setColumn("arr_timestamp_date", "Array(DateTime64)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createArrayDateTime64Type(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -407,7 +386,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
-    
+
     @Test
     public void detectUnsupportedDataConversions() {
         Map<String, String> props = createProps();
@@ -415,18 +394,16 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-unsupported-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("date_number", "Date");
-                    put("date32_number", "Date32");
-                    put("datetime_number", "DateTime");
-                    put("datetime64_number", "DateTime64");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("date_number", "Date")
+                .setColumn("date32_number", "Date32")
+                .setColumn("datetime_number", "DateTime")
+                .setColumn("datetime64_number", "DateTime64")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createUnsupportedDataConversions(topic, 1);
 
@@ -448,16 +425,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-dates-string-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("zoned_date", "DateTime64");
-                    put("offset_date", "DateTime64");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("zoned_date", "DateTime64")
+                .setColumn("offset_date", "DateTime64")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createZonedTimestampConversions(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -477,15 +452,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("support-formatted-dates-string-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("format_date", "DateTime64(9)");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("format_date", "DateTime64(9)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createFormattedTimestampConversions(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -518,15 +491,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("p_int64", "Int64");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("p_int64", "Int64")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -543,17 +514,15 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("p_int64", "Int64");
-                    put("lc_string", "LowCardinality(String)");
-                    put("nullable_lc_string", "LowCardinality(Nullable(String))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("p_int64", "Int64")
+                .setColumn("lc_string", "LowCardinality(String)")
+                .setColumn("nullable_lc_string", "LowCardinality(Nullable(String))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithLowCardinality(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -570,15 +539,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("uuid", "UUID");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("uuid", "UUID")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithUUID(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -595,15 +562,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("default_value_data", "DateTime DEFAULT now()");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("default_value_data", "DateTime DEFAULT now()")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
@@ -623,16 +588,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("default_value_data", "DateTime DEFAULT now()");
-                    put("ephemeral_data", "String EPHEMERAL");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("default_value_data", "DateTime DEFAULT now()")
+                .setColumn("ephemeral_data", "String EPHEMERAL")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -651,16 +614,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("null_value_data", "Nullable(DateTime)");
-                    put("default_value_data", "DateTime DEFAULT now()");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("null_value_data", "Nullable(DateTime)")
+                .setColumn("default_value_data", "DateTime DEFAULT now()")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
@@ -676,18 +637,16 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     public void schemaWithDecimalTest() {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
-  
+
         String topic = createTopicName("decimal-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("decimal_14_2", "Decimal(14, 2)");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("decimal_14_2", "Decimal(14, 2)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createDecimalValueData(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -709,16 +668,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         LOGGER.info("FixedString size: " + fixedStringSize);
         ClickHouseTestHelpers.dropTable(chc, topic);
         final int fss = fixedStringSize;
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("fixed_string_string", "FixedString(" + fss + ")");
-                    put("fixed_string_bytes", "FixedString(" + fss + ")");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("fixed_string_string", "FixedString(" + fss + ")")
+                .setColumn("fixed_string_bytes", "FixedString(" + fss + ")")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -736,27 +693,25 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("schema-with-boolean-and-int-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("ui1", "UInt8");
-                    put("ui2", "UInt16");
-                    put("ui3", "UInt32");
-                    put("ui4", "UInt64");
-                    put("i5", "Int8");
-                    put("i6", "Int16");
-                    put("i7", "Int32");
-                    put("i8", "Int64");
-                    put("b1", "Boolean");
-                    put("b2", "Boolean");
-                    put("b3", "Boolean");
-                    put("b4", "Boolean");
-                    put("ii", "UInt8");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("ui1", "UInt8")
+                .setColumn("ui2", "UInt16")
+                .setColumn("ui3", "UInt32")
+                .setColumn("ui4", "UInt64")
+                .setColumn("i5", "Int8")
+                .setColumn("i6", "Int16")
+                .setColumn("i7", "Int32")
+                .setColumn("i8", "Int64")
+                .setColumn("b1", "Boolean")
+                .setColumn("b2", "Boolean")
+                .setColumn("b3", "Boolean")
+                .setColumn("b4", "Boolean")
+                .setColumn("ii", "UInt8")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
 
         int totalRecords = 100;
         int partition = 1;
@@ -853,15 +808,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         LOGGER.info("FixedString size: " + fixedStringSize);
         ClickHouseTestHelpers.dropTable(chc, topic);
         final int fss = fixedStringSize;
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("fixed_string_string", "FixedString(" + (fss - 1) + ")");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("fixed_string_string", "FixedString(" + (fss - 1) + ")")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createFixedStringData(topic, 1, fixedStringSize);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -881,15 +834,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("nullable-decimal-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("decimal_14_2", "Nullable(Decimal(14, 2))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("decimal_14_2", "Nullable(Decimal(14, 2))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createDecimalValueDataWithNulls(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -907,14 +858,12 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("bytes-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("string", "String");
-                }})
+                .setColumn("string", "String")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`string`")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createBytesValueData(topic, 1);
 
@@ -931,16 +880,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("enum-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("enum8_type", "Enum8('A' = 1, 'B' = 2, 'C' = 3)");
-                    put("enum16_type", "Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("enum8_type", "Enum8('A' = 1, 'B' = 2, 'C' = 3)")
+                .setColumn("enum16_type", "Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createEnumValueData(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -983,16 +930,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "  `array_map_tuple` Array(Map(String, " + simpleTuple + "))," +
                 "  `map_array_tuple` Map(String, Array(" + simpleTuple + "))" +
                 ")";
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("tuple", tupleType);
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("tuple", tupleType)
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
                 .setSettings(Map.of("allow_experimental_variant_type", 1))
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createTupleType(topic, 1, 5);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -1026,22 +971,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = "nested-tuple-map-array-and-variant-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
 
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("nested", "Nested(" +
-                            "  `string` String," +
-                            "  `decimal` Decimal(14, 2)," +
-                            "  `tuple` Tuple(" +
-                            "    `map` Map(String, String)," +
-                            "    `variant` Variant(Boolean, String)" +
-                            "))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("nested", "Nested(" +
+                        "  `string` String," +
+                        "  `decimal` Decimal(14, 2)," +
+                        "  `tuple` Tuple(" +
+                        "    `map` Map(String, String)," +
+                        "    `variant` Variant(Boolean, String)" +
+                        "))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
                 .setSettings(Map.of("allow_experimental_variant_type", 1))
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNestedType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -1097,18 +1040,16 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = createTopicName("unsigned-integers-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("uint8", "UInt8");
-                    put("uint16", "UInt16");
-                    put("uint32", "UInt32");
-                    put("uint64", "UInt64");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("uint8", "UInt8")
+                .setColumn("uint16", "UInt16")
+                .setColumn("uint32", "UInt32")
+                .setColumn("uint64", "UInt64")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createUnsignedIntegers(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -1124,15 +1065,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-while-running-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement(CHANGE_SCHEMA_TABLE)
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("string", "String");
-                }})
-                .setEngine("MergeTree")
-                .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createSimpleData(topic, 1);
 
         int numRecords = sr.size();
@@ -1168,15 +1103,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-add-default-old-schema-data-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement(CHANGE_SCHEMA_TABLE)
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("string", "String");
-                }})
-                .setEngine("MergeTree")
-                .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> firstBatch = SchemaTestData.createSimpleData(topic, 1, 1000);
         Collection<SinkRecord> secondBatch = SchemaTestData.createSimpleData(topic, 1, 1000).stream()
@@ -1215,15 +1144,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL, "1");
         String topic = createTopicName("change-schema-while-running-table-test-with-refresh-enabled");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement(CHANGE_SCHEMA_TABLE)
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("string", "String");
-                }})
-                .setEngine("MergeTree")
-                .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createSimpleData(topic, 1);
 
         int numRecords = sr.size();
@@ -1259,16 +1182,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("tuple-table-test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("string", "String");
-                    put("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("string", "String")
+                .setColumn("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createTupleSimpleData(topic, 1);
 
@@ -1286,17 +1207,15 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("tuple-table-test-default");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("string", "String");
-                    put("insert_datetime", "DateTime default now()");
-                    put("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("string", "String")
+                .setColumn("insert_datetime", "DateTime default now()")
+                .setColumn("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createTupleSimpleData(topic, 1);
 
@@ -1315,20 +1234,18 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("nested-tuple-table-test-default");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("string", "String");
-                    put("insert_datetime", "DateTime default now()");
-                    put("t", "Tuple(" +
-                            "`off16` Nullable(Int16), " +
-                            "`string` Nullable(String), " +
-                            "`n` Tuple(`off16` Nullable(Int16), `string` Nullable(String)))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("string", "String")
+                .setColumn("insert_datetime", "DateTime default now()")
+                .setColumn("t", "Tuple(" +
+                        "`off16` Nullable(Int16), " +
+                        "`string` Nullable(String), " +
+                        "`n` Tuple(`off16` Nullable(Int16), `string` Nullable(String)))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createNestedTupleSimpleData(topic, 1);
 
@@ -1353,21 +1270,19 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("jackson-struct-json-insert");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("name", "String");
-                    put("active", "Bool");
-                    put("score", "Float64");
-                    put("t", "Tuple(" +
-                            "`off16` Nullable(Int16), " +
-                            "`label` Nullable(String), " +
-                            "`n` Tuple(`value` Nullable(Int32), `tag` Nullable(String)))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("name", "String")
+                .setColumn("active", "Bool")
+                .setColumn("score", "Float64")
+                .setColumn("t", "Tuple(" +
+                        "`off16` Nullable(Int16), " +
+                        "`label` Nullable(String), " +
+                        "`n` Tuple(`value` Nullable(Int32), `tag` Nullable(String)))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
 
         Schema innerTupleSchema = SchemaBuilder.struct()
                 .field("value", Schema.OPTIONAL_INT32_SCHEMA)
@@ -1456,16 +1371,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("jackson-struct-nulls-json-insert");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("name", "Nullable(String)");
-                    put("t", "Tuple(`off16` Nullable(Int16), `label` Nullable(String))");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("name", "Nullable(String)")
+                .setColumn("t", "Tuple(`off16` Nullable(Int16), `label` Nullable(String))")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`off16`")
-                .execute();
+                .execute(chc);
 
         Schema tupleSchema = SchemaBuilder.struct()
                 .field("off16", Schema.OPTIONAL_INT16_SCHEMA)
@@ -1536,23 +1449,21 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("cool-schema-with-random-field");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("processing_time", "DateTime");
-                    put("insert_time", "DateTime DEFAULT now()");
-                    put("type", "String");
-                    put("player", "Tuple(id Nullable(Int64), key Nullable(String), ip Nullable(String), label Nullable(String), device_id Nullable(Int64), player_tracker_id Nullable(Int64), is_new_player Nullable(Bool), player_root Nullable(String), target Nullable(String), `type` Nullable(String), name Nullable(String), processing_time Nullable(Int64), tags Map(String, String), session_id Nullable(String), machine_fingerprint Nullable(String), player_fingerprint Nullable(String))");
-                    put("sensor", "Tuple(sensor_id String, origin_device String, session_id String, machine_id Int64, machine_timestamp String)");
-                    put("data", "String");
-                    put("id", "String");
-                    put("desc", "Nullable(String)");
-                    put("tag", "Nullable(String)");
-                    put("va", "Nullable(Float64)");
-                }})
+                .setColumn("processing_time", "DateTime")
+                .setColumn("insert_time", "DateTime DEFAULT now()")
+                .setColumn("type", "String")
+                .setColumn("player", "Tuple(id Nullable(Int64), key Nullable(String), ip Nullable(String), label Nullable(String), device_id Nullable(Int64), player_tracker_id Nullable(Int64), is_new_player Nullable(Bool), player_root Nullable(String), target Nullable(String), `type` Nullable(String), name Nullable(String), processing_time Nullable(Int64), tags Map(String, String), session_id Nullable(String), machine_fingerprint Nullable(String), player_fingerprint Nullable(String))")
+                .setColumn("sensor", "Tuple(sensor_id String, origin_device String, session_id String, machine_id Int64, machine_timestamp String)")
+                .setColumn("data", "String")
+                .setColumn("id", "String")
+                .setColumn("desc", "Nullable(String)")
+                .setColumn("tag", "Nullable(String)")
+                .setColumn("va", "Nullable(Float64)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("`processing_time`")
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createCoolSchemaWithRandomFields(topic, 1);
 
@@ -1576,17 +1487,15 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         Map<String, Serializable> clientSettings = new HashMap<>();
         clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("struct_content", "JSON");
-                    put("json_as_str", "JSON");
-                }})
+                .setColumn("off16", "Int16")
+                .setColumn("struct_content", "JSON")
+                .setColumn("json_as_str", "JSON")
                 .setEngine("MergeTree")
                 .setOrderByColumn("off16")
                 .setSettings(clientSettings)
-                .execute();
+                .execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createJSONType(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -1638,48 +1547,46 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Map<String, Serializable> clientSettings = new HashMap<>();
         clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
 
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("id", "Int32");
-                    put("name", "String");
-                    put("is_active", "Boolean");
-                    put("score", "Float64");
-                    put("tags", "Array(String)");
-                    put("content", "JSON");
-                }})
+                .setColumn("id", "Int32")
+                .setColumn("name", "String")
+                .setColumn("is_active", "Boolean")
+                .setColumn("score", "Float64")
+                .setColumn("tags", "Array(String)")
+                .setColumn("content", "JSON")
                 .setEngine("MergeTree")
                 .setOrderByColumn("()")
                 .setSettings(clientSettings)
-                .execute();
+                .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(records);
         chst.stop();
         assertEquals(records.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        
+
         // Verify the actual row data matches the proto JSON conversion by comparing JSON strings
         List<JSONObject> insertedRows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
         assertEquals(records.size(), insertedRows.size());
-        
+
         // Compare database rows directly with protobuf message fields
         JSONObject firstRow = insertedRows.get(0);
         JSONObject secondRow = insertedRows.get(1);
-        
+
         // Verify first row (user message) top-level fields match protobuf
         assertEquals(userMsg.getId(), firstRow.getInt("id"));
         assertEquals(userMsg.getName(), firstRow.getString("name"));
         assertEquals(userMsg.getIsActive(), firstRow.getBoolean("is_active"));
         assertEquals(userMsg.getScore(), firstRow.getDouble("score"), 0.01);
-        
+
         // Verify tags array matches protobuf
         JSONArray userTagsArray = firstRow.getJSONArray("tags");
         assertEquals(userMsg.getTagsCount(), userTagsArray.length());
         for (int i = 0; i < userMsg.getTagsCount(); i++) {
             assertEquals(userMsg.getTags(i), userTagsArray.getString(i));
         }
-        
+
         // Verify the content column contains the nested user_info data
         JSONObject firstRowContent = firstRow.getJSONObject("content");
         assertTrue(firstRowContent.has("user_info"), "Content should contain user_info");
@@ -1700,20 +1607,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(userMsg.getUserInfo().getAddress().getAlt().getCity(), altAddress.getString("city"));
         assertEquals(userMsg.getUserInfo().getAddress().getAlt().getState(), altAddress.getString("state"));
         assertEquals(userMsg.getUserInfo().getAddress().getAlt().getZip(), altAddress.getString("zip"));
-        
+
         // Verify second row (product message) top-level fields match protobuf
         assertEquals(productMsg.getId(), secondRow.getInt("id"));
         assertEquals(productMsg.getName(), secondRow.getString("name"));
         assertEquals(productMsg.getIsActive(), secondRow.getBoolean("is_active"));
         assertEquals(productMsg.getScore(), secondRow.getDouble("score"), 0.01);
-        
+
         // Verify product tags array matches protobuf
         JSONArray productTagsArray = secondRow.getJSONArray("tags");
         assertEquals(productMsg.getTagsCount(), productTagsArray.length());
         for (int i = 0; i < productMsg.getTagsCount(); i++) {
             assertEquals(productMsg.getTags(i), productTagsArray.getString(i));
         }
-        
+
         // Verify the content column contains the nested product_info data
         JSONObject secondRowContent = secondRow.getJSONObject("content");
         assertTrue(secondRowContent.has("product_info"), "Content should contain product_info");
@@ -1721,7 +1628,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(productMsg.getProductInfo().getSku(), productInfo.getString("sku"));
         assertEquals(productMsg.getProductInfo().getPrice(), productInfo.getDouble("price"), 0.01);
         assertEquals(productMsg.getProductInfo().getInStock(), productInfo.getBoolean("in_stock"));
-        
+
         // Verify categories array in product_info matches protobuf
         JSONArray categoriesArray = productInfo.getJSONArray("categories");
         assertEquals(productMsg.getProductInfo().getCategoriesCount(), categoriesArray.length());
@@ -1769,26 +1676,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         String topic = "exactly_once_state_mismatch_test_" + split + "_" + batch + "_" + System.currentTimeMillis();
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement(ARRAY_TYPES_TABLE)
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16");
-                    put("arr", "Array(String)");
-                    put("arr_empty", "Array(String)");
-                    put("arr_int8", "Array(Int8)");
-                    put("arr_int16", "Array(Int16)");
-                    put("arr_int32", "Array(Int32)");
-                    put("arr_int64", "Array(Int64)");
-                    put("arr_float32", "Array(Float32)");
-                    put("arr_float64", "Array(Float64)");
-                    put("arr_bool", "Array(Bool)");
-                    put("arr_str_arr", "Array(Array(String))");
-                    put("arr_arr_str_arr", "Array(Array(Array(String)))");
-                    put("arr_map", "Array(Map(String, String))");
-                }})
-                .setEngine("MergeTree")
-                .setOrderByColumn("off16")
-                .execute();
+                .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
         List<Collection<SinkRecord>> data = partition(sr, split);
@@ -1830,16 +1720,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("name", "String");
-                    put("content", "String");
-                    put("description", "Nullable(String)");
-                }})
+                .setColumn("name", "String")
+                .setColumn("content", "String")
+                .setColumn("description", "Nullable(String)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("()")
-                .execute();
+                .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -1887,16 +1775,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic)
-                .setSchema(new LinkedHashMap<>() {{
-                    put("id", "Int64");
-                    put("time1", "DateTime64(3)");
-                    put("time2", "DateTime64(3)");
-                }})
+                .setColumn("id", "Int64")
+                .setColumn("time1", "DateTime64(3)")
+                .setColumn("time2", "DateTime64(3)")
                 .setEngine("MergeTree")
                 .setOrderByColumn("()")
-                .execute();
+                .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);

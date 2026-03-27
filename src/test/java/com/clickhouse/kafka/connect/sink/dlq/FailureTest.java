@@ -21,7 +21,6 @@ import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -42,11 +41,11 @@ public class FailureTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16"); put("uint8", "UInt8"); put("uint16", "UInt16");
-                    put("uint32", "UInt32"); put("uint64", "UInt64");
-                }}).setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement()
+                .setTableName(topic)
+                .setColumn("off16", "Int16").setColumn("uint8", "UInt8").setColumn("uint16", "UInt16")
+                .setColumn("uint32", "UInt32").setColumn("uint64", "UInt64")
+                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
         Collection<SinkRecord> validRecordsPart1 = SchemaTestData.createUnsignedIntegers(topic, 1, 100);
         Collection<SinkRecord> invalidRecordsPart2 = createInvalidRecords(topic, 2, 100);
         Collection<SinkRecord> validRecordsPart3 =  SchemaTestData.createUnsignedIntegers(topic, 3, 100);

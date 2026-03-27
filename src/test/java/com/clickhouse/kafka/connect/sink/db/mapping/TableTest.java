@@ -7,7 +7,6 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -42,9 +41,11 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement(chc)
-                .setTableName(tableName).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); put("date_number", "Nullable(Date)"); }})
-                .setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement()
+                .setTableName(tableName)
+                .setColumn("off16", "Int16")
+                .setColumn("date_number", "Nullable(Date)")
+                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
@@ -61,10 +62,11 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement(chc)
-                .setTableName(tableName).setSchema(new LinkedHashMap<>() {{
-                    put("c", "String COMMENT '\\\\'"); put("d", "String COMMENT '\\n'");
-                }}).setEngine("MergeTree()").setOrderByColumn("tuple()").execute();
+        new CreateTableStatement()
+                .setTableName(tableName)
+                .setColumn("c", "String COMMENT '\\\\'")
+                .setColumn("d", "String COMMENT '\\n'")
+                .setEngine("MergeTree()").setOrderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);

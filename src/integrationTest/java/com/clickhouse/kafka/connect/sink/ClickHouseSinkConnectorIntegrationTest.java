@@ -194,7 +194,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(chcNoProxy)
+        new CreateTableStatement()
                 .setTableName(topicName).setSchema(stockSchema())
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 
@@ -210,7 +210,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(chcNoProxy)
+        new CreateTableStatement()
                 .setTableName(topicName).setSchema(stockSchema())
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 
@@ -225,7 +225,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(chcNoProxy)
+        new CreateTableStatement()
                 .setTableName(topicName).setSchema(stockSchema())
                 .setEngine("MergeTree").setOrderByColumn("symbol").execute();
 

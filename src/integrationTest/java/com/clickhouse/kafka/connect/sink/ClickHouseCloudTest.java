@@ -68,7 +68,7 @@ public class ClickHouseCloudTest {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_overlap_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
+        new CreateTableStatement()
                 .setTableName(topic).setSchema(new LinkedHashMap<>() {{
                     put("off16", "Int16"); put("str", "String");
                     put("p_int8", "Int8"); put("p_int16", "Int16"); put("p_int32", "Int32");

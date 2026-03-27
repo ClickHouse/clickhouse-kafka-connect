@@ -19,7 +19,6 @@ import org.testcontainers.containers.ToxiproxyContainer;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +37,21 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     private static Proxy proxy = null;
 
     private static final int PROXY_PORT = 8666;
+
+    private static final CreateTableStatement PRIMITIVE_TYPES_TABLE = new CreateTableStatement()
+            .setColumn("off16", "Int16").setColumn("str", "String")
+            .setColumn("p_int8", "Int8").setColumn("p_int16", "Int16").setColumn("p_int32", "Int32")
+            .setColumn("p_int64", "Int64").setColumn("p_float32", "Float32")
+            .setColumn("p_float64", "Float64").setColumn("p_bool", "Bool")
+            .setEngine("MergeTree").setOrderByColumn("off16");
+
+    private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
+            .setColumn("off16", "Int16").setColumn("map_string_string", "Map(String, String)")
+            .setColumn("map_string_int64", "Map(String, Int64)").setColumn("map_int64_string", "Map(Int64, String)")
+            .setColumn("map_string_map", "Map(String, Map(String, Int64))")
+            .setColumn("map_string_array", "Map(String, Array(String))")
+            .setColumn("map_map_map", "Map(String, Map(String, Map(String, String)))")
+            .setEngine("MergeTree").setOrderByColumn("off16");
 
     @BeforeAll
     public void setup() throws IOException {
@@ -83,15 +97,6 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         return props;
     }
 
-    private static LinkedHashMap<String, String> primitiveTypesSchema() {
-        LinkedHashMap<String, String> s = new LinkedHashMap<>();
-        s.put("off16", "Int16"); s.put("str", "String");
-        s.put("p_int8", "Int8"); s.put("p_int16", "Int16"); s.put("p_int32", "Int32");
-        s.put("p_int64", "Int64"); s.put("p_float32", "Float32");
-        s.put("p_float64", "Float64"); s.put("p_bool", "Bool");
-        return s;
-    }
-
     @Test
     public void proxyPingTest() throws IOException {
         ClickHouseHelperClient chc = createClient(getTestProperties(), false);
@@ -108,9 +113,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_primitive_types_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(primitiveTypesSchema())
-                .setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -126,9 +129,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_empty_records_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(primitiveTypesSchema())
-                .setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(topic).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -144,12 +145,12 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = "schemaless_nullable_values_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16"); put("str", "String"); put("null_str", "Nullable(String)");
-                    put("p_int8", "Int8"); put("p_int16", "Int16"); put("p_int32", "Int32");
-                    put("p_int64", "Int64"); put("p_float32", "Float32"); put("p_float64", "Float64"); put("p_bool", "Bool");
-                }}).setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement()
+                .setTableName(topic)
+                .setColumn("off16", "Int16").setColumn("str", "String").setColumn("null_str", "Nullable(String)")
+                .setColumn("p_int8", "Int8").setColumn("p_int16", "Int16").setColumn("p_int32", "Int32")
+                .setColumn("p_int64", "Int64").setColumn("p_float32", "Float32").setColumn("p_float64", "Float64").setColumn("p_bool", "Bool")
+                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypesWithNulls(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -166,14 +167,14 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "schemaless_array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16"); put("arr", "Array(String)"); put("arr_empty", "Array(String)");
-                    put("arr_int8", "Array(Int8)"); put("arr_int16", "Array(Int16)"); put("arr_int32", "Array(Int32)");
-                    put("arr_int64", "Array(Int64)"); put("arr_float32", "Array(Float32)"); put("arr_float64", "Array(Float64)");
-                    put("arr_bool", "Array(Bool)"); put("arr_str_arr", "Array(Array(String))");
-                    put("arr_arr_str_arr", "Array(Array(Array(String)))"); put("arr_map", "Array(Map(String, String))");
-                }}).setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement()
+                .setTableName(topic)
+                .setColumn("off16", "Int16").setColumn("arr", "Array(String)").setColumn("arr_empty", "Array(String)")
+                .setColumn("arr_int8", "Array(Int8)").setColumn("arr_int16", "Array(Int16)").setColumn("arr_int32", "Array(Int32)")
+                .setColumn("arr_int64", "Array(Int64)").setColumn("arr_float32", "Array(Float32)").setColumn("arr_float64", "Array(Float64)")
+                .setColumn("arr_bool", "Array(Bool)").setColumn("arr_str_arr", "Array(Array(String))")
+                .setColumn("arr_arr_str_arr", "Array(Array(Array(String)))").setColumn("arr_map", "Array(Map(String, String))")
+                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createArrayType(topic, 1);
 
@@ -191,14 +192,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "schemaless_map_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16"); put("map_string_string", "Map(String, String)");
-                    put("map_string_int64", "Map(String, Int64)"); put("map_int64_string", "Map(Int64, String)");
-                    put("map_string_map", "Map(String, Map(String, Int64))");
-                    put("map_string_array", "Map(String, Array(String))");
-                    put("map_map_map", "Map(String, Map(String, Map(String, String)))");
-                }}).setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement(MAP_TYPES_TABLE).setTableName(topic).execute(chc);
 
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createMapType(topic, 1);
@@ -218,14 +212,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "special-char-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{
-                    put("off16", "Int16"); put("map_string_string", "Map(String, String)");
-                    put("map_string_int64", "Map(String, Int64)"); put("map_int64_string", "Map(Int64, String)");
-                    put("map_string_map", "Map(String, Map(String, Int64))");
-                    put("map_string_array", "Map(String, Array(String))");
-                    put("map_map_map", "Map(String, Map(String, Map(String, String)))");
-                }}).setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement(MAP_TYPES_TABLE).setTableName(topic).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createMapType(topic, 1);
 
@@ -243,9 +230,9 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "emojis_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{ put("off16", "Int16"); put("str", "String"); }})
-                .setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement()
+                .setTableName(topic).setColumn("off16", "Int16").setColumn("str", "String")
+                .setEngine("MergeTree").setOrderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDataWithEmojis(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -264,9 +251,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement(chc)
-                .setTableName(tableName).setSchema(primitiveTypesSchema())
-                .setEngine("MergeTree").setOrderByColumn("off16").execute();
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).setTableName(tableName).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -283,9 +268,9 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
         String topic = "decimal_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(chc)
-                .setTableName(topic).setSchema(new LinkedHashMap<>() {{ put("num", "String"); put("decimal_14_2", "Decimal(14, 2)"); }})
-                .setEngine("MergeTree").setOrderByColumn("num").execute();
+        new CreateTableStatement()
+                .setTableName(topic).setColumn("num", "String").setColumn("decimal_14_2", "Decimal(14, 2)")
+                .setEngine("MergeTree").setOrderByColumn("num").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDecimalTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
