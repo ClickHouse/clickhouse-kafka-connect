@@ -257,7 +257,8 @@ public class ClickHouseWriter implements DBWriter {
             Type type = col.getType();
             boolean isNullable = col.isNullable();
             boolean hasDefault = col.hasDefault();
-            if (!isNullable && !hasDefault) {
+            // Variant has a native NULL discriminator (255) so it can accept missing values without Nullable or DEFAULT.
+            if (!isNullable && !hasDefault && type != Type.VARIANT) {
                 Map<String, Schema> schemaMap = record.getFields().stream().collect(Collectors.toMap(Field::name, Field::schema));
                 var objSchema = schemaMap.get(colName);
                 Data obj = record.getJsonMap().get(colName);
@@ -842,6 +843,12 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeNonNull(stream);
                 }
                 BinaryStreamUtils.writeNull(stream);
+            } else if (col.getType() == Type.VARIANT) {
+                // Variant has a native NULL discriminator (255) — no Nullable/DEFAULT needed.
+                if (defaultsSupport) {
+                    BinaryStreamUtils.writeNonNull(stream);
+                }
+                BinaryStreamUtils.writeUnsignedInt8(stream, 255);
             } else {
                 // no filled and not nullable
                 LOGGER.error("Column {} is not nullable and no value is provided", name);
