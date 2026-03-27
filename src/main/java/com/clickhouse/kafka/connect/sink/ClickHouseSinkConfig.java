@@ -736,17 +736,6 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Map STRUCT to JSON"
         );
-        configDef.define(SSL_SOCKET_SNI,
-                ConfigDef.Type.STRING,
-                "",
-                ConfigDef.Importance.LOW,
-                "Override the SNI hostname sent in the client handshake. When set, the client will explicitly include the specified name as the server_name extension in the TLS ClientHello." +
-                        "This is useful to avoid handshake failure when routing TLS traffic through a proxy, where the proxy hostname and the server hostname may differ. Default: ''",
-                group,
-                ++orderInGroup,
-                ConfigDef.Width.MEDIUM,
-                "SSL Socket SNI"
-        );
         return configDef;
     }
 }
