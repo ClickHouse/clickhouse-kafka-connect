@@ -2657,4 +2657,38 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
                 "Column 'new_string_field' should be added with cross-partition schema drift");
     }
+
+    // Mixed batch where older records lack auto-evolved Array/Map columns.
+    @Test
+    public void autoEvolveMixedBatchArrayMapFieldsMissingInOlderRecords() {
+        Map<String, String> props = createProps();
+        props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
+        ClickHouseHelperClient chc = createClient(props);
+
+        String topic = createTopicName("auto_evolve_mixed_array_map_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.createTable(chc, topic,
+                "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16");
+
+        // Build a single batch: V1 records (no array/map) followed by V2 records (with array/map)
+        List<SinkRecord> mixedBatch = new ArrayList<>();
+        mixedBatch.addAll(SchemaTestData.createSchemaV1(topic, 1, 5));
+        mixedBatch.addAll(SchemaTestData.createSchemaV2WithArrayAndMapFields(topic, 1, 5));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(mixedBatch);
+        chst.stop();
+
+        // All 10 records should be inserted
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+
+        // The new array and map columns should exist
+        com.clickhouse.kafka.connect.sink.db.mapping.Table described =
+                chc.describeTable(chc.getDatabase(), topic);
+        assertTrue(described.getRootColumnsMap().containsKey("new_array_field"),
+                "Column 'new_array_field' should exist after auto-evolve");
+        assertTrue(described.getRootColumnsMap().containsKey("new_map_field"),
+                "Column 'new_map_field' should exist after auto-evolve");
+    }
 }
