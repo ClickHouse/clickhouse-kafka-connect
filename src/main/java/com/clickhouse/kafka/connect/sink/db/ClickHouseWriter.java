@@ -52,7 +52,9 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -213,10 +215,12 @@ public class ClickHouseWriter implements DBWriter {
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
 
         if (csc.isAutoEvolve()) {
-            // Since auto-evolve only adds Nullable columns (never deletes), the superset is ok.
+            // Collect the union of fields across all distinct schema versions in the batch.
+            // IdentityHashMap dedup ensures field extraction happens once per Schema object instance
+            Set<Schema> seen = Collections.newSetFromMap(new IdentityHashMap<>());
             Map<String, Schema> allFields = new LinkedHashMap<>();
             for (Record r : records) {
-                if (r.getFields() != null) {
+                if (r.getFields() != null && seen.add(r.getSinkRecord().valueSchema())) {
                     for (Field f : r.getFields()) {
                         allFields.putIfAbsent(f.name(), f.schema());
                     }
