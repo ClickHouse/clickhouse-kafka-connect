@@ -140,6 +140,7 @@ public class ConfluentPlatform {
                 .withEnv("CONNECT_CONSUMER_INTERCEPTOR_CLASSES", "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor")
                 .withEnv("CONNECT_PLUGIN_PATH", "/usr/share/java,/usr/share/confluent-hub-components")
                 .withEnv("CONNECT_LOG4J_LOGGERS", "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR,com.clickhouse=DEBUG")
+                .withExtraHost("host.docker.internal", "host-gateway")
                 .waitingFor(Wait.forHttp("/connectors").forStatusCode(200));
 
         if (connectorPathList != null) {

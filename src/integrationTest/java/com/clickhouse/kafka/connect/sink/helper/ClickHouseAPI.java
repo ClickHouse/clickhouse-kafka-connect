@@ -7,6 +7,8 @@ import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
@@ -66,6 +68,30 @@ public class ClickHouseAPI {
         int[] counts = getCounts(chc, tableName);
         System.out.println("Total: " + counts[0] + " Unique: " + counts[1] + " Difference: " + counts[2]);
         return counts[0];
+    }
+
+    public static int countRows(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+        return ClickHouseTestHelpers.countRows(chc, tableName, cfg);
+    }
+
+    public static void dropTable(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+        ClickHouseTestHelpers.dropTable(chc, tableName, cfg);
+    }
+
+    public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds, ClusterConfig cfg) throws InterruptedException {
+        int count = countRows(chc, tableName, cfg);
+        int lastCount = 0;
+        int loopCount = 0;
+        while (count != lastCount || loopCount < 5) {
+            Thread.sleep(sleepInSeconds * 1000L);
+            count = countRows(chc, tableName, cfg);
+            if (lastCount == count) {
+                loopCount++;
+            } else {
+                loopCount = 0;
+            }
+            lastCount = count;
+        }
     }
 
 

@@ -8,6 +8,7 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Assumptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -45,6 +46,7 @@ public class ExactlyOnceTest {
 
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
+        Assumptions.assumeFalse(ClickHouseTestHelpers.isCluster(), "ExactlyOnceTest is not supported in cluster mode");
         ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST);
         ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT);
         ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD);
