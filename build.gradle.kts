@@ -82,7 +82,7 @@ dockerCompose {
     useComposeFiles.set(listOf("src/testFixtures/docker/cluster/docker-compose.yml"))
     environment.putAll(mapOf(
         "CH_VERSION" to (System.getenv("CLICKHOUSE_VERSION") ?: "latest"),
-        "PROJECT_ROOT" to "${project.projectDir}/docker/cluster"
+        "PROJECT_ROOT" to "${project.projectDir}/src/testFixtures/docker/cluster"
     ))
     // Don't probe TCP ports - ClickHouse doesn't listen on 8443 without SSL config.
     // ClickHouseCluster.verifyConnectivity() polls the HTTP /ping endpoint instead.
