@@ -150,7 +150,7 @@ dependencies {
     testFixturesImplementation("org.junit.jupiter:junit-jupiter")
     testFixturesImplementation("org.junit.platform:junit-platform-runner")
     testFixturesImplementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
-    testFixturesImplementation("org.apache.commons:commons-lang3:3.18.0")
+    testFixturesImplementation("org.apache.commons:commons-lang3:3.19.0")
     testFixturesImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testFixturesImplementation("com.clickhouse:clickhouse-http-client:${project.extra["clickHouseDriverVersion"]}")
     testFixturesImplementation("com.clickhouse:clickhouse-data:${project.extra["clickHouseDriverVersion"]}")
