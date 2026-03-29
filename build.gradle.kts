@@ -93,7 +93,7 @@ dockerCompose {
 if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
     tasks.named("test") {
         dependsOn("composeUp")
-        finalizedBy("composeDownForce")
+        finalizedBy("composeDown")
         outputs.upToDateWhen { false }
     }
 }

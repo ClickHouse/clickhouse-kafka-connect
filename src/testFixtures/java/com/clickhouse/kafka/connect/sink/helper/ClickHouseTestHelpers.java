@@ -130,7 +130,7 @@ public class ClickHouseTestHelpers {
 
     private static OperationMetrics dropTableLoop(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
         String clusterClause = (cfg != null && cfg.isDistributed())
-                ? " ON CLUSTER '" + cfg.clusterName + "'" : "";
+                ? " ON CLUSTER '" + cfg.clusterName + "' SYNC" : "";
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`%s", tableName, clusterClause);
         try {
             return chc.getClient().queryRecords(dropTable).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT).getMetrics();

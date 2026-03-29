@@ -1,5 +1,7 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
+import javax.annotation.Nullable;
+
 /**
  * Represents the ClickHouse cluster topology used for a test run.
  *
@@ -31,7 +33,7 @@ public enum ClusterConfig {
     ONE_SHARD_THREE_REPLICAS("one_shard_three_replicas", false);
 
     /** The ClickHouse cluster name, or {@code null} for STANDALONE. */
-    public final String clusterName;
+    public final @Nullable String clusterName;
 
     /**
      * {@code true} = local MergeTree per shard (data is sharded, not replicated).
@@ -39,7 +41,7 @@ public enum ClusterConfig {
      */
     public final boolean sharded;
 
-    ClusterConfig(String clusterName, boolean sharded) {
+    ClusterConfig(@Nullable String clusterName, boolean sharded) {
         this.clusterName = clusterName;
         this.sharded = sharded;
     }
@@ -67,8 +69,14 @@ public enum ClusterConfig {
         }
         // Strip any existing parameters from the engine name before wrapping
         String bare = baseEngine.replaceAll("\\s*\\(.*\\)\\s*$", "").trim();
+        // Only MergeTree-family engines support the Replicated* variant
+        if (!bare.endsWith("MergeTree")) {
+            return baseEngine;
+        }
+        // {database} and {table} are ClickHouse auto-substitution variables (not user macros).
+        // {replica} is defined in config.xml via <replica from_env="REPLICA_NUM"/>.
         return "Replicated" + bare +
-                "('/clickhouse/tables/{database}/{table}', '{server_index}')";
+                "('/clickhouse/tables/{database}/{table}', '{replica}')";
     }
 
     /**

@@ -97,7 +97,7 @@ public class ClickHouseBase {
                 }
             }
         } else if (isCluster) {
-            // do nothing
+            // do nothing - managed by Gradle
         } else {
             ClickHouseContainer ch = getDb();
             if (ch != null) {
