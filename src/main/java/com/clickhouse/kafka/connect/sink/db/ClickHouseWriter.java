@@ -750,7 +750,7 @@ public class ClickHouseWriter implements DBWriter {
                                 } else if (unionData.getObject() instanceof byte[]) {
                                     BinaryStreamUtils.writeString(stream, (byte[]) unionData.getObject());
                                 } else {
-                                    throw new DataException("Not implemented conversion from " + unionData.getObject().getClass() + " to String");
+                                    BinaryStreamUtils.writeString(stream, unionData.getObject().toString().getBytes(StandardCharsets.UTF_8));
                                 }
                                 break;
                             }
@@ -809,6 +809,10 @@ public class ClickHouseWriter implements DBWriter {
                         return;//And we're done
                     } else if (colType == Type.ARRAY) {//If the column is an array
                         BinaryStreamUtils.writeNonNull(stream);//Then we send nonNull
+                    } else if (colType == Type.VARIANT) {
+                        BinaryStreamUtils.writeNonNull(stream);
+                        BinaryStreamUtils.writeUnsignedInt8(stream, 255);
+                        return;
                     } else {
                         throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", name));
                     }
@@ -821,7 +825,10 @@ public class ClickHouseWriter implements DBWriter {
                 if (!col.isNullable() && value.getObject() == null) {
                     if (colType == Type.ARRAY)
                         BinaryStreamUtils.writeNonNull(stream);
-                    else
+                    else if (colType == Type.VARIANT) {
+                        BinaryStreamUtils.writeUnsignedInt8(stream, 255);
+                        return;
+                    } else
                         throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", name));
                 }
             }
