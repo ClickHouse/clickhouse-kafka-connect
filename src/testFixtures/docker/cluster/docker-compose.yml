@@ -23,10 +23,6 @@ services:
       - REPLICA_NUM=${REPLICA_NUM:-1}
       - CLICKHOUSE_SKIP_USER_SETUP=1
     ports:
-      - "8123:8123"
-      - "8443:8443"
-      - "9000:9000"
-      #  for local docker tests
       - "10723:8123"
       - "10743:8443"
       - "10900:9000"

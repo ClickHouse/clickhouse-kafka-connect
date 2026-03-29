@@ -103,7 +103,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .engine("MergeTree")
             .orderByColumn("`off16`");
 
-    @ParameterizedTest(name = "{0}")
+    @ParameterizedTest()
     @MethodSource("clusterConfigs")
     public void arrayTypesTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
@@ -1140,13 +1140,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
 
 
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s` ADD COLUMN num32 Nullable(Int32) AFTER string", topic));
+        String clusterClause = clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
+        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
         Thread.sleep(5000);
         sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
         int numRecordsWithNullable = sr.size();
         chst.put(sr);
 
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s` ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic));
+        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic, clusterClause));
         Thread.sleep(5000);
 
         sr = SchemaTestData.createSimpleExtendWithDefaultData(topic, 1, 20000, 3000);
@@ -1191,7 +1192,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(firstBatch);
         assertEquals(firstBatch.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
 
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s` ADD COLUMN num32_default Int32 DEFAULT 42 AFTER string", topic));
+        String clusterClause = clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
+        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 42 AFTER string", topic, clusterClause));
         Thread.sleep(5000);
 
         // Keep writing records with the old schema (without num32_default).
@@ -1223,13 +1225,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
 
 
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s` ADD COLUMN num32 Nullable(Int32) AFTER string", topic));
+        String clusterClause = clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
+        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
         Thread.sleep(5000);
         sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
         int numRecordsWithNullable = sr.size();
         chst.put(sr);
 
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s` ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic));
+        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic, clusterClause));
         Thread.sleep(5000);
 
         sr = SchemaTestData.createSimpleExtendWithDefaultData(topic, 1, 20000, 3000);
@@ -1754,7 +1757,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     })
     public void exactlyOnceStateMismatchTest(int split, int batch) {
         // This test is running only cloud
-        if (!isCloud)
+        if (!isCloud || isCluster)
             return;
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);

@@ -15,7 +15,7 @@ public class CreateTableStatement {
     private String orderByColumn;
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
-    private ClusterConfig clusterConfig;
+    private ClusterConfig clusterConfig = ClusterConfig.STANDALONE;
 
     public CreateTableStatement() {}
 
@@ -71,18 +71,17 @@ public class CreateTableStatement {
                 columns.append(", ");
             columns.append("`").append(entry.getKey()).append("` ").append(entry.getValue());
         }
-        boolean distributed = clusterConfig != null && clusterConfig.isDistributed();
-        String resolvedEngine = distributed ? clusterConfig.resolveEngine(engine) : engine;
+
         var sql = new StringBuilder();
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
                 .append("`").append(tableName).append("`");
-        if (distributed) {
+        if (clusterConfig.isDistributed()) {
             sql.append(" ON CLUSTER '").append(clusterConfig.clusterName).append("'");
         }
         sql.append(" ")
                 .append("(").append(columns).append(")").append(" ")
-                .append("Engine = ").append(resolvedEngine);
+                .append("Engine = ").append(clusterConfig.resolveEngine(engine));
         if (orderByColumn != null) {
             sql.append(" ORDER BY ").append(orderByColumn);
         }

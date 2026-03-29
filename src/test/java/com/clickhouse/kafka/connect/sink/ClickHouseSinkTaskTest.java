@@ -19,6 +19,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
@@ -128,8 +129,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-//    @Test TODO: Fix this test
-    public void testDBTopicSplit() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    @Disabled // TODO: Fix this test
+    public void testDBTopicSplit(ClusterConfig clusterConfig) {
         Map<String, String> props =  createProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
         props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
@@ -145,6 +148,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             createDatabase(databaseName, chc);
             new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                     .tableName(tmpTableName)
+                    .clusterConfig(clusterConfig)
                     .execute(chc);
         });
 
@@ -222,14 +226,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
                 : (clusterConfig != null && clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "");
         chc.queryV2("SYSTEM FLUSH LOGS" + flushLogsCluster).close();
 
-        String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+        String queryLogFrom = (clusterConfig != null && clusterConfig.requiresClusterRead())
+                ? "clusterAllReplicas('" + clusterConfig.clusterName + "', system, query_log, rand())"
+                : "system.query_log";
+        String getLogRecords = String.format("SELECT http_user_agent, query FROM " + queryLogFrom +
                         "   WHERE query_kind = 'Insert' " +
                         "   AND type = 'QueryStart'" +
                         "   AND has(databases,'%1$s') " +
                         "   AND position(http_user_agent, '%2$s') > -1 LIMIT 100",
                 chc.getDatabase(), ClickHouseHelperClient.CONNECT_CLIENT_NAME);
 
-        String debugQuery = String.format("SELECT http_user_agent, query_kind, type FROM clusterAllReplicas('default', system.query_log) LIMIT 10");
+        String debugQuery = String.format("SELECT http_user_agent, query_kind, type FROM " + queryLogFrom + " LIMIT 10");
         List<GenericRecord> debugRecords = chc.getClient().queryAll(debugQuery);
         StringBuilder sb = new StringBuilder();
         for (GenericRecord record : debugRecords) {
