@@ -1,15 +1,16 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -59,29 +60,12 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .engine("MergeTree")
             .orderByColumn("off16");
 
-    private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
-        String queryCount = "select count(*) from " + topic + " where str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
-        try {
-            Records records = chc.getClient().queryRecords(queryCount).get();
-            String value = records.iterator().next().getString(1);
-            return Integer.parseInt(value);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+    private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic, ClusterConfig clusterConfig) {
+        return ClickHouseTestHelpers.countRowsWithEmojis(chc, topic, clusterConfig);
     }
-    private int countRows(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from `%s` SETTINGS select_sequential_consistency = 1", topic);
-        try {
-            Records records = chc.getClient().queryRecords(queryCount).get();
-            String value = records.iterator().next().getString(1);
-            return Integer.parseInt(value);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+
+    private int countRows(ClickHouseHelperClient chc, String topic, ClusterConfig clusterConfig) {
+        return ClickHouseTestHelpers.countRows(chc, topic, clusterConfig);
     }
 
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
@@ -396,15 +380,18 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         });
         return array;
     }
-    @Test
-    public void primitiveTypesTest() {
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void primitiveTypesTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
@@ -412,18 +399,20 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), countRows(chc, topic, clusterConfig));
     }
 
-    @Test
-    public void withEmptyDataRecordsTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 
@@ -431,16 +420,17 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRows(chc, topic));
+        assertEquals(sr.size() / 2, countRows(chc, topic, clusterConfig));
     }
 
-    @Test
-    public void NullableValuesTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void NullableValuesTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_nullable_values_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic)
                 .column("off16", "Int16")
@@ -455,6 +445,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .column("p_bool", "Bool")
                 .engine("MergeTree")
                 .orderByColumn("off16")
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createPrimitiveTypesWithNulls(topic, 1);
 
@@ -462,18 +453,20 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), countRows(chc, topic, clusterConfig));
     }
 
-    @Test
-    public void arrayTypesTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void arrayTypesTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schemaless_array_string_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(ARRAY_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createArrayType(topic, 1);
@@ -482,18 +475,20 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), countRows(chc, topic, clusterConfig));
     }
 
-    @Test
-    public void mapTypesTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void mapTypesTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schemaless_map_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(MAP_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
@@ -502,19 +497,21 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), countRows(chc, topic, clusterConfig));
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
-    public void specialCharTableNameTest() {
+    public void specialCharTableNameTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("special-char-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(MAP_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = createMapType(topic, 1);
@@ -523,22 +520,24 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), countRows(chc, topic, clusterConfig));
     }
 
-    @Test
-    public void emojisCharsDataTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void emojisCharsDataTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("emojis_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
                 .engine("MergeTree")
                 .orderByColumn("off16")
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createDataWithEmojis(topic, 1);
 
@@ -546,21 +545,23 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRowsWithEmojis(chc, topic));
+        assertEquals(sr.size() / 2, countRowsWithEmojis(chc, topic, clusterConfig));
     }
 
 
-    @Test
-    public void tableMappingTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void tableMappingTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
 
         ClickHouseHelperClient chc = createClient(props);
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(tableName)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
@@ -568,19 +569,21 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, tableName));
+        assertEquals(sr.size(), countRows(chc, tableName, clusterConfig));
     }
 
-    @Test
-    public void csvTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void csvTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "csv");
 
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("csv_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createCSV(topic, 1);
 
@@ -588,19 +591,21 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), countRows(chc, topic, clusterConfig));
     }
 
-    @Test
-    public void tsvTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void tsvTest(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "tsv");
 
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("tsv_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createTSV(topic, 1);
 
@@ -608,10 +613,12 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), countRows(chc, topic, clusterConfig));
     }
-    @Test
-    public void clickHouseErrorCode25() {
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void clickHouseErrorCode25(ClusterConfig clusterConfig) {
         InMemoryDLQ er = new InMemoryDLQ();
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "json");
@@ -619,13 +626,14 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("code_25_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
                 .engine("MergeTree")
                 .orderByColumn("off16")
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = createCode25(topic, 1);
 

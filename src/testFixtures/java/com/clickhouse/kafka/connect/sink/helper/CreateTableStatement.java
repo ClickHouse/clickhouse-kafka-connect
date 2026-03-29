@@ -15,6 +15,7 @@ public class CreateTableStatement {
     private String orderByColumn;
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
+    private ClusterConfig clusterConfig = ClusterConfig.STANDALONE;
 
     public CreateTableStatement() {}
 
@@ -25,6 +26,7 @@ public class CreateTableStatement {
         this.orderByColumn = template.orderByColumn;
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
+        this.clusterConfig = template.clusterConfig;
     }
 
     public CreateTableStatement tableName(String tableName) {
@@ -57,6 +59,11 @@ public class CreateTableStatement {
         return this;
     }
 
+    public CreateTableStatement clusterConfig(ClusterConfig clusterConfig) {
+        this.clusterConfig = clusterConfig;
+        return this;
+    }
+
     public void execute(ClickHouseHelperClient chc) {
         var columns = new StringBuilder();
         for (Map.Entry<String, String> entry : schema.entrySet()) {
@@ -64,12 +71,17 @@ public class CreateTableStatement {
                 columns.append(", ");
             columns.append("`").append(entry.getKey()).append("` ").append(entry.getValue());
         }
+
         var sql = new StringBuilder();
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
-                .append("`").append(tableName).append("`").append(" ")
+                .append("`").append(tableName).append("`");
+        if (clusterConfig.isDistributed()) {
+            sql.append(" ON CLUSTER '").append(clusterConfig.clusterName).append("'");
+        }
+        sql.append(" ")
                 .append("(").append(columns).append(")").append(" ")
-                .append("Engine = ").append(engine);
+                .append("Engine = ").append(clusterConfig.resolveEngine(engine));
         if (orderByColumn != null) {
             sql.append(" ORDER BY ").append(orderByColumn);
         }

@@ -1,17 +1,22 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
@@ -26,6 +31,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -41,6 +47,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
     private static final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
     private static final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
+    private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
     private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
             .column("side", "String")
             .column("quantity", "Int32")
@@ -52,6 +59,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .engine("MergeTree")
             .orderByColumn("symbol");
 
+    public static Stream<ClusterConfig> clusterConfigs() {
+        return ClickHouseTestHelpers.clusterConfigs();
+    }
+
     @BeforeAll
     public static void setup() {
         Network network = Network.newNetwork();
@@ -60,96 +71,125 @@ public class ClickHouseSinkConnectorIntegrationTest {
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases(CLICKHOUSE_DB_NETWORK_ALIAS);
-        db.start();
+        if (isCluster) {
+            ClickHouseCluster cluster = new ClickHouseCluster();
+            chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(
+                    cluster.getHost(), cluster.getPort(), ClickHouseProxyType.IGNORE, null, -1)
+                    .setDatabase("default")
+                    .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
+                    .setPassword("")
+                    .sslEnable(false)
+                    .useClientV2(true)
+                    .build();
+        } else {
+            db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE)
+                    .withNetwork(network)
+                    .withNetworkAliases(CLICKHOUSE_DB_NETWORK_ALIAS);
+            db.start();
 
-        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(network).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
-        toxiproxy.start();
+            toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME)
+                    .withNetwork(network)
+                    .withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
+            toxiproxy.start();
 
-        chcNoProxy = createClientNoProxy(getTestProperties());
+            chcNoProxy = createClientNoProxy(getTestProperties());
+        }
     }
 
     @BeforeEach
     public void beforeEach() throws IOException {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
 
-        if (clickhouseProxy != null) {
-            clickhouseProxy.delete();
+        if (!isCluster) {
+            if (clickhouseProxy != null) {
+                clickhouseProxy.delete();
+            }
+            ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
+            clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666",
+                    String.format("%s:%d", CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
         }
-
-        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
     }
 
     @AfterAll
     public static void tearDown() {
-        db.stop();
-        toxiproxy.stop();
+        if (!isCluster) {
+            db.stop();
+            toxiproxy.stop();
+        }
         confluentPlatform.close();
     }
 
-    @Test
-    public void stockGenSingleTaskTest() throws IOException, InterruptedException {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void stockGenSingleTaskTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenSingleTaskTest";
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
-        setupConnector(topicName, 1);
-        waitWhileCounting(chcNoProxy, topicName, 3);
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        setupConnector(topicName, 1, clusterConfig);
+        waitWhileCounting(chcNoProxy, topicName, 3, clusterConfig);
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName, clusterConfig));
     }
 
-    @Test
-    public void stockGenWithJdbcPropSingleTaskTest() throws IOException, InterruptedException {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void stockGenWithJdbcPropSingleTaskTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenWithJdbcPropSingleTaskTest";
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
-        setupConnectorWithJdbcProperties(topicName, 1);
-        waitWhileCounting(chcNoProxy, topicName, 3);
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        setupConnectorWithJdbcProperties(topicName, 1, clusterConfig);
+        waitWhileCounting(chcNoProxy, topicName, 3, clusterConfig);
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName, clusterConfig));
     }
 
-    @Test
-    public void stockGenSingleTaskSchemalessTest() throws IOException, InterruptedException {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void stockGenSingleTaskSchemalessTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenSingleTaskSchemalessTest";
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateSchemalessData(topicName, 1, 100);
-        setupSchemalessConnector(topicName, 1);
-        waitWhileCounting(chcNoProxy, topicName, 3);
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        setupSchemalessConnector(topicName, 1, clusterConfig);
+        waitWhileCounting(chcNoProxy, topicName, 3, clusterConfig);
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName, clusterConfig));
     }
 
-    @Test
-    public void stockGenSingleTaskInterruptTest() throws IOException, InterruptedException {
-        checkInterruptTest("stockGenSingleTaskInterruptTest", 1);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void stockGenSingleTaskInterruptTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+        Assumptions.assumeFalse(isCluster, "Interrupt tests require toxiproxy and are skipped in cluster mode");
+        checkInterruptTest("stockGenSingleTaskInterruptTest", 1, clusterConfig);
     }
 
-    @Test
-    public void stockGenMultiTaskInterruptTest() throws IOException, InterruptedException {
-        checkInterruptTest("stockGenMultiTaskInterruptTest", 3);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void stockGenMultiTaskInterruptTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+        Assumptions.assumeFalse(isCluster, "Interrupt tests require toxiproxy and are skipped in cluster mode");
+        checkInterruptTest("stockGenMultiTaskInterruptTest", 3, clusterConfig);
     }
 
-    @Test
-    public void stockGenMultiTaskTopicTest() throws IOException, InterruptedException {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void stockGenMultiTaskTopicTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenMultiTaskTopicTest";
         int parCount = 3;
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateData(topicName, parCount, 200);
-        setupConnector(topicName, parCount);
-        waitWhileCounting(chcNoProxy, topicName, 3);
+        setupConnector(topicName, parCount, clusterConfig);
+        waitWhileCounting(chcNoProxy, topicName, 3, clusterConfig);
         LOGGER.info(confluentPlatform.getConnectors());
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName, clusterConfig));
     }
 
-    @Test
-    public void stockGenMultiTaskSchemalessTest() throws IOException, InterruptedException {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void stockGenMultiTaskSchemalessTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenMultiTaskSchemalessTest";
         int parCount = 3;
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateSchemalessData(topicName, parCount, 200);
-        setupSchemalessConnector(topicName, parCount);
-        waitWhileCounting(chcNoProxy, topicName, 3);
+        setupSchemalessConnector(topicName, parCount, clusterConfig);
+        waitWhileCounting(chcNoProxy, topicName, 3, clusterConfig);
         LOGGER.info(confluentPlatform.getConnectors());
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName, clusterConfig));
     }
 
     private static Map<String, String> getTestProperties() {
@@ -192,51 +232,70 @@ public class ClickHouseSinkConnectorIntegrationTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-    private void setupConnector(String topicName, int taskCount) throws IOException, InterruptedException {
+    private void setupConnector(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
+        dropTable(chcNoProxy, topicName, clusterConfig);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).clusterConfig(clusterConfig).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-        // The client makes requests with absolute URIs when a proxy is configured - currently, requests with absolute paths are rejected by CH server.
-        // To work around this, transparently connect to the toxiproxy endpoint and avoid configuring the proxy settings on the client. The proxy will relay relative URIs, which the CH server expects.
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        String jsonString;
+        if (isCluster) {
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "host.docker.internal", 8123, ClickHouseTestHelpers.USERNAME_DEFAULT, "");
+        } else {
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        }
 
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
     }
 
-    private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
+    private void setupSchemalessConnector(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
-        dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
+        dropTable(chcNoProxy, topicName, clusterConfig);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).clusterConfig(clusterConfig).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        String jsonString;
+        if (isCluster) {
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "host.docker.internal", 8123, ClickHouseTestHelpers.USERNAME_DEFAULT, "");
+        } else {
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        }
 
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
     }
 
-    private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
+    private void setupConnectorWithJdbcProperties(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
+        dropTable(chcNoProxy, topicName, clusterConfig);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).clusterConfig(clusterConfig).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        String jsonString;
+        if (isCluster) {
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "host.docker.internal", 8123, ClickHouseTestHelpers.USERNAME_DEFAULT, "");
+        } else {
+            jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
+                    "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        }
 
         confluentPlatform.createConnect(jsonString);
         Thread.sleep(1000);
     }
 
-    private void checkInterruptTest(String topicName, int parCount) throws InterruptedException, IOException {
+    private void checkInterruptTest(String topicName, int parCount, ClusterConfig clusterConfig) throws InterruptedException, IOException {
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateData(topicName, parCount, 2500);
-        setupConnector(topicName, parCount);
-        int databaseCount = countRows(chcNoProxy, topicName);
+        setupConnector(topicName, parCount, clusterConfig);
+        int databaseCount = countRows(chcNoProxy, topicName, clusterConfig);
         int lastCount = 0;
         int loopCount = 0;
 
@@ -249,7 +308,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 clickhouseProxy.enable();
             }
             Thread.sleep(3500);
-            databaseCount = countRows(chcNoProxy, topicName);
+            databaseCount = countRows(chcNoProxy, topicName, clusterConfig);
             if (lastCount == databaseCount) {
                 loopCount++;
             } else {
@@ -259,6 +318,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
             lastCount = databaseCount;
         }
 
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        assertTrue(dataCount <= countRows(chcNoProxy, topicName, clusterConfig));
     }
 }

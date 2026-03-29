@@ -20,6 +20,9 @@ import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
 
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanServer;
@@ -93,8 +96,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         return array;
     }
-    @Test
-    public void testExceptionHandling() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void testExceptionHandling(ClusterConfig clusterConfig) {
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         assertThrows(RuntimeException.class, () -> task.put(null));
         try {
@@ -125,8 +129,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-//    @Test TODO: Fix this test
-    public void testDBTopicSplit() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    @Disabled // TODO: Fix this test
+    public void testDBTopicSplit(ClusterConfig clusterConfig) {
         Map<String, String> props =  createProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
         props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
@@ -142,6 +148,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             createDatabase(databaseName, chc);
             new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                     .tableName(tmpTableName)
+                    .clusterConfig(clusterConfig)
                     .execute(chc);
         });
 
@@ -161,15 +168,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     }
 
 
-    @Test
-    public void simplifiedBatchingSchemaless() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void simplifiedBatchingSchemaless(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -179,14 +188,15 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, clusterConfig));
         //assertEquals(1, com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.countInsertQueries(chc, topic));
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
     @Disabled
-    public void clientNameTest() throws Exception {
+    public void clientNameTest(ClusterConfig clusterConfig) throws Exception {
         // TODO: fix instability of the test.
         if (isCloud) {
             // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
@@ -196,9 +206,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -208,19 +219,24 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, clusterConfig));
 
-        chc.queryV2("SYSTEM FLUSH LOGS " + (isCloud ? "ON CLUSTER 'default'" : "")).close();
+        String flushLogsCluster = isCloud ? " ON CLUSTER 'default'"
+                : (clusterConfig != null && clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "");
+        chc.queryV2("SYSTEM FLUSH LOGS" + flushLogsCluster).close();
 
-        String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+        String queryLogFrom = (clusterConfig != null && clusterConfig.requiresClusterRead())
+                ? "clusterAllReplicas('" + clusterConfig.clusterName + "', system, query_log, rand())"
+                : "system.query_log";
+        String getLogRecords = String.format("SELECT http_user_agent, query FROM " + queryLogFrom +
                         "   WHERE query_kind = 'Insert' " +
                         "   AND type = 'QueryStart'" +
                         "   AND has(databases,'%1$s') " +
                         "   AND position(http_user_agent, '%2$s') > -1 LIMIT 100",
                 chc.getDatabase(), ClickHouseHelperClient.CONNECT_CLIENT_NAME);
 
-        String debugQuery = String.format("SELECT http_user_agent, query_kind, type FROM clusterAllReplicas('default', system.query_log) LIMIT 10");
+        String debugQuery = String.format("SELECT http_user_agent, query_kind, type FROM " + queryLogFrom + " LIMIT 10");
         List<GenericRecord> debugRecords = chc.getClient().queryAll(debugQuery);
         StringBuilder sb = new StringBuilder();
         for (GenericRecord record : debugRecords) {
@@ -234,15 +250,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    @Test
-    public void statisticsTest() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void statisticsTest(ClusterConfig clusterConfig) throws Exception {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("topic.statistics_test-01");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -299,15 +317,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(topicMbeanName));
     }
 
-    @Test
-    public void receiveLagTimeTest() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void receiveLagTimeTest(ClusterConfig clusterConfig) throws Exception {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -363,8 +383,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void preCommitReturnsInsertedOffsetsForMultipleTopics() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void preCommitReturnsInsertedOffsetsForMultipleTopics(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
@@ -372,13 +393,15 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic1 = createTopicName("precommit_offsets_t1");
         String topic2 = createTopicName("precommit_offsets_t2");
 
-        ClickHouseTestHelpers.dropTable(chc, topic1);
-        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.dropTable(chc, topic1, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic2, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic1)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic2)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
 
         int totalRecordsTopic1 = 100;
@@ -412,17 +435,19 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("precommit_ignore_partitions");
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
 
         int totalRecords = 100;
@@ -445,8 +470,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void closeRemovesRevokedPartitionFromPreCommitOffsets() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void closeRemovesRevokedPartitionFromPreCommitOffsets(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
@@ -454,13 +480,15 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic1 = createTopicName("precommit_close_remove_t1");
         String topic2 = createTopicName("precommit_close_remove_t2");
 
-        ClickHouseTestHelpers.dropTable(chc, topic1);
-        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.dropTable(chc, topic1, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic2, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic1)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic2)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
 
         int totalRecordsTopic1 = 50;
@@ -495,8 +523,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
@@ -504,13 +533,15 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic1 = createTopicName("precommit_revoke_remove_t1");
         String topic2 = createTopicName("precommit_revoke_remove_t2");
 
-        ClickHouseTestHelpers.dropTable(chc, topic1);
-        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.dropTable(chc, topic1, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic2, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic1)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic2)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
 
         int totalRecordsTopic1 = 40;
@@ -545,15 +576,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled(ClusterConfig clusterConfig) {
         Map<String, String> props = createProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("precommit_report_offsets_off");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
 
         int partition = 0;

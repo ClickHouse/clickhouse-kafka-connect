@@ -16,6 +16,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import org.junit.jupiter.api.Assumptions;
+
 
 public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
@@ -56,6 +58,7 @@ public class ClickHouseCloudTest {
 
     @BeforeAll
     public static void checkPropsExist() {
+        Assumptions.assumeFalse(ClickHouseTestHelpers.isCluster(), "Cloud tests are not supported in cluster mode");
         ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST);
         ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT);
         ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD);
