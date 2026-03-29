@@ -879,7 +879,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         if (!columnDefs.isEmpty()) {
-            chc.alterTableAddColumns(table.getDatabase(), table.getCleanName(), columnDefs);
+            chc.alterTableAddColumns(table.getDatabase(), table.getCleanName(), columnDefs, csc.getClickhouseSettings());
             LOGGER.info("Schema evolution complete for table {}. Added columns: {}", table.getName(), columnDefs);
             table = refreshTableAfterDDL(table, missingColumns);
         }
