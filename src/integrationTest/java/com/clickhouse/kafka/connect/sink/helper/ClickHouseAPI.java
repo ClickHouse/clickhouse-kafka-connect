@@ -149,6 +149,45 @@ public class ClickHouseAPI {
         }
     }
 
+    public static int[] getCounts(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+        if (cfg == null || !cfg.requiresClusterRead()) {
+            return getCounts(chc, tableName);
+        }
+        // For THREE_SHARDS, aggregate across all shards via clusterAllReplicas
+        String from = buildClusterAllReplicasFrom(chc, cfg.clusterName, tableName);
+        String queryCount = String.format(
+                "SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM %s SETTINGS select_sequential_consistency = 1",
+                from);
+        try {
+            Records records = chc.getClient().queryRecords(queryCount).get(30, TimeUnit.SECONDS);
+            var record = records.iterator().next();
+            int total = Integer.parseInt(record.getString(1));
+            int unique = Integer.parseInt(record.getString(2));
+            return new int[]{total, unique, total - unique};
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static String buildClusterAllReplicasFrom(ClickHouseHelperClient chc, String clusterName, String tableName) {
+        String ver = chc.version();
+        if (ver != null && !ver.isBlank()) {
+            String[] parts = ver.split("\\.");
+            try {
+                int major = Integer.parseInt(parts[0]);
+                int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+                if (major > 26 || (major == 26 && minor >= 2)) {
+                    String escapedDb = chc.getDatabase().replace("'", "''");
+                    String escapedTable = tableName.replace("'", "''");
+                    return String.format("clusterAllReplicas('%s', '%s', '%s', rand())", clusterName, escapedDb, escapedTable);
+                }
+            } catch (NumberFormatException ignored) {
+                // fall through to legacy syntax
+            }
+        }
+        return String.format("clusterAllReplicas('%s', `%s`, rand())", clusterName, tableName);
+    }
+
 
     public HttpResponse<String> stopInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {
         return updateServiceState(serviceId, "stop");

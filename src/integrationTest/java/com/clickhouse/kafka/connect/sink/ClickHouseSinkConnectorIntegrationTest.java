@@ -36,6 +36,9 @@ import java.util.stream.Stream;
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * NOTE: this test does NOT run against ClickHouse cloud
+ */
 public class ClickHouseSinkConnectorIntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnectorIntegrationTest.class);
     public static ConfluentPlatform confluentPlatform;
