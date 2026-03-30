@@ -199,11 +199,6 @@ public class ClickHouseBase {
                 ping = tmpChc.ping();
                 if (!ping) {
                     LOGGER.info("Unable to ping ClickHouse server, retrying... {}", retry);
-                    try {
-                        Thread.sleep(5000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
                 }
             } while (!ping && retry++ < 10);
         }
