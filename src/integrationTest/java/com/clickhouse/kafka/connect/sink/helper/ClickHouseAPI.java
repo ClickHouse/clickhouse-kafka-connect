@@ -72,11 +72,9 @@ public class ClickHouseAPI {
 
     public static void dropTable(ClickHouseHelperClient chc, String tableName) {
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
-        try {
-            chc.getClient().queryRecords(dropTable).get(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException | TimeoutException e) {
+        try (Records ignored = chc.getClient().queryRecords(dropTable).get(10, TimeUnit.SECONDS)) {
+            // no-op: result not needed, resource must be closed
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -103,15 +101,9 @@ public class ClickHouseAPI {
     public static void clearTable(ClickHouseHelperClient chc, String tableName) {
         String sql = "TRUNCATE TABLE " + tableName;
         LOGGER.info("Clear table: " + sql);
-        Records records = null;
-        try {
-            records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS);
+        try (Records records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS)) {
             LOGGER.info("Create: {}", records.getMetrics());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (TimeoutException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }

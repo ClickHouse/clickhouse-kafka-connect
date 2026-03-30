@@ -176,8 +176,11 @@ public class ExactlyOnceTest {
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
-                Records records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName);
-                records.forEach(record -> LOGGER.error("Duplicate: {}", record));
+                try (Records records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName)) {
+                    records.forEach(record -> LOGGER.error("Duplicate: {}", record));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);

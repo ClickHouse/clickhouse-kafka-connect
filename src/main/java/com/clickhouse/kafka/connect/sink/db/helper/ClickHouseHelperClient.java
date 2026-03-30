@@ -37,7 +37,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-public class ClickHouseHelperClient {
+public class ClickHouseHelperClient implements AutoCloseable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseHelperClient.class);
 
@@ -499,6 +499,13 @@ public class ClickHouseHelperClient {
             }
         }
         return tableList;
+    }
+
+    @Override
+    public void close() {
+        if (client != null) {
+            client.close();
+        }
     }
 
     public static class ClickHouseClientBuilder {
