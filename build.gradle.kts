@@ -78,26 +78,6 @@ extra.apply {
     set("libprotobuf", "3.25.8")
 }
 
-dockerCompose {
-    useComposeFiles.set(listOf("src/testFixtures/docker/cluster/docker-compose.yml"))
-    environment.putAll(mapOf(
-        "CH_VERSION" to (System.getenv("CLICKHOUSE_VERSION") ?: "latest"),
-        "PROJECT_ROOT" to "${project.projectDir}/src/testFixtures/docker/cluster"
-    ))
-    // Don't probe TCP ports - ClickHouse doesn't listen on 8443 without SSL config.
-    // ClickHouseCluster.verifyConnectivity() polls the HTTP /ping endpoint instead.
-    waitForTcpPorts.set(false)
-    useDockerComposeV2.set(true)
-}
-
-if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
-    tasks.named("test") {
-        dependsOn("composeUp")
-        finalizedBy("composeDown")
-        outputs.upToDateWhen { false }
-    }
-}
-
 val clickhouseDependencies: Configuration by configurations.creating
 
 
@@ -353,6 +333,31 @@ protobuf {
 task("testJar", type = Jar::class) {
     archiveClassifier.set("test")
     from(sourceSets.testFixtures.get().allSource)
+}
+
+dockerCompose {
+    useComposeFiles.set(listOf("src/testFixtures/docker/cluster/docker-compose.yml"))
+    environment.putAll(mapOf(
+        "CH_VERSION" to (System.getenv("CLICKHOUSE_VERSION") ?: "latest"),
+        "PROJECT_ROOT" to "${project.projectDir}/src/testFixtures/docker/cluster"
+    ))
+    // Don't probe TCP ports - ClickHouse doesn't listen on 8443 without SSL config.
+    // ClickHouseCluster.verifyConnectivity() polls the HTTP /ping endpoint instead.
+    waitForTcpPorts.set(false)
+    useDockerComposeV2.set(true)
+}
+
+if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
+    tasks.named("test") {
+        dependsOn("composeUp")
+        finalizedBy("composeDown")
+        outputs.upToDateWhen { false }
+    }
+    tasks.named("integrationTest") {
+        dependsOn("composeUp")
+        finalizedBy("composeDown")
+        outputs.upToDateWhen { false }
+    }
 }
 
 publishing {
