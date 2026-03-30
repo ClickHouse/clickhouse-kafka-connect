@@ -140,7 +140,9 @@ public class ClickHouseBase {
                 .build();
 
         if (withDatabase) {
-            createDatabase(getDatabase(), tmpChc);
+            try (ClickHouseHelperClient setupChc = tmpChc) {
+                createDatabase(getDatabase(), setupChc);
+            }
             props.put(ClickHouseSinkConnector.DATABASE, getDatabase());
             tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                     .setDatabase(getDatabase())
@@ -152,7 +154,7 @@ public class ClickHouseBase {
                     .useClientV2(useClientV2)
                     .setSslSocketSni(csc.getSslSocketSni())
                     .build();
-            }
+        }
 
         return tmpChc;
     }
@@ -181,7 +183,9 @@ public class ClickHouseBase {
         boolean sslEnabled = csc.isSslEnabled();
         int timeout = csc.getTimeout();
 
-        ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+        boolean ping;
+        int retry = 0;
+        try (ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase("default")
                 .setUsername(username)
                 .setPassword(password)
@@ -189,22 +193,20 @@ public class ClickHouseBase {
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .setSslSocketSni(csc.getSslSocketSni())
-                .build();
-
-        boolean ping;
-        int retry = 0;
-        do {
-            LOGGER.info("Pinging ClickHouse server to warm up for tests...");
-            ping = tmpChc.ping();
-            if (!ping) {
-                LOGGER.info("Unable to ping ClickHouse server, retrying... {}", retry);
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+                .build()) {
+            do {
+                LOGGER.info("Pinging ClickHouse server to warm up for tests...");
+                ping = tmpChc.ping();
+                if (!ping) {
+                    LOGGER.info("Unable to ping ClickHouse server, retrying... {}", retry);
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
-            }
-        } while (!ping && retry++ < 10);
+            } while (!ping && retry++ < 10);
+        }
 
         if (!ping) {
             throw new RuntimeException("Unable to ping ClickHouse server...");
@@ -221,7 +223,7 @@ public class ClickHouseBase {
         boolean sslEnabled = csc.isSslEnabled();
         int timeout = csc.getTimeout();
 
-        ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+        try (ClickHouseHelperClient tmpChc = new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(database)
                 .setUsername(username)
                 .setPassword(password)
@@ -229,9 +231,9 @@ public class ClickHouseBase {
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .setSslSocketSni(csc.getSslSocketSni())
-                .build();
-
-        dropDatabase(database, tmpChc);
+                .build()) {
+            dropDatabase(database, tmpChc);
+        }
     }
     protected static void dropDatabase(String database, ClickHouseHelperClient chc) {
         String dropDatabaseQuery = String.format("DROP DATABASE IF EXISTS `%s`", database);
