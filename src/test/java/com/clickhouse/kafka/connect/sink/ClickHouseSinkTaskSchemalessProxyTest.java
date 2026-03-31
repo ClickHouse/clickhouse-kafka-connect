@@ -2,10 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
-import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
+import com.clickhouse.kafka.connect.sink.helper.*;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -17,7 +14,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
-import org.testcontainers.containers.ToxiproxyContainer;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -59,9 +56,9 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     public void setup() throws IOException {
         super.setup();
 
-        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME)
+        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME)
                 .withNetwork(isCluster || isCloud ? Network.newNetwork() : db.getNetwork())
-                .withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
+                .withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
         if (isCluster) {
             toxiproxy = toxiproxy.withExtraHost("host.docker.internal", "host-gateway");
         }
@@ -70,14 +67,14 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
 
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(createProps());
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
         String upstream;
         if (isCloud) {
             upstream = String.format("%s:%d", csc.getHostname(), csc.getPort());
         } else if (isCluster) {
-            upstream = String.format("host.docker.internal:%d", cluster.getPort());
+            upstream = String.format("host.docker.internal:%d", ClickHouseCluster.getPort());
         } else {
-            upstream = String.format("%s:%d", CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
+            upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
         }
         proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
         log.info("Proxy configured {}", proxy.getListen());
@@ -95,7 +92,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     }
 
     private Map<String, String> getTestProperties() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         if (isCloud) {
             // Set the actual cloud hostname as SNI before overriding with ToxiProxy host.
             // When SSL=true (cloud), ToxiProxy acts as a transparent TCP relay; the TLS

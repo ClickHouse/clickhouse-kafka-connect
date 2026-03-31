@@ -106,7 +106,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest()
     @MethodSource("clusterConfigs")
     public void arrayTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "array_string_table_test";
@@ -130,7 +130,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void arrayNullableSubtypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "array_nullable_subtypes_table_test";
@@ -164,7 +164,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void mapTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "map_table_test";
@@ -187,7 +187,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void nullArrayTypeTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("nullable_array_string_table_test");
@@ -213,7 +213,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void nullableArrayTypeTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("nullable_array_string_table_test");
@@ -240,7 +240,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
     public void materializedViewsBug(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("m_array_string_table_test");
@@ -283,7 +283,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("special-char-table-test");
@@ -307,7 +307,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
     public void nullValueDataTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("null-value-table-test");
@@ -336,7 +336,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
     public void supportDatesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("support-dates-table-test");
@@ -385,7 +385,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void supportArrayDateTime64Test(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("support-array-datetime64-table-test");
@@ -412,7 +412,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void detectUnsupportedDataConversions(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("support-unsupported-dates-table-test");
@@ -445,7 +445,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void supportZonedDatesStringTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("support-dates-string-test");
@@ -473,7 +473,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void supportFormattedDatesStringTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.DATE_TIME_FORMAT, "format_date=yyyy-MM-dd HH:mm:ss.SSSSSSSSS");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -515,7 +515,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schema_empty_records_table_test");
@@ -540,7 +540,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void withLowCardinalityTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
@@ -567,7 +567,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void withUUIDTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
@@ -592,7 +592,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithDefaultsTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("default-value-table-test");
@@ -620,7 +620,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithEphemeralTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("default-value-table-test");
@@ -648,7 +648,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithDefaultsAndNullableTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("default-value-table-test");
@@ -676,7 +676,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithDecimalTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("decimal-value-table-test");
@@ -703,7 +703,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithFixedStringTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("fixed-string-value-table-test");
@@ -733,7 +733,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void writeBooleanValueToIntTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schema-with-boolean-and-int-test");
@@ -847,7 +847,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithFixedStringMismatchTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("fixed-string-mismatch-table-test");
@@ -878,7 +878,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithNullableDecimalTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("nullable-decimal-value-table-test");
@@ -905,7 +905,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaWithBytesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("bytes-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -930,7 +930,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void supportEnumTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("enum-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -957,7 +957,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleOfMapsWithVariantTest(ClusterConfig clusterConfig) {
         Assumptions.assumeFalse(isCloud, "Skip test since experimental is not available in cloud");
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "tuple-array-map-variant-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -1024,7 +1024,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             LOGGER.warn("Skip test since experimental is not available in cloud");
             return;
         }
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = "nested-tuple-map-array-and-variant-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -1095,7 +1095,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void unsignedIntegers(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("unsigned-integers-table-test");
@@ -1123,7 +1123,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void changeSchemaWhileRunning(ClusterConfig clusterConfig) throws InterruptedException {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-while-running-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -1164,7 +1164,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void changeSchemaWhileRunningAddDefaultColumnOldSchemaData(ClusterConfig clusterConfig) throws InterruptedException {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-add-default-old-schema-data-test");
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -1207,7 +1207,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void changeSchemaWhileRunningWithRefreshEnabled(ClusterConfig clusterConfig) throws InterruptedException {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         props.put(ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL, "1");
         String topic = createTopicName("change-schema-while-running-table-test-with-refresh-enabled");
@@ -1249,7 +1249,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void tupleTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("tuple-table-test");
 
@@ -1277,7 +1277,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void tupleTestWithDefault(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("tuple-table-test-default");
 
@@ -1306,7 +1306,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void nestedTupleTestWithDefault(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("nested-tuple-table-test-default");
 
@@ -1344,7 +1344,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void jacksonStructJsonInsertTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("jackson-struct-json-insert");
 
@@ -1447,7 +1447,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void jacksonStructWithNullsJsonInsertTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("jackson-struct-nulls-json-insert");
 
@@ -1527,7 +1527,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void coolSchemaWithRandomFields(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("cool-schema-with-random-field");
 
@@ -1564,7 +1564,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.10")
     public void testWritingJsonAsStringWithRowBinary(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
         String topic = createTopicName("schema_json_table_test");
@@ -1596,7 +1596,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @SinceClickHouseVersion("24.10")
     public void testWritingProtoMessageWithRowBinary(ClusterConfig clusterConfig) throws Exception {
 
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
         String topic = createTopicName("protobuf_table_test");
@@ -1759,7 +1759,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         // This test is running only cloud
         if (!isCloud || isCluster)
             return;
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "exactly_once_state_mismatch_test_" + split + "_" + batch + "_" + System.currentTimeMillis();
@@ -1806,7 +1806,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("test_avro_union_string");
 
         List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(Image.getClassSchema()), Arrays.asList(image1, image2));
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
@@ -1863,7 +1863,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(Event.getClassSchema()), events);
 
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()

@@ -29,13 +29,15 @@ import java.util.stream.Stream;
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-
+/**
+ * NOTE: this test does NOT run against standalone ClickHouse
+ */
 public class ExactlyOnceTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ExactlyOnceTest.class);
     public static ConfluentPlatform confluentPlatform;
     private static ClickHouseAPI clickhouseAPI;
-    private static ClickHouseHelperClient chcNoProxy;
-    private static final Properties properties = System.getProperties();
+    private static ClickHouseHelperClient chc;
+    private static final Properties cloudProperties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
     private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
@@ -56,9 +58,8 @@ public class ExactlyOnceTest {
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
         if (isCluster) {
-            ClickHouseCluster cluster = new ClickHouseCluster();
-            chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(
-                    cluster.getHost(), cluster.getPort(), ClickHouseProxyType.IGNORE, null, -1)
+            chc = new ClickHouseHelperClient.ClickHouseClientBuilder(
+                    ClickHouseCluster.getHost(), ClickHouseCluster.getPort(), ClickHouseProxyType.IGNORE, null, -1)
                     .setDatabase(ClickHouseTestHelpers.DATABASE_DEFAULT)
                     .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
                     .setPassword("")
@@ -67,20 +68,21 @@ public class ExactlyOnceTest {
                     .build();
             // clickhouseAPI is intentionally left null — restartService() is cloud-only
         } else {
-            ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST);
-            ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT);
-            ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD);
+            // cloud
+            ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
+            ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
+            ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
 
-            chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(
-                    properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST),
-                    Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT)),
+            chc = new ClickHouseHelperClient.ClickHouseClientBuilder(
+                    cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP),
+                    Integer.parseInt(cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP)),
                     ClickHouseProxyType.IGNORE, null, -1)
                     .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
-                    .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD))
+                    .setPassword(cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP))
                     .sslEnable(true)
                     .useClientV2(true)
                     .build();
-            clickhouseAPI = new ClickHouseAPI(properties);
+            clickhouseAPI = new ClickHouseAPI(cloudProperties);
         }
 
         Network network = Network.newNetwork();
@@ -105,13 +107,13 @@ public class ExactlyOnceTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void checkTotalsEqual(ClusterConfig clusterConfig) throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1, clusterConfig));
+        assertTrue(compareSchemalessCounts("singlePartitionTopic_" + clusterConfig, 1, clusterConfig));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void checkTotalsEqualMulti(ClusterConfig clusterConfig) throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3, clusterConfig));
+        assertTrue(compareSchemalessCounts("multiPartitionTopic_" + clusterConfig, 3, clusterConfig));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -119,7 +121,7 @@ public class ExactlyOnceTest {
     public void checkSpottyNetwork(ClusterConfig clusterConfig) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetwork requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
-        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1, clusterConfig);
+        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition_" + clusterConfig, 1, clusterConfig);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -127,7 +129,7 @@ public class ExactlyOnceTest {
     public void checkSpottyNetworkMulti(ClusterConfig clusterConfig) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetworkMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
-        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3, clusterConfig);
+        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions_" + clusterConfig, 3, clusterConfig);
     }
 
     private static void setupSchemaConnector(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
@@ -144,25 +146,25 @@ public class ExactlyOnceTest {
 
     private static void setupConnector(String fileName, String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException {
         System.out.println("Setting up connector...");
-        dropTable(chcNoProxy, topicName, clusterConfig);
+        dropTable(chc, topicName, clusterConfig);
         new CreateTableStatement(STOCK_TABLE)
-                .tableName(topicName).clusterConfig(clusterConfig).execute(chcNoProxy);
+                .tableName(topicName).clusterConfig(clusterConfig).execute(chc);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString;
         if (isCluster) {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                    "host.docker.internal", 8123,
+                    "host.docker.internal", ClickHouseCluster.getPort().toString(),
                     ClickHouseTestHelpers.DATABASE_DEFAULT,
                     ClickHouseTestHelpers.USERNAME_DEFAULT, "",
                     false, true); // ssl=false, exactlyOnce=true
         } else {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                    properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST),
-                    properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT),
+                    cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP),
+                    cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP),
                     ClickHouseTestHelpers.DATABASE_DEFAULT,
                     ClickHouseTestHelpers.USERNAME_DEFAULT,
-                    properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD),
+                    cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP),
                     true, true); // ssl=true, exactlyOnce=true
         }
 
@@ -182,10 +184,10 @@ public class ExactlyOnceTest {
         int count = generateSchemalessData(topicName, partitions, 250);
         LOGGER.info("Expected Total: {}", count);
         setupSchemalessConnector(topicName, partitions, clusterConfig);
-        ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 5, clusterConfig);
+        ClickHouseAPI.waitWhileCounting(chc, topicName, 5, clusterConfig);
 
-        int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName, clusterConfig);
-        ClickHouseAPI.dropTable(chcNoProxy, topicName, clusterConfig);
+        int[] databaseCounts = ClickHouseAPI.getCounts(chc, topicName, clusterConfig);
+        ClickHouseAPI.dropTable(chc, topicName, clusterConfig);
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
     }
 
@@ -203,13 +205,13 @@ public class ExactlyOnceTest {
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
 
             LOGGER.info("Expected Total: {}", count);
-            ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 7, clusterConfig);
+            ClickHouseAPI.waitWhileCounting(chc, topicName, 7, clusterConfig);
 
-            int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName, clusterConfig);
+            int[] databaseCounts = ClickHouseAPI.getCounts(chc, topicName, clusterConfig);
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
-                try (Records records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName)) {
+                try (Records records = ClickHouseAPI.selectDuplicates(chc, topicName)) {
                     records.forEach(record -> LOGGER.error("Duplicate: {}", record));
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -218,7 +220,7 @@ public class ExactlyOnceTest {
 
             confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
             confluentPlatform.deleteTopic(topicName);
-            ClickHouseAPI.dropTable(chcNoProxy, topicName, clusterConfig);
+            ClickHouseAPI.dropTable(chc, topicName, clusterConfig);
             runCount++;
         } while (runCount < 3 && allSuccess);
 

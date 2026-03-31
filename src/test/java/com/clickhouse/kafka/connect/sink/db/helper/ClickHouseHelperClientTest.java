@@ -31,7 +31,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @BeforeEach
     public void setUp() {
         LOGGER.info("Setting up...");
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         chc = createClient(props);
     }
 
@@ -95,7 +95,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         ClickHouseTestHelpers.query(chc, "CREATE USER IF NOT EXISTS unflatten IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0");
         ClickHouseTestHelpers.query(chc, "GRANT CURRENT GRANTS ON *.* TO unflatten");
 
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put("username", "unflatten");
         props.put("password", "123FOURfive^&*91011");
         chc = createClient(props);

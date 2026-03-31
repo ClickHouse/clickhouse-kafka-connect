@@ -34,7 +34,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemalessSingleTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -54,7 +54,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemalessMultiDifferentTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test2");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -81,7 +81,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemalessMultiSameTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -104,7 +104,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemalessMixedTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test2");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -137,7 +137,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaArrayTypesSingleTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -159,7 +159,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaArrayTypesMultipleDifferentTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test2");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -189,7 +189,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaArrayTypesMultipleSameTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -214,7 +214,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void schemaArrayTypesMixedTableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test2");
         ClickHouseHelperClient chc = createClient(props);
 

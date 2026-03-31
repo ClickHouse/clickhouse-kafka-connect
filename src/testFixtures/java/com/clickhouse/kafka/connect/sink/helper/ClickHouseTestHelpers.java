@@ -26,7 +26,6 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -36,17 +35,15 @@ public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
     public static final String CLICKHOUSE_VERSION_DEFAULT = "25.8.18.1"; // keep this as close to the latest LTS version
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
-    public static final String CLICKHOUSE_HOST = "clickhouse.host";
-    public static final String CLICKHOUSE_PORT = "clickhouse.port";
-    public static final String CLICKHOUSE_PASSWORD = "clickhouse.password";
+    public static final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
 
     public static final String HTTPS_PORT = "8443";
     public static final String DATABASE_DEFAULT = "default";
     public static final String USERNAME_DEFAULT = "default";
 
-    private static final int CLOUD_TIMEOUT_VALUE = 900;
-    private static final TimeUnit CLOUD_TIMEOUT_UNIT = TimeUnit.SECONDS;
-    private static final String MISSING_PROP_MESSAGE_FORMAT = "%s system property is required, skipping tests";
+    private static final int QUERY_TIMEOUT = 900;
+    private static final TimeUnit QUERY_TIMEOUT_UNIT = TimeUnit.SECONDS;
+    private static final String MISSING_CLOUD_PROP_MESSAGE_FORMAT = "%s system property is required to connect to cloud, skipping tests";
 
     // env vars
     public static final String CLIENT_VERSION = "CLIENT_VERSION";
@@ -54,6 +51,14 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_CLOUD_PASSWORD = "CLICKHOUSE_CLOUD_PASSWORD";
     private static final String CLICKHOUSE_VERSION = "CLICKHOUSE_VERSION";
     private static final String CLICKHOUSE_CLUSTER_MODE = "CLICKHOUSE_CLUSTER_MODE";
+
+    public static final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
+    public static final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
+
+    // cloud integration test system props
+    public static final String CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP = "clickhouse.host";
+    public static final String CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP = "clickhouse.port";
+    public static final String CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP = "clickhouse.password";
 
     public static String getClickhouseVersion() {
         String clickHouseVersion = System.getenv(CLICKHOUSE_VERSION);
@@ -76,7 +81,7 @@ public class ClickHouseTestHelpers {
 
     /**
      * Returns the set of {@link ClusterConfig} values to test against.
-     * Used as a JUnit 5 {@code @MethodSource} for {@code @ParameterizedTest}.
+     * Used as a JUnit {@code @MethodSource} for {@code @ParameterizedTest}.
      *
      * <ul>
      *   <li>Non-cluster mode: {@code [STANDALONE]}</li>
@@ -132,8 +137,8 @@ public class ClickHouseTestHelpers {
         String clusterClause = (cfg != null && cfg.isDistributed())
                 ? " ON CLUSTER '" + cfg.clusterName + "' SYNC" : "";
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`%s", tableName, clusterClause);
-        try {
-            return chc.getClient().queryRecords(dropTable).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT).getMetrics();
+        try (Records records = chc.getClient().queryRecords(dropTable).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
+            return records.getMetrics();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -254,8 +259,7 @@ public class ClickHouseTestHelpers {
                 ? " ON CLUSTER '" + cfg.clusterName + "'" : "";
         String queryCount = String.format("OPTIMIZE TABLE `%s`%s", tableName, clusterClause);
 
-        try {
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
+        try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
             return records.getMetrics();
         } catch (Exception e) {
             return null;
@@ -275,8 +279,7 @@ public class ClickHouseTestHelpers {
             queryCount = String.format("SELECT COUNT(*) FROM `%s` SETTINGS select_sequential_consistency = 1", tableName);
         }
 
-        try {
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
+        try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);
         } catch (InterruptedException e) {
@@ -310,8 +313,7 @@ public class ClickHouseTestHelpers {
     public static int sumRows(ClickHouseHelperClient chc, String tableName, String column, ClusterConfig cfg) {
         String from = buildFromClause(chc, tableName, cfg);
         String queryCount = String.format("SELECT SUM(`%s`) FROM %s", column, from);
-        try {
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
+        try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
             String value = records.iterator().next().getString(1);
             return (int) (Float.parseFloat(value));
         } catch (Exception e) {
@@ -326,8 +328,7 @@ public class ClickHouseTestHelpers {
     public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
         String from = buildFromClause(chc, tableName, cfg);
         String queryCount = "SELECT COUNT(*) FROM " + from + " WHERE str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
-        try {
-            Records records = chc.getClient().queryRecords(queryCount).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
+        try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
             String value = records.iterator().next().getString(1);
             return (int) (Float.parseFloat(value));
         } catch (Exception e) {
@@ -367,7 +368,7 @@ public class ClickHouseTestHelpers {
             QuerySettings querySettings = new QuerySettings();
             querySettings.setFormat(ClickHouseFormat.JSONStringsEachRow);
             String from = buildFromClause(chc, topic, cfg);
-            QueryResponse queryResponse = chc.getClient().query(String.format("SELECT * FROM %s", from), querySettings).get(CLOUD_TIMEOUT_VALUE, CLOUD_TIMEOUT_UNIT);
+            QueryResponse queryResponse = chc.getClient().query(String.format("SELECT * FROM %s", from), querySettings).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT);
             Gson gson = new Gson();
 
             List<String> records = new ArrayList<>();
@@ -515,11 +516,11 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static void logAndThrowIfPropNotExists(Logger logger, Properties properties, String property) throws TestAbortedException {
+    public static void logAndThrowIfCloudPropNotExists(Logger logger, Properties properties, String property) throws TestAbortedException {
         try {
             Assumptions.assumeTrue(properties.get(property) != null);
         } catch (TestAbortedException e) {
-            final String warning = String.format(MISSING_PROP_MESSAGE_FORMAT, property);
+            final String warning = String.format(MISSING_CLOUD_PROP_MESSAGE_FORMAT, property);
             logger.warn(warning);
             throw e;
         }

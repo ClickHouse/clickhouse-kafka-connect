@@ -18,7 +18,9 @@ import java.util.Properties;
 
 import org.junit.jupiter.api.Assumptions;
 
-
+/**
+ * NOTE: this test does NOT run against cluster or standalone ClickHouse.
+ */
 public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
     private static final Properties properties = System.getProperties();
@@ -47,11 +49,11 @@ public class ClickHouseCloudTest {
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST));
-        props.put(ClickHouseSinkConnector.PORT, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT));
+        props.put(ClickHouseSinkConnector.HOSTNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.PORT, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP));
         props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
         props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
-        props.put(ClickHouseSinkConnector.PASSWORD, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD));
+        props.put(ClickHouseSinkConnector.PASSWORD, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP));
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
         return props;
     }
@@ -59,9 +61,9 @@ public class ClickHouseCloudTest {
     @BeforeAll
     public static void checkPropsExist() {
         Assumptions.assumeFalse(ClickHouseTestHelpers.isCluster(), "Cloud tests are not supported in cluster mode");
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
     }
 
     @Test

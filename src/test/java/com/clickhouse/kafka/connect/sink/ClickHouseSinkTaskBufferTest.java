@@ -46,7 +46,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferingDisabledByDefault(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_disabled_test");
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -65,7 +65,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferFlushOnSizeThreshold(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_size_flush_test");
@@ -94,7 +94,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferGracefulShutdownRedelivers(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "5000");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_shutdown_test");
@@ -123,7 +123,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferRebalanceRemovesRevokedPartitions(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "5000");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_rebalance_test");
@@ -164,7 +164,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferFlushOnTimeThreshold(ClusterConfig clusterConfig) throws InterruptedException {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "50000");
         props.put(ClickHouseSinkConfig.BUFFER_FLUSH_TIME, "2000");
         ClickHouseHelperClient chc = createClient(props);
@@ -195,7 +195,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferAccumulatesMultipleBatches(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "2500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_multi_batch_test");
@@ -231,7 +231,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferIncompatibleWithExactlyOnce(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");
 
@@ -248,7 +248,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         // Simulates crash safety: if records are only buffered (not flushed to CH),
         // preCommit() must return empty so offsets are NOT committed.
         // On crash/restart, Kafka redelivers these records.
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "5000");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_empty_test");
@@ -279,7 +279,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     public void preCommitReturnsCorrectOffsetsAfterFlush(ClusterConfig clusterConfig) {
         // After buffer flushes to ClickHouse, preCommit() must return the correct
         // offsets so the framework commits them.
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_offset_test");
@@ -317,7 +317,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     public void preCommitClearsAfterReturning(ClusterConfig clusterConfig) {
         // After preCommit() returns offsets, the next call should return empty
         // if no new data was flushed (matches S3's getOffsetToCommitAndReset pattern).
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_reset_test");
@@ -346,7 +346,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     public void preCommitExcludesRevokedPartitionsAfterRebalance(ClusterConfig clusterConfig) {
         // After close() revokes a partition, preCommit() must NOT return offsets
         // for that partition, even if data was previously flushed for it.
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("precommit_rebalance_test");
@@ -386,7 +386,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         // AFTER preCommit but BEFORE the framework commits, the data is safe:
         // Kafka will redeliver, and ClickHouse gets duplicates (at-least-once).
         // This test ensures the offsets returned by preCommit are correct.
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("crash_after_flush_test");
@@ -430,7 +430,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     public void putDirectFailsNoErrorTolerance_offsetsNotCommitted(ClusterConfig clusterConfig) {
         // Edge case: buffer flush triggers putDirect → insert fails → exception propagates.
         // Offsets must NOT be committed so Kafka redelivers on restart (at-least-once).
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("insert_fail_no_tolerance_test");
@@ -469,7 +469,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     public void putDirectFailsWithErrorTolerance_offsetsCommitted(ClusterConfig clusterConfig) {
         // Edge case: buffer flush triggers putDirect → insert fails → error tolerance swallows it.
         // With error tolerance, records go to DLQ and offsets ARE committed (same as non-buffered behavior).
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         props.put(ClickHouseSinkConfig.ERRORS_TOLERANCE, ClickHouseSinkConfig.ERROR_TOLERANCE_ALL);
         ClickHouseHelperClient chc = createClient(props);
@@ -508,7 +508,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void bufferMultiplePartitions(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("buffer_multi_partition_test");

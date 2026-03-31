@@ -29,7 +29,6 @@ import java.util.stream.Stream;
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected ClickHouseContainer db;
-    protected static ClickHouseCluster cluster = new ClickHouseCluster();
     protected boolean isCloud = ClickHouseTestHelpers.isCloud();
     protected boolean isCluster = ClickHouseTestHelpers.isCluster();
     protected String database;
@@ -39,10 +38,6 @@ public class ClickHouseBase {
      * Per-test ClusterConfig comes from the @ParameterizedTest @MethodSource("clusterConfigs") parameter.
      */
     protected ClusterConfig setupClusterConfig;
-    protected final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
-    protected final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
-    protected final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
-
 
     /**
      * Returns cluster configurations for @ParameterizedTest @MethodSource("clusterConfigs").
@@ -75,7 +70,7 @@ public class ClickHouseBase {
 
         this.db = new ClickHouseContainer(clickhouseDockerImage)
                 .withNetwork(network)
-                .withNetworkAliases(CLICKHOUSE_DB_NETWORK_ALIAS)
+                .withNetworkAliases(ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS)
                 .withPassword("test_password")
                 .withCreateContainerCmdModifier(cmd -> {
                     cmd.getHostConfig().withMemory(1024 * 1024 * 1024 * 2L);
@@ -199,7 +194,7 @@ public class ClickHouseBase {
     }
 
     protected void initialPing() {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(createProps());
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -234,7 +229,7 @@ public class ClickHouseBase {
     }
 
     protected  void dropDatabase(String database) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(createProps());
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
 
         String hostname = csc.getHostname();
         int port = csc.getPort();
@@ -283,7 +278,7 @@ public class ClickHouseBase {
         }
     }
 
-    protected Map<String,String> createProps() {
+    protected Map<String,String> getBaseProps() {
         Map<String, String> props = new HashMap<>();
         String clientVersion = extractClientVersion();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
@@ -297,8 +292,8 @@ public class ClickHouseBase {
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
         } else if (isCluster) {
-            props.put(ClickHouseSinkConnector.HOSTNAME, cluster.getHost());
-            props.put(ClickHouseSinkConnector.PORT, cluster.getPort().toString());
+            props.put(ClickHouseSinkConnector.HOSTNAME, ClickHouseCluster.getHost());
+            props.put(ClickHouseSinkConnector.PORT, ClickHouseCluster.getPort().toString());
             props.put(ClickHouseSinkConnector.DATABASE, database);
             props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
             props.put(ClickHouseSinkConnector.PASSWORD, "");

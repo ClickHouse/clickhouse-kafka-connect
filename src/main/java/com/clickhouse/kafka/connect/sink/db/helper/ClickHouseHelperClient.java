@@ -43,9 +43,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
     private final String hostname;
     private final int port;
+    @Getter
     private final String username;
     @Getter
     private final String database;
+    @Getter
     private final String password;
     private final boolean sslEnabled;
     private final String jdbcConnectionProperties;

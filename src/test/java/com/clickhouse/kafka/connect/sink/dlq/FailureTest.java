@@ -37,7 +37,7 @@ public class FailureTest extends ClickHouseBase {
     }
     @Test
     void testSchemaValidationFailure() throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
         ClickHouseTestHelpers.dropTable(chc, topic);

@@ -170,7 +170,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void primitiveTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?load_balancing_policy=random&health_check_interval=5000&failover=2");
 
         ClickHouseHelperClient chc = createClient(props);
@@ -190,7 +190,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         if (isCloud) {
             props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=true&sslmode=none");
         } else {

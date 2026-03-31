@@ -121,5 +121,6 @@ jobs:
         if: failure()
         with:
           name: result cluster_${{ matrix.client }}_${{ matrix.clickhouse }}
-          path: "**/build/reports/tests"
+          path: |
+            **/build/reports/tests
           retention-days: 5

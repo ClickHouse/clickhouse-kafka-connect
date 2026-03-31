@@ -158,8 +158,7 @@ public class ClickHouseAPI {
         String queryCount = String.format(
                 "SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM %s SETTINGS select_sequential_consistency = 1",
                 from);
-        try {
-            Records records = chc.getClient().queryRecords(queryCount).get(30, TimeUnit.SECONDS);
+        try (Records records = chc.getClient().queryRecords(queryCount).get(30, TimeUnit.SECONDS)) {
             var record = records.iterator().next();
             int total = Integer.parseInt(record.getString(1));
             int unique = Integer.parseInt(record.getString(2));

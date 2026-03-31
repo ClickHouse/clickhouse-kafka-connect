@@ -19,7 +19,6 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
@@ -133,7 +132,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     @Disabled // TODO: Fix this test
     public void testDBTopicSplit(ClusterConfig clusterConfig) {
-        Map<String, String> props =  createProps();
+        Map<String, String> props =  getBaseProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
         props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
         long timeStamp = System.currentTimeMillis();
@@ -171,7 +170,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void simplifiedBatchingSchemaless(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
@@ -202,7 +201,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
             return;
         }
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
@@ -253,7 +252,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void statisticsTest(ClusterConfig clusterConfig) throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("topic.statistics_test-01");
@@ -320,7 +319,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void receiveLagTimeTest(ClusterConfig clusterConfig) throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
@@ -386,7 +385,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void preCommitReturnsInsertedOffsetsForMultipleTopics(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -438,7 +437,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -473,7 +472,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void closeRemovesRevokedPartitionFromPreCommitOffsets(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -526,7 +525,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
         ClickHouseHelperClient chc = createClient(props);
 
@@ -579,7 +578,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("precommit_report_offsets_off");

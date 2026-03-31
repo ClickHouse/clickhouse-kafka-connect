@@ -45,6 +45,7 @@
             </shard>
         </one_shard_three_replicas>
     </remote_servers>
+    <keeper_map_path_prefix>/keeper_map_tables</keeper_map_path_prefix>
     <keeper_server>
         <tcp_port>9181</tcp_port>
         <server_id from_env="SERVER_INDEX" />

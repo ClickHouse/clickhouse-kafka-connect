@@ -40,7 +40,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void primitiveTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
@@ -59,7 +59,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void primitiveTypesSubsetTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
@@ -83,7 +83,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
@@ -101,7 +101,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void NullableValuesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_nullable_values_table_test");
@@ -131,7 +131,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void arrayTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schemaless_array_string_table_test");
@@ -162,7 +162,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void mapTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schemaless_map_table_test");
@@ -188,7 +188,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("special-char-table-test");
@@ -213,7 +213,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void emojisCharsDataTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("emojis_table_test");
@@ -235,7 +235,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void decimalDataTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("decimal_table_test");
@@ -259,7 +259,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void nullableDecimalDataTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("nullable_decimal_table_test");
@@ -283,7 +283,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void overlappingDataTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_primitive_types_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
@@ -304,7 +304,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.10")
     public void jsonTypeTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schemaless_json_table_test");

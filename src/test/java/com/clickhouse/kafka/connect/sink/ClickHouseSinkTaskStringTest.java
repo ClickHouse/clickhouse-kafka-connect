@@ -18,7 +18,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -385,7 +384,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void primitiveTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
@@ -406,7 +405,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
@@ -427,7 +426,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void NullableValuesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_nullable_values_table_test");
@@ -460,7 +459,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void arrayTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schemaless_array_string_table_test");
@@ -482,7 +481,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void mapTypesTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("schemaless_map_table_test");
@@ -505,7 +504,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("special-char-table-test");
@@ -527,7 +526,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void emojisCharsDataTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("emojis_table_test");
@@ -553,7 +552,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void tableMappingTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
 
         ClickHouseHelperClient chc = createClient(props);
@@ -576,7 +575,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void csvTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "csv");
 
         ClickHouseHelperClient chc = createClient(props);
@@ -598,7 +597,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     public void tsvTest(ClusterConfig clusterConfig) {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "tsv");
 
         ClickHouseHelperClient chc = createClient(props);
@@ -621,7 +620,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @MethodSource("clusterConfigs")
     public void clickHouseErrorCode25(ClusterConfig clusterConfig) {
         InMemoryDLQ er = new InMemoryDLQ();
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "json");
         props.put("errors.tolerance", "all");
 

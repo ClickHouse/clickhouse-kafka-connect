@@ -9,8 +9,12 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-// This class represents a CH cluster that runs locally as defined by src/testFixtures/docker/cluster/docker-compose.yml
-// For tests, the cluster lifecycle is managed by Gradle.
+
+
+/**
+ * This class represents a CH cluster that runs locally as defined by src/testFixtures/docker/cluster/docker-compose.yml.
+ * For JUnit tests, the cluster lifecycle is managed by Gradle.
+ */
 public class ClickHouseCluster {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCluster.class);
 
@@ -20,6 +24,9 @@ public class ClickHouseCluster {
 
     private static volatile boolean started = false;
 
+    /**
+     * NOTE: this should only be called from SetupListenerForTests
+     */
     public static void markStarted() {
         LOGGER.info("ClickHouseCluster marked as started (Gradle-managed compose)");
         started = true;
@@ -29,11 +36,11 @@ public class ClickHouseCluster {
         return started;
     }
 
-    public String getHost() {
+    public static String getHost() {
         return CLUSTER_HOST;
     }
 
-    public Integer getPort() {
+    public static Integer getPort() {
         return CLUSTER_PORT;
     }
 
@@ -70,6 +77,9 @@ public class ClickHouseCluster {
         );
     }
 
+    /**
+     * This class will be instantiated before any JUnit tests run and only after the cluster has been created by Gradle
+     */
     public static class SetupListenerForTests implements LauncherSessionListener {
         public SetupListenerForTests() {}
 
