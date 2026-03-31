@@ -134,7 +134,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("missing_table_mapping_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
 
         runWithWriter(props, (chw) -> {
 
@@ -142,7 +141,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                     Map<String, Table> tables = chw.getMapping();
                     assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
 
-                    ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+
+                    new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
 
                     Table table = chw.getTable(chc.getDatabase(), topic);
                     assertNotNull(table);
