@@ -9,6 +9,7 @@ import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.Gson;
@@ -38,6 +39,20 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     public static final int DEFAULT_TOTAL_RECORDS = 1000;
+
+    private static final CreateTableStatement PRIMITIVE_TYPES_TABLE = new CreateTableStatement()
+            .column("off16", "Int16")
+            .column("str", "String")
+            .column("p_int8", "Int8")
+            .column("p_int16", "Int16")
+            .column("p_int32", "Int32")
+            .column("p_int64", "Int64")
+            .column("p_float32", "Float32")
+            .column("p_float64", "Float64")
+            .column("p_bool", "Bool")
+            .engine("MergeTree")
+            .orderByColumn("off16");
+
     public Collection<SinkRecord> createDBTopicSplit(int dbRange, long timeStamp, String topic, int partition, String splitChar) {
         Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
@@ -125,7 +140,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
             dropTable(chc, tmpTableName);
             createDatabase(databaseName, chc);
-            createTable(chc, tmpTableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+            new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                    .tableName(tmpTableName)
+                    .execute(chc);
         });
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
@@ -151,8 +168,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
@@ -179,8 +197,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
@@ -222,8 +241,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("topic.statistics_test-01");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
@@ -286,8 +306,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -351,13 +372,14 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic1 = createTopicName("precommit_offsets_t1");
         String topic2 = createTopicName("precommit_offsets_t2");
 
-        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
-                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
-                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
-        ClickHouseTestHelpers.createTable(chc, topic1, createTableSql);
-        ClickHouseTestHelpers.createTable(chc, topic2, createTableSql);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic1)
+                .execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic2)
+                .execute(chc);
 
         int totalRecordsTopic1 = 100;
         int totalRecordsTopic2 = 200;
@@ -398,11 +420,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         String topic = createTopicName("precommit_ignore_partitions");
 
-        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
-                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
-                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, createTableSql);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
 
         int totalRecords = 100;
         int partition = 0;
@@ -433,13 +454,14 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic1 = createTopicName("precommit_close_remove_t1");
         String topic2 = createTopicName("precommit_close_remove_t2");
 
-        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
-                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
-                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
-        ClickHouseTestHelpers.createTable(chc, topic1, createTableSql);
-        ClickHouseTestHelpers.createTable(chc, topic2, createTableSql);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic1)
+                .execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic2)
+                .execute(chc);
 
         int totalRecordsTopic1 = 50;
         int totalRecordsTopic2 = 70;
@@ -482,13 +504,14 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         String topic1 = createTopicName("precommit_revoke_remove_t1");
         String topic2 = createTopicName("precommit_revoke_remove_t2");
 
-        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
-                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
-                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
         ClickHouseTestHelpers.dropTable(chc, topic1);
         ClickHouseTestHelpers.dropTable(chc, topic2);
-        ClickHouseTestHelpers.createTable(chc, topic1, createTableSql);
-        ClickHouseTestHelpers.createTable(chc, topic2, createTableSql);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic1)
+                .execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic2)
+                .execute(chc);
 
         int totalRecordsTopic1 = 40;
         int totalRecordsTopic2 = 60;
@@ -528,11 +551,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = createTopicName("precommit_report_offsets_off");
-        String createTableSql = "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, " +
-                "`p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, " +
-                "`p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, createTableSql);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
 
         int partition = 0;
         int totalRecords = 100;

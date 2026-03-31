@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,16 @@ public class ExactlyOnceTest {
     private static ClickHouseHelperClient chcNoProxy;
     private static final Properties properties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
+    private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
+            .column("side", "String")
+            .column("quantity", "Int32")
+            .column("symbol", "String")
+            .column("price", "Int32")
+            .column("account", "String")
+            .column("userid", "String")
+            .column("insertTime", "DateTime DEFAULT now()")
+            .engine("MergeTree")
+            .orderByColumn("symbol");
 
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
@@ -102,7 +113,8 @@ public class ExactlyOnceTest {
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chcNoProxy, topicName);
-        createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
+        new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
+                .tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
@@ -126,7 +138,8 @@ public class ExactlyOnceTest {
     }
 
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
-        createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
+        new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
+                .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
         ClickHouseAPI.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
@@ -146,7 +159,8 @@ public class ExactlyOnceTest {
         do {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
-            createMergeTreeTable(chcNoProxy, topicName); // implicitly SharedMergeTree in CH Cloud
+            new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
+                .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
             ClickHouseAPI.clearTable(chcNoProxy, topicName);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
@@ -162,8 +176,11 @@ public class ExactlyOnceTest {
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
-                Records records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName);
-                records.forEach(record -> LOGGER.error("Duplicate: {}", record));
+                try (Records records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName)) {
+                    records.forEach(record -> LOGGER.error("Duplicate: {}", record));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);

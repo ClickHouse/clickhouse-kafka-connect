@@ -12,6 +12,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -47,6 +48,12 @@ import static org.junit.jupiter.api.Assertions.fail;
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseWriterTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriterTest.class);
+
+    private static final CreateTableStatement SINGLE_INT16_TABLE = new CreateTableStatement()
+            .column("off16", "Int16")
+            .engine("MergeTree")
+            .orderByColumn("off16");
+
     ClickHouseHelperClient chc = null;
 
     @BeforeEach
@@ -127,6 +134,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("missing_table_mapping_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
 
         runWithWriter(props, (chw) -> {
 
@@ -164,8 +172,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
-        ClickHouseTestHelpers.createTable(chc, mappedTableWithoutBackticks, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
-        ClickHouseTestHelpers.createTable(chc, mappedTableWithBackticksRaw, "CREATE TABLE %s ( `off16` Int16 ) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithoutBackticks).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithBackticksRaw).execute(chc);
 
         runWithWriter(props, (chw) -> {
             Table plainMappingTable = chw.getTable(chc.getDatabase(), topicWithoutBackticks);
@@ -216,8 +224,11 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("do_insert_tuple_order_mismatch_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic,
-                "CREATE TABLE %s (`_id` String, `result` Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32 )) Engine = MergeTree ORDER BY _id");
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("_id", "String")
+                .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
+                .engine("MergeTree").orderByColumn("_id").execute(chc);
 
         Schema tupleSchema = SchemaBuilder.struct()
                 .field("isanswered", Schema.INT32_SCHEMA)
