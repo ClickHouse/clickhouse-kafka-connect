@@ -3,7 +3,6 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.ClickHouseWriter;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
-import com.clickhouse.kafka.connect.sink.db.TableMappingRefresher;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.processing.Processing;
 import com.clickhouse.kafka.connect.sink.state.StateProvider;
@@ -23,12 +22,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Timer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-public class ProxySinkTask {
+public final class ProxySinkTask {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProxySinkTask.class);
     private static final AtomicInteger NEXT_ID = new AtomicInteger();
@@ -36,7 +34,6 @@ public class ProxySinkTask {
     private final StateProvider stateProvider;
     private final DBWriter dbWriter;
     private final ClickHouseSinkConfig clickHouseSinkConfig;
-    private Timer tableRefreshTimer;
 
     private final SinkTaskStatistics statistics;
     private final int id = NEXT_ID.getAndAdd(1);
@@ -52,27 +49,22 @@ public class ProxySinkTask {
             this.stateProvider = new InMemoryState();
         }
         this.statistics = new SinkTaskStatistics(id);
+        this.dbWriter = new ClickHouseWriter(this.statistics);
+        processing = new Processing(stateProvider, dbWriter, errorReporter, clickHouseSinkConfig, statistics);
+    }
+
+    public void start() {
         this.statistics.registerMBean();
-
-        ClickHouseWriter chWriter = new ClickHouseWriter(this.statistics);
-        this.dbWriter = chWriter;
-
-        // Add table mapping refresher
-        if (clickHouseSinkConfig.getTableRefreshInterval() > 0) {
-            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(clickHouseSinkConfig.getDatabase(), chWriter);
-            tableRefreshTimer = new Timer();
-            tableRefreshTimer.schedule(tableMappingRefresher, clickHouseSinkConfig.getTableRefreshInterval(), clickHouseSinkConfig.getTableRefreshInterval());
-        }
 
         // Add dead letter queue
         boolean isStarted = dbWriter.start(clickHouseSinkConfig);
-        if (!isStarted)
+        if (!isStarted) {
             throw new RuntimeException("Connection to ClickHouse is not active.");
-        processing = new Processing(stateProvider, dbWriter, errorReporter, clickHouseSinkConfig, statistics);
-
+        }
     }
 
     public void stop() {
+        dbWriter.stop();
         statistics.unregisterMBean();
     }
 
