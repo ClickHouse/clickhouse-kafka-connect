@@ -173,7 +173,7 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     @Override
-    public synchronized void stop() {
+    public void stop() {
         LOGGER.debug("Stopping ClickHouseWriter");
         if (scheduledExecutor != null) {
             try {
@@ -1382,7 +1382,7 @@ public class ClickHouseWriter implements DBWriter {
         return 0;
     }
 
-    private synchronized void startBackgroundTableSync(String database) {
+    private void startBackgroundTableSync(String database) {
         // Add table mapping refresher
         if (csc.getTableRefreshInterval() > 0) {
             if (scheduledExecutor == null) {
