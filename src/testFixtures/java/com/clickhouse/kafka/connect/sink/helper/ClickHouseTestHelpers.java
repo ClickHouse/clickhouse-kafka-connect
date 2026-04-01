@@ -395,4 +395,5 @@ public class ClickHouseTestHelpers {
             throw new RuntimeException(e);
         }
     }
+
 }

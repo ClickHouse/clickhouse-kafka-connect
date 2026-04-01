@@ -5,6 +5,7 @@ import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.client.ClickHouseNode;
 import com.clickhouse.client.ClickHouseNodeSelector;
 import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.ClickHouseRequest;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.enums.ProxyType;
@@ -36,6 +37,7 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 public class ClickHouseHelperClient implements AutoCloseable {
 
@@ -473,6 +475,48 @@ public class ClickHouseHelperClient implements AutoCloseable {
             return null;
         }
         return table;
+    }
+
+    public void alterTableAddColumns(String database, String tableName, List<String> columnDefs, Map<String, String> clickhouseSettings) {
+        String addClauses = columnDefs.stream()
+                .map(colDef -> "ADD COLUMN IF NOT EXISTS " + colDef)
+                .collect(Collectors.joining(", "));
+        String sql = String.format("ALTER TABLE `%s`.`%s` %s", database, tableName, addClauses);
+        LOGGER.info("Executing DDL: {}", sql);
+        if (useClientV2) {
+            alterTableAddColumnV2(sql, clickhouseSettings);
+        } else {
+            alterTableAddColumnV1(sql, clickhouseSettings);
+        }
+    }
+
+    private void alterTableAddColumnV1(String sql, Map<String, String> clickhouseSettings) {
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build()) {
+            ClickHouseRequest<?> request = client.read(server).query(sql).set("alter_sync", "1");
+            for (Map.Entry<String, String> entry : clickhouseSettings.entrySet()) {
+                request.set(entry.getKey(), entry.getValue());
+            }
+            try (ClickHouseResponse response = request.executeAndWait()) {
+                // DDL executed; alter_sync=1 waits for the local replica to apply
+            }
+        } catch (ClickHouseException e) {
+            throw new RuntimeException("Failed to execute ALTER TABLE: " + sql, e);
+        }
+    }
+
+    private void alterTableAddColumnV2(String sql, Map<String, String> clickhouseSettings) {
+        QuerySettings settings = new QuerySettings().serverSetting("alter_sync", "1");
+        for (Map.Entry<String, String> entry : clickhouseSettings.entrySet()) {
+            settings.serverSetting(entry.getKey(), entry.getValue());
+        }
+        try (QueryResponse response = client.query(sql, settings).get()) {
+            // DDL executed; alter_sync=1 waits for the local replica to apply
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to execute ALTER TABLE: " + sql, e);
+        }
     }
 
     public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {

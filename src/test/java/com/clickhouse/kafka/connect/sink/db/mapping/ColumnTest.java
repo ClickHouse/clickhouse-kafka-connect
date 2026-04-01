@@ -1,5 +1,7 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaBuilder;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -176,6 +178,180 @@ class ColumnTest {
         assertEquals(2, col.getEnumValues().size());
         assertTrue(col.getEnumValues().containsKey("a, valid"));
         assertTrue(col.getEnumValues().containsKey("b"));
+    }
+
+    // --- isUnionSchema detection tests ---
+
+    @Test
+    public void isUnionSchema_avroUnion() {
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .optional()
+                .build();
+        assertTrue(Column.isUnionSchema(union));
+    }
+
+    @Test
+    public void isUnionSchema_protobufOneof() {
+        Schema union = SchemaBuilder.struct()
+                .name("io.confluent.connect.protobuf.Union.content")
+                .field("user_info", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("product_info", Schema.OPTIONAL_STRING_SCHEMA)
+                .optional()
+                .build();
+        assertTrue(Column.isUnionSchema(union));
+    }
+
+    @Test
+    public void isUnionSchema_generalizedUnion() {
+        Schema union = SchemaBuilder.struct()
+                .name("connect_union_0")
+                .parameter(Column.CONNECT_UNION_PARAMETER, "connect_union_0")
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .optional()
+                .build();
+        assertTrue(Column.isUnionSchema(union));
+    }
+
+    @Test
+    public void isUnionSchema_connectUnionParameter() {
+        Schema union = SchemaBuilder.struct()
+                .parameter(Column.CONNECT_UNION_PARAMETER, "some_annotation")
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .optional()
+                .build();
+        assertTrue(Column.isUnionSchema(union));
+    }
+
+    @Test
+    public void isUnionSchema_realStruct_notDetected() {
+        Schema struct = SchemaBuilder.struct()
+                .field("name", Schema.STRING_SCHEMA)
+                .field("age", Schema.INT32_SCHEMA)
+                .build();
+        assertFalse(Column.isUnionSchema(struct));
+    }
+
+    @Test
+    public void isUnionSchema_primitiveType_notDetected() {
+        assertFalse(Column.isUnionSchema(Schema.STRING_SCHEMA));
+    }
+
+    // --- connectTypeToClickHouseType union mapping tests ---
+
+    @Test
+    public void unionStringBytes_collapsesToNullableString() {
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("bytes", Schema.OPTIONAL_BYTES_SCHEMA)
+                .optional()
+                .build();
+        assertEquals("Nullable(String)", Column.connectTypeToClickHouseType(union));
+    }
+
+    @Test
+    public void unionStringInt_mapsToVariant() {
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .optional()
+                .build();
+        assertEquals("Variant(String, Int32)", Column.connectTypeToClickHouseType(union));
+    }
+
+    @Test
+    public void unionStringIntBoolean_mapsToVariant() {
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("boolean", Schema.OPTIONAL_BOOLEAN_SCHEMA)
+                .optional()
+                .build();
+        assertEquals("Variant(String, Int32, Bool)", Column.connectTypeToClickHouseType(union));
+    }
+
+    @Test
+    public void unionSuspiciousNumericTypes_fallsBackToString() {
+        // Variant(Int32, Int64) is rejected by ClickHouse unless allow_suspicious_variant_types
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("long", Schema.OPTIONAL_INT64_SCHEMA)
+                .optional()
+                .build();
+        assertEquals("Nullable(String)", Column.connectTypeToClickHouseType(union));
+    }
+
+    @Test
+    public void unionSuspiciousNumericWithString_fallsBackToString() {
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .field("long", Schema.OPTIONAL_INT64_SCHEMA)
+                .optional()
+                .build();
+        assertEquals("Nullable(String)", Column.connectTypeToClickHouseType(union));
+    }
+
+    @Test
+    public void protobufOneof_stringBytes_collapsesToNullableString() {
+        // Protobuf oneof { string url = 1; bytes raw = 2; } — field names differ from Avro
+        Schema union = SchemaBuilder.struct()
+                .name("io.confluent.connect.protobuf.Union.image")
+                .field("url", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("raw", Schema.OPTIONAL_BYTES_SCHEMA)
+                .optional()
+                .build();
+        assertEquals("Nullable(String)", Column.connectTypeToClickHouseType(union));
+    }
+
+    @Test
+    public void realStruct_withStructToJson_mapsToJSON() {
+        Schema struct = SchemaBuilder.struct()
+                .field("name", Schema.STRING_SCHEMA)
+                .field("age", Schema.INT32_SCHEMA)
+                .build();
+        assertEquals("Nullable(JSON)", Column.connectTypeToClickHouseType(struct, true));
+    }
+
+    @Test
+    public void realStruct_withoutFlag_throws() {
+        Schema struct = SchemaBuilder.struct()
+                .field("name", Schema.STRING_SCHEMA)
+                .field("age", Schema.INT32_SCHEMA)
+                .build();
+        assertThrows(SchemaTypeInferenceException.class,
+                () -> Column.connectTypeToClickHouseType(struct, false));
+    }
+
+    @Test
+    public void unionEmptyFields_fallsBackToNullableString() {
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .optional()
+                .build();
+        assertEquals("Nullable(String)", Column.connectTypeToClickHouseType(union));
+    }
+
+    @Test
+    public void unionVariant_notWrappedInNullable() {
+        Schema union = SchemaBuilder.struct()
+                .name(Column.AVRO_UNION_SCHEMA_NAME)
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("boolean", Schema.OPTIONAL_BOOLEAN_SCHEMA)
+                .optional()
+                .build();
+        String result = Column.connectTypeToClickHouseType(union);
+        assertEquals("Variant(String, Bool)", result);
+        assertFalse(result.startsWith("Nullable("));
     }
 }
 
