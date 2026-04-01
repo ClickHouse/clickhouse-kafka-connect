@@ -108,10 +108,6 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static OperationMetrics dropTable(ClickHouseHelperClient chc, String tableName) {
-        return dropTable(chc, tableName, ClusterConfig.STANDALONE);
-    }
-
     public static OperationMetrics dropTable(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
         for (int i = 0; i < 5; i++) {
             try {
@@ -144,11 +140,6 @@ public class ClickHouseTestHelpers {
         }
     }
 
-
-    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName) {
-        return getAllRowsAsJson(chc, tableName, ClusterConfig.STANDALONE);
-    }
-
     public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
         String query;
         if (cfg != null && cfg.requiresClusterRead()) {
@@ -178,48 +169,10 @@ public class ClickHouseTestHelpers {
     }
 
     private static String buildClusterAllReplicasSelectQuery(ClickHouseHelperClient chc, String clusterName, String tableName) {
-        if (isVersionAtLeast(chc.version(), 26, 2)) {
-            String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
-            String escapedTableName = escapeSingleQuotes(tableName);
-            return String.format("SELECT * FROM clusterAllReplicas('%s', '%s', '%s', rand())",
-                    clusterName, escapedDatabase, escapedTableName);
-        }
-        return String.format("SELECT * FROM clusterAllReplicas('%s', `%s`, rand())", clusterName, tableName);
-    }
-
-    /** @deprecated Use {@link #getAllRowsAsJson(ClickHouseHelperClient, String, ClusterConfig)} with a ClusterConfig instead. */
-    @Deprecated
-    public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName) {
-        String query = getClusterAllReplicasQuery(chc, tableName);
-        QuerySettings querySettings = new QuerySettings();
-        querySettings.setFormat(ClickHouseFormat.JSONEachRow);
-        try {
-            QueryResponse queryResponse = chc.getClient().query(query, querySettings).get();
-            List<JSONObject> jsonObjects = new ArrayList<>();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                JSONObject jsonObject = new JSONObject(line);
-                jsonObjects.add(jsonObject);
-            }
-            return jsonObjects;
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static String getClusterAllReplicasQuery(ClickHouseHelperClient chc, String tableName) {
-        if (isVersionAtLeast(chc.version(), 26, 2)) {
-            String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
-            String escapedTableName = escapeSingleQuotes(tableName);
-            return String.format("SELECT * FROM clusterAllReplicas('default', '%s', '%s')", escapedDatabase, escapedTableName);
-        }
-
-        return String.format("SELECT * FROM clusterAllReplicas('default', `%s`)", tableName);
+        String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
+        String escapedTableName = escapeSingleQuotes(tableName);
+        return String.format("SELECT * FROM clusterAllReplicas('%s', '%s', '%s', rand())",
+                clusterName, escapedDatabase, escapedTableName);
     }
 
     private static String escapeSingleQuotes(String input) {
@@ -249,11 +202,6 @@ public class ClickHouseTestHelpers {
         }
     }
 
-
-    public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName) {
-        return optimizeTable(chc, tableName, ClusterConfig.STANDALONE);
-    }
-
     public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
         String clusterClause = (cfg != null && cfg.isDistributed())
                 ? " ON CLUSTER '" + cfg.clusterName + "'" : "";
@@ -264,10 +212,6 @@ public class ClickHouseTestHelpers {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    public static int countRows(ClickHouseHelperClient chc, String tableName) {
-        return countRows(chc, tableName, ClusterConfig.STANDALONE);
     }
 
     public static int countRows(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
@@ -294,20 +238,11 @@ public class ClickHouseTestHelpers {
     }
 
     private static String buildClusterCountQuery(ClickHouseHelperClient chc, String clusterName, String tableName) {
-        if (isVersionAtLeast(chc.version(), 26, 2)) {
-            String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
-            String escapedTableName = escapeSingleQuotes(tableName);
-            return String.format(
-                    "SELECT COUNT(*) FROM clusterAllReplicas('%s', '%s', '%s', rand()) SETTINGS select_sequential_consistency = 1",
-                    clusterName, escapedDatabase, escapedTableName);
-        }
+        String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
+        String escapedTableName = escapeSingleQuotes(tableName);
         return String.format(
-                "SELECT COUNT(*) FROM clusterAllReplicas('%s', `%s`, rand()) SETTINGS select_sequential_consistency = 1",
-                clusterName, tableName);
-    }
-
-    public static int sumRows(ClickHouseHelperClient chc, String tableName, String column) {
-        return sumRows(chc, tableName, column, ClusterConfig.STANDALONE);
+                "SELECT COUNT(*) FROM clusterAllReplicas('%s', '%s', '%s', rand()) SETTINGS select_sequential_consistency = 1",
+                clusterName, escapedDatabase, escapedTableName);
     }
 
     public static int sumRows(ClickHouseHelperClient chc, String tableName, String column, ClusterConfig cfg) {
@@ -319,10 +254,6 @@ public class ClickHouseTestHelpers {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
-        return countRowsWithEmojis(chc, tableName, ClusterConfig.STANDALONE);
     }
 
     public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
@@ -343,23 +274,12 @@ public class ClickHouseTestHelpers {
      */
     private static String buildFromClause(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
         if (cfg != null && cfg.requiresClusterRead()) {
-            return buildClusterAllReplicasFunctionCall(chc, cfg.clusterName, tableName);
-        }
-        return "`" + tableName + "`";
-    }
-
-    private static String buildClusterAllReplicasFunctionCall(ClickHouseHelperClient chc, String clusterName, String tableName) {
-        if (isVersionAtLeast(chc.version(), 26, 2)) {
             String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
             String escapedTableName = escapeSingleQuotes(tableName);
             return String.format("clusterAllReplicas('%s', '%s', '%s', rand())",
-                    clusterName, escapedDatabase, escapedTableName);
+                    cfg.clusterName, escapedDatabase, escapedTableName);
         }
-        return String.format("clusterAllReplicas('%s', `%s`, rand())", clusterName, tableName);
-    }
-
-    public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords) {
-        return validateRows(chc, topic, sinkRecords, ClusterConfig.STANDALONE);
+        return "`" + tableName + "`";
     }
 
     public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords, ClusterConfig cfg) {
@@ -414,19 +334,11 @@ public class ClickHouseTestHelpers {
         return match;
     }
 
-    public static int countInsertQueries(ClickHouseHelperClient chc, String topic) {
-        return countInsertQueries(chc, topic, ClusterConfig.STANDALONE);
-    }
-
     public static int countInsertQueries(ClickHouseHelperClient chc, String topic, ClusterConfig cfg) {
         try (Client client = chc.getClient()) {
             String from;
             if (cfg != null && cfg.requiresClusterRead()) {
-                if (isVersionAtLeast(chc.version(), 26, 2)) {
-                    from = String.format("clusterAllReplicas('%s', 'system', 'query_log', rand())", cfg.clusterName);
-                } else {
-                    from = String.format("clusterAllReplicas('%s', system.query_log, rand())", cfg.clusterName);
-                }
+                from = String.format("clusterAllReplicas('%s', 'system', 'query_log', rand())", cfg.clusterName);
             } else {
                 from = "system.query_log";
             }
@@ -482,10 +394,6 @@ public class ClickHouseTestHelpers {
 
     public static Column col(Type type, int precision, int scale) {
         return Column.builder().type(type).precision(precision).scale(scale).build();
-    }
-
-    public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
-        return checkSequentialRows(chc, tableName, totalRecords, ClusterConfig.STANDALONE);
     }
 
     public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords, ClusterConfig cfg) {

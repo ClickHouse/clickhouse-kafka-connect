@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
@@ -14,7 +15,8 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -35,14 +37,17 @@ public class FailureTest extends ClickHouseBase {
     static {
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "DEBUG");
     }
-    @Test
-    void testSchemaValidationFailure() throws Exception {
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    void testSchemaValidationFailure(ClusterConfig clusterConfig) throws Exception {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .column("off16", "Int16").column("uint8", "UInt8").column("uint16", "UInt16")
                 .column("uint32", "UInt32").column("uint64", "UInt64")
                 .engine("MergeTree").orderByColumn("off16").execute(chc);
@@ -78,12 +83,12 @@ public class FailureTest extends ClickHouseBase {
         assertEquals(dlq.size(), ((Long)sentToDQL).longValue());
 
         task.stop();
-        assertEquals(200, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(200, ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
         List<SinkRecord> sr = new ArrayList<>(200);
         sr.addAll(validRecordsPart1);
         sr.addAll(validRecordsPart3);
 
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, clusterConfig));
     }
 
     public static List<SinkRecord> createInvalidRecords(String topic, int partition, int totalRecords) {

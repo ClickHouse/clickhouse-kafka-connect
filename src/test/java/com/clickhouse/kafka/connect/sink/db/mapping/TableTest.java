@@ -4,8 +4,11 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 import java.util.Map;
@@ -34,13 +37,14 @@ class TableTest extends ClickHouseBase {
         assertEquals(5, mapValueType.getPrecision());
     }
 
-    @Test
-    public void extractNullables() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void extractNullables(ClusterConfig clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("off16", "Int16")
@@ -49,29 +53,30 @@ class TableTest extends ClickHouseBase {
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
-        assertEquals(table.getRootColumnsList().size(), 2);
-        assertEquals(table.getAllColumnsList().size(), 3);
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        assertEquals(2, table.getRootColumnsList().size());
+        assertEquals(3, table.getAllColumnsList().size());
+        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
     }
 
-    @Test
-    public void extractCommentV1() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void extractCommentV1(ClusterConfig clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
         ClickHouseHelperClient chc = createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")
-                .engine("MergeTree()").orderByColumn("tuple()").execute(chc);
+                .engine("MergeTree").orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
         assertEquals(table.getRootColumnsList().size(), 2);
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
     }
 
     @Test

@@ -20,6 +20,7 @@ import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
 import org.apache.commons.lang3.RandomUtils;
+import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
@@ -60,6 +62,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -1740,30 +1743,37 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         return partitions;
     }
 
+    private Stream<Arguments> exactlyOnceStateMismatchTestArgs() {
+        List<int[]> splitsAndBatches = List.of(
+                new int[]{11, 7},
+                new int[]{17, 11},
+                new int[]{37, 17},
+                new int[]{61, 37},
+                new int[]{113, 120},
+                new int[]{131, 150},
+                new int[]{150, 160},
+                new int[]{157, 131},
+                new int[]{167, 161},
+                new int[]{229, 220},
+                new int[]{229, 221}
+        );
+        Stream<Arguments> argStream = Stream.of();
+        for (var config : clusterConfigs().collect(Collectors.toSet())) {
+            argStream = Stream.concat(argStream, splitsAndBatches.stream().map(splitAndBatch -> Arguments.of(splitAndBatch[0], splitAndBatch[1], config)));
+        }
+        return argStream;
+    }
+
     @ParameterizedTest
-    //@ValueSource(ints = {11, 17 , 37,  61, 113, 131, 150, 157, 167, 229})
-    @CsvSource({
-            "11, 7",
-            "17, 11",
-            "37, 17",
-            "61, 37",
-            "113, 120",
-            "131, 150",
-            "150, 160",
-            "157, 131",
-            "167, 161",
-            "229, 220",
-            "229, 221",
-    })
-    public void exactlyOnceStateMismatchTest(int split, int batch) {
-        // This test is running only cloud
-        if (!isCloud || isCluster)
-            return;
+    @MethodSource("exactlyOnceStateMismatchTestArgs")
+    public void exactlyOnceStateMismatchTest(int split, int batch, ClusterConfig clusterConfig) {
+        Assumptions.assumeFalse(clusterConfig.equals(ClusterConfig.STANDALONE)); // skip test if running in standalone mode
+
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
         String topic = "exactly_once_state_mismatch_test_" + split + "_" + batch + "_" + System.currentTimeMillis();
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(ARRAY_TYPES_TABLE)
                 .tableName(topic)
                 .execute(chc);
@@ -1781,14 +1791,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         for (Collection<SinkRecord> records : data) {
             chst.put(records);
         }
-        assertEquals(data.size() * split, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(data.size() * split, ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
         for (Collection<SinkRecord> records : data01) {
             chst.put(records);
         }
         chst.stop();
         // after the second insert we have exactly sr.size() records
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
-
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, clusterConfig));
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -1841,6 +1851,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals("image2", row.getString("name"));
         assertEquals("description", row.getString("description"));
         assertEquals("content2", row.getString("content"));
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -1893,5 +1904,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             assertEquals(formatter.format(event.getTime1()), row.get("time1"));
             assertEquals(event.getTime2().atDate(LocalDate.of(1970, 1, 1)).format(localFormatter), row.get("time2"));
         }
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
     }
 }

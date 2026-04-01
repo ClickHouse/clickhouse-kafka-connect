@@ -7,15 +7,22 @@ import javax.annotation.Nullable;
  *
  * <p>When {@code CLICKHOUSE_CLUSTER_MODE=true}, tests run against both
  * {@link #THREE_SHARDS_ONE_REPLICA_EACH} and {@link #ONE_SHARD_THREE_REPLICAS}.
- * Otherwise, tests run as {@link #STANDALONE} (single-node, no distributed DDL).
+ * Otherwise, tests run as either {@link #STANDALONE} (single-node, no distributed DDL)
+ * or {@link #CLOUD} if {@code CLICKHOUSE_VERSION=cloud}  (clustering is abstracted, no distributed DDL).
  */
 public enum ClusterConfig {
 
     /**
-     * No cluster — single-node ClickHouse (local container or cloud).
+     * No cluster — single-node ClickHouse (local container).
      * DDL uses plain MergeTree; SELECTs use local table.
      */
     STANDALONE(null, false),
+
+    /**
+     * Clustering is abstracted away in ClickHouse cloud.
+     * DDL uses plain MergeTree; SELECTs use local table.
+     */
+    CLOUD(null, false),
 
     /**
      * Cluster {@code three_shards_one_replica_each}: 3 shards (ch0, ch1, ch2),

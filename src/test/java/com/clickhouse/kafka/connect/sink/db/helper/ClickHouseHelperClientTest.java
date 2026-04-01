@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,21 +43,23 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         Assertions.assertTrue(chc.ping());
     }
 
-    @Test
-    public void showTables() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void showTables(ClusterConfig clusterConfig) {
         String topic = createTopicName("simple_table_test");
         new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
-            List<String> tableNames = table.stream().map(item -> item.getCleanName()).collect(Collectors.toList());
+            List<String> tableNames = table.stream().map(Table::getCleanName).collect(Collectors.toList());
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         }
     }
 
-    @Test
-    public void describeNestedFlattenedTable() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void describeNestedFlattenedTable(ClusterConfig clusterConfig) {
         String topic = createTopicName("nested_flattened_table_test");
         new CreateTableStatement()
                 .tableName(topic)
@@ -66,12 +71,13 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertEquals(3, table.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         }
     }
 
-    @Test
-    public void ignoreArrayWithNestedTable() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void ignoreArrayWithNestedTable(ClusterConfig clusterConfig) {
         String topic = createTopicName("nested_table_test");
         new CreateTableStatement()
                 .tableName(topic)
@@ -83,13 +89,14 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertNull(table);
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         }
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.1")
-    public void describeNestedUnFlattenedTable() {
+    public void describeNestedUnFlattenedTable(ClusterConfig clusterConfig) {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         ClickHouseTestHelpers.query(chc, "CREATE USER IF NOT EXISTS unflatten IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0");
@@ -114,14 +121,15 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Table normalTable = chc.describeTable(chc.getDatabase(), normalTopic);
             Assertions.assertEquals(1, normalTable.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, nestedTopic);
-            ClickHouseTestHelpers.dropTable(chc, normalTopic);
+            ClickHouseTestHelpers.dropTable(chc, nestedTopic, clusterConfig);
+            ClickHouseTestHelpers.dropTable(chc, normalTopic, clusterConfig);
             ClickHouseTestHelpers.query(chc, "DROP USER IF EXISTS unflatten");
         }
     }
 
-    @Test
-    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized(ClusterConfig clusterConfig) {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
         new CreateTableStatement()
@@ -145,7 +153,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Assertions.assertEquals("off16", table.getAllColumnsList().get(0).getName());
             Assertions.assertEquals("off16", table.getRootColumnsList().get(0).getName());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         }
     }
 }

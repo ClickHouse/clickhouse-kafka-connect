@@ -12,6 +12,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
@@ -26,6 +27,8 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,13 +130,14 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         }
     }
 
-    @Test
-    public void updateMapping() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void updateMapping(ClusterConfig clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("missing_table_mapping_test");
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
 
         runWithWriter(props, (chw) -> {
 
@@ -152,11 +156,12 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                     assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
                 });
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
     }
 
-    @Test
-    public void getTableUsesTopicToTableMapping() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void getTableUsesTopicToTableMapping(ClusterConfig clusterConfig) {
         Map<String, String> props = getBaseProps();
         String topicWithoutBackticks = createTopicName("mapped_source_topic_plain_test");
         String mappedTableWithoutBackticks = createTopicName("mapped_target_table_plain_test");
@@ -168,10 +173,10 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                         + topicWithBackticks + "=" + mappedTableWithBackticks);
         ClickHouseHelperClient chc = createClient(props);
 
-        ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks);
-        ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
+        ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topicWithBackticks, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw, clusterConfig);
         new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithoutBackticks).execute(chc);
         new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithBackticksRaw).execute(chc);
 
@@ -184,46 +189,53 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             assertNotNull(backtickedMappingTable);
             assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTableWithBackticksRaw), backtickedMappingTable.getFullName());
         });
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
+        ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topicWithBackticks, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw, clusterConfig);
     }
 
-    @Test
-    public void getTableThrowsWhenMissingAndSuppressionDisabled() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void getTableThrowsWhenMissingAndSuppressionDisabled(ClusterConfig clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("missing_table_get_table_throw_test");
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
 
         runWithWriter(props, (chw) -> {
             RuntimeException ex = assertThrows(RuntimeException.class, () -> chw.getTable(chc.getDatabase(), topic));
             assertTrue(ex.getMessage().contains("does not exist"));
         });
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
     }
 
-    @Test
-    public void getTableReturnsNullWhenMissingAndSuppressionEnabled() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void getTableReturnsNullWhenMissingAndSuppressionEnabled(ClusterConfig clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.SUPPRESS_TABLE_EXISTENCE_EXCEPTION, "true");
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("missing_table_get_table_suppressed_test");
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
 
         runWithWriter(props, (chw) -> {
             Table table = chw.getTable(chc.getDatabase(), topic);
             assertNull(table);
         });
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
     }
 
-    @Test
-    public void doWriteColValue_Tuples() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clusterConfigs")
+    public void doWriteColValue_Tuples(ClusterConfig clusterConfig) throws Exception {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("do_insert_tuple_order_mismatch_test");
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic)
                 .column("_id", "String")
@@ -272,7 +284,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             }
         });
 
-        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic, clusterConfig);
         assertEquals(1, rows.size());
         JSONObject row = rows.get(0);
         assertEquals("id-1", row.getString("_id"));
@@ -283,6 +295,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         assertEquals("SUBJECT", tuple.getString("subject"));
         assertEquals(1, tuple.getInt("istextanswered"));
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
     }
 }
