@@ -22,6 +22,10 @@ public class ClickHouseCluster {
     private static final String CLUSTER_HOST = "localhost";
     private static final int CLUSTER_PORT = 10723;
 
+    public static final String THREE_SHARDS_ONE_REPLICA_EACH = "three_shards_one_replica_each";
+    public static final String ONE_SHARD_THREE_REPLICAS = "one_shard_three_replicas";
+
+
     private static volatile boolean started = false;
 
     /**

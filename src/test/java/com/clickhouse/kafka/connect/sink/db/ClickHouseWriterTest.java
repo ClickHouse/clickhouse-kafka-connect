@@ -12,7 +12,7 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
@@ -54,7 +54,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     private static final CreateTableStatement SINGLE_INT16_TABLE = new CreateTableStatement()
             .column("off16", "Int16")
-            .engine("MergeTree")
+
             .orderByColumn("off16");
 
     ClickHouseHelperClient chc = null;
@@ -132,7 +132,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void updateMapping(ClusterConfig clusterConfig) {
+    public void updateMapping(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("missing_table_mapping_test");
@@ -161,7 +161,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void getTableUsesTopicToTableMapping(ClusterConfig clusterConfig) {
+    public void getTableUsesTopicToTableMapping(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         String topicWithoutBackticks = createTopicName("mapped_source_topic_plain_test");
         String mappedTableWithoutBackticks = createTopicName("mapped_target_table_plain_test");
@@ -197,7 +197,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void getTableThrowsWhenMissingAndSuppressionDisabled(ClusterConfig clusterConfig) {
+    public void getTableThrowsWhenMissingAndSuppressionDisabled(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("missing_table_get_table_throw_test");
@@ -213,7 +213,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void getTableReturnsNullWhenMissingAndSuppressionEnabled(ClusterConfig clusterConfig) {
+    public void getTableReturnsNullWhenMissingAndSuppressionEnabled(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.SUPPRESS_TABLE_EXISTENCE_EXCEPTION, "true");
         ClickHouseHelperClient chc = createClient(props);
@@ -230,7 +230,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void doWriteColValue_Tuples(ClusterConfig clusterConfig) throws Exception {
+    public void doWriteColValue_Tuples(ClickHouseDeploymentType clusterConfig) throws Exception {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("do_insert_tuple_order_mismatch_test");
@@ -240,7 +240,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("_id", "String")
                 .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
-                .engine("MergeTree").orderByColumn("_id").execute(chc);
+                .orderByColumn("_id").execute(chc);
 
         Schema tupleSchema = SchemaBuilder.struct()
                 .field("isanswered", Schema.INT32_SCHEMA)

@@ -8,7 +8,7 @@ import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
@@ -37,13 +37,13 @@ public class ClickHouseBase {
      * Null when not running in cluster mode.
      * Per-test ClusterConfig comes from the @ParameterizedTest @MethodSource("clusterConfigs") parameter.
      */
-    protected ClusterConfig setupClusterConfig;
+    protected ClickHouseDeploymentType setupClusterConfig;
 
     /**
      * Returns cluster configurations for @ParameterizedTest @MethodSource("clusterConfigs").
      * Delegates to {@link ClickHouseTestHelpers#clusterConfigs()}.
      */
-    public static Stream<ClusterConfig> clusterConfigs() {
+    public static Stream<ClickHouseDeploymentType> clusterConfigs() {
         return ClickHouseTestHelpers.clusterConfigs();
     }
 
@@ -56,7 +56,7 @@ public class ClickHouseBase {
             }
             // Use THREE_SHARDS for database-level DDL — it covers all 3 nodes.
             // Per-test cluster config comes from the @ParameterizedTest parameter.
-            this.setupClusterConfig = ClusterConfig.THREE_SHARDS_ONE_REPLICA_EACH;
+            this.setupClusterConfig = ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH;
         } else if (!isCloud) {
             setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         }

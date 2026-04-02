@@ -80,7 +80,7 @@ public class ClickHouseTestHelpers {
     }
 
     /**
-     * Returns the set of {@link ClusterConfig} values to test against.
+     * Returns the set of {@link ClickHouseDeploymentType} values to test against.
      * Used as a JUnit {@code @MethodSource} for {@code @ParameterizedTest}.
      *
      * <ul>
@@ -88,11 +88,11 @@ public class ClickHouseTestHelpers {
      *   <li>Cluster mode: {@code [THREE_SHARDS_ONE_REPLICA_EACH, ONE_SHARD_THREE_REPLICAS]}</li>
      * </ul>
      */
-    public static Stream<ClusterConfig> clusterConfigs() {
+    public static Stream<ClickHouseDeploymentType> clusterConfigs() {
         if (isCluster()) {
-            return Stream.of(ClusterConfig.THREE_SHARDS_ONE_REPLICA_EACH, ClusterConfig.ONE_SHARD_THREE_REPLICAS);
+            return Stream.of(ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH, ClickHouseDeploymentType.ONE_SHARD_THREE_REPLICAS);
         }
-        return Stream.of(ClusterConfig.STANDALONE);
+        return Stream.of(ClickHouseDeploymentType.STANDALONE);
     }
 
     public static void query(ClickHouseHelperClient chc, String query) {
@@ -108,7 +108,7 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static OperationMetrics dropTable(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+    public static OperationMetrics dropTable(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
         for (int i = 0; i < 5; i++) {
             try {
                 OperationMetrics operationMetrics = dropTableLoop(chc, tableName, cfg);
@@ -129,8 +129,8 @@ public class ClickHouseTestHelpers {
         return null;
     }
 
-    private static OperationMetrics dropTableLoop(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
-        String clusterClause = (cfg != null && cfg.isDistributed())
+    private static OperationMetrics dropTableLoop(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
+        String clusterClause = (cfg.isLocalCluster())
                 ? " ON CLUSTER '" + cfg.clusterName + "' SYNC" : "";
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`%s", tableName, clusterClause);
         try (Records records = chc.getClient().queryRecords(dropTable).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
@@ -140,17 +140,13 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
-        String query;
-        if (cfg != null && cfg.requiresClusterRead()) {
-            query = buildClusterAllReplicasSelectQuery(chc, cfg.clusterName, tableName);
-        } else {
-            query = String.format("SELECT * FROM `%s`", tableName);
-        }
+    public static List<JSONObject> getAllRowsAsJson(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
+        String from = buildFromClause(chc, tableName, cfg);
+        String query = "SELECT * FROM " + from;
+
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
-        try {
-            QueryResponse queryResponse = chc.getClient().query(query, querySettings).get();
+        try (QueryResponse queryResponse = chc.getClient().query(query, querySettings).get()) {
             List<JSONObject> jsonObjects = new ArrayList<>();
             BufferedReader reader = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()));
             String line;
@@ -163,16 +159,9 @@ public class ClickHouseTestHelpers {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private static String buildClusterAllReplicasSelectQuery(ClickHouseHelperClient chc, String clusterName, String tableName) {
-        String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
-        String escapedTableName = escapeSingleQuotes(tableName);
-        return String.format("SELECT * FROM clusterAllReplicas('%s', '%s', '%s', rand())",
-                clusterName, escapedDatabase, escapedTableName);
     }
 
     private static String escapeSingleQuotes(String input) {
@@ -202,8 +191,8 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
-        String clusterClause = (cfg != null && cfg.isDistributed())
+    public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
+        String clusterClause = (cfg.isLocalCluster())
                 ? " ON CLUSTER '" + cfg.clusterName + "'" : "";
         String queryCount = String.format("OPTIMIZE TABLE `%s`%s", tableName, clusterClause);
 
@@ -214,14 +203,10 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static int countRows(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+    public static int countRows(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
         optimizeTable(chc, tableName, cfg);
-        String queryCount;
-        if (cfg != null && cfg.requiresClusterRead()) {
-            queryCount = buildClusterCountQuery(chc, cfg.clusterName, tableName);
-        } else {
-            queryCount = String.format("SELECT COUNT(*) FROM `%s` SETTINGS select_sequential_consistency = 1", tableName);
-        }
+        String from = buildFromClause(chc, tableName, cfg);
+        String queryCount = "SELECT COUNT(*) FROM " + from + " SETTINGS select_sequential_consistency = 1";
 
         try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
             String value = records.iterator().next().getString(1);
@@ -237,17 +222,9 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    private static String buildClusterCountQuery(ClickHouseHelperClient chc, String clusterName, String tableName) {
-        String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
-        String escapedTableName = escapeSingleQuotes(tableName);
-        return String.format(
-                "SELECT COUNT(*) FROM clusterAllReplicas('%s', '%s', '%s', rand()) SETTINGS select_sequential_consistency = 1",
-                clusterName, escapedDatabase, escapedTableName);
-    }
-
-    public static int sumRows(ClickHouseHelperClient chc, String tableName, String column, ClusterConfig cfg) {
+    public static int sumRows(ClickHouseHelperClient chc, String tableName, String column, ClickHouseDeploymentType cfg) {
         String from = buildFromClause(chc, tableName, cfg);
-        String queryCount = String.format("SELECT SUM(`%s`) FROM %s", column, from);
+        String queryCount = "SELECT SUM(`%s`) FROM " + from;
         try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
             String value = records.iterator().next().getString(1);
             return (int) (Float.parseFloat(value));
@@ -256,7 +233,7 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+    public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
         String from = buildFromClause(chc, tableName, cfg);
         String queryCount = "SELECT COUNT(*) FROM " + from + " WHERE str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
         try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
@@ -267,22 +244,17 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    /**
-     * Returns a FROM clause appropriate for the given ClusterConfig.
-     * For THREE_SHARDS: returns {@code clusterAllReplicas('cluster', db, table, rand())}.
-     * For all others: returns {@code `tableName`} (backtick-quoted).
-     */
-    private static String buildFromClause(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
-        if (cfg != null && cfg.requiresClusterRead()) {
+    private static String buildFromClause(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
+        if (cfg.isLocalCluster()) {
             String escapedDatabase = escapeSingleQuotes(chc.getDatabase());
             String escapedTableName = escapeSingleQuotes(tableName);
-            return String.format("clusterAllReplicas('%s', '%s', '%s', rand())",
+            return String.format("cluster('%s', '%s', '%s')",
                     cfg.clusterName, escapedDatabase, escapedTableName);
         }
         return "`" + tableName + "`";
     }
 
-    public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords, ClusterConfig cfg) {
+    public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords, ClickHouseDeploymentType cfg) {
         boolean match = false;
         try {
             QuerySettings querySettings = new QuerySettings();
@@ -334,10 +306,10 @@ public class ClickHouseTestHelpers {
         return match;
     }
 
-    public static int countInsertQueries(ClickHouseHelperClient chc, String topic, ClusterConfig cfg) {
+    public static int countInsertQueries(ClickHouseHelperClient chc, String topic, ClickHouseDeploymentType cfg) {
         try (Client client = chc.getClient()) {
             String from;
-            if (cfg != null && cfg.requiresClusterRead()) {
+            if (cfg.isLocalCluster()) {
                 from = String.format("clusterAllReplicas('%s', 'system', 'query_log', rand())", cfg.clusterName);
             } else {
                 from = "system.query_log";
@@ -396,9 +368,9 @@ public class ClickHouseTestHelpers {
         return Column.builder().type(type).precision(precision).scale(scale).build();
     }
 
-    public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords, ClusterConfig cfg) {
+    public static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords, ClickHouseDeploymentType cfg) {
         String from = buildFromClause(chc, tableName, cfg);
-        String queryCount = String.format("SELECT DISTINCT `off16` FROM %s ORDER BY `off16` ASC", from);
+        String queryCount = "SELECT DISTINCT `off16` FROM " + from + " ORDER BY `off16` ASC";
         try (ClickHouseClient client = ClickHouseClient.builder()
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))

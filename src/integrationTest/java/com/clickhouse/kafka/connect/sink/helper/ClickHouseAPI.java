@@ -7,8 +7,6 @@ import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,15 +68,15 @@ public class ClickHouseAPI {
         return counts[0];
     }
 
-    public static int countRows(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+    public static int countRows(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
         return ClickHouseTestHelpers.countRows(chc, tableName, cfg);
     }
 
-    public static void dropTable(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
+    public static void dropTable(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
         ClickHouseTestHelpers.dropTable(chc, tableName, cfg);
     }
 
-    public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds, ClusterConfig cfg) throws InterruptedException {
+    public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds, ClickHouseDeploymentType cfg) throws InterruptedException {
         int count = countRows(chc, tableName, cfg);
         int lastCount = 0;
         int loopCount = 0;
@@ -134,6 +132,7 @@ public class ClickHouseAPI {
         }
     }
 
+    // TODO: REMOVE THIS
     public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
         String queryCount = String.format("SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM `%s`", tableName);
         try (ClickHouseClient client = ClickHouseClient.builder()
@@ -149,8 +148,8 @@ public class ClickHouseAPI {
         }
     }
 
-    public static int[] getCounts(ClickHouseHelperClient chc, String tableName, ClusterConfig cfg) {
-        if (cfg == null || !cfg.requiresClusterRead()) {
+    public static int[] getCounts(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType cfg) {
+        if (cfg == null || !cfg.isLocalCluster()) {
             return getCounts(chc, tableName);
         }
         // For THREE_SHARDS, aggregate across all shards via clusterAllReplicas

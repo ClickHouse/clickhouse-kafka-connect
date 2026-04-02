@@ -3,7 +3,7 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -34,7 +34,6 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
-            .engine("MergeTree")
             .orderByColumn("off16");
 
     private static final CreateTableStatement ARRAY_TYPES_TABLE = new CreateTableStatement()
@@ -48,7 +47,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("arr_float32", "Array(Float32)")
             .column("arr_float64", "Array(Float64)")
             .column("arr_bool", "Array(Bool)")
-            .engine("MergeTree")
+
             .orderByColumn("off16");
 
     private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
@@ -56,15 +55,15 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("map_string_string", "Map(String, String)")
             .column("map_string_int64", "Map(String, Int64)")
             .column("map_int64_string", "Map(Int64, String)")
-            .engine("MergeTree")
+
             .orderByColumn("off16");
 
 
-    private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic, ClusterConfig clusterConfig) {
+    private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic, ClickHouseDeploymentType clusterConfig) {
         return ClickHouseTestHelpers.countRowsWithEmojis(chc, topic, clusterConfig);
     }
 
-    private int countRows(ClickHouseHelperClient chc, String topic, ClusterConfig clusterConfig) {
+    private int countRows(ClickHouseHelperClient chc, String topic, ClickHouseDeploymentType clusterConfig) {
         return ClickHouseTestHelpers.countRows(chc, topic, clusterConfig);
     }
 
@@ -383,7 +382,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void primitiveTypesTest(ClusterConfig clusterConfig) {
+    public void primitiveTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
@@ -404,7 +403,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
+    public void withEmptyDataRecordsTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
@@ -425,7 +424,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void NullableValuesTest(ClusterConfig clusterConfig) {
+    public void NullableValuesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
@@ -443,7 +442,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .column("p_float32", "Float32")
                 .column("p_float64", "Float64")
                 .column("p_bool", "Bool")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -458,7 +457,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void arrayTypesTest(ClusterConfig clusterConfig) {
+    public void arrayTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -480,7 +479,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void mapTypesTest(ClusterConfig clusterConfig) {
+    public void mapTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -503,7 +502,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
-    public void specialCharTableNameTest(ClusterConfig clusterConfig) {
+    public void specialCharTableNameTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -525,7 +524,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void emojisCharsDataTest(ClusterConfig clusterConfig) {
+    public void emojisCharsDataTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -535,7 +534,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -551,7 +550,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void tableMappingTest(ClusterConfig clusterConfig) {
+    public void tableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
 
@@ -574,7 +573,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void csvTest(ClusterConfig clusterConfig) {
+    public void csvTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "csv");
 
@@ -596,7 +595,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void tsvTest(ClusterConfig clusterConfig) {
+    public void tsvTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "tsv");
 
@@ -618,7 +617,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void clickHouseErrorCode25(ClusterConfig clusterConfig) {
+    public void clickHouseErrorCode25(ClickHouseDeploymentType clusterConfig) {
         InMemoryDLQ er = new InMemoryDLQ();
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.INSERT_FORMAT, "json");
@@ -631,7 +630,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);

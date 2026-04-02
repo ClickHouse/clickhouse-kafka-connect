@@ -11,11 +11,11 @@ import java.util.Map;
 public class CreateTableStatement {
     private String tableName;
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
-    private String engine;
+    private String engine; // defaults to MergeTree/ReplicatedMergeTree if unset
     private String orderByColumn;
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
-    private ClusterConfig clusterConfig = ClusterConfig.STANDALONE;
+    private ClickHouseDeploymentType clusterConfig = ClickHouseDeploymentType.STANDALONE;
 
     public CreateTableStatement() {}
 
@@ -59,7 +59,7 @@ public class CreateTableStatement {
         return this;
     }
 
-    public CreateTableStatement clusterConfig(ClusterConfig clusterConfig) {
+    public CreateTableStatement clusterConfig(ClickHouseDeploymentType clusterConfig) {
         this.clusterConfig = clusterConfig;
         return this;
     }
@@ -76,12 +76,12 @@ public class CreateTableStatement {
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
                 .append("`").append(tableName).append("`");
-        if (clusterConfig.isDistributed()) {
+        if (clusterConfig.isLocalCluster()) {
             sql.append(" ON CLUSTER '").append(clusterConfig.clusterName).append("'");
         }
         sql.append(" ")
                 .append("(").append(columns).append(")").append(" ")
-                .append("Engine = ").append(clusterConfig.resolveEngine(engine));
+                .append("Engine = ").append(engine != null ? engine : clusterConfig.getMergeTreeEngine());
         if (orderByColumn != null) {
             sql.append(" ORDER BY ").append(orderByColumn);
         }

@@ -4,7 +4,7 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -39,7 +39,7 @@ class TableTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void extractNullables(ClusterConfig clusterConfig) {
+    public void extractNullables(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -49,7 +49,7 @@ class TableTest extends ClickHouseBase {
                 .tableName(tableName)
                 .column("off16", "Int16")
                 .column("date_number", "Nullable(Date)")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
@@ -60,7 +60,7 @@ class TableTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void extractCommentV1(ClusterConfig clusterConfig) {
+    public void extractCommentV1(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
         ClickHouseHelperClient chc = createClient(props);
@@ -71,7 +71,7 @@ class TableTest extends ClickHouseBase {
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")
-                .engine("MergeTree").orderByColumn("tuple()").execute(chc);
+                .orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);

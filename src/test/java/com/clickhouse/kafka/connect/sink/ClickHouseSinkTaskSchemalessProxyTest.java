@@ -42,7 +42,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
             .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
             .column("p_int64", "Int64").column("p_float32", "Float32")
             .column("p_float64", "Float64").column("p_bool", "Bool")
-            .engine("MergeTree").orderByColumn("off16");
+            .orderByColumn("off16");
 
     private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
             .column("off16", "Int16").column("map_string_string", "Map(String, String)")
@@ -50,7 +50,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
             .column("map_string_map", "Map(String, Map(String, Int64))")
             .column("map_string_array", "Map(String, Array(String))")
             .column("map_map_map", "Map(String, Map(String, Map(String, String)))")
-            .engine("MergeTree").orderByColumn("off16");
+            .orderByColumn("off16");
 
     @BeforeAll
     public void setup() throws IOException {
@@ -111,7 +111,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void proxyPingTest(ClusterConfig clusterConfig) throws IOException {
+    public void proxyPingTest(ClickHouseDeploymentType clusterConfig) throws IOException {
         ClickHouseHelperClient chc = createClient(getTestProperties(), false);
         assertTrue(chc.ping());
         proxy.disable();
@@ -122,7 +122,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void primitiveTypesTest(ClusterConfig clusterConfig) {
+    public void primitiveTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_primitive_types_table_test");
@@ -139,7 +139,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
+    public void withEmptyDataRecordsTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_empty_records_table_test");
@@ -156,7 +156,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void NullableValuesTest(ClusterConfig clusterConfig) {
+    public void NullableValuesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("schemaless_nullable_values_table_test");
@@ -166,7 +166,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
                 .column("off16", "Int16").column("str", "String").column("null_str", "Nullable(String)")
                 .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
                 .column("p_int64", "Int64").column("p_float32", "Float32").column("p_float64", "Float64").column("p_bool", "Bool")
-                .engine("MergeTree").orderByColumn("off16").clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").clusterConfig(clusterConfig).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypesWithNulls(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -178,7 +178,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void arrayTypesTest(ClusterConfig clusterConfig) {
+    public void arrayTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -191,7 +191,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
                 .column("arr_int64", "Array(Int64)").column("arr_float32", "Array(Float32)").column("arr_float64", "Array(Float64)")
                 .column("arr_bool", "Array(Bool)").column("arr_str_arr", "Array(Array(String))")
                 .column("arr_arr_str_arr", "Array(Array(Array(String)))").column("arr_map", "Array(Map(String, String))")
-                .engine("MergeTree").orderByColumn("off16").clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").clusterConfig(clusterConfig).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createArrayType(topic, 1);
 
@@ -204,7 +204,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void mapTypesTest(ClusterConfig clusterConfig) {
+    public void mapTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -225,7 +225,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
-    public void specialCharTableNameTest(ClusterConfig clusterConfig) {
+    public void specialCharTableNameTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -244,7 +244,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void emojisCharsDataTest(ClusterConfig clusterConfig) {
+    public void emojisCharsDataTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -252,7 +252,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic).column("off16", "Int16").column("str", "String")
-                .engine("MergeTree").orderByColumn("off16").clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").clusterConfig(clusterConfig).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDataWithEmojis(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -264,7 +264,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void tableMappingTest(ClusterConfig clusterConfig) {
+    public void tableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
         ClickHouseHelperClient chc = createClient(props);
@@ -286,7 +286,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void decimalDataTest(ClusterConfig clusterConfig) {
+    public void decimalDataTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -294,7 +294,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic).column("num", "String").column("decimal_14_2", "Decimal(14, 2)")
-                .engine("MergeTree").orderByColumn("num").clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("num").clusterConfig(clusterConfig).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDecimalTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();

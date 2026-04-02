@@ -6,7 +6,7 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
@@ -48,10 +48,9 @@ public class ExactlyOnceTest {
             .column("account", "String")
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
-            .engine("MergeTree")
             .orderByColumn("symbol");
 
-    public static Stream<ClusterConfig> clusterConfigs() {
+    public static Stream<ClickHouseDeploymentType> clusterConfigs() {
         return ClickHouseTestHelpers.clusterConfigs();
     }
 
@@ -106,19 +105,19 @@ public class ExactlyOnceTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void checkTotalsEqual(ClusterConfig clusterConfig) throws InterruptedException, IOException {
+    public void checkTotalsEqual(ClickHouseDeploymentType clusterConfig) throws InterruptedException, IOException {
         assertTrue(compareSchemalessCounts("singlePartitionTopic_" + clusterConfig, 1, clusterConfig));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void checkTotalsEqualMulti(ClusterConfig clusterConfig) throws InterruptedException, IOException {
+    public void checkTotalsEqualMulti(ClickHouseDeploymentType clusterConfig) throws InterruptedException, IOException {
         assertTrue(compareSchemalessCounts("multiPartitionTopic_" + clusterConfig, 3, clusterConfig));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void checkSpottyNetwork(ClusterConfig clusterConfig) throws InterruptedException, IOException, URISyntaxException {
+    public void checkSpottyNetwork(ClickHouseDeploymentType clusterConfig) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetwork requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
         checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition_" + clusterConfig, 1, clusterConfig);
@@ -126,25 +125,25 @@ public class ExactlyOnceTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void checkSpottyNetworkMulti(ClusterConfig clusterConfig) throws InterruptedException, IOException, URISyntaxException {
+    public void checkSpottyNetworkMulti(ClickHouseDeploymentType clusterConfig) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetworkMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
         checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions_" + clusterConfig, 3, clusterConfig);
     }
 
-    private static void setupSchemaConnector(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    private static void setupSchemaConnector(String topicName, int taskCount, ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
         setupConnector("src/integrationTest/resources/clickhouse_sink_no_proxy.json", topicName, taskCount, clusterConfig);
         Thread.sleep(5 * 1000);
     }
 
-    private static void setupSchemalessConnector(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    private static void setupSchemalessConnector(String topicName, int taskCount, ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting schemaless up connector...");
         setupConnector("src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json", topicName, taskCount, clusterConfig);
         Thread.sleep(5 * 1000);
     }
 
-    private static void setupConnector(String fileName, String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException {
+    private static void setupConnector(String fileName, String topicName, int taskCount, ClickHouseDeploymentType clusterConfig) throws IOException {
         System.out.println("Setting up connector...");
         dropTable(chc, topicName, clusterConfig);
         new CreateTableStatement(STOCK_TABLE)
@@ -179,7 +178,7 @@ public class ExactlyOnceTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-    private boolean compareSchemalessCounts(String topicName, int partitions, ClusterConfig clusterConfig) throws InterruptedException, IOException {
+    private boolean compareSchemalessCounts(String topicName, int partitions, ClickHouseDeploymentType clusterConfig) throws InterruptedException, IOException {
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
         LOGGER.info("Expected Total: {}", count);
@@ -191,7 +190,7 @@ public class ExactlyOnceTest {
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
     }
 
-    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions, ClusterConfig clusterConfig) throws InterruptedException, IOException, URISyntaxException {
+    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions, ClickHouseDeploymentType clusterConfig) throws InterruptedException, IOException, URISyntaxException {
         boolean allSuccess = true;
         int runCount = 1;
         do {

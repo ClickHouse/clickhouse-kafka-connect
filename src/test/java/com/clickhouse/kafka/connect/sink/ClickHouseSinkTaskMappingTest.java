@@ -2,7 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
@@ -22,18 +22,18 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
             .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
             .column("p_int64", "Int64").column("p_float32", "Float32")
             .column("p_float64", "Float64").column("p_bool", "Bool")
-            .engine("MergeTree").orderByColumn("off16");
+            .orderByColumn("off16");
 
     private static final CreateTableStatement ARRAY_TYPES_TABLE = new CreateTableStatement()
             .column("off16", "Int16").column("arr", "Array(String)").column("arr_empty", "Array(String)")
             .column("arr_int8", "Array(Int8)").column("arr_int16", "Array(Int16)").column("arr_int32", "Array(Int32)")
             .column("arr_int64", "Array(Int64)").column("arr_float32", "Array(Float32)")
             .column("arr_float64", "Array(Float64)").column("arr_bool", "Array(Bool)")
-            .engine("MergeTree").orderByColumn("off16");
+            .orderByColumn("off16");
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemalessSingleTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemalessSingleTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
         ClickHouseHelperClient chc = createClient(props);
@@ -53,7 +53,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemalessMultiDifferentTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemalessMultiDifferentTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test2");
         ClickHouseHelperClient chc = createClient(props);
@@ -80,7 +80,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemalessMultiSameTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemalessMultiSameTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test");
         ClickHouseHelperClient chc = createClient(props);
@@ -103,7 +103,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemalessMixedTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemalessMixedTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test2");
         ClickHouseHelperClient chc = createClient(props);
@@ -136,7 +136,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaArrayTypesSingleTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemaArrayTypesSingleTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test");
         ClickHouseHelperClient chc = createClient(props);
@@ -158,7 +158,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaArrayTypesMultipleDifferentTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemaArrayTypesMultipleDifferentTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test2");
         ClickHouseHelperClient chc = createClient(props);
@@ -188,7 +188,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaArrayTypesMultipleSameTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemaArrayTypesMultipleSameTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test");
         ClickHouseHelperClient chc = createClient(props);
@@ -213,7 +213,7 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaArrayTypesMixedTableMappingTest(ClusterConfig clusterConfig) {
+    public void schemaArrayTypesMixedTableMappingTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test2");
         ClickHouseHelperClient chc = createClient(props);

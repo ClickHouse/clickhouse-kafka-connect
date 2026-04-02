@@ -5,13 +5,12 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -63,10 +62,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .column("account", "String")
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
-            .engine("MergeTree")
             .orderByColumn("symbol");
 
-    public static Stream<ClusterConfig> clusterConfigs() {
+    public static Stream<ClickHouseDeploymentType> clusterConfigs() {
         return ClickHouseTestHelpers.clusterConfigs();
     }
 
@@ -124,7 +122,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void stockGenSingleTaskTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    public void stockGenSingleTaskTest(ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenSingleTaskTest_" + clusterConfig;
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
@@ -135,7 +133,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void stockGenWithJdbcPropSingleTaskTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    public void stockGenWithJdbcPropSingleTaskTest(ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenWithJdbcPropSingleTaskTest_" + clusterConfig;
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
@@ -146,7 +144,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void stockGenSingleTaskSchemalessTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    public void stockGenSingleTaskSchemalessTest(ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenSingleTaskSchemalessTest_" + clusterConfig;
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateSchemalessData(topicName, 1, 100);
@@ -157,19 +155,19 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void stockGenSingleTaskInterruptTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    public void stockGenSingleTaskInterruptTest(ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         checkInterruptTest("stockGenSingleTaskInterruptTest_" + clusterConfig, 1, clusterConfig);
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void stockGenMultiTaskInterruptTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    public void stockGenMultiTaskInterruptTest(ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         checkInterruptTest("stockGenMultiTaskInterruptTest_" + clusterConfig, 3, clusterConfig);
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void stockGenMultiTaskTopicTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    public void stockGenMultiTaskTopicTest(ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenMultiTaskTopicTest_" + clusterConfig;
         int parCount = 3;
         confluentPlatform.createTopic(topicName, parCount);
@@ -182,7 +180,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void stockGenMultiTaskSchemalessTest(ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    public void stockGenMultiTaskSchemalessTest(ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         String topicName = "stockGenMultiTaskSchemalessTest_" + clusterConfig;
         int parCount = 3;
         confluentPlatform.createTopic(topicName, parCount);
@@ -235,7 +233,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-    private void setupConnector(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    private void setupConnector(String topicName, int taskCount, ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chc, topicName, clusterConfig);
@@ -250,7 +248,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
-    private void setupSchemalessConnector(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    private void setupSchemalessConnector(String topicName, int taskCount, ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         dropTable(chc, topicName, clusterConfig);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).clusterConfig(clusterConfig).execute(chc);
@@ -264,7 +262,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
-    private void setupConnectorWithJdbcProperties(String topicName, int taskCount, ClusterConfig clusterConfig) throws IOException, InterruptedException {
+    private void setupConnectorWithJdbcProperties(String topicName, int taskCount, ClickHouseDeploymentType clusterConfig) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         dropTable(chc, topicName, clusterConfig);
@@ -279,7 +277,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
-    private void checkInterruptTest(String topicName, int parCount, ClusterConfig clusterConfig) throws InterruptedException, IOException {
+    private void checkInterruptTest(String topicName, int parCount, ClickHouseDeploymentType clusterConfig) throws InterruptedException, IOException {
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateData(topicName, parCount, 2500);
         setupConnector(topicName, parCount, clusterConfig);

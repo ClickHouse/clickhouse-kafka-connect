@@ -9,7 +9,7 @@ import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,7 +33,6 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
-            .engine("MergeTree")
             .orderByColumn("off16");
 
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
@@ -169,7 +168,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void primitiveTypesTest(ClusterConfig clusterConfig) {
+    public void primitiveTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?load_balancing_policy=random&health_check_interval=5000&failover=2");
 
@@ -189,7 +188,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
+    public void withEmptyDataRecordsTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         if (isCloud) {
             props.put(ClickHouseSinkConfig.JDBC_CONNECTION_PROPERTIES, "?ssl=true&sslmode=none");

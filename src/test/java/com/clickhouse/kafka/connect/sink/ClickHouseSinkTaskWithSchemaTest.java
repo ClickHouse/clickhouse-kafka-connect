@@ -20,7 +20,6 @@ import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
 import org.apache.commons.lang3.RandomUtils;
-import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -35,9 +34,8 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,7 +84,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .column("arr_str_arr", "Array(Array(String))")
             .column("arr_arr_str_arr", "Array(Array(Array(String)))")
             .column("arr_map", "Array(Map(String, String))")
-            .engine("MergeTree")
+
             .orderByColumn("off16");
 
     private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
@@ -97,18 +95,18 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .column("map_string_map", "Map(String, Map(String, Int64))")
             .column("map_string_array", "Map(String, Array(String))")
             .column("map_map_map", "Map(String, Map(String, Map(String, String)))")
-            .engine("MergeTree")
+
             .orderByColumn("off16");
 
     private static final CreateTableStatement CHANGE_SCHEMA_TABLE = new CreateTableStatement()
             .column("off16", "Int16")
             .column("string", "String")
-            .engine("MergeTree")
+
             .orderByColumn("`off16`");
 
     @ParameterizedTest()
     @MethodSource("clusterConfigs")
-    public void arrayTypesTest(ClusterConfig clusterConfig) {
+    public void arrayTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -132,7 +130,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void arrayNullableSubtypesTest(ClusterConfig clusterConfig) {
+    public void arrayNullableSubtypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -150,7 +148,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("arr_nullable_float32", "Array(Nullable(Float32))")
                 .column("arr_nullable_float64", "Array(Nullable(Float64))")
                 .column("arr_nullable_bool", "Array(Nullable(Bool))")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -166,7 +164,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void mapTypesTest(ClusterConfig clusterConfig) {
+    public void mapTypesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -189,7 +187,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void nullArrayTypeTest(ClusterConfig clusterConfig) {
+    public void nullArrayTypeTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -199,7 +197,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("arr", "Array(String)")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -215,7 +213,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void nullableArrayTypeTest(ClusterConfig clusterConfig) {
+    public void nullableArrayTypeTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -225,7 +223,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("arr", "Array(Nullable(String))")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -242,7 +240,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
-    public void materializedViewsBug(ClusterConfig clusterConfig) {
+    public void materializedViewsBug(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -261,7 +259,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("arr_float32", "Array(Float32)")
                 .column("arr_float64", "Array(Float64)")
                 .column("arr_bool", "Array(Bool)")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -285,7 +283,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
-    public void specialCharTableNameTest(ClusterConfig clusterConfig) {
+    public void specialCharTableNameTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -309,7 +307,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
-    public void nullValueDataTest(ClusterConfig clusterConfig) {
+    public void nullValueDataTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -319,7 +317,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -338,7 +336,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
-    public void supportDatesTest(ClusterConfig clusterConfig) {
+    public void supportDatesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -360,7 +358,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("time_date32", "Date32")
                 .column("date_date", "Date")
                 .column("datetime_date", "DateTime")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -387,7 +385,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void supportArrayDateTime64Test(ClusterConfig clusterConfig) {
+    public void supportArrayDateTime64Test(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -398,7 +396,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("arr_datetime64_number", "Array(DateTime64)")
                 .column("arr_timestamp_date", "Array(DateTime64)")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -414,7 +412,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void detectUnsupportedDataConversions(ClusterConfig clusterConfig) {
+    public void detectUnsupportedDataConversions(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -427,7 +425,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("date32_number", "Date32")
                 .column("datetime_number", "DateTime")
                 .column("datetime64_number", "DateTime64")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -447,7 +445,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void supportZonedDatesStringTest(ClusterConfig clusterConfig) {
+    public void supportZonedDatesStringTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -458,7 +456,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("zoned_date", "DateTime64")
                 .column("offset_date", "DateTime64")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -475,7 +473,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void supportFormattedDatesStringTest(ClusterConfig clusterConfig) {
+    public void supportFormattedDatesStringTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.DATE_TIME_FORMAT, "format_date=yyyy-MM-dd HH:mm:ss.SSSSSSSSS");
         ClickHouseHelperClient chc = createClient(props);
@@ -486,7 +484,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("format_date", "DateTime64(9)")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -517,7 +515,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void withEmptyDataRecordsTest(ClusterConfig clusterConfig) {
+    public void withEmptyDataRecordsTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -527,7 +525,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("p_int64", "Int64")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -542,7 +540,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void withLowCardinalityTest(ClusterConfig clusterConfig) {
+    public void withLowCardinalityTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -554,7 +552,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("p_int64", "Int64")
                 .column("lc_string", "LowCardinality(String)")
                 .column("nullable_lc_string", "LowCardinality(Nullable(String))")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -569,7 +567,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void withUUIDTest(ClusterConfig clusterConfig) {
+    public void withUUIDTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -579,7 +577,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("uuid", "UUID")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -594,7 +592,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithDefaultsTest(ClusterConfig clusterConfig) {
+    public void schemaWithDefaultsTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -604,7 +602,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("default_value_data", "DateTime DEFAULT now()")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -622,7 +620,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithEphemeralTest(ClusterConfig clusterConfig) {
+    public void schemaWithEphemeralTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -633,7 +631,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("default_value_data", "DateTime DEFAULT now()")
                 .column("ephemeral_data", "String EPHEMERAL")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -650,7 +648,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithDefaultsAndNullableTest(ClusterConfig clusterConfig) {
+    public void schemaWithDefaultsAndNullableTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -661,7 +659,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("null_value_data", "Nullable(DateTime)")
                 .column("default_value_data", "DateTime DEFAULT now()")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -678,7 +676,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithDecimalTest(ClusterConfig clusterConfig) {
+    public void schemaWithDecimalTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -688,7 +686,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("decimal_14_2", "Decimal(14, 2)")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -705,7 +703,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithFixedStringTest(ClusterConfig clusterConfig) {
+    public void schemaWithFixedStringTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -719,7 +717,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("fixed_string_string", "FixedString(" + fss + ")")
                 .column("fixed_string_bytes", "FixedString(" + fss + ")")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -735,7 +733,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void writeBooleanValueToIntTest(ClusterConfig clusterConfig) {
+    public void writeBooleanValueToIntTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -757,7 +755,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("b3", "Boolean")
                 .column("b4", "Boolean")
                 .column("ii", "UInt8")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -849,7 +847,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithFixedStringMismatchTest(ClusterConfig clusterConfig) {
+    public void schemaWithFixedStringMismatchTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -862,7 +860,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("fixed_string_string", "FixedString(" + (fss - 1) + ")")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -880,7 +878,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithNullableDecimalTest(ClusterConfig clusterConfig) {
+    public void schemaWithNullableDecimalTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -890,7 +888,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("decimal_14_2", "Nullable(Decimal(14, 2))")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -907,7 +905,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void schemaWithBytesTest(ClusterConfig clusterConfig) {
+    public void schemaWithBytesTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("bytes-value-table-test");
@@ -915,7 +913,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         new CreateTableStatement()
                 .tableName(topic)
                 .column("string", "String")
-                .engine("MergeTree")
+
                 .orderByColumn("`string`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -932,7 +930,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void supportEnumTest(ClusterConfig clusterConfig) {
+    public void supportEnumTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("enum-value-table-test");
@@ -942,7 +940,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("enum8_type", "Enum8('A' = 1, 'B' = 2, 'C' = 3)")
                 .column("enum16_type", "Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -958,7 +956,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.1")
-    public void schemaWithTupleOfMapsWithVariantTest(ClusterConfig clusterConfig) {
+    public void schemaWithTupleOfMapsWithVariantTest(ClickHouseDeploymentType clusterConfig) {
         Assumptions.assumeFalse(isCloud, "Skip test since experimental is not available in cloud");
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
@@ -993,7 +991,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("tuple", tupleType)
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .settings(Map.of("allow_experimental_variant_type", 1))
                 .clusterConfig(clusterConfig)
@@ -1022,7 +1020,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.1")
-    public void schemaWithNestedTupleMapArrayAndVariant(ClusterConfig clusterConfig) {
+    public void schemaWithNestedTupleMapArrayAndVariant(ClickHouseDeploymentType clusterConfig) {
         if (isCloud) {
             LOGGER.warn("Skip test since experimental is not available in cloud");
             return;
@@ -1042,7 +1040,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "    `map` Map(String, String)," +
                         "    `variant` Variant(Boolean, String)" +
                         "))")
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .settings(Map.of("allow_experimental_variant_type", 1))
                 .clusterConfig(clusterConfig)
@@ -1097,7 +1095,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void unsignedIntegers(ClusterConfig clusterConfig) {
+    public void unsignedIntegers(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
 
@@ -1110,7 +1108,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("uint16", "UInt16")
                 .column("uint32", "UInt32")
                 .column("uint64", "UInt64")
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1125,7 +1123,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void changeSchemaWhileRunning(ClusterConfig clusterConfig) throws InterruptedException {
+    public void changeSchemaWhileRunning(ClickHouseDeploymentType clusterConfig) throws InterruptedException {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-while-running-table-test");
@@ -1143,7 +1141,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
 
 
-        String clusterClause = clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
+        String clusterClause = clusterConfig.isLocalCluster() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
         ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
         Thread.sleep(5000);
         sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
@@ -1166,7 +1164,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void changeSchemaWhileRunningAddDefaultColumnOldSchemaData(ClusterConfig clusterConfig) throws InterruptedException {
+    public void changeSchemaWhileRunningAddDefaultColumnOldSchemaData(ClickHouseDeploymentType clusterConfig) throws InterruptedException {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("change-schema-add-default-old-schema-data-test");
@@ -1195,7 +1193,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(firstBatch);
         assertEquals(firstBatch.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
 
-        String clusterClause = clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
+        String clusterClause = clusterConfig.isLocalCluster() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
         ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 42 AFTER string", topic, clusterClause));
         Thread.sleep(5000);
 
@@ -1209,7 +1207,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void changeSchemaWhileRunningWithRefreshEnabled(ClusterConfig clusterConfig) throws InterruptedException {
+    public void changeSchemaWhileRunningWithRefreshEnabled(ClickHouseDeploymentType clusterConfig) throws InterruptedException {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         props.put(ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL, "1");
@@ -1228,7 +1226,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
 
 
-        String clusterClause = clusterConfig.isDistributed() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
+        String clusterClause = clusterConfig.isLocalCluster() ? " ON CLUSTER '" + clusterConfig.clusterName + "'" : "";
         ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
         Thread.sleep(5000);
         sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
@@ -1251,7 +1249,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void tupleTest(ClusterConfig clusterConfig) {
+    public void tupleTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("tuple-table-test");
@@ -1262,7 +1260,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("string", "String")
                 .column("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1279,7 +1277,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void tupleTestWithDefault(ClusterConfig clusterConfig) {
+    public void tupleTestWithDefault(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("tuple-table-test-default");
@@ -1291,7 +1289,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("string", "String")
                 .column("insert_datetime", "DateTime default now()")
                 .column("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1308,7 +1306,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void nestedTupleTestWithDefault(ClusterConfig clusterConfig) {
+    public void nestedTupleTestWithDefault(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("nested-tuple-table-test-default");
@@ -1323,7 +1321,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "`off16` Nullable(Int16), " +
                         "`string` Nullable(String), " +
                         "`n` Tuple(`off16` Nullable(Int16), `string` Nullable(String)))")
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1346,7 +1344,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void jacksonStructJsonInsertTest(ClusterConfig clusterConfig) {
+    public void jacksonStructJsonInsertTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("jackson-struct-json-insert");
@@ -1362,7 +1360,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "`off16` Nullable(Int16), " +
                         "`label` Nullable(String), " +
                         "`n` Tuple(`value` Nullable(Int32), `tag` Nullable(String)))")
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1449,7 +1447,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void jacksonStructWithNullsJsonInsertTest(ClusterConfig clusterConfig) {
+    public void jacksonStructWithNullsJsonInsertTest(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("jackson-struct-nulls-json-insert");
@@ -1460,7 +1458,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("name", "Nullable(String)")
                 .column("t", "Tuple(`off16` Nullable(Int16), `label` Nullable(String))")
-                .engine("MergeTree")
+
                 .orderByColumn("`off16`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1529,7 +1527,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void coolSchemaWithRandomFields(ClusterConfig clusterConfig) {
+    public void coolSchemaWithRandomFields(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         String topic = createTopicName("cool-schema-with-random-field");
@@ -1547,7 +1545,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("desc", "Nullable(String)")
                 .column("tag", "Nullable(String)")
                 .column("va", "Nullable(Float64)")
-                .engine("MergeTree")
+
                 .orderByColumn("`processing_time`")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1566,7 +1564,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.10")
-    public void testWritingJsonAsStringWithRowBinary(ClusterConfig clusterConfig) {
+    public void testWritingJsonAsStringWithRowBinary(ClickHouseDeploymentType clusterConfig) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
@@ -1580,7 +1578,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("struct_content", "JSON")
                 .column("json_as_str", "JSON")
-                .engine("MergeTree")
+
                 .orderByColumn("off16")
                 .settings(clientSettings)
                 .clusterConfig(clusterConfig)
@@ -1597,7 +1595,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.10")
-    public void testWritingProtoMessageWithRowBinary(ClusterConfig clusterConfig) throws Exception {
+    public void testWritingProtoMessageWithRowBinary(ClickHouseDeploymentType clusterConfig) throws Exception {
 
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
@@ -1645,7 +1643,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("score", "Float64")
                 .column("tags", "Array(String)")
                 .column("content", "JSON")
-                .engine("MergeTree")
+
                 .orderByColumn("()")
                 .settings(clientSettings)
                 .clusterConfig(clusterConfig)
@@ -1766,8 +1764,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest
     @MethodSource("exactlyOnceStateMismatchTestArgs")
-    public void exactlyOnceStateMismatchTest(int split, int batch, ClusterConfig clusterConfig) {
-        Assumptions.assumeFalse(clusterConfig.equals(ClusterConfig.STANDALONE)); // skip test if running in standalone mode
+    public void exactlyOnceStateMismatchTest(int split, int batch, ClickHouseDeploymentType clusterConfig) {
+        Assumptions.assumeFalse(clusterConfig.equals(ClickHouseDeploymentType.STANDALONE)); // skip test if running in standalone mode
 
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = createClient(props);
@@ -1803,7 +1801,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void testAvroWithUnion(ClusterConfig clusterConfig) throws Exception {
+    public void testAvroWithUnion(ClickHouseDeploymentType clusterConfig) throws Exception {
         Image image1 = Image.newBuilder()
                 .setName("image1")
                 .setContent("content")
@@ -1824,7 +1822,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("name", "String")
                 .column("content", "String")
                 .column("description", "Nullable(String)")
-                .engine("MergeTree")
+
                 .orderByColumn("()")
                 .clusterConfig(clusterConfig)
                 .execute(chc);
@@ -1856,7 +1854,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void testAvroDateAndTimeTypes(ClusterConfig clusterConfig) throws Exception {
+    public void testAvroDateAndTimeTypes(ClickHouseDeploymentType clusterConfig) throws Exception {
 
         final String topic = createTopicName("test_avro_timestamps");
         final ZoneId tz = ZoneId.of("UTC");
@@ -1882,7 +1880,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("id", "Int64")
                 .column("time1", "DateTime64(3)")
                 .column("time2", "DateTime64(3)")
-                .engine("MergeTree")
+
                 .orderByColumn("()")
                 .clusterConfig(clusterConfig)
                 .execute(chc);

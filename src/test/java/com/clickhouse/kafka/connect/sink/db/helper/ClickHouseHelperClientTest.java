@@ -3,7 +3,7 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClusterConfig;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
@@ -26,7 +26,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     private static final CreateTableStatement SINGLE_NUM_TABLE = new CreateTableStatement()
             .column("num", "String")
-            .engine("MergeTree")
+
             .orderByColumn("num");
 
     ClickHouseHelperClient chc = null;
@@ -45,7 +45,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void showTables(ClusterConfig clusterConfig) {
+    public void showTables(ClickHouseDeploymentType clusterConfig) {
         String topic = createTopicName("simple_table_test");
         new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
         try {
@@ -59,13 +59,13 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void describeNestedFlattenedTable(ClusterConfig clusterConfig) {
+    public void describeNestedFlattenedTable(ClickHouseDeploymentType clusterConfig) {
         String topic = createTopicName("nested_flattened_table_test");
         new CreateTableStatement()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -77,13 +77,13 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void ignoreArrayWithNestedTable(ClusterConfig clusterConfig) {
+    public void ignoreArrayWithNestedTable(ClickHouseDeploymentType clusterConfig) {
         String topic = createTopicName("nested_table_test");
         new CreateTableStatement()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Array(Nested (innerInt Int32, innerString String))")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -96,7 +96,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
     @SinceClickHouseVersion("24.1")
-    public void describeNestedUnFlattenedTable(ClusterConfig clusterConfig) {
+    public void describeNestedUnFlattenedTable(ClickHouseDeploymentType clusterConfig) {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         ClickHouseTestHelpers.query(chc, "CREATE USER IF NOT EXISTS unflatten IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0");
@@ -111,7 +111,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(nestedTopic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .orderByColumn("num").execute(chc);
         new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).execute(chc);
 
         try {
@@ -129,7 +129,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("clusterConfigs")
-    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized(ClusterConfig clusterConfig) {
+    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized(ClickHouseDeploymentType clusterConfig) {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
         new CreateTableStatement()
@@ -142,7 +142,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .column("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL")
                 .column("map_eph", "Map(String, UInt64) EPHEMERAL")
                 .column("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
