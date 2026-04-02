@@ -49,6 +49,12 @@ public enum ClickHouseDeploymentType {
         }
         // {database} and {table} are ClickHouse auto-substitution variables (not user macros).
         // {replica} is defined in config.xml via <replica from_env="REPLICA_NUM"/>.
+        if (this == THREE_SHARDS_ONE_REPLICA_EACH) {
+            // Include {shard} so each shard gets its own ZK replication group.
+            return "ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')";
+        }
+        // ONE_SHARD_THREE_REPLICAS: all nodes replicate the same data; omit {shard}
+        // because the {shard} macro differs per node (1,2,3) which would break replication.
         return "ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}')";
     }
 }

@@ -1774,6 +1774,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement(ARRAY_TYPES_TABLE)
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);

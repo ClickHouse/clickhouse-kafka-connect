@@ -224,7 +224,7 @@ public class ClickHouseTestHelpers {
 
     public static int sumRows(ClickHouseHelperClient chc, String tableName, String column, ClickHouseDeploymentType cfg) {
         String from = buildFromClause(chc, tableName, cfg);
-        String queryCount = "SELECT SUM(`%s`) FROM " + from;
+        String queryCount = "SELECT SUM(`" + column + "`) FROM " + from;
         try (Records records = chc.getClient().queryRecords(queryCount).get(QUERY_TIMEOUT, QUERY_TIMEOUT_UNIT)) {
             String value = records.iterator().next().getString(1);
             return (int) (Float.parseFloat(value));

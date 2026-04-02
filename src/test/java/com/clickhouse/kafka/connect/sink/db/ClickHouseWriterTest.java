@@ -54,7 +54,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     private static final CreateTableStatement SINGLE_INT16_TABLE = new CreateTableStatement()
             .column("off16", "Int16")
-
             .orderByColumn("off16");
 
     ClickHouseHelperClient chc = null;
@@ -238,6 +237,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
         new CreateTableStatement()
                 .tableName(topic)
+                .clusterConfig(clusterConfig)
                 .column("_id", "String")
                 .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
                 .orderByColumn("_id").execute(chc);
