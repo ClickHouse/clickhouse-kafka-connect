@@ -38,13 +38,13 @@ class TableTest extends ClickHouseBase {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void extractNullables(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void extractNullables(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getBaseProps();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("off16", "Int16")
@@ -55,18 +55,18 @@ class TableTest extends ClickHouseBase {
         assertNotNull(table);
         assertEquals(2, table.getRootColumnsList().size());
         assertEquals(3, table.getAllColumnsList().size());
-        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void extractCommentV1(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void extractCommentV1(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
@@ -76,7 +76,7 @@ class TableTest extends ClickHouseBase {
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
         assertEquals(table.getRootColumnsList().size(), 2);
-        ClickHouseTestHelpers.dropTable(chc, tableName, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
     }
 
     @Test

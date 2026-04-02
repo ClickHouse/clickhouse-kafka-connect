@@ -39,15 +39,15 @@ public class FailureTest extends ClickHouseBase {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    void testSchemaValidationFailure(ClickHouseDeploymentType clusterConfig) throws Exception {
+    @MethodSource("deploymentTypesForTests")
+    void testSchemaValidationFailure(ClickHouseDeploymentType deploymentType) throws Exception {
         Map<String, String> props = getBaseProps();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .tableName(topic)
-                .clusterConfig(clusterConfig)
+                .deploymentType(deploymentType)
                 .column("off16", "Int16").column("uint8", "UInt8").column("uint16", "UInt16")
                 .column("uint32", "UInt32").column("uint64", "UInt64")
                 .orderByColumn("off16").execute(chc);
@@ -83,12 +83,12 @@ public class FailureTest extends ClickHouseBase {
         assertEquals(dlq.size(), ((Long)sentToDQL).longValue());
 
         task.stop();
-        assertEquals(200, ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(200, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
         List<SinkRecord> sr = new ArrayList<>(200);
         sr.addAll(validRecordsPart1);
         sr.addAll(validRecordsPart3);
 
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, clusterConfig));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, deploymentType));
     }
 
     public static List<SinkRecord> createInvalidRecords(String topic, int partition, int totalRecords) {

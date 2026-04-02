@@ -133,9 +133,9 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
 
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void proxyPingTest(ClickHouseDeploymentType clusterConfig) throws IOException {
-        ClickHouseHelperClient chc = createClient(getTestProperties(), false);
+    @MethodSource("deploymentTypesForTests")
+    public void proxyPingTest(ClickHouseDeploymentType deploymentType) throws IOException {
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(getTestProperties());
         assertTrue(chc.ping());
         proxy.disable();
         assertFalse(chc.ping());
@@ -144,14 +144,14 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void arrayTypesTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void arrayTypesTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("array_string_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).clusterConfig(clusterConfig).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
@@ -160,18 +160,18 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void mapTypesTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void mapTypesTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("map_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
-        new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).clusterConfig(clusterConfig).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
 
@@ -180,27 +180,27 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
-    public void materializedViewsBug(ClickHouseDeploymentType clusterConfig) {
+    public void materializedViewsBug(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("m_array_string_table_test");
         // Drop the MV and its target table before the source table to avoid orphaned dependencies
         ClickHouseTestHelpers.runQuery(chc, String.format("DROP VIEW IF EXISTS `%s_mv`", topic));
-        ClickHouseTestHelpers.dropTable(chc, topic + "_mate", clusterConfig);
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).clusterConfig(clusterConfig).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic + "_mate", deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
         new CreateTableStatement()
                 .tableName(topic + "_mate")
                 .column("off16", "Int16")
                 .engine("Null")
-                .clusterConfig(clusterConfig)
+                .deploymentType(deploymentType)
                 .execute(chc);
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE MATERIALIZED VIEW `%s_mv` TO `%s_mate` AS SELECT off16 FROM `%s`", topic, topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
@@ -210,19 +210,19 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
-    public void specialCharTableNameTest(ClickHouseDeploymentType clusterConfig) {
+    public void specialCharTableNameTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("special-char-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
-        new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).clusterConfig(clusterConfig).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
 
@@ -231,21 +231,21 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
-    public void nullValueDataTest(ClickHouseDeploymentType clusterConfig) {
+    public void nullValueDataTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("null-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
@@ -254,26 +254,26 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
-    public void supportDatesTest(ClickHouseDeploymentType clusterConfig) {
+    public void supportDatesTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("support-dates-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("date_number", "Nullable(Date)").column("date32_number", "Nullable(Date32)")
                 .column("datetime_number", "DateTime").column("datetime64_number", "DateTime64")
                 .column("timestamp_int64", "Int64").column("timestamp_date", "DateTime64")
                 .column("time_int32", "Int32").column("time_date32", "Date32")
                 .column("date_date", "Date").column("datetime_date", "DateTime")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createDateType(topic, 1);
 
@@ -282,21 +282,21 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void detectUnsupportedDataConversions(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void detectUnsupportedDataConversions(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("support-unsupported-dates-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("date_number", "Date").column("date32_number", "Date32")
                 .column("datetime_number", "DateTime").column("datetime64_number", "DateTime64")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createUnsupportedDataConversions(topic, 1);
 
@@ -311,77 +311,77 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void withEmptyDataRecordsTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void withEmptyDataRecordsTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("schema_empty_records_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("p_int64", "Int64")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void withLowCardinalityTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void withLowCardinalityTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("p_int64", "Int64")
                 .column("lc_string", "LowCardinality(String)").column("nullable_lc_string", "LowCardinality(Nullable(String))")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithLowCardinality(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void withUUIDTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void withUUIDTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("schema_empty_records_lc_uuid_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("uuid", "UUID")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithUUID(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void schemaWithDefaultsTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void schemaWithDefaultsTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("default-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("default_value_data", "DateTime DEFAULT now()")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
@@ -390,20 +390,20 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void schemaWithDecimalTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void schemaWithDecimalTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("decimal-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16").column("decimal_14_2", "Decimal(14, 2)")
-                .orderByColumn("off16").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("off16").tableName(topic).deploymentType(deploymentType).execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createDecimalValueData(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -411,20 +411,20 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
-        assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2", clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2", deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
-    public void schemaWithBytesTest(ClickHouseDeploymentType clusterConfig) {
+    @MethodSource("deploymentTypesForTests")
+    public void schemaWithBytesTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("bytes-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("string", "String")
-                .orderByColumn("string").tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .orderByColumn("string").tableName(topic).deploymentType(deploymentType).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemaTestData.createBytesValueData(topic, 1);
 
@@ -433,24 +433,24 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     @SinceClickHouseVersion("24.1")
-    public void schemaWithTupleLikeInfluxTest(ClickHouseDeploymentType clusterConfig) {
+    public void schemaWithTupleLikeInfluxTest(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("tuple-like-influx-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic, clusterConfig);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement()
                 .column("off16", "Int16")
                 .column("payload", "Tuple(fields Map(String, Variant(Float64, Int64, String)), tags Map(String, String))")
                 .orderByColumn("off16")
                 .settings(Map.of("allow_experimental_variant_type", 1))
-                .tableName(topic).clusterConfig(clusterConfig).execute(chc);
+                .tableName(topic).deploymentType(deploymentType).execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createTupleLikeInfluxValueData(topic, 1);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -458,8 +458,8 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         chst.put(sr);
         chst.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, clusterConfig));
-        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic, clusterConfig);
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic, deploymentType);
 
         LongStream.range(0, sr.size()).forEachOrdered(n -> {
             JSONObject row = rows.get((int) n);

@@ -15,7 +15,7 @@ public class CreateTableStatement {
     private String orderByColumn;
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
-    private ClickHouseDeploymentType clusterConfig = ClickHouseDeploymentType.STANDALONE;
+    private ClickHouseDeploymentType deploymentType = ClickHouseDeploymentType.STANDALONE;
 
     public CreateTableStatement() {}
 
@@ -26,7 +26,7 @@ public class CreateTableStatement {
         this.orderByColumn = template.orderByColumn;
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
-        this.clusterConfig = template.clusterConfig;
+        this.deploymentType = template.deploymentType;
     }
 
     public CreateTableStatement tableName(String tableName) {
@@ -59,8 +59,8 @@ public class CreateTableStatement {
         return this;
     }
 
-    public CreateTableStatement clusterConfig(ClickHouseDeploymentType clusterConfig) {
-        this.clusterConfig = clusterConfig;
+    public CreateTableStatement deploymentType(ClickHouseDeploymentType deploymentType) {
+        this.deploymentType = deploymentType;
         return this;
     }
 
@@ -76,12 +76,12 @@ public class CreateTableStatement {
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
                 .append("`").append(tableName).append("`");
-        if (clusterConfig.isLocalCluster()) {
-            sql.append(" ON CLUSTER '").append(clusterConfig.clusterName).append("'");
+        if (deploymentType.isLocalCluster()) {
+            sql.append(" ON CLUSTER '").append(deploymentType.clusterName).append("'");
         }
         sql.append(" ")
                 .append("(").append(columns).append(")").append(" ")
-                .append("Engine = ").append(engine != null ? engine : clusterConfig.getMergeTreeEngine());
+                .append("Engine = ").append(engine != null ? engine : deploymentType.getMergeTreeEngine());
         if (orderByColumn != null) {
             sql.append(" ORDER BY ").append(orderByColumn);
         }
