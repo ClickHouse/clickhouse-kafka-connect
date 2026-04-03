@@ -1,14 +1,11 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.client.*;
-import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.metrics.OperationMetrics;
-import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
-import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -25,13 +22,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.stream.StreamSupport;
+import java.util.stream.Stream;
 
 public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
@@ -50,6 +44,7 @@ public class ClickHouseTestHelpers {
     public static final String CLICKHOUSE_CLOUD_HOST = "CLICKHOUSE_CLOUD_HOST";
     public static final String CLICKHOUSE_CLOUD_PASSWORD = "CLICKHOUSE_CLOUD_PASSWORD";
     private static final String CLICKHOUSE_VERSION = "CLICKHOUSE_VERSION";
+    private static final String CLICKHOUSE_CLUSTER_MODE = "CLICKHOUSE_CLUSTER_MODE";
 
     public static final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
     public static final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
@@ -71,6 +66,18 @@ public class ClickHouseTestHelpers {
         String version = System.getenv(CLICKHOUSE_VERSION);
         LOGGER.info("Version: {}", version);
         return version != null && version.equalsIgnoreCase("cloud");
+    }
+
+    public static boolean isCluster() {
+        String isClusterMode = System.getenv(CLICKHOUSE_CLUSTER_MODE);
+        return isClusterMode != null && isClusterMode.equalsIgnoreCase("true");
+    }
+
+    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
+        if (isCluster()) {
+            return Stream.of(ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH, ClickHouseDeploymentType.ONE_SHARD_THREE_REPLICAS);
+        }
+        return Stream.of(ClickHouseDeploymentType.STANDALONE);
     }
 
     public static void executeQueryIgnoreResult(ClickHouseHelperClient chc, String query) {
