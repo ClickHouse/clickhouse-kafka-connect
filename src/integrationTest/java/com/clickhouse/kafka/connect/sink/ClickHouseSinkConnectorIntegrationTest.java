@@ -27,7 +27,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClickHouseSinkConnectorIntegrationTest {
@@ -38,9 +37,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
     public static ToxiproxyContainer toxiproxy;
     public static Proxy clickhouseProxy;
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
-    private static final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
-    private static final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
-    private static final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
     private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
             .column("side", "String")
             .column("quantity", "Int32")
@@ -60,10 +56,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases(CLICKHOUSE_DB_NETWORK_ALIAS);
+        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases(ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS);
         db.start();
 
-        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(network).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
+        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(network).withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
         toxiproxy.start();
 
         chcNoProxy = createClientNoProxy(getTestProperties());
@@ -78,7 +74,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
 
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
+        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
     }
 
     @AfterAll
@@ -94,8 +90,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
         setupConnector(topicName, 1);
-        waitWhileCounting(chcNoProxy, topicName, 3);
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 
     @Test
@@ -104,8 +100,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
         setupConnectorWithJdbcProperties(topicName, 1);
-        waitWhileCounting(chcNoProxy, topicName, 3);
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 
     @Test
@@ -114,8 +110,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateSchemalessData(topicName, 1, 100);
         setupSchemalessConnector(topicName, 1);
-        waitWhileCounting(chcNoProxy, topicName, 3);
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 
     @Test
@@ -135,9 +131,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateData(topicName, parCount, 200);
         setupConnector(topicName, parCount);
-        waitWhileCounting(chcNoProxy, topicName, 3);
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
         LOGGER.info(confluentPlatform.getConnectors());
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 
     @Test
@@ -147,9 +143,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateSchemalessData(topicName, parCount, 200);
         setupSchemalessConnector(topicName, parCount);
-        waitWhileCounting(chcNoProxy, topicName, 3);
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
         LOGGER.info(confluentPlatform.getConnectors());
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 
     private static Map<String, String> getTestProperties() {
@@ -166,22 +162,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
         return props;
     }
 
-    private static ClickHouseHelperClient createClient(Map<String, String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-        return new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(csc.getDatabase())
-                .setUsername(csc.getUsername())
-                .setPassword(csc.getPassword())
-                .sslEnable(csc.isSslEnabled())
-                .setTimeout(csc.getTimeout())
-                .setRetry(csc.getRetry())
-                .useClientV2(true)
-                .build();
-    }
-
     private static ClickHouseHelperClient createClientNoProxy(Map<String, String> props) {
         props.put(ClickHouseSinkConfig.PROXY_TYPE, "IGNORE");
-        return createClient(props);
+        return ClickHouseTestHelpers.createClient(props);
     }
 
     private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
@@ -195,7 +178,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private void setupConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        dropTable(chcNoProxy, topicName);
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
@@ -209,7 +192,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
-        dropTable(chcNoProxy, topicName);
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
@@ -222,7 +205,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        dropTable(chcNoProxy, topicName);
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
@@ -236,7 +219,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateData(topicName, parCount, 2500);
         setupConnector(topicName, parCount);
-        int databaseCount = countRows(chcNoProxy, topicName);
+        int databaseCount = ClickHouseTestHelpers.countRows(chcNoProxy, topicName);
         int lastCount = 0;
         int loopCount = 0;
 
@@ -249,7 +232,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 clickhouseProxy.enable();
             }
             Thread.sleep(3500);
-            databaseCount = countRows(chcNoProxy, topicName);
+            databaseCount = ClickHouseTestHelpers.countRows(chcNoProxy, topicName);
             if (lastCount == databaseCount) {
                 loopCount++;
             } else {
@@ -259,6 +242,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
             lastCount = databaseCount;
         }
 
-        assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 }

@@ -31,9 +31,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemalessSingleTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "mapping_table_test";
         String tableName = "table_mapping_test";
@@ -50,9 +50,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemalessMultiDifferentTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test2");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = "mapping_table_test";
         String topic2 = "mapping_table_test2";
@@ -76,9 +76,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemalessMultiSameTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = "mapping_table_test";
         String topic2 = "mapping_table_test2";
@@ -98,9 +98,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemalessMixedTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test, mapping_table_test2=table_mapping_test2");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = "mapping_table_test";
         String topic2 = "mapping_table_test2";
@@ -130,9 +130,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemaArrayTypesSingleTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "array_string_table_test";
         String tableName = "array_string_mapping_table_test";
@@ -151,9 +151,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemaArrayTypesMultipleDifferentTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test2");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = "array_string_table_test";
         String topic2 = "array_string_table_test2";
@@ -180,9 +180,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemaArrayTypesMultipleSameTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = "array_string_table_test";
         String topic2 = "array_string_table_test2";
@@ -204,9 +204,9 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
 
     @Test
     public void schemaArrayTypesMixedTableMappingTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, "array_string_table_test=array_string_mapping_table_test, array_string_table_test2=array_string_mapping_table_test2");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = "array_string_table_test";
         String topic2 = "array_string_table_test2";

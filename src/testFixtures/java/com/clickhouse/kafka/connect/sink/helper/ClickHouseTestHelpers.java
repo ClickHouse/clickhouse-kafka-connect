@@ -9,6 +9,8 @@ import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
@@ -26,18 +28,16 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class ClickHouseTestHelpers {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseTestHelpers.class);
     public static final String CLICKHOUSE_VERSION_DEFAULT = "25.8.18.1"; // keep this as close to the latest LTS version
     public static final String CLICKHOUSE_DOCKER_IMAGE = String.format("clickhouse/clickhouse-server:%s", getClickhouseVersion());
-    public static final String CLICKHOUSE_HOST = "clickhouse.host";
-    public static final String CLICKHOUSE_PORT = "clickhouse.port";
-    public static final String CLICKHOUSE_PASSWORD = "clickhouse.password";
+    public static final String TOXIPROXY_DOCKER_IMAGE_NAME = "ghcr.io/shopify/toxiproxy:2.7.0";
 
     public static final String HTTPS_PORT = "8443";
     public static final String DATABASE_DEFAULT = "default";
@@ -45,11 +45,24 @@ public class ClickHouseTestHelpers {
 
     private static final int CLOUD_TIMEOUT_VALUE = 900;
     private static final TimeUnit CLOUD_TIMEOUT_UNIT = TimeUnit.SECONDS;
-    private static final String MISSING_PROP_MESSAGE_FORMAT = "%s system property is required, skipping tests";
+    private static final String MISSING_CLOUD_PROP_MESSAGE_FORMAT = "%s system property is required to connect to cloud, skipping tests";
 
+    // env vars
+    public static final String CLIENT_VERSION = "CLIENT_VERSION";
+    public static final String CLICKHOUSE_CLOUD_HOST = "CLICKHOUSE_CLOUD_HOST";
+    public static final String CLICKHOUSE_CLOUD_PASSWORD = "CLICKHOUSE_CLOUD_PASSWORD";
+    private static final String CLICKHOUSE_VERSION = "CLICKHOUSE_VERSION";
+
+    public static final String CLICKHOUSE_DB_NETWORK_ALIAS = "clickhouse";
+    public static final String TOXIPROXY_NETWORK_ALIAS = "toxiproxy";
+
+    // cloud integration test system props
+    public static final String CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP = "clickhouse.host";
+    public static final String CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP = "clickhouse.port";
+    public static final String CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP = "clickhouse.password";
 
     public static String getClickhouseVersion() {
-        String clickHouseVersion = System.getenv("CLICKHOUSE_VERSION");
+        String clickHouseVersion = System.getenv(CLICKHOUSE_VERSION);
         if (clickHouseVersion == null) {
             clickHouseVersion = CLICKHOUSE_VERSION_DEFAULT;
         }
@@ -57,22 +70,19 @@ public class ClickHouseTestHelpers {
     }
 
     public static boolean isCloud() {
-        String version = System.getenv("CLICKHOUSE_VERSION");
+        String version = System.getenv(CLICKHOUSE_VERSION);
         LOGGER.info("Version: {}", version);
         return version != null && version.equalsIgnoreCase("cloud");
     }
 
     public static void query(ClickHouseHelperClient chc, String query) {
-        if (chc.isUseClientV2()) {
-            try {
-                chc.queryV2(query).close();
-            } catch (Exception e) {
-                LOGGER.info("Failed to query ", e);
-                throw new RuntimeException(e);
-            }
-        } else {
-            chc.queryV1(query);
+        try (Records ignored = chc.queryV2(query)) {
+            // success
+        } catch (Exception e) {
+            LOGGER.info("Failed to query ", e);
+            throw new RuntimeException(e);
         }
+
     }
 
     public static OperationMetrics dropTable(ClickHouseHelperClient chc, String tableName) {
@@ -198,6 +208,18 @@ public class ClickHouseTestHelpers {
             return records.getMetrics();
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    public static int countRows(ClickHouseHelperClient chc, String database, String topic) {
+        String queryCount = String.format("select count(*) from `%s.%s`", database, topic);
+        try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
+             ClickHouseResponse response = client.read(chc.getServer())
+                     .query(queryCount)
+                     .executeAndWait()) {
+            return response.firstRecord().getValue(0).asInteger();
+        } catch (ClickHouseException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -377,11 +399,11 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static void logAndThrowIfPropNotExists(Logger logger, Properties properties, String property) throws TestAbortedException {
+    public static void logAndThrowIfCloudPropNotExists(Logger logger, Properties properties, String property) throws TestAbortedException {
         try {
             Assumptions.assumeTrue(properties.get(property) != null);
         } catch (TestAbortedException e) {
-            final String warning = String.format(MISSING_PROP_MESSAGE_FORMAT, property);
+            final String warning = String.format(MISSING_CLOUD_PROP_MESSAGE_FORMAT, property);
             logger.warn(warning);
             throw e;
         }
@@ -392,6 +414,127 @@ public class ClickHouseTestHelpers {
             // success
         } catch (Exception e) {
             LOGGER.info("Failed to create table ", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void createDatabase(String database, ClickHouseHelperClient chc) {
+        String createDatabaseQuery = "CREATE DATABASE IF NOT EXISTS `" + database + "`";
+        try (Records ignored = chc.queryV2(createDatabaseQuery)) {
+            // success
+        } catch (Exception e) {
+            LOGGER.info("Failed to create database ", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void dropDatabase(ClickHouseHelperClient chc, String database) {
+        String dropDatabaseQuery = "DROP DATABASE IF EXISTS `" + database + "`";
+        try (Records ignored = chc.queryV2(dropDatabaseQuery)) {
+            // success
+        } catch (Exception e) {
+            LOGGER.info("Failed to drop database ", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void doPing(ClickHouseHelperClient chc) {
+        boolean ping;
+        int retry = 0;
+
+        do {
+            LOGGER.info("Pinging ClickHouse server to warm up for tests...");
+            ping = chc.ping();
+            if (!ping) {
+                LOGGER.info("Unable to ping ClickHouse server, retrying... {}", retry);
+            }
+        } while (!ping && retry++ < 10);
+
+        if (!ping) {
+            throw new RuntimeException("Unable to ping ClickHouse server...");
+        }
+    }
+
+    public static ClickHouseHelperClient createClient(Map<String, String> props) {
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
+
+        String hostname = csc.getHostname();
+        int port = csc.getPort();
+        String database = csc.getDatabase();
+        String username = csc.getUsername();
+        String password = csc.getPassword();
+        boolean sslEnabled = csc.isSslEnabled();
+        int timeout = csc.getTimeout();
+        String clientVersion = csc.getClientVersion();
+
+        return new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
+                .setDatabase(csc.getDatabase())
+                .setUsername(username)
+                .setPassword(password)
+                .sslEnable(sslEnabled)
+                .setTimeout(timeout)
+                .setRetry(csc.getRetry())
+                .useClientV2("V2".equals(clientVersion))
+                .setSslSocketSni(csc.getSslSocketSni())
+                .build();
+    }
+
+    public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds) throws InterruptedException {
+        int count = countRows(chc, tableName);
+        int lastCount = 0;
+        int loopCount = 0;
+
+        while (count != lastCount || loopCount < 5) {
+            Thread.sleep(sleepInSeconds * 1000L);
+            count = countRows(chc, tableName);
+            if (lastCount == count) {
+                loopCount++;
+            } else {
+                loopCount = 0;
+            }
+
+            lastCount = count;
+        }
+    }
+
+    public static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
+        String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
+                "FROM %s " +
+                "GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` " +
+                "HAVING COUNT(*) > 1", tableName);
+        try {
+            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
+            return records;
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (TimeoutException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void clearTable(ClickHouseHelperClient chc, String tableName) {
+        String sql = "TRUNCATE TABLE " + tableName;
+        LOGGER.info("Clear table: " + sql);
+        try (Records records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS)) {
+            LOGGER.info("Create: {}", records.getMetrics());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
+        String queryCount = String.format("SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM `%s`", tableName);
+        try (ClickHouseClient client = ClickHouseClient.builder()
+                .options(chc.getDefaultClientOptions())
+                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
+                .build();
+             ClickHouseResponse response = client.read(chc.getServer())
+                     .query(queryCount)
+                     .executeAndWait()) {
+            return Arrays.stream(response.firstRecord().getValue(0).asString().split("\t")).mapToInt(Integer::parseInt).toArray();
+        } catch (ClickHouseException e) {
             throw new RuntimeException(e);
         }
     }

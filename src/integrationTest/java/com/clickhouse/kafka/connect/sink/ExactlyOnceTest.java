@@ -3,7 +3,7 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCloudAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
@@ -21,14 +21,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class ExactlyOnceTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ExactlyOnceTest.class);
     public static ConfluentPlatform confluentPlatform;
-    private static ClickHouseAPI clickhouseAPI;
+    private static ClickHouseCloudAPI clickhouseCloudAPI;
     private static ClickHouseHelperClient chcNoProxy;
     private static final Properties properties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
@@ -45,18 +44,18 @@ public class ExactlyOnceTest {
 
     @BeforeAll
     public static void checkPropsExistAndSetUp() {
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_HOST);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PORT);
-        ClickHouseTestHelpers.logAndThrowIfPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_PASSWORD);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
 
-        chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST),
-                Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT)), ClickHouseProxyType.IGNORE, null, -1)
+        chcNoProxy = new ClickHouseHelperClient.ClickHouseClientBuilder(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP),
+                Integer.parseInt(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP)), ClickHouseProxyType.IGNORE, null, -1)
                 .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
-                .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD))
+                .setPassword(properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP))
                 .sslEnable(true)
                 .useClientV2(true)
                 .build();
-        clickhouseAPI = new ClickHouseAPI(properties);
+        clickhouseCloudAPI = new ClickHouseCloudAPI(properties);
 
 
         Network network = Network.newNetwork();
@@ -112,17 +111,17 @@ public class ExactlyOnceTest {
 
     private static void setupConnector(String fileName, String topicName, int taskCount) throws IOException {
         System.out.println("Setting up connector...");
-        dropTable(chcNoProxy, topicName);
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
                 .tableName(topicName).execute(chcNoProxy);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_HOST),
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PORT),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP),
                 ClickHouseTestHelpers.DATABASE_DEFAULT,
                 ClickHouseTestHelpers.USERNAME_DEFAULT,
-                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_PASSWORD),
+                properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP),
                 true);
 
         confluentPlatform.createConnect(jsonString);
@@ -140,15 +139,15 @@ public class ExactlyOnceTest {
     private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
         new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
                 .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
-        ClickHouseAPI.clearTable(chcNoProxy, topicName);
+        ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
         LOGGER.info("Expected Total: {}", count);
         setupSchemalessConnector(topicName, partitions);
-        ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 5);
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 5);
 
-        int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName);//Essentially the final count
-        ClickHouseAPI.dropTable(chcNoProxy, topicName);
+        int[] databaseCounts = ClickHouseTestHelpers.getCounts(chcNoProxy, topicName);//Essentially the final count
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
     }
 
@@ -161,22 +160,22 @@ public class ExactlyOnceTest {
             confluentPlatform.createTopic(topicName, numberOfPartitions);
             new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
                 .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
-            ClickHouseAPI.clearTable(chcNoProxy, topicName);
+            ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
             setupSchemalessConnector(topicName, numberOfPartitions);
 
-            clickhouseAPI.restartService();
+            clickhouseCloudAPI.restartService();
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
 
             LOGGER.info("Expected Total: {}", count);
-            ClickHouseAPI.waitWhileCounting(chcNoProxy, topicName, 7);
+            ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 7);
 
-            int[] databaseCounts = ClickHouseAPI.getCounts(chcNoProxy, topicName);//Essentially the final count
+            int[] databaseCounts = ClickHouseTestHelpers.getCounts(chcNoProxy, topicName);//Essentially the final count
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
-                try (Records records = ClickHouseAPI.selectDuplicates(chcNoProxy, topicName)) {
+                try (Records records = ClickHouseTestHelpers.selectDuplicates(chcNoProxy, topicName)) {
                     records.forEach(record -> LOGGER.error("Duplicate: {}", record));
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -185,7 +184,7 @@ public class ExactlyOnceTest {
 
             confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
             confluentPlatform.deleteTopic(topicName);
-            ClickHouseAPI.dropTable(chcNoProxy, topicName);
+            ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
             runCount++;
         } while (runCount < 3 && allSuccess);
 

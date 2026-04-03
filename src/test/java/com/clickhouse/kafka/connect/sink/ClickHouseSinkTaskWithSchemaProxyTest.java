@@ -79,14 +79,14 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void setup() throws IOException {
         super.setup();
 
-        toxiproxy = new ToxiproxyContainer(TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(isCloud ? Network.newNetwork() : db.getNetwork()).withNetworkAliases(TOXIPROXY_NETWORK_ALIAS);
+        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(isCloud ? Network.newNetwork() : db.getNetwork()).withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
         toxiproxy.start();
 
         log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
 
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(createProps());
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, isCloud ? String.format("%s:%d", csc.getHostname(), csc.getPort()) : String.format("%s:%d", CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, isCloud ? String.format("%s:%d", csc.getHostname(), csc.getPort()) : String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
         log.info("Proxy configured {}", proxy.getListen());
     }
 
@@ -102,7 +102,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     }
 
     private Map<String, String> getTestProperties() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         if (isCloud) {
             // Set the actual cloud hostname as SNI before overriding with ToxiProxy host.
             // When SSL=true (cloud), ToxiProxy acts as a transparent TCP relay; the TLS
@@ -122,7 +122,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
 
     @Test
     public void proxyPingTest() throws IOException {
-        ClickHouseHelperClient chc = createClient(getTestProperties(), false);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(getTestProperties());
         assertTrue(chc.ping());
         proxy.disable();
         assertFalse(chc.ping());
@@ -133,7 +133,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void arrayTypesTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -152,7 +152,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void mapTypesTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "map_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -172,7 +172,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
     public void materializedViewsBug() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "m_array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -192,7 +192,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "special-char-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -212,7 +212,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
     public void nullValueDataTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "null-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -235,7 +235,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
     public void supportDatesTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "support-dates-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -260,7 +260,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void detectUnsupportedDataConversions() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "support-unsupported-dates-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -284,7 +284,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void withEmptyDataRecordsTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "schema_empty_records_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -303,7 +303,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void withLowCardinalityTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "schema_empty_records_lc_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -323,7 +323,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void withUUIDTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "schema_empty_records_lc_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -342,7 +342,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void schemaWithDefaultsTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "default-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -363,7 +363,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void schemaWithDecimalTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "decimal-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -384,7 +384,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @Test
     public void schemaWithBytesTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props, true);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = "bytes-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
@@ -405,7 +405,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleLikeInfluxTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "tuple-like-influx-value-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
