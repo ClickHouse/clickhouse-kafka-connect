@@ -26,7 +26,7 @@ public class ClickHouseBase {
     protected ClickHouseContainer db;
     protected boolean isCloud = ClickHouseTestHelpers.isCloud();
     protected boolean isCluster = ClickHouseTestHelpers.isCluster();
-    protected String database;
+    protected String database = ClickHouseTestHelpers.DATABASE_DEFAULT;
 
     public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
         return ClickHouseTestHelpers.deploymentTypesForTests();
@@ -45,7 +45,7 @@ public class ClickHouseBase {
 
         try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
             setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
-            ClickHouseTestHelpers.createDatabase(getDatabase(), tmpClient, isCluster ? ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH : ClickHouseDeploymentType.STANDALONE);
+            ClickHouseTestHelpers.createDatabase(database, tmpClient, isCluster ? ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH : ClickHouseDeploymentType.STANDALONE);
             ClickHouseTestHelpers.doPing(tmpClient);
         }
     }
@@ -69,9 +69,9 @@ public class ClickHouseBase {
     protected void tearDown() {
         // disable dropping database for debug
         if (isCloud) { // We need to clean up databases in the cloud, we can ignore the local database
-            if (database != null) {
+            if (database != null && !database.equals(ClickHouseTestHelpers.DATABASE_DEFAULT)) {
                 try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
-                    ClickHouseTestHelpers.dropDatabase(tmpClient, getDatabase(), ClickHouseDeploymentType.CLOUD);
+                    ClickHouseTestHelpers.dropDatabase(tmpClient, database, ClickHouseDeploymentType.CLOUD);
                 } catch (Exception e) {
                     LOGGER.error("Error dropping database", e);
                 }
@@ -97,10 +97,6 @@ public class ClickHouseBase {
 
     public  void setDb(ClickHouseContainer db) {
         this.db = db;
-    }
-
-    public  String getDatabase() {
-        return database;
     }
 
     public void setDatabase(String database) {
