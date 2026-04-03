@@ -26,7 +26,6 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     private static final CreateTableStatement SINGLE_NUM_TABLE = new CreateTableStatement()
             .column("num", "String")
-
             .orderByColumn("num");
 
     ClickHouseHelperClient chc = null;

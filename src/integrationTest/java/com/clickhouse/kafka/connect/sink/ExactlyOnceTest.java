@@ -49,7 +49,7 @@ public class ExactlyOnceTest {
             .column("insertTime", "DateTime DEFAULT now()")
             .orderByColumn("symbol");
 
-    public static Stream<ClickHouseDeploymentType> clusterConfigs() {
+    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
         return ClickHouseTestHelpers.deploymentTypesForTests();
     }
 
@@ -103,19 +103,19 @@ public class ExactlyOnceTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void checkTotalsEqual(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException {
         assertTrue(compareSchemalessCounts("singlePartitionTopic_" + deploymentType, 1, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void checkTotalsEqualMulti(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException {
         assertTrue(compareSchemalessCounts("multiPartitionTopic_" + deploymentType, 3, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void checkSpottyNetwork(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetwork requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
@@ -123,7 +123,7 @@ public class ExactlyOnceTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void checkSpottyNetworkMulti(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetworkMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");

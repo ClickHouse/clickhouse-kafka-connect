@@ -84,7 +84,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .column("arr_str_arr", "Array(Array(String))")
             .column("arr_arr_str_arr", "Array(Array(Array(String)))")
             .column("arr_map", "Array(Map(String, String))")
-
             .orderByColumn("off16");
 
     private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
@@ -95,13 +94,11 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .column("map_string_map", "Map(String, Map(String, Int64))")
             .column("map_string_array", "Map(String, Array(String))")
             .column("map_map_map", "Map(String, Map(String, Map(String, String)))")
-
             .orderByColumn("off16");
 
     private static final CreateTableStatement CHANGE_SCHEMA_TABLE = new CreateTableStatement()
             .column("off16", "Int16")
             .column("string", "String")
-
             .orderByColumn("`off16`");
 
     @ParameterizedTest()
@@ -148,7 +145,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("arr_nullable_float32", "Array(Nullable(Float32))")
                 .column("arr_nullable_float64", "Array(Nullable(Float64))")
                 .column("arr_nullable_bool", "Array(Nullable(Bool))")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -259,7 +255,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("arr_float32", "Array(Float32)")
                 .column("arr_float64", "Array(Float64)")
                 .column("arr_bool", "Array(Bool)")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -317,7 +312,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -358,7 +352,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("time_date32", "Date32")
                 .column("date_date", "Date")
                 .column("datetime_date", "DateTime")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -396,7 +389,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("arr_datetime64_number", "Array(DateTime64)")
                 .column("arr_timestamp_date", "Array(DateTime64)")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -425,7 +417,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("date32_number", "Date32")
                 .column("datetime_number", "DateTime")
                 .column("datetime64_number", "DateTime64")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -456,7 +447,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("zoned_date", "DateTime64")
                 .column("offset_date", "DateTime64")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -484,7 +474,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("format_date", "DateTime64(9)")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -525,7 +514,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("p_int64", "Int64")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -552,7 +540,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("p_int64", "Int64")
                 .column("lc_string", "LowCardinality(String)")
                 .column("nullable_lc_string", "LowCardinality(Nullable(String))")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -577,7 +564,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("uuid", "UUID")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -602,7 +588,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("default_value_data", "DateTime DEFAULT now()")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -631,7 +616,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("default_value_data", "DateTime DEFAULT now()")
                 .column("ephemeral_data", "String EPHEMERAL")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -659,7 +643,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("null_value_data", "Nullable(DateTime)")
                 .column("default_value_data", "DateTime DEFAULT now()")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -686,7 +669,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("decimal_14_2", "Decimal(14, 2)")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -717,7 +699,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("fixed_string_string", "FixedString(" + fss + ")")
                 .column("fixed_string_bytes", "FixedString(" + fss + ")")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -755,7 +736,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("b3", "Boolean")
                 .column("b4", "Boolean")
                 .column("ii", "UInt8")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -888,7 +868,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("decimal_14_2", "Nullable(Decimal(14, 2))")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -940,7 +919,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("enum8_type", "Enum8('A' = 1, 'B' = 2, 'C' = 3)")
                 .column("enum16_type", "Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -991,7 +969,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("tuple", tupleType)
-
                 .orderByColumn("`off16`")
                 .settings(Map.of("allow_experimental_variant_type", 1))
                 .deploymentType(deploymentType)
@@ -1040,7 +1017,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "    `map` Map(String, String)," +
                         "    `variant` Variant(Boolean, String)" +
                         "))")
-
                 .orderByColumn("`off16`")
                 .settings(Map.of("allow_experimental_variant_type", 1))
                 .deploymentType(deploymentType)
@@ -1108,7 +1084,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("uint16", "UInt16")
                 .column("uint32", "UInt32")
                 .column("uint64", "UInt64")
-
                 .orderByColumn("`off16`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1260,7 +1235,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("string", "String")
                 .column("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
-
                 .orderByColumn("`off16`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1289,7 +1263,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("string", "String")
                 .column("insert_datetime", "DateTime default now()")
                 .column("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
-
                 .orderByColumn("`off16`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1321,7 +1294,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "`off16` Nullable(Int16), " +
                         "`string` Nullable(String), " +
                         "`n` Tuple(`off16` Nullable(Int16), `string` Nullable(String)))")
-
                 .orderByColumn("`off16`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1360,7 +1332,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "`off16` Nullable(Int16), " +
                         "`label` Nullable(String), " +
                         "`n` Tuple(`value` Nullable(Int32), `tag` Nullable(String)))")
-
                 .orderByColumn("`off16`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1458,7 +1429,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("name", "Nullable(String)")
                 .column("t", "Tuple(`off16` Nullable(Int16), `label` Nullable(String))")
-
                 .orderByColumn("`off16`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1545,7 +1515,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("desc", "Nullable(String)")
                 .column("tag", "Nullable(String)")
                 .column("va", "Nullable(Float64)")
-
                 .orderByColumn("`processing_time`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1578,7 +1547,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("struct_content", "JSON")
                 .column("json_as_str", "JSON")
-
                 .orderByColumn("off16")
                 .settings(clientSettings)
                 .deploymentType(deploymentType)
@@ -1643,7 +1611,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("score", "Float64")
                 .column("tags", "Array(String)")
                 .column("content", "JSON")
-
                 .orderByColumn("()")
                 .settings(clientSettings)
                 .deploymentType(deploymentType)
@@ -1823,7 +1790,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("name", "String")
                 .column("content", "String")
                 .column("description", "Nullable(String)")
-
                 .orderByColumn("()")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1881,7 +1847,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("id", "Int64")
                 .column("time1", "DateTime64(3)")
                 .column("time2", "DateTime64(3)")
-
                 .orderByColumn("()")
                 .deploymentType(deploymentType)
                 .execute(chc);

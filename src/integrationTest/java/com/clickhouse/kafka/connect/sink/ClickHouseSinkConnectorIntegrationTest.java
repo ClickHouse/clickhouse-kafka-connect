@@ -63,7 +63,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .column("insertTime", "DateTime DEFAULT now()")
             .orderByColumn("symbol");
 
-    public static Stream<ClickHouseDeploymentType> clusterConfigs() {
+    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
         return ClickHouseTestHelpers.deploymentTypesForTests();
     }
 
@@ -119,7 +119,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void stockGenSingleTaskTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         String topicName = "stockGenSingleTaskTest_" + deploymentType;
         confluentPlatform.createTopic(topicName, 1);
@@ -130,7 +130,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void stockGenWithJdbcPropSingleTaskTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         String topicName = "stockGenWithJdbcPropSingleTaskTest_" + deploymentType;
         confluentPlatform.createTopic(topicName, 1);
@@ -141,7 +141,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void stockGenSingleTaskSchemalessTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         String topicName = "stockGenSingleTaskSchemalessTest_" + deploymentType;
         confluentPlatform.createTopic(topicName, 1);
@@ -152,19 +152,19 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void stockGenSingleTaskInterruptTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         checkInterruptTest("stockGenSingleTaskInterruptTest_" + deploymentType, 1, deploymentType);
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void stockGenMultiTaskInterruptTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         checkInterruptTest("stockGenMultiTaskInterruptTest_" + deploymentType, 3, deploymentType);
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void stockGenMultiTaskTopicTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         String topicName = "stockGenMultiTaskTopicTest_" + deploymentType;
         int parCount = 3;
@@ -177,7 +177,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("clusterConfigs")
+    @MethodSource("deploymentTypesForTests")
     public void stockGenMultiTaskSchemalessTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         String topicName = "stockGenMultiTaskSchemalessTest_" + deploymentType;
         int parCount = 3;

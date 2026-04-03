@@ -3,7 +3,7 @@ package com.clickhouse.kafka.connect.sink.helper;
 import javax.annotation.Nullable;
 
 /**
- * Represents the ClickHouse cluster topology used for a test run.
+ * Represents the ClickHouse deployment mode used for a test run.
  */
 public enum ClickHouseDeploymentType {
 
@@ -47,7 +47,7 @@ public enum ClickHouseDeploymentType {
         if (!isLocalCluster()) {
             return "MergeTree";
         }
-        // {database} and {table} are ClickHouse auto-substitution variables (not user macros).
+        // {database} and {table} are ClickHouse auto-substitution variables.
         // {replica} is defined in config.xml via <replica from_env="REPLICA_NUM"/>.
         if (this == THREE_SHARDS_ONE_REPLICA_EACH) {
             // Include {shard} so each shard gets its own ZK replication group.
