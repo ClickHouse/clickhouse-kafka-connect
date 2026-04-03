@@ -1,11 +1,5 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.ClickHouseClient;
-import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseNodeSelector;
-import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -110,36 +104,21 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    public ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropTable)
-                     .executeAndWait()) {
-            return response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
 //    @Test TODO: Fix this test
     public void testDBTopicSplit() {
-        Map<String, String> props =  createProps();
+        Map<String, String> props =  getBaseProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
         props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
         long timeStamp = System.currentTimeMillis();
-        createClient(props, false);
+        ClickHouseTestHelpers.createClient(props);
         String tableName = createTopicName("splitTopic");
         int dbRange = 10;
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
-            dropTable(chc, tmpTableName);
-            createDatabase(databaseName, chc);
+            ClickHouseTestHelpers.dropTable(chc, tmpTableName);
+            ClickHouseTestHelpers.createDatabase(databaseName, chc);
             new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                     .tableName(tmpTableName)
                     .execute(chc);
@@ -155,7 +134,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             fail("Exception should not be thrown");
         }
         LongStream.range(0, dbRange).forEachOrdered(i -> {
-            int count = countRows(chc, String.valueOf(i), tableName);
+            int count = ClickHouseTestHelpers.countRows(chc, String.valueOf(i), tableName);
             assertEquals(DEFAULT_TOTAL_RECORDS, count);
         });
     }
@@ -163,9 +142,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void simplifiedBatchingSchemaless() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
@@ -189,12 +168,12 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     public void clientNameTest() throws Exception {
         // TODO: fix instability of the test.
         if (isCloud) {
-            // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
+            // TODO: Temp disable for cloud because executeQueryIgnoreResult logs not available in time. This is passing on cloud but is flaky.
             return;
         }
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
@@ -213,7 +192,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         chc.queryV2("SYSTEM FLUSH LOGS " + (isCloud ? "ON CLUSTER 'default'" : "")).close();
 
-        String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+        String getLogRecords = String.format("SELECT http_user_agent, executeQueryIgnoreResult FROM clusterAllReplicas('default', system.query_log) " +
                         "   WHERE query_kind = 'Insert' " +
                         "   AND type = 'QueryStart'" +
                         "   AND has(databases,'%1$s') " +
@@ -236,9 +215,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void statisticsTest() throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("topic.statistics_test-01");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
@@ -301,9 +280,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void receiveLagTimeTest() throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
@@ -365,9 +344,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void preCommitReturnsInsertedOffsetsForMultipleTopics() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = createTopicName("precommit_offsets_t1");
         String topic2 = createTopicName("precommit_offsets_t2");
@@ -414,9 +393,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("precommit_ignore_partitions");
 
@@ -447,9 +426,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void closeRemovesRevokedPartitionFromPreCommitOffsets() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = createTopicName("precommit_close_remove_t1");
         String topic2 = createTopicName("precommit_close_remove_t2");
@@ -497,9 +476,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = createTopicName("precommit_revoke_remove_t1");
         String topic2 = createTopicName("precommit_revoke_remove_t2");
@@ -547,8 +526,8 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("precommit_report_offsets_off");
         ClickHouseTestHelpers.dropTable(chc, topic);

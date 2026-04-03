@@ -31,8 +31,8 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @BeforeEach
     public void setUp() {
         LOGGER.info("Setting up...");
-        Map<String, String> props = createProps();
-        chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        chc = ClickHouseTestHelpers.createClient(props);
     }
 
     @Test
@@ -94,13 +94,13 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String normalTopic = createTopicName("normal_unflattened_table_test");
         String testUsername = createTestUsername("unflatten");
         ClickHouseHelperClient adminChc = chc;
-        ClickHouseTestHelpers.query(adminChc, String.format("CREATE USER IF NOT EXISTS `%s` IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername));
-        ClickHouseTestHelpers.query(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s` IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
 
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put("username", testUsername);
         props.put("password", "123FOURfive^&*91011");
-        chc = createClient(props);
+        chc = ClickHouseTestHelpers.createClient(props);
 
         new CreateTableStatement()
                 .tableName(nestedTopic)
@@ -118,7 +118,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         } finally {
             ClickHouseTestHelpers.dropTable(adminChc, nestedTopic);
             ClickHouseTestHelpers.dropTable(adminChc, normalTopic);
-            ClickHouseTestHelpers.query(adminChc, String.format("DROP USER IF EXISTS `%s`", testUsername));
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`", testUsername));
         }
     }
 
