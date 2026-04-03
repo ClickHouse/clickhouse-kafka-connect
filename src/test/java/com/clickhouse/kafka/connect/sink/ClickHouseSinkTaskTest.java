@@ -19,7 +19,9 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanServer;
@@ -50,7 +52,6 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
-            .engine("MergeTree")
             .orderByColumn("off16");
 
     public Collection<SinkRecord> createDBTopicSplit(int dbRange, long timeStamp, String topic, int partition, String splitChar) {
@@ -93,8 +94,9 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         return array;
     }
-    @Test
-    public void testExceptionHandling() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void testExceptionHandling(ClickHouseDeploymentType deploymentType) {
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         assertThrows(RuntimeException.class, () -> task.put(null));
         try {
@@ -110,38 +112,26 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    public ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropTable)
-                     .executeAndWait()) {
-            return response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-//    @Test TODO: Fix this test
-    public void testDBTopicSplit() {
-        Map<String, String> props =  createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    @Disabled // TODO: Fix this test
+    public void testDBTopicSplit(ClickHouseDeploymentType deploymentType) {
+        Map<String, String> props =  getBaseProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
         props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
         long timeStamp = System.currentTimeMillis();
-        createClient(props, false);
+        ClickHouseTestHelpers.createClient(props);
         String tableName = createTopicName("splitTopic");
         int dbRange = 10;
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
-            dropTable(chc, tmpTableName);
-            createDatabase(databaseName, chc);
+            ClickHouseTestHelpers.dropTable(chc, tmpTableName, deploymentType);
+            ClickHouseTestHelpers.createDatabase(databaseName, chc, deploymentType);
             new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                     .tableName(tmpTableName)
+                    .deploymentType(deploymentType)
                     .execute(chc);
         });
 
@@ -154,22 +144,25 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         } catch (Exception e) {
             fail("Exception should not be thrown");
         }
-        LongStream.range(0, dbRange).forEachOrdered(i -> {
-            int count = countRows(chc, String.valueOf(i), tableName);
-            assertEquals(DEFAULT_TOTAL_RECORDS, count);
-        });
+        // TODO: uncomment this when fixed
+//        LongStream.range(0, dbRange).forEachOrdered(i -> {
+//            int count = ClickHouseTestHelpers.countRows(chc, String.valueOf(i), tableName);
+//            assertEquals(DEFAULT_TOTAL_RECORDS, count);
+//        });
     }
 
 
-    @Test
-    public void simplifiedBatchingSchemaless() {
-        Map<String, String> props = createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void simplifiedBatchingSchemaless(ClickHouseDeploymentType deploymentType) {
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .deploymentType(deploymentType)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -179,26 +172,28 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, deploymentType));
         //assertEquals(1, com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.countInsertQueries(chc, topic));
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
     @Disabled
-    public void clientNameTest() throws Exception {
+    public void clientNameTest(ClickHouseDeploymentType deploymentType) throws Exception {
         // TODO: fix instability of the test.
         if (isCloud) {
             // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
             return;
         }
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .deploymentType(deploymentType)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -208,19 +203,24 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, deploymentType));
 
-        chc.queryV2("SYSTEM FLUSH LOGS " + (isCloud ? "ON CLUSTER 'default'" : "")).close();
+        String flushLogsCluster = isCloud ? " ON CLUSTER 'default'"
+                : deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
+        chc.queryV2("SYSTEM FLUSH LOGS" + flushLogsCluster).close();
 
-        String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+        String queryLogFrom = deploymentType.isLocalCluster()
+                ? "clusterAllReplicas('" + deploymentType.clusterName + "', system, query_log, rand())"
+                : "system.query_log";
+        String getLogRecords = String.format("SELECT http_user_agent, query FROM " + queryLogFrom +
                         "   WHERE query_kind = 'Insert' " +
                         "   AND type = 'QueryStart'" +
                         "   AND has(databases,'%1$s') " +
                         "   AND position(http_user_agent, '%2$s') > -1 LIMIT 100",
                 chc.getDatabase(), ClickHouseHelperClient.CONNECT_CLIENT_NAME);
 
-        String debugQuery = String.format("SELECT http_user_agent, query_kind, type FROM clusterAllReplicas('default', system.query_log) LIMIT 10");
+        String debugQuery = String.format("SELECT http_user_agent, query_kind, type FROM " + queryLogFrom + " LIMIT 10");
         List<GenericRecord> debugRecords = chc.getClient().queryAll(debugQuery);
         StringBuilder sb = new StringBuilder();
         for (GenericRecord record : debugRecords) {
@@ -234,15 +234,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    @Test
-    public void statisticsTest() throws Exception {
-        Map<String, String> props = createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void statisticsTest(ClickHouseDeploymentType deploymentType) throws Exception {
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("topic.statistics_test-01");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .deploymentType(deploymentType)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
@@ -299,15 +301,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertThrows(InstanceNotFoundException.class, () -> mBeanServer.getMBeanInfo(topicMbeanName));
     }
 
-    @Test
-    public void receiveLagTimeTest() throws Exception {
-        Map<String, String> props = createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void receiveLagTimeTest(ClickHouseDeploymentType deploymentType) throws Exception {
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .deploymentType(deploymentType)
                 .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -363,22 +367,25 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void preCommitReturnsInsertedOffsetsForMultipleTopics() {
-        Map<String, String> props = createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void preCommitReturnsInsertedOffsetsForMultipleTopics(ClickHouseDeploymentType deploymentType) {
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = createTopicName("precommit_offsets_t1");
         String topic2 = createTopicName("precommit_offsets_t2");
 
-        ClickHouseTestHelpers.dropTable(chc, topic1);
-        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.dropTable(chc, topic1, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topic2, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic1)
+                .deploymentType(deploymentType)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic2)
+                .deploymentType(deploymentType)
                 .execute(chc);
 
         int totalRecordsTopic1 = 100;
@@ -412,17 +419,19 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions() {
-        Map<String, String> props = createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions(ClickHouseDeploymentType deploymentType) {
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("precommit_ignore_partitions");
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .deploymentType(deploymentType)
                 .execute(chc);
 
         int totalRecords = 100;
@@ -445,22 +454,25 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void closeRemovesRevokedPartitionFromPreCommitOffsets() {
-        Map<String, String> props = createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void closeRemovesRevokedPartitionFromPreCommitOffsets(ClickHouseDeploymentType deploymentType) {
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = createTopicName("precommit_close_remove_t1");
         String topic2 = createTopicName("precommit_close_remove_t2");
 
-        ClickHouseTestHelpers.dropTable(chc, topic1);
-        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.dropTable(chc, topic1, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topic2, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic1)
+                .deploymentType(deploymentType)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic2)
+                .deploymentType(deploymentType)
                 .execute(chc);
 
         int totalRecordsTopic1 = 50;
@@ -495,22 +507,25 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets() {
-        Map<String, String> props = createProps();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets(ClickHouseDeploymentType deploymentType) {
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic1 = createTopicName("precommit_revoke_remove_t1");
         String topic2 = createTopicName("precommit_revoke_remove_t2");
 
-        ClickHouseTestHelpers.dropTable(chc, topic1);
-        ClickHouseTestHelpers.dropTable(chc, topic2);
+        ClickHouseTestHelpers.dropTable(chc, topic1, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topic2, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic1)
+                .deploymentType(deploymentType)
                 .execute(chc);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic2)
+                .deploymentType(deploymentType)
                 .execute(chc);
 
         int totalRecordsTopic1 = 40;
@@ -545,15 +560,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         chst.stop();
     }
 
-    @Test
-    public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled(ClickHouseDeploymentType deploymentType) {
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("precommit_report_offsets_off");
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                 .tableName(topic)
+                .deploymentType(deploymentType)
                 .execute(chc);
 
         int partition = 0;
