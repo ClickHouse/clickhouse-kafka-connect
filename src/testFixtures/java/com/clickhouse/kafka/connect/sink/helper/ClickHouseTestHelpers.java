@@ -86,16 +86,13 @@ public class ClickHouseTestHelpers {
     }
 
     public static void query(ClickHouseHelperClient chc, String query) {
-        if (chc.isUseClientV2()) {
-            try {
-                chc.queryV2(query).close();
-            } catch (Exception e) {
-                LOGGER.info("Failed to query ", e);
-                throw new RuntimeException(e);
-            }
-        } else {
-            chc.queryV1(query);
+        try (Records ignored = chc.queryV2(query)) {
+            // success
+        } catch (Exception e) {
+            LOGGER.info("Failed to query ", e);
+            throw new RuntimeException(e);
         }
+
     }
 
     public static OperationMetrics dropTable(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType deploymentType) {
@@ -297,21 +294,20 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countInsertQueries(ClickHouseHelperClient chc, String topic, ClickHouseDeploymentType deploymentType) {
-        try (Client client = chc.getClient()) {
-            String from;
-            if (deploymentType.isLocalCluster()) {
-                from = String.format("clusterAllReplicas('%s', 'system', 'query_log', rand())", deploymentType.clusterName);
-            } else {
-                from = "system.query_log";
-            }
-            String sql = String.format("SELECT COUNT(*) " +
-                    "FROM %s " +
-                    "WHERE type = 'QueryFinish' " +
-                    "AND query_kind = 'Insert' " +
-                    "AND query ILIKE '%%%s%%'", from, topic);
-            GenericRecord result = client.queryAll(sql).get(0);
-            return result.getInteger(1);
+        Client client = chc.getClient();
+        String from;
+        if (deploymentType.isLocalCluster()) {
+            from = String.format("clusterAllReplicas('%s', 'system', 'query_log', rand())", deploymentType.clusterName);
+        } else {
+            from = "system.query_log";
         }
+        String sql = String.format("SELECT COUNT(*) " +
+                "FROM %s " +
+                "WHERE type = 'QueryFinish' " +
+                "AND query_kind = 'Insert' " +
+                "AND query ILIKE '%%%s%%'", from, topic);
+        GenericRecord result = client.queryAll(sql).get(0);
+        return result.getInteger(1);
     }
 
 
@@ -408,8 +404,8 @@ public class ClickHouseTestHelpers {
     public static void createDatabase(String database, ClickHouseHelperClient chc, ClickHouseDeploymentType deploymentType) {
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
         String createDatabaseQuery = "CREATE DATABASE IF NOT EXISTS `" + database + "`" + clusterClause;
-        try {
-            chc.queryV2(createDatabaseQuery).close();
+        try (Records ignored = chc.queryV2(createDatabaseQuery)) {
+            // success
         } catch (Exception e) {
             LOGGER.info("Failed to create database ", e);
             throw new RuntimeException(e);
@@ -419,8 +415,8 @@ public class ClickHouseTestHelpers {
     public static void dropDatabase(ClickHouseHelperClient chc, String database, ClickHouseDeploymentType deploymentType) {
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
         String dropDatabaseQuery = "DROP DATABASE IF EXISTS `" + database + "`" + clusterClause;
-        try {
-            chc.queryV2(dropDatabaseQuery).close();
+        try (Records ignored = chc.queryV2(dropDatabaseQuery)) {
+            // success
         } catch (Exception e) {
             LOGGER.info("Failed to drop database ", e);
             throw new RuntimeException(e);
@@ -463,7 +459,7 @@ public class ClickHouseTestHelpers {
                 .sslEnable(sslEnabled)
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
-                .useClientV2(true)
+                .useClientV2("V2".equals(clientVersion))
                 .setSslSocketSni(csc.getSslSocketSni())
                 .build();
     }

@@ -112,21 +112,6 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    public ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropTable)
-                     .executeAndWait()) {
-            return response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     @ParameterizedTest(name = "{0}")
     @MethodSource("deploymentTypesForTests")
     @Disabled // TODO: Fix this test
@@ -142,7 +127,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
-            dropTable(chc, tmpTableName);
+            ClickHouseTestHelpers.dropTable(chc, tmpTableName, deploymentType);
             ClickHouseTestHelpers.createDatabase(databaseName, chc, deploymentType);
             new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
                     .tableName(tmpTableName)

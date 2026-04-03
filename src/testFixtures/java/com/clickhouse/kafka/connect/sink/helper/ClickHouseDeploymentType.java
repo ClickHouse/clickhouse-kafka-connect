@@ -1,7 +1,5 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
-import javax.annotation.Nullable;
-
 /**
  * Represents the ClickHouse deployment mode used for a test run.
  */
@@ -32,9 +30,9 @@ public enum ClickHouseDeploymentType {
      */
     ONE_SHARD_THREE_REPLICAS(ClickHouseCluster.ONE_SHARD_THREE_REPLICAS);
 
-    public final @Nullable String clusterName;
+    public final String clusterName; // may be null
 
-    ClickHouseDeploymentType(@Nullable String clusterName) {
+    ClickHouseDeploymentType(String clusterName) {
         this.clusterName = clusterName;
     }
 
