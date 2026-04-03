@@ -3,6 +3,8 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
 import org.junit.jupiter.api.AfterAll;
@@ -16,23 +18,39 @@ import org.testcontainers.containers.Network;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected ClickHouseContainer db;
-    protected boolean isCloud = ClickHouseTestHelpers.isCloud();
+    protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
+    protected static boolean isCluster = ClickHouseTestHelpers.isCluster();
     protected String database = ClickHouseTestHelpers.DATABASE_DEFAULT;
+
+    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
+        if (isCluster) {
+            return Stream.of(ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH, ClickHouseDeploymentType.ONE_SHARD_THREE_REPLICAS);
+        } else if (isCloud) {
+            return Stream.of(ClickHouseDeploymentType.CLOUD);
+        }
+        return Stream.of(ClickHouseDeploymentType.STANDALONE);
+    }
 
     @BeforeAll
     public void setup() throws IOException {
-        if (!isCloud) {
+        if (isCluster) {
+            // cluster lifecycle is managed by Gradle and must be started before tests run
+            if (!ClickHouseCluster.isStarted()) {
+                throw new IOException("cluster is not running - aborting tests");
+            }
+        } else if (!isCloud) {
             setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         }
 
         try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
             setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
-            ClickHouseTestHelpers.createDatabase(database, tmpClient);
+            ClickHouseTestHelpers.createDatabase(database, tmpClient, isCluster ? ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH : ClickHouseDeploymentType.STANDALONE);
             tmpClient.ping();
         }
     }
@@ -54,7 +72,7 @@ public class ClickHouseBase {
 
     @AfterAll
     protected void tearDown() {
-        if (!isCloud) {
+        if (!isCloud && !isCluster) {
             ClickHouseContainer ch = getDb();
             if (ch != null) {
                 LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
@@ -101,6 +119,13 @@ public class ClickHouseBase {
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
+        } else if (isCluster) {
+            props.put(ClickHouseSinkConnector.HOSTNAME, ClickHouseCluster.getHost());
+            props.put(ClickHouseSinkConnector.PORT, ClickHouseCluster.getPort().toString());
+            props.put(ClickHouseSinkConnector.DATABASE, database);
+            props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
+            props.put(ClickHouseSinkConnector.PASSWORD, "");
+            props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
             props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());

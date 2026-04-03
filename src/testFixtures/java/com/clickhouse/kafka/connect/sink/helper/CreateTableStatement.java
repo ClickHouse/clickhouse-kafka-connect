@@ -11,10 +11,11 @@ import java.util.Map;
 public class CreateTableStatement {
     private String tableName;
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
-    private String engine;
+    private String engine; // defaults to MergeTree/ReplicatedMergeTree if unset
     private String orderByColumn;
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
+    private ClickHouseDeploymentType deploymentType = ClickHouseDeploymentType.STANDALONE;
 
     public CreateTableStatement() {}
 
@@ -25,6 +26,7 @@ public class CreateTableStatement {
         this.orderByColumn = template.orderByColumn;
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
+        this.deploymentType = template.deploymentType;
     }
 
     public CreateTableStatement tableName(String tableName) {
@@ -57,6 +59,11 @@ public class CreateTableStatement {
         return this;
     }
 
+    public CreateTableStatement deploymentType(ClickHouseDeploymentType deploymentType) {
+        this.deploymentType = deploymentType;
+        return this;
+    }
+
     public void execute(ClickHouseHelperClient chc) {
         var columns = new StringBuilder();
         for (Map.Entry<String, String> entry : schema.entrySet()) {
@@ -64,12 +71,17 @@ public class CreateTableStatement {
                 columns.append(", ");
             columns.append("`").append(entry.getKey()).append("` ").append(entry.getValue());
         }
+
         var sql = new StringBuilder();
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
-                .append("`").append(tableName).append("`").append(" ")
+                .append("`").append(tableName).append("`");
+        if (deploymentType.isLocalCluster()) {
+            sql.append(" ON CLUSTER '").append(deploymentType.clusterName).append("'");
+        }
+        sql.append(" ")
                 .append("(").append(columns).append(")").append(" ")
-                .append("Engine = ").append(engine);
+                .append("Engine = ").append(engine != null ? engine : deploymentType.getMergeTreeEngine());
         if (orderByColumn != null) {
             sql.append(" ORDER BY ").append(orderByColumn);
         }
