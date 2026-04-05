@@ -79,6 +79,19 @@ extra.apply {
 
 val clickhouseDependencies: Configuration by configurations.creating
 
+// Resolve lz4-java capability conflict between at.yawk.lz4:lz4-java (from clickhouse-java 0.9.8)
+// and org.lz4:lz4-java (from kafka-clients)
+configurations.all {
+    resolutionStrategy.capabilitiesResolution.withCapability("org.lz4:lz4-java") {
+        val toBeSelected = candidates.firstOrNull { it.id.let { id ->
+            id is ModuleComponentIdentifier && id.group == "at.yawk.lz4"
+        }}
+        if (toBeSelected != null) {
+            select(toBeSelected)
+        }
+        because("at.yawk.lz4:lz4-java is the newer, relocated artifact used by clickhouse-java")
+    }
+}
 
 dependencies {
     implementation("org.apache.kafka:connect-api:${project.extra["kafkaVersion"]}")
