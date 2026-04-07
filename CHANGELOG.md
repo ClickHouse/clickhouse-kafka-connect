@@ -1,3 +1,8 @@
+# Unreleased
+
+## Dependencies
+* Updated clickhouse-java version from `0.9.4` to `0.9.5`
+
 # 1.3.7, 2026-03-25 
 
 ## Security

@@ -51,7 +51,7 @@ repositories {
 }
 
 extra.apply {
-    set("clickHouseDriverVersion", "0.9.4")
+    set("clickHouseDriverVersion", "0.9.5")
     set("kafkaVersion", "2.7.0")
     set("gson", "2.13.1")
     set("jackson", "2.21.2")
