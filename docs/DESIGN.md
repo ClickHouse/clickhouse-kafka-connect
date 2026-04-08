@@ -30,57 +30,28 @@ A [common solution to the problem](https://docs.confluent.io/platform/current/cl
 
 ### High-level approach
 
-When considering a solution, we want something that involves minimal dependencies, is architecturally simple, and exploits existing properties of ClickHouse (and ideally didn't need changes to its eventual consistency replication model).
+When considering a solution, we want something that involves minimal dependencies, is architecturally simple, and exploits existing properties of ClickHouse (and ideally didn’t need changes to its eventual consistency replication model).
 
 We dismissed solutions using a two-phase commit or storing offsets in ClickHouse, as architecturally too complex and likely not performant. Strategies, such as offering only at-least-one delivery semantics in the connector but enforcing a [Collapsing](https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/collapsingmergetree)/[ReplacingMergeTree](https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/replacingmergetree/) for data storage, were too restrive and offer[ deduplication through only eventual consistency](https://learn.clickhouse.com/visitor_catalog_class/show/1050521/Deduplication) (without an expensive FINAL modifier on all queries).
 
 The current solution exploits a property of ClickHouse, which can initially cause some [getting-started confusion](https://clickhouse.com/blog/common-getting-started-issues-with-clickhouse). If identical inserts are made to ClickHouse within a certain time period, they are de-duplicated. This is known as the [replicated_deduplication_window](https://clickhouse.com/docs/en/operations/settings/merge-tree-settings/#replicated-deduplication-window) and is enabled by default on replicated instances. When data is inserted into ClickHouse, it creates one or more blocks (parts). In replicated environments, such as ClickHouse Cloud, a hash is written in ClickHouse Keeper. Subsequent inserted blocks are compared against these hashes and ignored if a match is present. This is useful since it allows clients to safely retry inserts in case of no acknowledgment from ClickHouse, e.g., because of a network interruption. This requires blocks to be identical, i.e., the same size with the same rows in the same order. These hashes are stored for only the most recent 100 blocks, although this [can be modified](https://clickhouse.com/docs/en/operations/settings/merge-tree-settings/#replicated-deduplication-window). Note higher values will slow down inserts due to the need for more comparisons.
 
-**Deduplication flow:**
-```
-Connector inserts block B
-       │
-       ▼
-ClickHouse computes hash(B)
-       │
-       ├─ hash exists in Keeper? ──► Block silently ignored (deduplicated)
-       │
-       └─ hash not found ──────────► Block written; hash stored in Keeper
-```
+![deduplication](./deduplication.png)
 
 This same behavior can be enabled for non-replicated instances via the setting [non_replicated_deduplication_window](https://clickhouse.com/docs/en/operations/settings/merge-tree-settings/#replicated-deduplication-window). In this case, the hashes are stored on a local disk.
 
 This property can be combined with the knowledge that if ClickHouse acknowledges a write, the insert has been successful. With both of these behaviors, the challenge becomes ensuring:
 
-1. We have a guarantee that in the event of failure, duplicate data is received on recovery.
-2. Identical batches are always formulated on retries in the event of failure.
+1. We have a guarantee that in the event of failure, duplicate data is received on recovery. 
+2. Identical batches are always formulated on retries in the event of failure. 
 
-If we could ensure these properties hold true, we could exploit ClickHouse's ability to handle duplicate inserts.  At this point, we need to select the appropriate Kafka API. While low-level [consumer APIs ](https://kafka.apache.org/33/javadoc/index.html?org/apache/kafka/clients/consumer/KafkaConsumer.html)offer "[Manual Offset Control](https://kafka.apache.org/33/javadoc/index.html?org/apache/kafka/clients/consumer/KafkaConsumer.html)", the [SinkTask API](https://docs.confluent.io/5.0.4/connect/javadocs/org/apache/kafka/connect/sink/SinkTaskContext.html) offers a higher-level integration point sufficient for our needs. This API delivers provides at-least-once delivery and requires implementors to implement a `put` method to which records are passed in batches. The Kafka Connect framework transparently tracks offset positions, periodically committing them. We are provided with a guarantee here - the committed position will not exceed the offset of the last completed `put` call. Provided our implementation of `put` ensures a write to ClickHouse is completed with the batch, we should achieve at-least-once delivery. This leaves us with only needing to formulate identical batches.
+If we could ensure these properties hold true, we could exploit ClickHouse’s ability to handle duplicate inserts.  At this point, we need to select the appropriate Kafka API. While low-level [consumer APIs ](https://kafka.apache.org/33/javadoc/index.html?org/apache/kafka/clients/consumer/KafkaConsumer.html)offer “[Manual Offset Control](https://kafka.apache.org/33/javadoc/index.html?org/apache/kafka/clients/consumer/KafkaConsumer.html)”, the [SinkTask API](https://docs.confluent.io/5.0.4/connect/javadocs/org/apache/kafka/connect/sink/SinkTaskContext.html) offers a higher-level integration point sufficient for our needs. This API delivers provides at-least-once delivery and requires implementors to implement a `put` method to which records are passed in batches. The Kafka Connect framework transparently tracks offset positions, periodically committing them. We are provided with a guarantee here - the committed position will not exceed the offset of the last completed `put` call. Provided our implementation of `put` ensures a write to ClickHouse is completed with the batch, we should achieve at-least-once delivery. This leaves us with only needing to formulate identical batches.
 
-To ensure we always formulate identical batches to ClickHouse, we need to maintain a state of our current processing and a record of the previous insert. We can use this information to slice and merge batches to ensure the consistency of inserts. We do this using a state machine per topic and partition to align with how processing can be distributed in Kafka and how offsets are tracked. Specifically, for each `put` of records, we generate a batch per topic and partition, look up the previous state for this topic/partition and generate consistent inserts to ClickHouse based on a set of rules implemented as a state machine.
+To ensure we always formulate identical batches to ClickHouse, we need to maintain a state of our current processing and a record of the previous insert. We can use this information to slice and merge batches to ensure the consistency of inserts. We do this using a state machine per topic and partition to align with how processing can be distributed in Kafka and how offsets are tracked. Specifically, for each `put` of records, we generate a batch per topic and partition, look up the previous state for this topic/partition and generate consistent inserts to ClickHouse based on a set of rules implemented as a state machine. This can be summarized as shown below:
 
-**High-level data flow:**
-```
-Kafka topic/partition
-       │  (batch of records)
-       ▼
-ClickHouseSinkTask.put()          [sink/ClickHouseSinkTask.java]
-       │
-       ▼
-ProxySinkTask.put()               [sink/ProxySinkTask.java]
-       │  (records grouped by topic/partition)
-       ▼
-Processing.doLogic()              [sink/processing/Processing.java]
-       │  (look up stored state, run state machine)
-       ├─► StateProvider.getStateRecord()   [sink/state/]
-       ├─► StateProvider.setStateRecord()
-       └─► ClickHouseWriter.doInsert()      [sink/db/ClickHouseWriter.java]
-                  │
-                  ▼
-            ClickHouse (HTTP interface)
-```
+![architecture](./architecture.png)
 
-Note that the above process is single-threaded per worker, i.e., only a single thread can operate on any single topic/partition simultaneously.
+Not that the above process is single-threaded per worker, i.e., only a single thread can operate on any single topic/partition simultaneously.
 
 ### Storing State
 
@@ -88,96 +59,43 @@ Note that the above process is single-threaded per worker, i.e., only a single t
 
 Our proposed connector design requires the connector to store state in a strongly consistent store with sequential consistency and linearizable writes. Initially, we considered ClickHouse but discounted this quickly for several reasons. Firstly, ClickHouse is not strongly consistent by default and offers only eventual consistent replication. With careful configuration, however, you can ensure [linearizable inserts](https://clickhouse.com/docs/en/operations/settings/settings/#settings-insert_quorum) and [sequential consistency for SELECTS](https://clickhouse.com/docs/en/operations/settings/settings/#settings-select_sequential_consistency) for a [replicated table](https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/replication#table_engines-replication). However, this ClickHouse configuration adds significant insertion latency, principally because of the increased communication with ClickHouse Keeper to coordinate the write and subsequent data replication. This design effectively adds a redundant component and unnecessary overhead - the ClickHouse table storage. Given we only need to store minimal state, using ClickHouse Keeper directly seemed the perfect solution to address these requirements.
 
-The challenge with this approach is that this component is typically not exposed in a cluster. For example, it's not exposed in ClickHouse Cloud, and its access and use should be carefully controlled not to impact cluster operations and stability. Working with the ClickHouse core team, we decided to expose ClickHouse keeper (for cases where linearizable inserts and sequential consistency are required) in a controlled way through a table engine - the [KeeperMap engine](https://github.com/ClickHouse/ClickHouse/pull/39976). This provides us with an integrated and lightweight means of storing our state.
+The challenge with this approach is that this component is typically not exposed in a cluster. For example, it's not exposed in ClickHouse Cloud, and its access and use should be carefully controlled not to impact cluster operations and stability. Working with the ClickHouse core team, we decided to expose ClickHouse keeper (for cases where linearizable inserts and sequential consistency are required) in a controlled way through a table engine - the [KeeperMap engine](https://github.com/ClickHouse/ClickHouse/pull/39976). This provides us with an integrated and lightweight means of storing our state. 
 
-**State provider implementations** (`sink/state/provider/`):
-- `KeeperStateProvider` — production; backed by the `KeeperMap` table engine; linearizable writes, sequentially consistent reads.
-- `InMemoryState` — testing only; no persistence, no exactly-once guarantees on restart.
+Note that you can test the connector without KeeperMap using an in-memory mode. This is for testing only and makes no exactly-once guarantees in the event of failure.
 
 ### State Machine
 
-**Implementation**: `sink/processing/Processing.java`, method `doLogic()`
-
 For each topic/partition batch, we record the following information:
 
-1. The current minimum and maximum offset — `minOffset` and `maxOffset`, of the batch.
-2. Prior to inserting the data into ClickHouse, a flag `BEFORE_PROCESSING` is set. If and only if the insert is successful, a flag `AFTER_PROCESSING` is set.
+1. The current minimum and maximum offset - `minOffset` and `maxOffset`, of the batch.
+2. Prior to inserting the data into ClickHouse, a flag `BEFORE` is set. If and only if the insert is successful, a flag `AFTER` is set.
 
-These are stored as a `StateRecord` (`sink/state/StateRecord.java`). The overlap relationship between the stored range and the incoming batch is computed as a `RangeState` enum (`sink/kafka/RangeState.java`).
+When handling a batch for a specific topic and partition, we look up this information for the previous insert. If the latest state is `AFTER,` we know the previous insert was successful. Conversely, `BEFORE` means the connector could not confirm whether ClickHouse received and acknowledged the data. The absence of either state means either this is the first time we have seen data for this topic or partition, or we weren't able to set even set a `BEFORE` state. These are logically identical. This is the simplest case in our state machine:
 
-#### Initial state (no stored state for this topic/partition)
+![start state](./start_state.png)
 
-```
-Stored state: NONE
-       │
-       ├─ set BEFORE_PROCESSING [minOffset, maxOffset]
-       ├─ doInsert(records)
-       └─ set AFTER_PROCESSING  [minOffset, maxOffset]
-```
+As shown, the state is set to `BEFORE` before the insert to ClickHouse is performed. If successful and acknowledged, the state is set to `AFTER`. Any of these steps could fail.
 
-`NONE` means either the first time this topic/partition has been seen, or a previous failure occurred before any state could be written.
+For subsequent inserts, we should have a previous state for each topic/partition. When comparing the previous state to a new batch, we have 4 possible outcomes with 2 choices depending on whether a `BEFORE` or `AFTER` flag is set:
 
-#### Full state transition table
+1. **Same** - The min and max offset of the previous batch is identical. If the state is `BEFORE`, we can't be sure our previous insert was successful, so the batch is reinserted and possibly deduplicated in ClickHouse. If the previous state was AFTER, we drop this data as it has already been sent.
+2. **Overlapping** - The min offset of the new batch is the same as the previous, but the max is greater. In this case, we split the new batch into two chunks, where the first of these is identical to the previous batch. Both of these chunks are reinserted if the previous state is `BEFORE`. If the previous state is `AFTER`, only the 2nd chunk is inserted.
+3. **Contains** - The min and max offset of the new batch are contained by the previous values, i.e., the new min offset > previous min offset and new max offset &lt; previous max offset. In this case, we can safely do nothing if the previous state was `AFTER`. However, if the previous state was `BEFORE`, we cannot create and insert blocks without possible duplication. The data, in this case, is written to a Dead Letter Queue (DLQ). We expect this to be a rare event.
+4. **New** - The most common case. In this case, the min offset of the new block is greater than the max offset of the previous, i.e., we have new data. In this case, the data can be inserted.
 
-The following table covers all combinations handled in `Processing.doLogic()`. "Stored flag" is the flag on the most recently stored `StateRecord`.
+This is summarized below:
 
-| Stored flag | Range relationship | Action |
-|---|---|---|
-| `NONE` | (any) | Set `BEFORE`, insert all, set `AFTER` |
-| `BEFORE_PROCESSING` | `ZERO` | Topic deleted/recreated — reset state, insert all, set `AFTER` |
-| `BEFORE_PROCESSING` | `SAME` | Insert (ClickHouse dedup will handle duplicate) then set `AFTER` |
-| `BEFORE_PROCESSING` | `NEW` | Insert trimmed records, set `AFTER` |
-| `BEFORE_PROCESSING` | `OVER_LAPPING` | Split batch at previous `maxOffset`. If left chunk boundaries exactly match stored state: re-insert left, set `AFTER` for left; then set `BEFORE` for right, insert right, set `AFTER` for right. If left boundaries don't match (records missing): send left to DLQ, insert right only. |
-| `BEFORE_PROCESSING` | `CONTAINS` | Unrecoverable — throw exception (routed to DLQ by caller) |
-| `BEFORE_PROCESSING` | `ERROR` | Throw exception (irrecoverable offset inconsistency) |
-| `AFTER_PROCESSING` | `SAME` | Already inserted — touch state (`onStateUpdate`) and return |
-| `AFTER_PROCESSING` | `CONTAINS` | Already inserted — touch state (`onStateUpdate`) and return |
-| `AFTER_PROCESSING` | `ZERO` | Topic deleted/recreated — reset state, insert all, set `AFTER` |
-| `AFTER_PROCESSING` | `NEW` | Set `BEFORE`, insert trimmed records, set `AFTER` |
-| `AFTER_PROCESSING` | `OVER_LAPPING` | Split at previous `maxOffset`; drop left chunk (already inserted); set `BEFORE` for right, insert right, set `AFTER` for right |
-| `AFTER_PROCESSING` | `PREVIOUS` | Batch is older than stored state. If `tolerateStateMismatch=true`: log warning and skip. Otherwise: throw exception. |
-| `AFTER_PROCESSING` | `ERROR` | Throw exception (irrecoverable offset inconsistency) |
+![full state machine](./full_state_machine.png)
 
-#### Range relationship definitions
+There is one case not covered by the above. We may simply get data for a partition and batch whose `minOffset` is less than the `minOffset` of the previous state. This is shown below:
 
-Given stored range `[storedMin, storedMax]` and incoming batch range `[newMin, newMax]`:
+![cropping batches](./cropping_batches.png)
 
-| `RangeState` | Condition |
-|---|---|
-| `ZERO` | `newMin == 0` and `newMax == 0` (topic deleted/recreated) |
-| `SAME` | `newMin == storedMin` and `newMax == storedMax` |
-| `OVER_LAPPING` | `newMin == storedMin` and `newMax > storedMax` |
-| `CONTAINS` | `newMin >= storedMin` and `newMax <= storedMax` (new is subset of stored) |
-| `NEW` | `newMin > storedMax` (no overlap, strictly newer data) |
-| `PREVIOUS` | `newMax < storedMin` (batch is entirely older than stored state) |
-| `ERROR` | Any other combination (e.g. `newMax < storedMin` in most contexts, or unexpected offset ordering) |
-| `PREFIX`, `SUFFIX` | Defined in the enum but not used in current `doLogic()` routing |
+In this case, we know a portion of the data, up to the previous minOffset of the new batch, has already been processed. We always drop this, as shown above, and continue with the above state machine rules with the “reduced” batch.
 
-#### Batch trimming (PREVIOUS data in a batch)
+Finally, other cases are still possible. For example, suppose the maxOffset of our new batch is less than the minOffset of the previous. These cases are irrecoverable and likely due to external manipulation of the Kafka offsets, resulting in an exception.
 
-Before the range relationship is evaluated, any records with offset < `storedMinOffset` are trimmed from the incoming batch (`dropRecords()`). This handles the case where a new batch partially overlaps from below — the stale prefix is silently dropped and the remainder is evaluated against the state machine rules above.
-
-```
-Stored:  [──────── 10 ... 19 ────────]
-Incoming:     [5 ... 25]
-After trim:            [10 ... 25]   ← evaluate as OVER_LAPPING
-```
-
-#### The BEFORE_PROCESSING + OVER_LAPPING split in detail
-
-```
-Stored:  [── 10 ......... 19 ──]  flag = BEFORE_PROCESSING
-Incoming:[── 10 ................. 30 ──]
-
-Split at offset 19:
-  left  = [10 ... 19]   ← must match stored range exactly to re-insert
-  right = [20 ... 30]   ← always inserted as new chunk
-
-If left boundaries == stored: re-insert left (dedup handles duplicate), set AFTER for left
-                               then set BEFORE for right, insert right, set AFTER for right
-If left boundaries ≠ stored:  send left to DLQ (records missing, cannot guarantee identical block)
-                               insert right only
-```
+![invalid states](./invalid_states.png)
 
 ### Scaling
 
