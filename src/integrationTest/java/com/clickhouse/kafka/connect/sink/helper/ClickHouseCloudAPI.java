@@ -1,12 +1,5 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
-import com.clickhouse.client.ClickHouseClient;
-import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseNodeSelector;
-import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.api.query.Records;
-import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,19 +11,15 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.fail;
 
-public class ClickHouseAPI {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseAPI.class);
+public class ClickHouseCloudAPI {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudAPI.class);
 
     private final Properties properties;
     private static final String CLICKHOUSE_CLOUD_API_HOST = "clickhouse.cloud.host";
@@ -39,90 +28,9 @@ public class ClickHouseAPI {
     private static final String CLICKHOUSE_CLOUD_API_SECRET = "clickhouse.cloud.secret";
     private static final String CLICKHOUSE_CLOUD_SERVICE_ID = "clickhouse.cloud.serviceId";
 
-    public ClickHouseAPI(Properties properties) {
+    public ClickHouseCloudAPI(Properties properties) {
         this.properties = properties;
     }
-
-
-    public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds) throws InterruptedException {
-        int count = countRows(chc, tableName);
-        int lastCount = 0;
-        int loopCount = 0;
-
-        while(count != lastCount || loopCount < 5) {
-            Thread.sleep(sleepInSeconds * 1000L);
-            count = countRows(chc, tableName);
-            if (lastCount == count) {
-                loopCount++;
-            } else {
-                loopCount = 0;
-            }
-
-            lastCount = count;
-        }
-    }
-
-    public static int countRows(ClickHouseHelperClient chc, String tableName) {
-        int[] counts = getCounts(chc, tableName);
-        System.out.println("Total: " + counts[0] + " Unique: " + counts[1] + " Difference: " + counts[2]);
-        return counts[0];
-    }
-
-
-
-    public static void dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS `%s`", tableName);
-        try (Records ignored = chc.getClient().queryRecords(dropTable).get(10, TimeUnit.SECONDS)) {
-            // no-op: result not needed, resource must be closed
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
-        String queryString = String.format("SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) " +
-                "FROM %s " +
-                "GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` " +
-                "HAVING COUNT(*) > 1", tableName);
-        try {
-            Records records = chc.getClient().queryRecords(queryString).get(10, TimeUnit.SECONDS);
-            return records;
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (TimeoutException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-
-
-    public static void clearTable(ClickHouseHelperClient chc, String tableName) {
-        String sql = "TRUNCATE TABLE " + tableName;
-        LOGGER.info("Clear table: " + sql);
-        try (Records records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS)) {
-            LOGGER.info("Create: {}", records.getMetrics());
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = String.format("SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM `%s`", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(queryCount)
-                     .executeAndWait()) {
-            return Arrays.stream(response.firstRecord().getValue(0).asString().split("\t")).mapToInt(Integer::parseInt).toArray();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
 
     public HttpResponse<String> stopInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {
         return updateServiceState(serviceId, "stop");
@@ -195,6 +103,4 @@ public class ClickHouseAPI {
         LOGGER.info("Service restarted");
         return serviceState;
     }
-
-
 }
