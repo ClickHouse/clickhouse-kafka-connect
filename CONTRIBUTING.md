@@ -22,7 +22,7 @@ Integration tests run against both Docker and ClickHouse Cloud. You can compile 
   -Dclickhouse.cloud.apiKey=<YOUR_CH_CLOUD_API_KEY> \
   -Dclickhouse.cloud.secret=<YOUR_CH_CLOUD_SECRET> \
   -Dclickhouse.cloud.serviceId=<YOUR_CH_CLOUD_SERVICE_ID> \
-  -Dclickhouse.cloud.host=${{vars.CLICKHOUSE_CLOUD_API_HOST}}
+  -Dclickhouse.cloud.host=<YOUR_CH_CLOUD_API_HOST>
 ```
 
 where:
