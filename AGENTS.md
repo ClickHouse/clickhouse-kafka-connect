@@ -213,8 +213,8 @@ Formatting is enforced via the **Spotless** plugin (Google Java Style). Always r
 ### Correctness & Safety First
 - **Protocol fidelity**: Correct serialization/deserialization of ClickHouse types across all supported versions
 - **Type mapping**: ClickHouse has 60+ specialized types - ensure correct mapping between Java/Kafka Connect types and ClickHouse types. **No data loss is acceptable.**
-- **Thread safety**: all concurrent operations must happen safely
-- **Avoid resource leaks**: use try-with-resources statements for all `AutoCloseable` objects
+- **Thread safety**: All concurrent operations must happen safely
+- **Avoid resource leaks**: Use try-with-resources statements for all `AutoCloseable` objects
 
 ### Stability & Backward Compatibility
 - **ClickHouse version support**: Ensure changes do not break against older LTS ClickHouse versions by validating explicitly across versions (run `yq '.jobs.build.strategy.matrix.clickhouse' .github/workflows/tests.yaml` from the repository root for the versions you must develop against)
@@ -227,15 +227,13 @@ Formatting is enforced via the **Spotless** plugin (Google Java Style). Always r
 - **Connection pooling**: Respect HTTP connection pool behavior, avoid connection leaks
 
 ### Code Style
-- **DRY**: do not repeat yourself 
-- **Google Java Style**: you should write all code in this style
-- **Static string constants**: extract String constants into top-level static strings whenever necessary 
+- **DRY**: Do not repeat yourself 
+- **Google Java Style**: You should write all code in this style
+- **Static string constants**: Extract String constants into top-level static strings whenever necessary 
 
 ### Configuration & Settings
-- **Client configuration**: Connection string or `ClickHouseClientSettings` for client-level settings
-- **Per-query options**: `QueryOptions` for query-specific settings (QueryId, CustomSettings, Roles, BearerToken)
-- **Parameters**: Use `ClickHouseParameterCollection` with `ClickHouseDbParameter` for parameterized queries
-- **Feature flags**: Consider adding optional behavior behind connection string settings
+- **Client configuration**: Use `ClickHouseHelperClient` for java client settings and creation
+- **Feature flags**: Consider adding optional behavior behind connector configurations (`ClickHouseSinkConfig`)
 - **Useful code comments**: Only write code comments that convey important context or invariants that are not immediately obvious from the code. **Do not just summarize the logic in English.**
 
 ### Observability & Diagnostics
@@ -247,8 +245,8 @@ Formatting is enforced via the **Spotless** plugin (Google Java Style). Always r
 - **CVE**: Notice and suggest upgrading dependencies that have open CVE's. **DO NOT try to upgrade dependencies without asking the user first**.
 
 ### Testing Discipline
-- **Test utilities**: before writing tests, read `ClickHouseTestHelpers.java` to understand existing config and utility patterns.
-- **Test matrix**: run `yq '.jobs.build.strategy.matrix.clickhouse' .github/workflows/tests.yaml` from the repository root for the ClickHouse versions you must test against
+- **Test utilities**: Before writing tests, read `ClickHouseTestHelpers.java` to understand existing config and utility patterns.
+- **Test matrix**: Run `yq '.jobs.build.strategy.matrix.clickhouse' .github/workflows/tests.yaml` from the repository root for the ClickHouse versions you must test against
 - **Negative tests**: Error handling, edge cases, concurrency scenarios
 - **Existing tests**: Only add new tests, never delete/weaken existing ones
 - **Test organization**: See the Writing Tests section above
