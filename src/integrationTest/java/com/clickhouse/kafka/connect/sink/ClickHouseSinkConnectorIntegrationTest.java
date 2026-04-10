@@ -8,24 +8,26 @@ import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Stream;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseAPI.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -219,6 +221,34 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
+    private void setupAvroConnector(String topicName, int taskCount) throws IOException, InterruptedException {
+        LOGGER.info("Setting up Avro connector for topic {}...", topicName);
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+
+        // TODO: extract this into a json file
+        JSONObject config = new JSONObject();
+        config.put("name", SINK_CONNECTOR_NAME);
+        config.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
+        config.put("tasks.max", String.valueOf(taskCount));
+        config.put("topics", topicName);
+        config.put("hostname", CLICKHOUSE_DB_NETWORK_ALIAS);
+        config.put("port", "8123");
+        config.put("database", "default");
+        config.put("username", db.getUsername());
+        config.put("password", db.getPassword());
+        config.put("ssl", "false");
+        config.put("exactlyOnce", "false");
+        config.put("value.converter", "io.confluent.connect.avro.AvroConverter");
+        config.put("value.converter.schema.registry.url", "http://schema-registry:8081");
+
+        JSONObject payload = new JSONObject();
+        payload.put("name", SINK_CONNECTOR_NAME);
+        payload.put("config", config);
+
+        confluentPlatform.createConnect(payload.toString());
+        Thread.sleep(1000);
+    }
+
     private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
@@ -260,5 +290,72 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
 
         assertTrue(dataCount <= countRows(chcNoProxy, topicName));
+    }
+
+    private static Stream<String> lsAvroSchemas() {
+        String schemaDir = "src/testFixtures/avro/schemas/breaking";
+        return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
+    }
+
+    @ParameterizedTest
+    @MethodSource("lsAvroSchemas")
+    public void avroSchemaTest(String fixtureFilePath) throws Exception {
+        String fixtureContent = String.join("", Files.readAllLines(Paths.get(fixtureFilePath)));
+        JSONObject fixture = new JSONObject(fixtureContent);
+
+        String description = fixture.getString("description");
+        JSONObject schema = fixture.getJSONObject("schema");
+        JSONObject clickhouseColumns = fixture.getJSONObject("clickhouse_columns");
+        String orderBy = fixture.getString("clickhouse_order_by");
+        JSONArray records = fixture.getJSONArray("records");
+        int expectedRowCount = fixture.getInt("expected_row_count");
+
+        // Derive topic name from fixture filename (remove .json extension)
+        String fileName = Paths.get(fixtureFilePath).getFileName().toString();
+        String topicName = "chaos_" + fileName.replace(".json", "").replace("-", "_");
+
+        LOGGER.info("Running chaos test: {} (topic: {}, expected rows: {})", description, topicName, expectedRowCount);
+
+        // 1. Create topic
+        confluentPlatform.createTopic(topicName, 1);
+
+        // 2. Create ClickHouse table
+        dropTable(chcNoProxy, topicName);
+        CreateTableStatement tableStmt = new CreateTableStatement()
+                .tableName(topicName)
+                .engine("MergeTree")
+                .orderByColumn(orderBy);
+        for (String colName : clickhouseColumns.keySet()) {
+            tableStmt.column(colName, clickhouseColumns.getString(colName));
+        }
+        tableStmt.execute(chcNoProxy);
+
+        // 3. Produce Avro records via REST proxy
+        int producedCount = confluentPlatform.produceAvroRecords(
+                topicName,
+                schema.toString(),
+                records
+        );
+        LOGGER.info("Produced {} records to topic {}", producedCount, topicName);
+
+        // 4. Setup sink connector with Avro converter
+        setupAvroConnector(topicName, 1);
+
+        // 5. Wait for data to flow through
+        waitWhileCounting(chcNoProxy, topicName, 3);
+
+        // 6. Check for connector task failure
+        Optional<String> taskFailure = confluentPlatform.getFirstTaskFailureOpt(SINK_CONNECTOR_NAME);
+        if (taskFailure.isPresent()) {
+            throw new Exception(String.format("Connector task failed for %s: %s", fileName, taskFailure.get()));
+        }
+
+        // 7. Check row count
+        int rowCount = countRows(chcNoProxy, topicName);
+        LOGGER.info("ClickHouse row count for {}: {} (expected: {})", topicName, rowCount, expectedRowCount);
+
+        if (rowCount < expectedRowCount) {
+            throw new Exception(String.format("Data loss detected for %s: got %d rows, expected %d", fileName, rowCount, expectedRowCount));
+        }
     }
 }

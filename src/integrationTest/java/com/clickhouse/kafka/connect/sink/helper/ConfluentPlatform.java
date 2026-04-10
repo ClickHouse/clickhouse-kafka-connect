@@ -1,35 +1,29 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
+import okhttp3.*;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
+
+import org.json.JSONArray;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 
 
 public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
 
-    private static final String CONFLUENT_VERSION = "7.5.0";
+    private static final String CONFLUENT_VERSION = "7.5.0"; // TODO: this is >2 years outdated and should be upgraded or removed outright
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
             "confluentinc/cp-kafka-rest:" + CONFLUENT_VERSION
     );
@@ -67,6 +61,14 @@ public class ConfluentPlatform {
     private String restProxyEndpoint = null;
     private String connectRestEndPoint = null;
     private String ksqlRestEndPoint = null;
+
+    // ref: https://docs.confluent.io/platform/current/kafka-rest/api.html#post--topics-(string-topic_name)
+    // NOTE: the below keys are constants in Confluent rest proxy API v2.
+    private static final String AVRO_V2_APPLICATION_TYPE = "application/vnd.kafka.avro.v2+json";
+    private static final String TOPIC_ENDPOINT_RESPONSE_OFFSETS_KEY = "offsets";
+    private static final String TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY = "error";
+    private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY = "tasks";
+    private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY = "state";
 
     GenericContainer<?> zookeeper;
     GenericContainer<?> cp_server;
@@ -263,8 +265,8 @@ public class ConfluentPlatform {
         Request request = new Request.Builder()
                 .url(clusterIDurl)
                 .build();
-        try (Response response = client.newCall(request).execute()) {
-            JSONObject obj = new JSONObject(response.body().string());
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            JSONObject obj = new JSONObject(responseBody.string());
             return obj.getJSONArray("data").getJSONObject(0).getString("cluster_id").toString();
         } catch (IOException ioe) {
             return null;
@@ -285,12 +287,9 @@ public class ConfluentPlatform {
                 .url(kafkaTopicEndpoint)
                 .post(body)
                 .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
             LOGGER.debug("Create topic response code: {}", response.code());
-            assert response.body() != null;
-            String responseBody = response.body().string();
-            LOGGER.debug("Create topic response body: {}", responseBody);
-            return responseBody;
+            return responseBody.string();
         }
     }
 
@@ -302,12 +301,9 @@ public class ConfluentPlatform {
                 .url(kafkaTopicEndpoint)
                 .delete()
                 .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
             LOGGER.debug("Delete topic response code: {}", response.code());
-            assert response.body() != null;
-            String responseBody = response.body().string();
-            LOGGER.debug("Delete topic response body: {}", responseBody);
-            return responseBody;
+            return responseBody.string();
         }
     }
 
@@ -340,11 +336,8 @@ public class ConfluentPlatform {
                 .addHeader("Content-Type","application/json")
                 .post(body)
                 .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
             LOGGER.info("Create connectors response code: {}", response.code());
-            assert response.body() != null;
-            String responseBody = response.body().string();
-            LOGGER.debug("Create connectors response body: {}", responseBody);
         }
     }
 
@@ -359,17 +352,11 @@ public class ConfluentPlatform {
                 .url(connectorsEndpoint)
                 .delete()
                 .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
             LOGGER.info("Delete connectors response code: {}", response.code());
-            assert response.body() != null;
-            String responseBody = response.body().string();
-            LOGGER.debug("Delete connectors response body: {}", responseBody);
         }
     }
 
-    public void printConnectors() {
-        LOGGER.info(getConnectors());
-    }
 
     public String getConnectors() {
         String connectRestEndpoint = getConnectRestEndPoint();
@@ -379,12 +366,9 @@ public class ConfluentPlatform {
                 .url(connectorsEndpoint)
                 .get()
                 .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
             LOGGER.debug("Get connectors response code: {}", response.code());
-            assert response.body() != null;
-            String responseBody = response.body().string();
-            LOGGER.debug("Get connectors response body: {}", responseBody);
-            return responseBody;
+            return responseBody.string();
         } catch (IOException ioe) {
             return "";
         }
@@ -400,7 +384,6 @@ public class ConfluentPlatform {
                 .post(RequestBody.create("", null))
                 .build();
         try (Response response = client.newCall(request).execute()) {
-            assert response.body() != null;
             if (response.code() == 200) {
                 LOGGER.info("Waiting for connector to finish restarting...");
                 int loopCount = 0;
@@ -442,10 +425,10 @@ public class ConfluentPlatform {
                 .url(kafkaTopicOffsetEndpoint)
                 .get()
                 .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
             LOGGER.info("Get offset response code: {}", response.code());
             if (response.code() == 200) {
-                JSONObject obj = new JSONObject(response.body().string());
+                JSONObject obj = new JSONObject(responseBody.string());
 //                long beginningOffset = obj.getLong("beginning_offset");
                 return obj.getLong("end_offset");
             }
@@ -490,16 +473,101 @@ public class ConfluentPlatform {
         return (int) offsetTotal;
     }
 
+    public int produceAvroRecords(String topicName, String avroSchemaJson, JSONArray records) throws IOException {
+        String restProxyURL = getRestProxyEndpoint();
+        String produceEndpoint = String.format("%s/topics/%s", restProxyURL, topicName);
 
-    public boolean isConnectorRunning(String connectorName) throws IOException {
-        String connectors = getConnectors();
-        HashMap<String, Map> map = (new ObjectMapper()).readValue(connectors, HashMap.class);
-        Map connector = map.get(connectorName);
-        Map status = (Map) connector.get("status");
-        Map connectorStatus = (Map) status.get("connector");
-        String connectorState = String.valueOf(connectorStatus.get("state"));
+        JSONArray wrappedRecords = new JSONArray();
+        for (int i = 0; i < records.length(); i++) {
+            JSONObject wrapper = new JSONObject();
+            wrapper.put("value", records.getJSONObject(i));
+            wrappedRecords.put(wrapper);
+        }
 
-        return "RUNNING".equalsIgnoreCase(connectorState);
+        JSONObject payload = new JSONObject();
+        payload.put("value_schema", avroSchemaJson);
+        payload.put("records", wrappedRecords);
+
+        OkHttpClient client = new OkHttpClient();
+        MediaType AVRO_V2 = MediaType.get(AVRO_V2_APPLICATION_TYPE);
+        RequestBody body = RequestBody.create(payload.toString(), AVRO_V2);
+        Request request = new Request.Builder()
+                .url(produceEndpoint)
+                .addHeader("Content-Type", AVRO_V2_APPLICATION_TYPE)
+                .post(body)
+                .build();
+
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            String responseBodyString = responseBody.string();
+            LOGGER.info("Produce Avro records response code: {} for topic: {}", response.code(), topicName);
+
+            if (response.code() != 200) {
+                throw new IOException("Failed to produce Avro records to topic " + topicName + ": " + responseBodyString);
+            }
+
+            JSONObject responseObj = new JSONObject(responseBodyString);
+            JSONArray offsets = responseObj.getJSONArray(TOPIC_ENDPOINT_RESPONSE_OFFSETS_KEY);
+            int successCount = 0;
+            for (int i = 0; i < offsets.length(); i++) {
+                JSONObject offset = offsets.getJSONObject(i);
+                if (!offset.has(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY) || offset.isNull(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY)) {
+                    successCount++;
+                } else {
+                    LOGGER.warn("Record {} failed: {}", i, offset.get(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY));
+                }
+            }
+            LOGGER.info("Successfully produced {} of {} records to topic {}", successCount, records.length(), topicName);
+            return successCount;
+        }
     }
 
+    /**
+     * Check if a connector's tasks are all running (not FAILED).
+     * Returns the FIRST error trace encountered if any task has failed, or empty optional if all tasks are running.
+     */
+    public Optional<String> getFirstTaskFailureOpt(String connectorName) throws IOException {
+        String connectRestEndpoint = getConnectRestEndPoint();
+        OkHttpClient client = new OkHttpClient();
+        String connectorsEndpoint = String.format("%s/connectors/%s/status", connectRestEndpoint, connectorName);
+        Request request = new Request.Builder()
+                .url(connectorsEndpoint)
+                .get()
+                .build();
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            if (response.code() != 200) {
+                throw new IOException(String.format("Request failed - endpoint: '%s', response: '%s'", connectorsEndpoint, response.code()));
+            }
+            JSONArray tasks = new JSONObject(responseBody.string()).getJSONArray(CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY);
+            if (tasks == null || tasks.isEmpty()) {
+                return Optional.empty();
+            }
+            for (Object task : tasks) {
+                JSONObject jsonTaskObj = (JSONObject) task;
+                String state = String.valueOf(jsonTaskObj.get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY));
+                if ("FAILED".equalsIgnoreCase(state)) {
+                    return Optional.of(jsonTaskObj.has("trace") ? String.valueOf(jsonTaskObj.get("trace")) : "No trace available");
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+
+    public boolean isConnectorRunning(String connectorName) throws IOException {
+        String connectRestEndpoint = getConnectRestEndPoint();
+        OkHttpClient client = new OkHttpClient();
+        String connectorsEndpoint = String.format("%s/connectors/%s/status", connectRestEndpoint, connectorName);
+        Request request = new Request.Builder()
+                .url(connectorsEndpoint)
+                .get()
+                .build();
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            if (response.code() != 200) {
+                throw new IOException(String.format("Request failed - endpoint: '%s', response: '%s'", connectorsEndpoint, response.code()));
+            }
+            JSONObject connector = (JSONObject) new JSONObject(responseBody.string()).get("connector");
+            return "RUNNING".equalsIgnoreCase((String) connector.get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY));
+        }
+    }
 }
