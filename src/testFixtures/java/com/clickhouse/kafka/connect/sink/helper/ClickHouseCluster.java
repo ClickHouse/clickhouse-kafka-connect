@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import org.junit.platform.launcher.LauncherSession;
 import org.junit.platform.launcher.LauncherSessionListener;
 import org.slf4j.Logger;
@@ -8,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
-
+import java.util.Map;
 
 
 /**
@@ -48,36 +49,14 @@ public class ClickHouseCluster {
         return CLUSTER_PORT;
     }
 
-    /**
-     * Pings the cluster HTTP endpoint with retries. Throws RuntimeException if
-     * not reachable after all attempts.
-     */
-    private static void verifyConnectivity() {
-        int maxAttempts = 10;
-        int delayMs = 5000;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                URL url = new URL("http://" + CLUSTER_HOST + ":" + CLUSTER_PORT + "/ping");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout(2000);
-                conn.setReadTimeout(2000);
-                if (conn.getResponseCode() == 200) {
-                    LOGGER.info("Cluster is reachable at {}:{}", CLUSTER_HOST, CLUSTER_PORT);
-                    return;
-                }
-            } catch (IOException e) {
-                LOGGER.info("Cluster not ready yet (attempt {}/{}): {}", attempt, maxAttempts, e.getMessage());
-            }
-            if (attempt < maxAttempts) {
-                try { Thread.sleep(delayMs); } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-        }
-        throw new RuntimeException(
-            "ClickHouse cluster not reachable at " + CLUSTER_HOST + ":" + CLUSTER_PORT +
-            " after " + maxAttempts + " attempts. Ensure dockerComposeUp completed successfully."
+    public static Map<String, String> getClusterProps(String database) {
+        return Map.of(
+                ClickHouseSinkConnector.HOSTNAME, ClickHouseCluster.getHost(),
+                ClickHouseSinkConnector.PORT, ClickHouseCluster.getPort().toString(),
+                ClickHouseSinkConnector.DATABASE, database,
+                ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT,
+                ClickHouseSinkConnector.PASSWORD, "",
+                ClickHouseSinkConnector.SSL_ENABLED, "false"
         );
     }
 
@@ -91,7 +70,9 @@ public class ClickHouseCluster {
         public void launcherSessionOpened(LauncherSession session) {
             if (ClickHouseTestHelpers.isCluster()) {
                 // Cluster should already be started, so verify connectivity before allowing tests to proceed.
-                verifyConnectivity();
+                try (var client = ClickHouseTestHelpers.createClient(getClusterProps("default"))) {
+                    client.ping();
+                }
                 markStarted();
                 LOGGER.info("Cluster mode: Gradle-managed cluster at {}:{}", CLUSTER_HOST, CLUSTER_PORT);
             }
