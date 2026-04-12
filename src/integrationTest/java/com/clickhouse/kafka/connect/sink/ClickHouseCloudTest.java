@@ -112,6 +112,7 @@ public class ClickHouseCloudTest {
         LOGGER.info("Row Count: {}", ClickHouseTestHelpers.countRows(chc, topic));
         Assertions.assertTrue(ClickHouseTestHelpers.countRows(chc, topic) >= sr.size());
         Assertions.assertTrue(ClickHouseTestHelpers.checkSequentialRows(chc, topic, sr.size()));
+        Assertions.assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
         ClickHouseTestHelpers.dropTable(chc, topic);
     }
 }
