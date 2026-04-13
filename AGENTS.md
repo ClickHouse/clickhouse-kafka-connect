@@ -86,6 +86,8 @@ The connector can be configured in the Kafka Connect framework as follows (modif
 }
 ```
 
+See `ClickHouseSinkConfig.java` for connector configuration definitions.
+
 ## Architecture
 
 ### Data Flow
@@ -120,6 +122,8 @@ This means:
 | `ZERO`        | Topic deleted/recreated — treat as fresh start                                       |
 | `ERROR`       | Irrecoverable offset inconsistency (e.g. external offset manipulation)               |
 
+NOTE: all state transition logic is in `Processing.doLogic`
+
 ### Scaling
 
 Processing is single-threaded per topic/partition, matching Kafka's own offset-tracking granularity. The `KeeperMap` state store allows workers to be rebalanced freely — any worker can pick up any partition and resume from strongly consistent state.
@@ -148,7 +152,7 @@ The connector handles four record formats, each with its own converter:
 - Docker
 
 ```bash
-# Compile and run unit tests
+# Compile and run feature tests
 ./gradlew clean test
 
 # Compile and run individual tests
@@ -167,24 +171,26 @@ The connector handles four record formats, each with its own converter:
 ```
 
 **Environment variables**:
-- CLICKHOUSE_VERSION (default: `latest`)
-- CLIENT_VERSION (default: `V2`)
+- CLICKHOUSE_VERSION: one of `yq '.jobs.build.strategy.matrix.clickhouse' .github/workflows/tests.yaml` (default: `latest`)
+- CLIENT_VERSION: one of [`V1`, `V2`] (default: `V2`)
 
 ### Writing Tests
 
-##### Unit tests (`src/test/java`)
-- Use `InMemoryState` as the state provider if necessary — no ClickHouse instance required
+##### Feature tests (`src/test/java`)
+- If extending `ClickHouseBase`, requires a real ClickHouse instance (local Docker or ClickHouse Cloud)
+- These tests should cover as much production code of the connector as possible
+- Use `InMemoryState` as the state provider if necessary
 - Use `InMemoryDLQ` (in test fixtures) to capture DLQ output if necessary
 - Cover all state machine transitions in `ProcessingTest`
 - Do not mock `ClickHouseWriter` in state machine tests — use `InMemoryDBWriter`
 - When writing records to ClickHouse, always read back the data and `assertEquals` against the original records
-- Follow existing patterns in the code, do not repeat yourself
+- Don't repeat yourself (DRY)
 
 ##### Integration tests (`src/integrationTest/java`)
 - Require a real ClickHouse instance (local Docker or ClickHouse Cloud)
 - Cloud integration tests are automatically skipped if cloud properties are not set
 - When writing records to ClickHouse, always read back the data and `assertEquals` against the original records
-- Follow existing patterns in the code, do not repeat yourself
+- Don't repeat yourself (DRY)
 
 ---
 
@@ -193,7 +199,7 @@ The connector handles four record formats, each with its own converter:
 ### Before submitting a PR
 1. `./gradlew clean test` and `./gradlew clean integrationTest` passes (see the Running Tests section above)
 2. `./gradlew spotlessApply` has been run (or `spotlessCheck` passes)
-3. Any new functionality **must have unit test coverage**, optionally integration test coverage - see the Writing Tests section above
+3. Any new functionality **must have feature test coverage**, optionally integration test coverage - see the Writing Tests section above
 4. `VERSION` file is bumped and `CHANGELOG.md` is updated
 
 Formatting is enforced via the **Spotless** plugin (Google Java Style). Always run `spotlessApply` after making changes.
@@ -208,7 +214,7 @@ Formatting is enforced via the **Spotless** plugin (Google Java Style). Always r
 - **Java 17**, Gradle Kotlin DSL (`build.gradle.kts`)
 - **Lombok** for boilerplate: use `@Getter`, `@Setter`, `@Accessors` on data classes
 - **SLF4J** for logging: use TRACE for per-record detail, DEBUG for batch-level, INFO for lifecycle events
-- **JUnit 5** (Jupiter) + **Mockito** for unit tests
+- **JUnit 5** (Jupiter) + **Mockito** for feature tests
 
 ### Correctness & Safety First
 - **Protocol fidelity**: Correct serialization/deserialization of ClickHouse types across all supported versions
@@ -257,3 +263,7 @@ Formatting is enforced via the **Spotless** plugin (Google Java Style). Always r
 ## Review
 
 Use the review skill.
+
+### Rules:
+- Do NOT make commits to the branch without explicitly asking the user
+- Do NOT change the PR title or PR description without explicitly asking the user
