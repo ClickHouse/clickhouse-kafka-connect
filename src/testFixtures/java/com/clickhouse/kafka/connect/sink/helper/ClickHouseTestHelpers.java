@@ -110,6 +110,7 @@ public class ClickHouseTestHelpers {
         String query = String.format("SELECT * FROM `%s`", tableName);
         QuerySettings querySettings = new QuerySettings();
         querySettings.setFormat(ClickHouseFormat.JSONEachRow);
+        querySettings.serverSetting("select_sequential_consistency", "1");
         try {
             QueryResponse queryResponse = chc.getClient().query(query, querySettings).get();
             List<JSONObject> jsonObjects = new ArrayList<>();

@@ -92,11 +92,13 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void describeNestedUnFlattenedTable() {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
-        ClickHouseTestHelpers.query(chc, "CREATE USER IF NOT EXISTS unflatten IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0");
-        ClickHouseTestHelpers.query(chc, "GRANT CURRENT GRANTS ON *.* TO unflatten");
+        String testUsername = createTestUsername("unflatten");
+        ClickHouseHelperClient adminChc = chc;
+        ClickHouseTestHelpers.query(adminChc, String.format("CREATE USER IF NOT EXISTS `%s` IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername));
+        ClickHouseTestHelpers.query(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
 
         Map<String, String> props = createProps();
-        props.put("username", "unflatten");
+        props.put("username", testUsername);
         props.put("password", "123FOURfive^&*91011");
         chc = createClient(props);
 
@@ -114,9 +116,9 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Table normalTable = chc.describeTable(chc.getDatabase(), normalTopic);
             Assertions.assertEquals(1, normalTable.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, nestedTopic);
-            ClickHouseTestHelpers.dropTable(chc, normalTopic);
-            ClickHouseTestHelpers.query(chc, "DROP USER IF EXISTS unflatten");
+            ClickHouseTestHelpers.dropTable(adminChc, nestedTopic);
+            ClickHouseTestHelpers.dropTable(adminChc, normalTopic);
+            ClickHouseTestHelpers.query(adminChc, String.format("DROP USER IF EXISTS `%s`", testUsername));
         }
     }
 

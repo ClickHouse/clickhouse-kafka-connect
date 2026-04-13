@@ -280,4 +280,8 @@ public class ClickHouseBase {
     protected String createTopicName(String name) {
         return String.format("%s_%d", name, System.currentTimeMillis());
     }
+
+    protected String createTestUsername(String baseName) {
+        return String.format("%s_%d", baseName, System.currentTimeMillis());
+    }
 }
