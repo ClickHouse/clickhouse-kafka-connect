@@ -10,10 +10,11 @@ Key design goals:
 - Independent of ClickHouse internals — runs as a standard Kafka Connect worker
 - Push-based — ClickHouse never connects to Kafka
 - Supports all ClickHouse types (including complex types: Array, Map, Tuple)
-  - Converts accurately from `SinkRecord` to ClickHouse data types
+  - Converts accurately from `SinkRecord` -> `Record` -> ClickHouse data types
+  - See public docs page for the full list of supported data types: https://clickhouse.com/docs/integrations/kafka/clickhouse-kafka-connect-sink#supported-data-types
 - Exactly-once delivery via a state machine + ClickHouse's native block deduplication
 - Eager schema validation
-- Supports all kafka record formats (JSON, Avro, etc)
+- Supports all Kafka record formats (see the Data Format Support section below)
 
 Full design rationale: [`docs/DESIGN.md`](./docs/DESIGN.md)
 
@@ -35,8 +36,8 @@ All source code lives under `src/main/java` in the `com.clickhouse.kafka.connect
 | `sink.state`          | - `StateProvider`: interface defining state management API<br/>- `BaseStateProviderImpl`: abstract base implementation of `StateProvider` (NOTE: most, if not all, implementations should inherit from this class) <br/>- `State`: enum of the possible states a topic & partition can be in the exactly-once protocol<br/>- `StateRecord`: in-memory wrapper over a State and a topic name. These are written to the state store in `Processing.doLogic`. |
 | `sink.state.provider` | Contains implementations of `BaseStateProviderImpl`:<br/>- `InMemoryState`: buffers state in-memory (`Map<String, StateRecord>`), used for non exactly-once mode<br/>- `KeeperStateProvider`: stores state in ClickHouse Keeper, used for exactly-once mode                                                                                                                                                                                                |
 | `sink.dlq`            | - `ErrorReporter`: interface that defines how to report errors when records are sent to the DLQ                                                                                                                                                                                                                                                                                                                                                            |
-| `transforms`          | Contains implementations of Kafka Connect `Transformation`. **NOTE: these are currently unused**                                                                                                                                                                                                                                                                                                                                                           |
-| `util`                | Contains miscellaneous utils                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `transforms`          | Contains implementations of Kafka Connect `Transformation`                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `util`                | Contains miscellaneous utils including: JMX metrics providers, Tuple implementations, JSON serializers, and exception handling logic                                                                                                                                                                                                                                                                                                                       |
 
 ### Key Files
 
@@ -132,14 +133,14 @@ Processing is single-threaded per topic/partition, matching Kafka's own offset-t
 
 ## Data Format Support
 
-The connector handles four record formats, each with its own converter:
+The connector handles four Kafka record formats, each with its own converter:
 
-| Format                                 | Converter                   | Insert format |
-|----------------------------------------|-----------------------------|---------------|
-| Avro / Protobuf (with Schema Registry) | `SchemaRecordConvertor`     | RowBinary     |
-| Schemaless JSON                        | `SchemalessRecordConvertor` | JSON          |
-| String                                 | `StringRecordConvertor`     | JSON          |
-| Null / empty                           | `EmptyRecordConvertor`      | —             |
+| Format                                 | Converter                   | Insert format                                                                   |
+|----------------------------------------|-----------------------------|---------------------------------------------------------------------------------|
+| Avro / Protobuf (with Schema Registry) | `SchemaRecordConvertor`     | `RowBinary` (if `bypassRowBinary=false`)<br/>`JSON` (if `bypassRowBinary=true`) |
+| Schemaless JSON                        | `SchemalessRecordConvertor` | `JSON`                                                                          |
+| String                                 | `StringRecordConvertor`     | `JSON`                                                                          |
+| Null / empty                           | `EmptyRecordConvertor`      | —                                                                               |
 
 ---
 
@@ -244,6 +245,7 @@ Formatting is enforced via the **Spotless** plugin (Google Java Style). Always r
 
 ### Observability & Diagnostics
 - **Error messages**: Must be clear, actionable, include context (server version, client version, etc)
+- **Metrics**: Add relevant metrics to the corresponding JMX metrics provider (one of `SinkTaskStatistics` or `TopicStatistics`)
 
 ### Security
 - **Do not log secrets or data in plaintext**: Includes passwords, API keys, and records
