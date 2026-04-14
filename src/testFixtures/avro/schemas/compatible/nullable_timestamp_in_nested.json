@@ -1,0 +1,37 @@
+{
+  "description": "Combination: nullable timestamp-millis inside a nested record",
+  "schema": {
+    "type": "record",
+    "name": "NullableTimestampNested",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "event", "type": {
+        "type": "record",
+        "name": "EventInfo",
+        "fields": [
+          {"name": "name", "type": "string"},
+          {"name": "occurred_at", "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}], "default": null}
+        ]
+      }}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "event": "Tuple(name String, occurred_at Nullable(DateTime64(3)))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "event": {"name": "login", "occurred_at": {"long": 1700000000000}}},
+    {"id": 2, "event": {"name": "logout", "occurred_at": null}},
+    {"id": 3, "event": {"name": "click", "occurred_at": {"long": 1700000002000}}},
+    {"id": 4, "event": {"name": "view", "occurred_at": null}},
+    {"id": 5, "event": {"name": "submit", "occurred_at": {"long": 1700000004000}}},
+    {"id": 6, "event": {"name": "cancel", "occurred_at": {"long": 1700000005000}}},
+    {"id": 7, "event": {"name": "refresh", "occurred_at": null}},
+    {"id": 8, "event": {"name": "search", "occurred_at": {"long": 1700000007000}}},
+    {"id": 9, "event": {"name": "download", "occurred_at": {"long": 1700000008000}}},
+    {"id": 10, "event": {"name": "upload", "occurred_at": null}}
+  ],
+  "expected_row_count": 10
+}

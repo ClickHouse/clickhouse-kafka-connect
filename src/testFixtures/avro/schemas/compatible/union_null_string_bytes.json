@@ -1,0 +1,30 @@
+{
+  "description": "Union: nullable string+bytes [null, string, bytes]",
+  "schema": {
+    "type": "record",
+    "name": "NullableStringBytes",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "content", "type": ["null", "string", "bytes"], "default": null}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "content": "Nullable(String)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "content": {"string": "hello"}},
+    {"id": 2, "content": null},
+    {"id": 3, "content": {"string": "world"}},
+    {"id": 4, "content": null},
+    {"id": 5, "content": {"string": "test"}},
+    {"id": 6, "content": {"bytes": "\u0001"}},
+    {"id": 7, "content": null},
+    {"id": 8, "content": {"string": "more"}},
+    {"id": 9, "content": {"bytes": "\u0002"}},
+    {"id": 10, "content": null}
+  ],
+  "expected_row_count": 10
+}

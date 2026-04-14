@@ -1,0 +1,30 @@
+{
+  "description": "Timestamp: date logical type (days since epoch)",
+  "schema": {
+    "type": "record",
+    "name": "DateLogical",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "event_date", "type": {"type": "int", "logicalType": "date"}}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "event_date": "Date"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "event_date": 19000},
+    {"id": 2, "event_date": 19001},
+    {"id": 3, "event_date": 19002},
+    {"id": 4, "event_date": 19003},
+    {"id": 5, "event_date": 19004},
+    {"id": 6, "event_date": 19005},
+    {"id": 7, "event_date": 19006},
+    {"id": 8, "event_date": 19007},
+    {"id": 9, "event_date": 19008},
+    {"id": 10, "event_date": 19009}
+  ],
+  "expected_row_count": 10
+}

@@ -1,0 +1,40 @@
+{
+  "description": "Nested: map with string keys and record values",
+  "schema": {
+    "type": "record",
+    "name": "MapStringRecord",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "metadata", "type": {
+        "type": "map",
+        "values": {
+          "type": "record",
+          "name": "MetaValue",
+          "fields": [
+            {"name": "score", "type": "int"},
+            {"name": "label", "type": "string"}
+          ]
+        }
+      }}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "metadata": "Map(String, Tuple(score Int32, label String))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "metadata": {"key1": {"score": 10, "label": "a"}}},
+    {"id": 2, "metadata": {"key2": {"score": 20, "label": "b"}, "key3": {"score": 30, "label": "c"}}},
+    {"id": 3, "metadata": {}},
+    {"id": 4, "metadata": {"key4": {"score": 40, "label": "d"}}},
+    {"id": 5, "metadata": {"key5": {"score": 50, "label": "e"}, "key6": {"score": 60, "label": "f"}}},
+    {"id": 6, "metadata": {}},
+    {"id": 7, "metadata": {"key7": {"score": 70, "label": "g"}}},
+    {"id": 8, "metadata": {"key8": {"score": 80, "label": "h"}}},
+    {"id": 9, "metadata": {}},
+    {"id": 10, "metadata": {"key9": {"score": 90, "label": "i"}, "key10": {"score": 100, "label": "j"}}}
+  ],
+  "expected_row_count": 10
+}
