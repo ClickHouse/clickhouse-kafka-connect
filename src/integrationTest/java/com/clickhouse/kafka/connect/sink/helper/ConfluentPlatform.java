@@ -288,8 +288,10 @@ public class ConfluentPlatform {
                 .post(body)
                 .build();
         try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            String responseBodyString = responseBody.string();
             LOGGER.debug("Create topic response code: {}", response.code());
-            return responseBody.string();
+            LOGGER.debug("Create topic response body: {}", responseBodyString);
+            return responseBodyString;
         }
     }
 
@@ -302,8 +304,10 @@ public class ConfluentPlatform {
                 .delete()
                 .build();
         try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            String responseBodyString = responseBody.string();
             LOGGER.debug("Delete topic response code: {}", response.code());
-            return responseBody.string();
+            LOGGER.debug("Delete topic response body: {}", responseBodyString);
+            return responseBodyString;
         }
     }
 
@@ -337,7 +341,9 @@ public class ConfluentPlatform {
                 .post(body)
                 .build();
         try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            String responseBodyString = responseBody.string();
             LOGGER.info("Create connectors response code: {}", response.code());
+            LOGGER.debug("Create connectors response body: {}", responseBodyString);
         }
     }
 
@@ -353,7 +359,9 @@ public class ConfluentPlatform {
                 .delete()
                 .build();
         try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            String responseBodyString = responseBody.string();
             LOGGER.info("Delete connectors response code: {}", response.code());
+            LOGGER.debug("Delete connectors response body: {}", responseBodyString);
         }
     }
 
@@ -367,8 +375,10 @@ public class ConfluentPlatform {
                 .get()
                 .build();
         try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            String responseBodyString = responseBody.string();
             LOGGER.debug("Get connectors response code: {}", response.code());
-            return responseBody.string();
+            LOGGER.debug("Get connectors response body: {}", responseBodyString);
+            return responseBodyString;
         } catch (IOException ioe) {
             return "";
         }
