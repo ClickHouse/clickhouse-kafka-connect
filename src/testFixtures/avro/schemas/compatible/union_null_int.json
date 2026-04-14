@@ -1,0 +1,30 @@
+{
+  "description": "Union: nullable int [null, int]",
+  "schema": {
+    "type": "record",
+    "name": "NullableInt",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "value", "type": ["null", "int"], "default": null}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "value": "Nullable(Int32)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "value": {"int": 100}},
+    {"id": 2, "value": null},
+    {"id": 3, "value": {"int": 300}},
+    {"id": 4, "value": null},
+    {"id": 5, "value": {"int": 500}},
+    {"id": 6, "value": {"int": 600}},
+    {"id": 7, "value": null},
+    {"id": 8, "value": {"int": 800}},
+    {"id": 9, "value": {"int": 900}},
+    {"id": 10, "value": null}
+  ],
+  "expected_row_count": 10
+}

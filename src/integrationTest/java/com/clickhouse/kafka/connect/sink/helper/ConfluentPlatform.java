@@ -473,9 +473,25 @@ public class ConfluentPlatform {
         return (int) offsetTotal;
     }
 
+    public boolean isConnectorRunning(String connectorName) throws IOException {
+        String connectRestEndpoint = getConnectRestEndPoint();
+        OkHttpClient client = new OkHttpClient();
+        String connectorsEndpoint = String.format("%s/connectors/%s/status", connectRestEndpoint, connectorName);
+        Request request = new Request.Builder()
+                .url(connectorsEndpoint)
+                .get()
+                .build();
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            if (response.code() != 200) {
+                throw new IOException(String.format("Request failed - endpoint: '%s', response: '%s'", connectorsEndpoint, response.code()));
+            }
+            JSONObject connector = (JSONObject) new JSONObject(responseBody.string()).get("connector");
+            return "RUNNING".equalsIgnoreCase((String) connector.get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY));
+        }
+    }
+
     public int produceAvroRecords(String topicName, String avroSchemaJson, JSONArray records) throws IOException {
-        String restProxyURL = getRestProxyEndpoint();
-        String produceEndpoint = String.format("%s/topics/%s", restProxyURL, topicName);
+        final String produceEndpoint = String.format("%s/topics/%s", getRestProxyEndpoint(), topicName);
 
         JSONArray wrappedRecords = new JSONArray();
         for (int i = 0; i < records.length(); i++) {
@@ -498,7 +514,7 @@ public class ConfluentPlatform {
                 .build();
 
         try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
-            String responseBodyString = responseBody.string();
+            final String responseBodyString = responseBody.string();
             LOGGER.info("Produce Avro records response code: {} for topic: {}", response.code(), topicName);
 
             if (response.code() != 200) {
@@ -551,23 +567,5 @@ public class ConfluentPlatform {
         }
 
         return Optional.empty();
-    }
-
-
-    public boolean isConnectorRunning(String connectorName) throws IOException {
-        String connectRestEndpoint = getConnectRestEndPoint();
-        OkHttpClient client = new OkHttpClient();
-        String connectorsEndpoint = String.format("%s/connectors/%s/status", connectRestEndpoint, connectorName);
-        Request request = new Request.Builder()
-                .url(connectorsEndpoint)
-                .get()
-                .build();
-        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
-            if (response.code() != 200) {
-                throw new IOException(String.format("Request failed - endpoint: '%s', response: '%s'", connectorsEndpoint, response.code()));
-            }
-            JSONObject connector = (JSONObject) new JSONObject(responseBody.string()).get("connector");
-            return "RUNNING".equalsIgnoreCase((String) connector.get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY));
-        }
     }
 }

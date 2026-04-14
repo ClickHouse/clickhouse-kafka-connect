@@ -1,0 +1,30 @@
+{
+  "description": "Union: nullable long [null, long]",
+  "schema": {
+    "type": "record",
+    "name": "NullableLong",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "big_value", "type": ["null", "long"], "default": null}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "big_value": "Nullable(Int64)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "big_value": {"long": 1000000000}},
+    {"id": 2, "big_value": null},
+    {"id": 3, "big_value": {"long": 3000000000}},
+    {"id": 4, "big_value": null},
+    {"id": 5, "big_value": {"long": 5000000000}},
+    {"id": 6, "big_value": {"long": 6000000000}},
+    {"id": 7, "big_value": null},
+    {"id": 8, "big_value": {"long": 8000000000}},
+    {"id": 9, "big_value": {"long": 9000000000}},
+    {"id": 10, "big_value": null}
+  ],
+  "expected_row_count": 10
+}

@@ -1,0 +1,30 @@
+{
+  "description": "Timestamp: nullable timestamp-millis [null, timestamp-millis]",
+  "schema": {
+    "type": "record",
+    "name": "NullableTimestampMillis",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "created_at", "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}], "default": null}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "created_at": "Nullable(DateTime64(3))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "created_at": {"long": 1700000000000}},
+    {"id": 2, "created_at": null},
+    {"id": 3, "created_at": {"long": 1700000002000}},
+    {"id": 4, "created_at": null},
+    {"id": 5, "created_at": {"long": 1700000004000}},
+    {"id": 6, "created_at": {"long": 1700000005000}},
+    {"id": 7, "created_at": null},
+    {"id": 8, "created_at": {"long": 1700000007000}},
+    {"id": 9, "created_at": {"long": 1700000008000}},
+    {"id": 10, "created_at": null}
+  ],
+  "expected_row_count": 10
+}

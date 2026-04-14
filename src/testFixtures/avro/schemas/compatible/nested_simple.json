@@ -1,0 +1,37 @@
+{
+  "description": "Nested: single-level nested record",
+  "schema": {
+    "type": "record",
+    "name": "NestedSimple",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "info", "type": {
+        "type": "record",
+        "name": "Info",
+        "fields": [
+          {"name": "label", "type": "string"},
+          {"name": "count", "type": "int"}
+        ]
+      }}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "info": "Tuple(label String, count Int32)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "info": {"label": "a", "count": 10}},
+    {"id": 2, "info": {"label": "b", "count": 20}},
+    {"id": 3, "info": {"label": "c", "count": 30}},
+    {"id": 4, "info": {"label": "d", "count": 40}},
+    {"id": 5, "info": {"label": "e", "count": 50}},
+    {"id": 6, "info": {"label": "f", "count": 60}},
+    {"id": 7, "info": {"label": "g", "count": 70}},
+    {"id": 8, "info": {"label": "h", "count": 80}},
+    {"id": 9, "info": {"label": "i", "count": 90}},
+    {"id": 10, "info": {"label": "j", "count": 100}}
+  ],
+  "expected_row_count": 10
+}

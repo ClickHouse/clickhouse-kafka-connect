@@ -22,7 +22,6 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -221,31 +220,14 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
-    private void setupAvroConnector(String topicName, int taskCount) throws IOException, InterruptedException {
+    private void setupAvroConnector(String topicName) throws IOException, InterruptedException {
         LOGGER.info("Setting up Avro connector for topic {}...", topicName);
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
 
-        // TODO: extract this into a json file
-        JSONObject config = new JSONObject();
-        config.put("name", SINK_CONNECTOR_NAME);
-        config.put("connector.class", "com.clickhouse.kafka.connect.ClickHouseSinkConnector");
-        config.put("tasks.max", String.valueOf(taskCount));
-        config.put("topics", topicName);
-        config.put("hostname", CLICKHOUSE_DB_NETWORK_ALIAS);
-        config.put("port", "8123");
-        config.put("database", "default");
-        config.put("username", db.getUsername());
-        config.put("password", db.getPassword());
-        config.put("ssl", "false");
-        config.put("exactlyOnce", "false");
-        config.put("value.converter", "io.confluent.connect.avro.AvroConverter");
-        config.put("value.converter.schema.registry.url", "http://schema-registry:8081");
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_avro.json")));
+        String connectorConfig = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, 1 /* tasks.max=1 for ease of error parsing */, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
 
-        JSONObject payload = new JSONObject();
-        payload.put("name", SINK_CONNECTOR_NAME);
-        payload.put("config", config);
-
-        confluentPlatform.createConnect(payload.toString());
+        confluentPlatform.createConnect(connectorConfig);
         Thread.sleep(1000);
     }
 
@@ -292,29 +274,32 @@ public class ClickHouseSinkConnectorIntegrationTest {
         assertTrue(dataCount <= countRows(chcNoProxy, topicName));
     }
 
-    private static Stream<String> lsAvroSchemas() {
-        String schemaDir = "src/testFixtures/avro/schemas/breaking";
+    private static Stream<String> getCompatibleAvroSchemaPaths() {
+        final String schemaDir = "src/testFixtures/avro/schemas/incompatible";
         return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
     }
 
     @ParameterizedTest
-    @MethodSource("lsAvroSchemas")
-    public void avroSchemaTest(String fixtureFilePath) throws Exception {
-        String fixtureContent = String.join("", Files.readAllLines(Paths.get(fixtureFilePath)));
-        JSONObject fixture = new JSONObject(fixtureContent);
+    @MethodSource("getCompatibleAvroSchemaPaths")
+    public void avroSchemaTest(String path) throws Exception {
+        Path schemaPath = Paths.get(path);
+        JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(schemaPath)));
 
-        String description = fixture.getString("description");
-        JSONObject schema = fixture.getJSONObject("schema");
-        JSONObject clickhouseColumns = fixture.getJSONObject("clickhouse_columns");
-        String orderBy = fixture.getString("clickhouse_order_by");
-        JSONArray records = fixture.getJSONArray("records");
-        int expectedRowCount = fixture.getInt("expected_row_count");
+        // fixture JSON keys
+        final String descriptionKey = "description";
+        final String schemaKey = "schema";
+        final String clickhouseColumnsKey = "clickhouse_columns";
+        final String clickhouseOrderByKey = "clickhouse_order_by";
+        final String recordsKey = "records";
+        final String expectedRowCountKey = "expected_row_count";
+
+        int expectedRowCount = fixture.getInt(expectedRowCountKey);
 
         // Derive topic name from fixture filename (remove .json extension)
-        String fileName = Paths.get(fixtureFilePath).getFileName().toString();
-        String topicName = "chaos_" + fileName.replace(".json", "").replace("-", "_");
+        String fileName = schemaPath.getFileName().toString();
+        String topicName = "avro_test_" + fileName.replace(".json", "").replace("-", "_");
 
-        LOGGER.info("Running chaos test: {} (topic: {}, expected rows: {})", description, topicName, expectedRowCount);
+        LOGGER.info("Running avro integration test: {} (topic: {}, expected rows: {})", fixture.getString(descriptionKey), topicName, expectedRowCount);
 
         // 1. Create topic
         confluentPlatform.createTopic(topicName, 1);
@@ -324,7 +309,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         CreateTableStatement tableStmt = new CreateTableStatement()
                 .tableName(topicName)
                 .engine("MergeTree")
-                .orderByColumn(orderBy);
+                .orderByColumn(fixture.getString(clickhouseOrderByKey));
+        JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         for (String colName : clickhouseColumns.keySet()) {
             tableStmt.column(colName, clickhouseColumns.getString(colName));
         }
@@ -333,13 +319,13 @@ public class ClickHouseSinkConnectorIntegrationTest {
         // 3. Produce Avro records via REST proxy
         int producedCount = confluentPlatform.produceAvroRecords(
                 topicName,
-                schema.toString(),
-                records
+                fixture.getJSONObject(schemaKey).toString(),
+                fixture.getJSONArray(recordsKey)
         );
         LOGGER.info("Produced {} records to topic {}", producedCount, topicName);
 
         // 4. Setup sink connector with Avro converter
-        setupAvroConnector(topicName, 1);
+        setupAvroConnector(topicName);
 
         // 5. Wait for data to flow through
         waitWhileCounting(chcNoProxy, topicName, 3);
@@ -347,15 +333,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         // 6. Check for connector task failure
         Optional<String> taskFailure = confluentPlatform.getFirstTaskFailureOpt(SINK_CONNECTOR_NAME);
         if (taskFailure.isPresent()) {
-            throw new Exception(String.format("Connector task failed for %s: %s", fileName, taskFailure.get()));
+            Assertions.fail(String.format("Connector task failed for %s: %s", fileName, taskFailure.orElseThrow()));
         }
 
         // 7. Check row count
-        int rowCount = countRows(chcNoProxy, topicName);
-        LOGGER.info("ClickHouse row count for {}: {} (expected: {})", topicName, rowCount, expectedRowCount);
-
-        if (rowCount < expectedRowCount) {
-            throw new Exception(String.format("Data loss detected for %s: got %d rows, expected %d", fileName, rowCount, expectedRowCount));
-        }
+        Assertions.assertEquals(expectedRowCount, countRows(chcNoProxy, topicName));
     }
 }
