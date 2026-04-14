@@ -258,7 +258,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     private static Stream<String> getCompatibleAvroSchemaPaths() {
-        final String schemaDir = "src/testFixtures/avro/schemas/incompatible";
+        final String schemaDir = "src/testFixtures/avro/schemas/compatible";
         return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
     }
 
