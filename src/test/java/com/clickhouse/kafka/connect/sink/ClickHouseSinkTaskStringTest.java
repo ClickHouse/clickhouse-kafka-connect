@@ -47,7 +47,6 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("arr_float32", "Array(Float32)")
             .column("arr_float64", "Array(Float64)")
             .column("arr_bool", "Array(Bool)")
-
             .orderByColumn("off16");
 
     private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
@@ -55,17 +54,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("map_string_string", "Map(String, String)")
             .column("map_string_int64", "Map(String, Int64)")
             .column("map_int64_string", "Map(Int64, String)")
-
             .orderByColumn("off16");
-
-
-    private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic, ClickHouseDeploymentType deploymentType) {
-        return ClickHouseTestHelpers.countRowsWithEmojis(chc, topic, deploymentType);
-    }
-
-    private int countRows(ClickHouseHelperClient chc, String topic, ClickHouseDeploymentType deploymentType) {
-        return ClickHouseTestHelpers.countRows(chc, topic, deploymentType);
-    }
 
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
         Gson gson = new Gson();
@@ -398,7 +387,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -419,7 +408,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRows(chc, topic, deploymentType));
+        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -452,7 +441,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -474,7 +463,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -496,7 +485,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -519,7 +508,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -534,7 +523,6 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -544,7 +532,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRowsWithEmojis(chc, topic, deploymentType));
+        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRowsWithEmojis(chc, topic, deploymentType));
     }
 
 
@@ -568,7 +556,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, tableName, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, tableName, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -590,7 +578,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -612,7 +600,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -630,7 +618,6 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);

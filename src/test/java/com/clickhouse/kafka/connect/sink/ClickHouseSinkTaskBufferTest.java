@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
@@ -227,9 +228,8 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferIncompatibleWithExactlyOnce(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void bufferIncompatibleWithExactlyOnce() {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");

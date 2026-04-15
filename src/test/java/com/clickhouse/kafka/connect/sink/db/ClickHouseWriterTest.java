@@ -140,20 +140,20 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
         runWithWriter(props, (chw) -> {
 
-            chw.updateMapping(chc.getDatabase());
-            Map<String, Table> tables = chw.getMapping();
-            assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+                chw.updateMapping(chc.getDatabase());
+                Map<String, Table> tables = chw.getMapping();
+                assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
 
 
-            new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
+                new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
 
-            Table table = chw.getTable(chc.getDatabase(), topic);
-            assertNotNull(table);
-            assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
+                Table table = chw.getTable(chc.getDatabase(), topic);
+                assertNotNull(table);
+                assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
 
-            tables = chw.getMapping();
-            assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
-        });
+                tables = chw.getMapping();
+                assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+            });
 
         ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
     }
@@ -176,8 +176,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topicWithBackticks, deploymentType);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks, deploymentType);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw, deploymentType);
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithoutBackticks).execute(chc);
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithBackticksRaw).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithoutBackticks).deploymentType(deploymentType).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithBackticksRaw).deploymentType(deploymentType).execute(chc);
 
         runWithWriter(props, (chw) -> {
             Table plainMappingTable = chw.getTable(chc.getDatabase(), topicWithoutBackticks);
@@ -188,8 +188,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             assertNotNull(backtickedMappingTable);
             assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTableWithBackticksRaw), backtickedMappingTable.getFullName());
         });
-        ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks, deploymentType);
-        ClickHouseTestHelpers.dropTable(chc, topicWithBackticks, deploymentType);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks, deploymentType);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw, deploymentType);
     }
@@ -240,6 +238,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .deploymentType(deploymentType)
                 .column("_id", "String")
                 .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
+                .deploymentType(deploymentType)
                 .orderByColumn("_id").execute(chc);
 
         Schema tupleSchema = SchemaBuilder.struct()

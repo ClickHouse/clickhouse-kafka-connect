@@ -13,6 +13,7 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -132,9 +133,8 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     }
 
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void proxyPingTest(ClickHouseDeploymentType deploymentType) throws IOException {
+    @Test
+    public void proxyPingTest() throws IOException {
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(getTestProperties());
         assertTrue(chc.ping());
         proxy.disable();
@@ -192,7 +192,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
 
         String topic = createTopicName("m_array_string_table_test");
         // Drop the MV and its target table before the source table to avoid orphaned dependencies
-        ClickHouseTestHelpers.runQuery(chc, String.format("DROP VIEW IF EXISTS `%s_mv`", topic));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("DROP VIEW IF EXISTS `%s_mv`", topic));
         ClickHouseTestHelpers.dropTable(chc, topic + "_mate", deploymentType);
         ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
@@ -202,7 +202,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
                 .engine("Null")
                 .deploymentType(deploymentType)
                 .execute(chc);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE MATERIALIZED VIEW `%s_mv` TO `%s_mate` AS SELECT off16 FROM `%s`", topic, topic, topic));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("CREATE MATERIALIZED VIEW `%s_mv` TO `%s_mate` AS SELECT off16 FROM `%s`", topic, topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
