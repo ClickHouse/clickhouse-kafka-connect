@@ -73,13 +73,6 @@ public class ClickHouseTestHelpers {
         return isClusterMode != null && isClusterMode.equalsIgnoreCase("true");
     }
 
-    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
-        if (isCluster()) {
-            return Stream.of(ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH, ClickHouseDeploymentType.ONE_SHARD_THREE_REPLICAS);
-        }
-        return Stream.of(ClickHouseDeploymentType.STANDALONE);
-    }
-
     public static void executeQueryIgnoreResult(ClickHouseHelperClient chc, String query) {
         try (Records ignored = chc.queryV2(query)) {
             // success
