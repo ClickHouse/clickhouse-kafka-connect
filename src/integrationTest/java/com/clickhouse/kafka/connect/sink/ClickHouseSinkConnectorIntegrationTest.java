@@ -10,10 +10,7 @@ import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -54,6 +51,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static final int PROXY_PORT = 8666;
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
+    private static final boolean isCloud = ClickHouseTestHelpers.isCloud();
     private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
             .column("side", "String")
             .column("quantity", "Int32")
@@ -73,6 +71,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @BeforeAll
     public static void setup() throws IOException {
+        Assumptions.assumeFalse(isCloud, "ClickHouseSinkConnectorIntegrationTest is not supported against cloud");
         Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
         String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();

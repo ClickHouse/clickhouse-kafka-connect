@@ -120,12 +120,7 @@ public class ClickHouseBase {
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put("clickhouseSettings", "insert_quorum=3");
         } else if (isCluster) {
-            props.put(ClickHouseSinkConnector.HOSTNAME, ClickHouseCluster.getHost());
-            props.put(ClickHouseSinkConnector.PORT, ClickHouseCluster.getPort().toString());
-            props.put(ClickHouseSinkConnector.DATABASE, database);
-            props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
-            props.put(ClickHouseSinkConnector.PASSWORD, "");
-            props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+            props.putAll(ClickHouseCluster.getClusterProps(database));
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
             props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());

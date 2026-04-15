@@ -27,6 +27,8 @@ import org.junit.jupiter.api.Assumptions;
 public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
     private static final Properties properties = System.getProperties();
+    private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
+    private static final boolean isCloud = ClickHouseTestHelpers.isCloud();
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
@@ -61,7 +63,8 @@ public class ClickHouseCloudTest {
 
     @BeforeAll
     public static void checkPropsExist() {
-        Assumptions.assumeFalse(ClickHouseTestHelpers.isCluster(), "Cloud tests are not supported in cluster mode");
+        Assumptions.assumeFalse(isCluster, "Cloud tests are not supported in cluster mode");
+        Assumptions.assumeTrue(isCloud, "Cloud tests are not supported in standalone mode");
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);

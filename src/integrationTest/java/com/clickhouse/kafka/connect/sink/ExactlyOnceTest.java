@@ -2,7 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.Records;
-import com.clickhouse.client.config.ClickHouseProxyType;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCloudAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
@@ -22,10 +22,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -42,6 +39,7 @@ public class ExactlyOnceTest {
     private static final Properties cloudProperties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
+    private static final boolean isCloud = ClickHouseTestHelpers.isCloud();
     private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
             .column("side", "String")
             .column("quantity", "Int32")
@@ -59,36 +57,37 @@ public class ExactlyOnceTest {
         return Stream.of(ClickHouseDeploymentType.CLOUD);
     }
 
-    @BeforeAll
-    public static void checkPropsExistAndSetUp() {
+    private static Map<String, String> getTestProperties() {
+        Map<String, String> props = new HashMap<>();
+        props.put(ClickHouseSinkConfig.PROXY_TYPE, "IGNORE");
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
         if (isCluster) {
-            chc = new ClickHouseHelperClient.ClickHouseClientBuilder(
-                    ClickHouseCluster.getHost(), ClickHouseCluster.getPort(), ClickHouseProxyType.IGNORE, null, -1)
-                    .setDatabase(ClickHouseTestHelpers.DATABASE_DEFAULT)
-                    .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
-                    .setPassword("")
-                    .sslEnable(false)
-                    .useClientV2(true)
-                    .build();
-            // clickhouseCloudAPI is intentionally left null — restartService() is cloud-only
+            props.putAll(ClickHouseCluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
         } else {
             // cloud
+            props.putAll(Map.of(
+                    ClickHouseSinkConnector.HOSTNAME, cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP),
+                    ClickHouseSinkConnector.PORT, cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP),
+                    ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT,
+                    ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT,
+                    ClickHouseSinkConnector.PASSWORD, cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP),
+                    ClickHouseSinkConnector.SSL_ENABLED, "true"
+            ));
+        }
+        return props;
+    }
+
+    @BeforeAll
+    public static void checkPropsExistAndSetUp() {
+        Assumptions.assumeTrue(isCluster || isCloud, "ExactlyOnceTest in not supported against standalone");
+        if (isCloud) {
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
-
-            chc = new ClickHouseHelperClient.ClickHouseClientBuilder(
-                    cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP),
-                    Integer.parseInt(cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP)),
-                    ClickHouseProxyType.IGNORE, null, -1)
-                    .setUsername(ClickHouseTestHelpers.USERNAME_DEFAULT)
-                    .setPassword(cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP))
-                    .sslEnable(true)
-                    .useClientV2(true)
-                    .build();
             clickhouseCloudAPI = new ClickHouseCloudAPI(cloudProperties);
         }
 
+        chc = ClickHouseTestHelpers.createClient(getTestProperties());
         Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
         String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();
