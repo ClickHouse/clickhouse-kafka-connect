@@ -46,7 +46,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @MethodSource("deploymentTypesForTests")
     public void showTables(ClickHouseDeploymentType deploymentType) {
         String topic = createTopicName("simple_table_test");
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
             List<String> tableNames = table.stream().map(Table::getCleanName).collect(Collectors.toList());
@@ -64,6 +64,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
+                .deploymentType(deploymentType)
                 .orderByColumn("num").execute(chc);
 
         try {
@@ -82,6 +83,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Array(Nested (innerInt Int32, innerString String))")
+                .deploymentType(deploymentType)
                 .orderByColumn("num").execute(chc);
 
         try {
@@ -112,8 +114,9 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(nestedTopic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
+                .deploymentType(deploymentType)
                 .orderByColumn("num").execute(chc);
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).deploymentType(deploymentType).execute(chc);
 
         try {
             Table nestedTable = chc.describeTable(chc.getDatabase(), nestedTopic);
@@ -143,6 +146,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .column("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL")
                 .column("map_eph", "Map(String, UInt64) EPHEMERAL")
                 .column("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL")
+                .deploymentType(deploymentType)
                 .orderByColumn("off16").execute(chc);
 
         try {

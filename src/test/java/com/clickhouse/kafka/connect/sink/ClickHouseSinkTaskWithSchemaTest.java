@@ -193,7 +193,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("arr", "Array(String)")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -219,7 +218,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("arr", "Array(Nullable(String))")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -264,7 +262,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .engine("Null")
                 .deploymentType(deploymentType)
                 .execute(chc);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE MATERIALIZED VIEW %s_mv TO " + topic + "_mate AS SELECT off16 FROM " + topic, topic));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("CREATE MATERIALIZED VIEW %s_mv TO " + topic + "_mate AS SELECT off16 FROM " + topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -840,7 +838,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("fixed_string_string", "FixedString(" + (fss - 1) + ")")
-
                 .orderByColumn("off16")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -892,7 +889,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         new CreateTableStatement()
                 .tableName(topic)
                 .column("string", "String")
-
                 .orderByColumn("`string`")
                 .deploymentType(deploymentType)
                 .execute(chc);
@@ -1117,13 +1113,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
 
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
         Thread.sleep(5000);
         sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
         int numRecordsWithNullable = sr.size();
         chst.put(sr);
 
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic, clusterClause));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic, clusterClause));
         Thread.sleep(5000);
 
         sr = SchemaTestData.createSimpleExtendWithDefaultData(topic, 1, 20000, 3000);
@@ -1169,7 +1165,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(firstBatch.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 42 AFTER string", topic, clusterClause));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 42 AFTER string", topic, clusterClause));
         Thread.sleep(5000);
 
         // Keep writing records with the old schema (without num32_default).
@@ -1202,13 +1198,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
 
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32 Nullable(Int32) AFTER string", topic, clusterClause));
         Thread.sleep(5000);
         sr = SchemaTestData.createSimpleExtendWithNullableData(topic, 1, 10000, 2000);
         int numRecordsWithNullable = sr.size();
         chst.put(sr);
 
-        ClickHouseTestHelpers.runQuery(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic, clusterClause));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 0 AFTER num32", topic, clusterClause));
         Thread.sleep(5000);
 
         sr = SchemaTestData.createSimpleExtendWithDefaultData(topic, 1, 20000, 3000);

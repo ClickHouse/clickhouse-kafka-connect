@@ -8,6 +8,7 @@ import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -109,9 +110,8 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         return props;
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void proxyPingTest(ClickHouseDeploymentType deploymentType) throws IOException {
+    @Test
+    public void proxyPingTest() throws IOException {
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(getTestProperties());
         assertTrue(chc.ping());
         proxy.disable();

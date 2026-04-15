@@ -357,15 +357,6 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static void runQuery(ClickHouseHelperClient chc, String query) {
-        try (Records ignored = chc.queryV2(query)) {
-            // success
-        } catch (Exception e) {
-            LOGGER.info("Failed to create table ", e);
-            throw new RuntimeException(e);
-        }
-    }
-
     public static void createDatabase(String database, ClickHouseHelperClient chc, ClickHouseDeploymentType deploymentType) {
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
         String createDatabaseQuery = "CREATE DATABASE IF NOT EXISTS `" + database + "`" + clusterClause;

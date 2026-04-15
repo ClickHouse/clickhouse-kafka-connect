@@ -49,6 +49,7 @@ class TableTest extends ClickHouseBase {
                 .tableName(tableName)
                 .column("off16", "Int16")
                 .column("date_number", "Nullable(Date)")
+                .deploymentType(deploymentType)
                 .orderByColumn("off16").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
@@ -71,6 +72,7 @@ class TableTest extends ClickHouseBase {
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")
+                .deploymentType(deploymentType)
                 .orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
