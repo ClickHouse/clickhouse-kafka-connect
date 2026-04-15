@@ -59,8 +59,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     @BeforeEach
     public void setUp() {
         LOGGER.info("Setting up...");
-        Map<String, String> props = createProps();
-        chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        chc = ClickHouseTestHelpers.createClient(props);
     }
 
     @Test
@@ -129,8 +129,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void updateMapping() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("missing_table_mapping_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -157,7 +157,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void getTableUsesTopicToTableMapping() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         String topicWithoutBackticks = createTopicName("mapped_source_topic_plain_test");
         String mappedTableWithoutBackticks = createTopicName("mapped_target_table_plain_test");
         String topicWithBackticks = createTopicName("mapped_source_topic_backtick_test");
@@ -166,7 +166,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.TABLE_MAPPING,
                 topicWithoutBackticks + "=" + mappedTableWithoutBackticks + ","
                         + topicWithBackticks + "=" + mappedTableWithBackticks);
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks);
         ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
@@ -190,8 +190,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void getTableThrowsWhenMissingAndSuppressionDisabled() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("missing_table_get_table_throw_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -204,9 +204,9 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void getTableReturnsNullWhenMissingAndSuppressionEnabled() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.SUPPRESS_TABLE_EXISTENCE_EXCEPTION, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("missing_table_get_table_suppressed_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -219,8 +219,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void doWriteColValue_Tuples() throws Exception {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("do_insert_tuple_order_mismatch_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
