@@ -54,16 +54,7 @@ public class ClickHouseBase {
 
     @AfterAll
     protected void tearDown() {
-        // TODO: disable dropping database for debug
-        if (isCloud) { // We need to clean up databases in the cloud, we can ignore the local database
-            if (!ClickHouseTestHelpers.DATABASE_DEFAULT.equals(database)) {
-                try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
-                    ClickHouseTestHelpers.dropDatabase(tmpClient, database);
-                } catch (Exception e) {
-                    LOGGER.error("Error dropping database", e);
-                }
-            }
-        } else {
+        if (!isCloud) {
             ClickHouseContainer ch = getDb();
             if (ch != null) {
                 LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
