@@ -11,6 +11,7 @@ import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -53,6 +54,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static final int PROXY_PORT = 8666;
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
+    private static final boolean isCloud = ClickHouseTestHelpers.isCloud();
     private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
             .column("side", "String")
             .column("quantity", "Int32")
@@ -72,6 +74,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @BeforeAll
     public static void setup() throws IOException {
+        Assumptions.assumeFalse(isCloud, "ClickHouseSinkConnectorIntegrationTest is not supported against cloud");
         Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
         String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();
@@ -198,11 +201,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
         if (isCluster) {
-            props.put(ClickHouseSinkConnector.HOSTNAME, ClickHouseCluster.getHost());
-            props.put(ClickHouseSinkConnector.PORT, ClickHouseCluster.getPort().toString());
-            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
-            props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
-            props.put(ClickHouseSinkConnector.PASSWORD, "");
+            props.putAll(ClickHouseCluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
         } else {
             // standalone
             props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
