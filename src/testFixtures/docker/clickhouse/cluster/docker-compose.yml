@@ -1,0 +1,64 @@
+---
+x-ch-common: &ch-common
+#  TODO: add different settings files for different CH versions as necessary (see dbt-clickhouse for reference)
+  volumes:
+    - /var/lib/clickhouse
+    - type: bind
+      source: ${DOCKER_ROOT:-.}/clickhouse/cluster/users.xml
+      target: /etc/clickhouse-server/users.d/users.xml
+    - type: bind
+      source: ${DOCKER_ROOT:-.}/clickhouse/cluster/config.xml
+      target: /etc/clickhouse-server/config.d/config.xml
+  ulimits:
+    nofile:
+      soft: 262144
+      hard: 262144
+
+services:
+  ch0:
+    image: clickhouse/clickhouse-server:${CH_VERSION:-latest}
+    environment:
+      - SERVER_INDEX=1
+      - SHARD_NUM=1
+      - REPLICA_NUM=1
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    ports:
+      - "10723:8123"
+      - "10743:8443"
+      - "10900:9000"
+    <<: *ch-common
+  ch1:
+    image: clickhouse/clickhouse-server:${CH_VERSION:-latest}
+    environment:
+      - SERVER_INDEX=2
+      - SHARD_NUM=2
+      - REPLICA_NUM=2
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    ports:
+      - "10724:8123"
+      - "10744:8443"
+      - "10901:9000"
+    <<: *ch-common
+  ch2:
+    image: clickhouse/clickhouse-server:${CH_VERSION:-latest}
+    environment:
+      - SERVER_INDEX=3
+      - SHARD_NUM=3
+      - REPLICA_NUM=3
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    ports:
+      - "10725:8123"
+      - "10745:8443"
+      - "10902:9000"
+    <<: *ch-common
+
+  # Use Nginx as a cluster entrypoint and a round-robin load balancer for client requests
+  # See docker/nginx/local.conf for the configuration
+  nginx:
+    image: 'nginx:1.30.0'
+    hostname: nginx
+    ports:
+      - '10726:8123'
+    volumes:
+      - ${DOCKER_ROOT:-.}/nginx/local.conf:/etc/nginx/conf.d/local.conf
+    container_name: clickhouse-nginx
