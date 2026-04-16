@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +26,6 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     private static final CreateTableStatement SINGLE_NUM_TABLE = new CreateTableStatement()
             .column("num", "String")
-            .engine("MergeTree")
             .orderByColumn("num");
 
     ClickHouseHelperClient chc = null;
@@ -40,56 +42,62 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         Assertions.assertTrue(chc.ping());
     }
 
-    @Test
-    public void showTables() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void showTables(ClickHouseDeploymentType deploymentType) {
         String topic = createTopicName("simple_table_test");
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
-            List<String> tableNames = table.stream().map(item -> item.getCleanName()).collect(Collectors.toList());
+            List<String> tableNames = table.stream().map(Table::getCleanName).collect(Collectors.toList());
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         }
     }
 
-    @Test
-    public void describeNestedFlattenedTable() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void describeNestedFlattenedTable(ClickHouseDeploymentType deploymentType) {
         String topic = createTopicName("nested_flattened_table_test");
         new CreateTableStatement()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .deploymentType(deploymentType)
+                .orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertEquals(3, table.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         }
     }
 
-    @Test
-    public void ignoreArrayWithNestedTable() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void ignoreArrayWithNestedTable(ClickHouseDeploymentType deploymentType) {
         String topic = createTopicName("nested_table_test");
         new CreateTableStatement()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Array(Nested (innerInt Int32, innerString String))")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .deploymentType(deploymentType)
+                .orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertNull(table);
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         }
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
     @SinceClickHouseVersion("24.1")
-    public void describeNestedUnFlattenedTable() {
+    public void describeNestedUnFlattenedTable(ClickHouseDeploymentType deploymentType) {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         String testUsername = createTestUsername("unflatten");
@@ -106,8 +114,9 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(nestedTopic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).execute(chc);
+                .deploymentType(deploymentType)
+                .orderByColumn("num").execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).deploymentType(deploymentType).execute(chc);
 
         try {
             Table nestedTable = chc.describeTable(chc.getDatabase(), nestedTopic);
@@ -116,14 +125,15 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Table normalTable = chc.describeTable(chc.getDatabase(), normalTopic);
             Assertions.assertEquals(1, normalTable.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(adminChc, nestedTopic);
-            ClickHouseTestHelpers.dropTable(adminChc, normalTopic);
+            ClickHouseTestHelpers.dropTable(chc, nestedTopic, deploymentType);
+            ClickHouseTestHelpers.dropTable(chc, normalTopic, deploymentType);
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`", testUsername));
         }
     }
 
-    @Test
-    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized(ClickHouseDeploymentType deploymentType) {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
         new CreateTableStatement()
@@ -136,7 +146,8 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .column("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL")
                 .column("map_eph", "Map(String, UInt64) EPHEMERAL")
                 .column("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .deploymentType(deploymentType)
+                .orderByColumn("off16").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -147,7 +158,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Assertions.assertEquals("off16", table.getAllColumnsList().get(0).getName());
             Assertions.assertEquals("off16", table.getRootColumnsList().get(0).getName());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
+            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         }
     }
 }
