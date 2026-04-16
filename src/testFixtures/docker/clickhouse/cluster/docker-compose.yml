@@ -4,10 +4,10 @@ x-ch-common: &ch-common
   volumes:
     - /var/lib/clickhouse
     - type: bind
-      source: ${CLUSTER_ROOT:-.}/users.xml
+      source: ${DOCKER_ROOT:-.}/clickhouse/cluster/users.xml
       target: /etc/clickhouse-server/users.d/users.xml
     - type: bind
-      source: ${CLUSTER_ROOT:-.}/config.xml
+      source: ${DOCKER_ROOT:-.}/clickhouse/cluster/config.xml
       target: /etc/clickhouse-server/config.d/config.xml
   ulimits:
     nofile:
@@ -55,10 +55,10 @@ services:
   # Use Nginx as a cluster entrypoint and a round-robin load balancer for client requests
   # See docker/nginx/local.conf for the configuration
   nginx:
-    image: 'nginx:1.23.1-alpine'
+    image: 'nginx:1.30.0'
     hostname: nginx
     ports:
       - '10726:8123'
     volumes:
-      - './docker/nginx/local.conf:/etc/nginx/conf.d/local.conf'
+      - ${DOCKER_ROOT:-.}/nginx/local.conf:/etc/nginx/conf.d/local.conf
     container_name: clickhouse-nginx
