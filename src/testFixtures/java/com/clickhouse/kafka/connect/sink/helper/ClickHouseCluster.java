@@ -19,9 +19,10 @@ import java.util.Map;
 public class ClickHouseCluster {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCluster.class);
 
-    // Fixed port mapped by docker-compose.yml: "10723:8123" for ch0
+    // fixed port mapped by docker-compose.yml: "10726:8123" for clickhouse-nginx
+    // requests to the cluster are round-robin'ed
     private static final String CLUSTER_HOST = "localhost";
-    private static final int CLUSTER_PORT = 10723;
+    private static final int CLUSTER_PORT = 10726;
 
     public static final String THREE_SHARDS_ONE_REPLICA_EACH = "three_shards_one_replica_each";
     public static final String ONE_SHARD_THREE_REPLICAS = "one_shard_three_replicas";

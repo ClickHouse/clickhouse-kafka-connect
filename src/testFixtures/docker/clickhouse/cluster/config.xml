@@ -30,6 +30,8 @@
         </three_shards_one_replica_each>
         <one_shard_three_replicas>
             <shard>
+                <!-- write data to just one of the replicas, let ReplicatedMergeTree handle replication to ensure consistency -->
+                <internal_replication>true</internal_replication>
                 <replica>
                     <host>ch0</host>
                     <port>9000</port>

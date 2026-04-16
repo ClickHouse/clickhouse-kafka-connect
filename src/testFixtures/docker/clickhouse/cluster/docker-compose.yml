@@ -34,6 +34,10 @@ services:
       - SHARD_NUM=${SHARD_NUM:-2}
       - REPLICA_NUM=${REPLICA_NUM:-2}
       - CLICKHOUSE_SKIP_USER_SETUP=1
+    ports:
+      - "10724:8123"
+      - "10744:8443"
+      - "10901:9000"
     <<: *ch-common
   ch2:
     image: clickhouse/clickhouse-server:${CH_VERSION:-latest}
@@ -42,4 +46,19 @@ services:
       - SHARD_NUM=${SHARD_NUM:-3}
       - REPLICA_NUM=${REPLICA_NUM:-3}
       - CLICKHOUSE_SKIP_USER_SETUP=1
+    ports:
+      - "10725:8123"
+      - "10745:8443"
+      - "10902:9000"
     <<: *ch-common
+
+  # Use Nginx as a cluster entrypoint and a round-robin load balancer for client requests
+  # See docker/nginx/local.conf for the configuration
+  nginx:
+    image: 'nginx:1.23.1-alpine'
+    hostname: nginx
+    ports:
+      - '10726:8123'
+    volumes:
+      - './docker/nginx/local.conf:/etc/nginx/conf.d/local.conf'
+    container_name: clickhouse-nginx
