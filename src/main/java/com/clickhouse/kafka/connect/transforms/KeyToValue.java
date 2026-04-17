@@ -14,16 +14,21 @@ import java.util.Map;
 
 public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(KeyToValue.class.getName());
-    public static final ConfigDef CONFIG_DEF = new ConfigDef().define("field", ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
-                    "Field name on the record value to extract the record key into.");
+    public static final ConfigDef CONFIG_DEF = new ConfigDef()
+            .define("field", ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
+                    "Field name on the record value to extract the record key into.")
+            .define("cache.schema", ConfigDef.Type.BOOLEAN, true, ConfigDef.Importance.LOW,
+                    "Whether to cache the value schema (if schemas do not change).");
 
     private String keyFieldName;
+    private boolean cacheSchema;
     private Schema valueSchema;
 
     @Override
     public void configure(Map<String, ?> configs) {
         final SimpleConfig config = new SimpleConfig(CONFIG_DEF, configs);
         keyFieldName = config.getString("field");
+        cacheSchema = config.getBoolean("cache.schema");
     }
 
     @Override
@@ -50,21 +55,35 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     private R applyWithSchema(R record) {
         final Struct oldValue = (Struct) record.value();
 
-        if (valueSchema == null) {
+        Schema newValueSchema = valueSchema;
+        if (newValueSchema == null || !cacheSchema) {
             final SchemaBuilder builder = SchemaBuilder.struct();
-            builder.name(oldValue.schema().name());
-            builder.version(oldValue.schema().version());
-            builder.doc(oldValue.schema().doc());
+            if (oldValue.schema().name() != null) {
+                builder.name(oldValue.schema().name());
+            }
+            if (oldValue.schema().version() != null) {
+                builder.version(oldValue.schema().version());
+            }
+            if (oldValue.schema().doc() != null) {
+                builder.doc(oldValue.schema().doc());
+            }
             oldValue.schema().fields().forEach(f -> {
                 builder.field(f.name(), f.schema());
             });
             builder.field(keyFieldName, record.keySchema() == null ? Schema.OPTIONAL_STRING_SCHEMA : record.keySchema());
-            valueSchema = builder.build();
-            valueSchema.schema().fields().forEach(f -> LOGGER.debug("Field: {}", f));
+            newValueSchema = builder.build();
+
+            if (LOGGER.isDebugEnabled()) {
+                newValueSchema.fields().forEach(f -> LOGGER.debug("Field: {}", f));
+            }
+
+            if (cacheSchema) {
+                valueSchema = newValueSchema;
+            }
         }
 
-        Struct newValue = new Struct(valueSchema);
-        valueSchema.fields().forEach(f -> {
+        Struct newValue = new Struct(newValueSchema);
+        newValueSchema.fields().forEach(f -> {
             if (f.name().equals(keyFieldName)) {
                 newValue.put(f, record.key());
             } else {
@@ -72,7 +91,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
             }
         });
         LOGGER.debug("New schema value: {}", newValue);
-        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), valueSchema, newValue, record.timestamp());
+        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), newValueSchema, newValue, record.timestamp());
     }
 
     @Override
