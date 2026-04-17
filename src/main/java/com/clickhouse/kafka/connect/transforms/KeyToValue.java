@@ -5,6 +5,9 @@ import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
+import org.apache.kafka.common.cache.Cache;
+import org.apache.kafka.common.cache.LRUCache;
+import org.apache.kafka.common.cache.SynchronizedCache;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.slf4j.Logger;
@@ -16,19 +19,16 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     private static final Logger LOGGER = LoggerFactory.getLogger(KeyToValue.class.getName());
     public static final ConfigDef CONFIG_DEF = new ConfigDef()
             .define("field", ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
-                    "Field name on the record value to extract the record key into.")
-            .define("cache.schema", ConfigDef.Type.BOOLEAN, true, ConfigDef.Importance.LOW,
-                    "Whether to cache the value schema (if schemas do not change).");
+                    "Field name on the record value to extract the record key into.");
 
     private String keyFieldName;
-    private boolean cacheSchema;
-    private Schema valueSchema;
+    private Cache<Schema, Schema> schemaUpdateCache;
 
     @Override
     public void configure(Map<String, ?> configs) {
         final SimpleConfig config = new SimpleConfig(CONFIG_DEF, configs);
         keyFieldName = config.getString("field");
-        cacheSchema = config.getBoolean("cache.schema");
+        schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(16));
     }
 
     @Override
@@ -55,9 +55,11 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     private R applyWithSchema(R record) {
         final Struct oldValue = (Struct) record.value();
 
-        Schema newValueSchema = valueSchema;
-        if (newValueSchema == null || !cacheSchema) {
+        Schema newValueSchema = schemaUpdateCache.get(oldValue.schema());
+
+        if (newValueSchema == null) {
             final SchemaBuilder builder = SchemaBuilder.struct();
+
             if (oldValue.schema().name() != null) {
                 builder.name(oldValue.schema().name());
             }
@@ -77,9 +79,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
                 newValueSchema.fields().forEach(f -> LOGGER.debug("Field: {}", f));
             }
 
-            if (cacheSchema) {
-                valueSchema = newValueSchema;
-            }
+            schemaUpdateCache.put(oldValue.schema(), newValueSchema);
         }
 
         Struct newValue = new Struct(newValueSchema);
@@ -101,7 +101,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
 
     @Override
     public void close() {
-        valueSchema = null;
+        schemaUpdateCache = null;
     }
 
     public static class SimpleConfig extends AbstractConfig {

@@ -30,9 +30,6 @@ public class KeyToValueBenchmark {
     @State(Scope.Benchmark)
     public static class BenchmarkState {
 
-        @Param({"true", "false"})
-        boolean cacheSchema;
-
         @Param({"10000", "100000", "1000000"})
         int records;
 
@@ -45,7 +42,6 @@ public class KeyToValueBenchmark {
             keyToValueTransform = new KeyToValue<>();
             Map<String, String> configs = new HashMap<>();
             configs.put("field", "_key");
-            configs.put("cache.schema", String.valueOf(cacheSchema));
             keyToValueTransform.configure(configs);
 
             Schema keySchema = Schema.INT32_SCHEMA;
