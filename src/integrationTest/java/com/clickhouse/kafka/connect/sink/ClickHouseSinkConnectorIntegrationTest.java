@@ -262,6 +262,19 @@ public class ClickHouseSinkConnectorIntegrationTest {
         return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
     }
 
+
+    /*
+        Test sinking Avro records with various schemas that the connector currently supports.
+
+        To add a new compatible schema to test:
+        1. create a new JSON file in `src/testFixtures/avro/schemas/compatible`
+        2. copy the structure from another schema file - ensure the following fields exists: [description, schema, clickhouse_columns, clickhouse_order_by, records, expected_row_count]
+
+        The test will pick up the new schema automatically.
+
+        To add a new incompatible schema, follow the same instructions as above but add the schema to `src/testFixtures/avro/schemas/incompatible`.
+        Over time, the goal is to fix the connector to make previously incompatible schemas compatible.
+     */
     @ParameterizedTest
     @MethodSource("getCompatibleAvroSchemaPaths")
     public void avroSchemaTest(String path) throws Exception {
