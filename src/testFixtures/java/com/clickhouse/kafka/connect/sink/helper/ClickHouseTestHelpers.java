@@ -411,14 +411,9 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    // TODO: add deployment mode?
-    public static void clearTable(ClickHouseHelperClient chc, String tableName) {
-        String sql = "TRUNCATE TABLE " + tableName;
-        LOGGER.info("Clear table: " + sql);
-        try (Records records = chc.getClient().queryRecords(sql).get(10, TimeUnit.SECONDS)) {
-            LOGGER.info("Create: {}", records.getMetrics());
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    public static void clearTable(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType deploymentType) {
+        String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
+        String sql = String.format("TRUNCATE TABLE `%s`%s", tableName, clusterClause);
+        executeQueryIgnoreResult(chc, sql);
     }
 }

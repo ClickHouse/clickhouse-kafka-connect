@@ -1752,6 +1752,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         props.put(ClickHouseSinkConfig.TOLERATE_STATE_MISMATCH, "true");
         props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");
+        if (deploymentType.isLocalCluster()) {
+            props.put(ClickHouseSinkConfig.KEEPER_ON_CLUSTER, deploymentType.clusterName);
+        }
         chst.start(props);
         for (Collection<SinkRecord> records : data) {
             chst.put(records);

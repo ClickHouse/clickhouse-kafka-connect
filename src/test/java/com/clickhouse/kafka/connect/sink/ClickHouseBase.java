@@ -118,7 +118,7 @@ public class ClickHouseBase {
             props.put(ClickHouseSinkConnector.PASSWORD, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD));
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
-            props.put("clickhouseSettings", "insert_quorum=3");
+            props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "insert_quorum=3");
         } else if (isCluster) {
             props.putAll(ClickHouseCluster.getClusterProps(database));
         } else {

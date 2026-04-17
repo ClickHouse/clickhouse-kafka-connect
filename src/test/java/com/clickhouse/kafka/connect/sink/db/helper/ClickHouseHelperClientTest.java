@@ -101,8 +101,9 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         String testUsername = createTestUsername("unflatten");
+        String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
         ClickHouseHelperClient adminChc = chc;
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s` IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername, clusterClause));
         ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
 
         Map<String, String> props = getBaseProps();
@@ -127,7 +128,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         } finally {
             ClickHouseTestHelpers.dropTable(chc, nestedTopic, deploymentType);
             ClickHouseTestHelpers.dropTable(chc, normalTopic, deploymentType);
-            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`", testUsername));
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`%s", testUsername, clusterClause));
         }
     }
 
