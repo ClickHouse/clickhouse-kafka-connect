@@ -1,0 +1,30 @@
+{
+  "description": "Logical: decimal on fixed type (precision 18, scale 4)",
+  "schema": {
+    "type": "record",
+    "name": "DecimalFixed",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "amount", "type": {"type": "fixed", "name": "decimal_18_4", "size": 8, "logicalType": "decimal", "precision": 18, "scale": 4}}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "amount": "Decimal(18, 4)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000d"},
+    {"id": 2, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000y"},
+    {"id": 3, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0001,"},
+    {"id": 4, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0001\u0090"},
+    {"id": 5, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0001\u00f4"},
+    {"id": 6, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0002X"},
+    {"id": 7, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0002\u00bc"},
+    {"id": 8, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0003 "},
+    {"id": 9, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0003\u0084"},
+    {"id": 10, "amount": "\u0000\u0000\u0000\u0000\u0000\u0000\u0003\u00e8"}
+  ],
+  "expected_row_count": 10
+}

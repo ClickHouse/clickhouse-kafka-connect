@@ -8,24 +8,25 @@ import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -202,6 +203,17 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
+    private void setupAvroConnector(String topicName) throws IOException, InterruptedException {
+        LOGGER.info("Setting up Avro connector for topic {}...", topicName);
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_avro.json")));
+        String connectorConfig = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, 1 /* tasks.max=1 for ease of error parsing */, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
+
+        confluentPlatform.createConnect(connectorConfig);
+        Thread.sleep(1000);
+    }
+
     private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
@@ -243,5 +255,84 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
 
         assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
+    }
+
+    private static Stream<String> getCompatibleAvroSchemaPaths() {
+        final String schemaDir = "src/testFixtures/avro/schemas/compatible";
+        return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
+    }
+
+
+    /*
+        Test sinking Avro records with various schemas that the connector currently supports.
+
+        To add a new compatible schema to test:
+        1. create a new JSON file in `src/testFixtures/avro/schemas/compatible`
+        2. copy the structure from another schema file - ensure the following fields exists: [description, schema, clickhouse_columns, clickhouse_order_by, records, expected_row_count]
+
+        The test will pick up the new schema automatically.
+
+        To add a new incompatible schema, follow the same instructions as above but add the schema to `src/testFixtures/avro/schemas/incompatible`.
+        Over time, the goal is to fix the connector to make previously incompatible schemas compatible.
+     */
+    @ParameterizedTest
+    @MethodSource("getCompatibleAvroSchemaPaths")
+    public void avroSchemaTest(String path) throws Exception {
+        Path schemaPath = Paths.get(path);
+        JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(schemaPath)));
+
+        // fixture JSON keys
+        final String descriptionKey = "description";
+        final String schemaKey = "schema";
+        final String clickhouseColumnsKey = "clickhouse_columns";
+        final String clickhouseOrderByKey = "clickhouse_order_by";
+        final String recordsKey = "records";
+        final String expectedRowCountKey = "expected_row_count";
+
+        int expectedRowCount = fixture.getInt(expectedRowCountKey);
+
+        // Derive topic name from fixture filename (remove .json extension)
+        String fileName = schemaPath.getFileName().toString();
+        String topicName = "avro_test_" + fileName.replace(".json", "").replace("-", "_");
+
+        LOGGER.info("Running avro integration test: {} (topic: {}, expected rows: {})", fixture.getString(descriptionKey), topicName, expectedRowCount);
+
+        // 1. Create topic
+        confluentPlatform.createTopic(topicName, 1);
+
+        // 2. Create ClickHouse table
+        dropTable(chcNoProxy, topicName);
+        CreateTableStatement tableStmt = new CreateTableStatement()
+                .tableName(topicName)
+                .engine("MergeTree")
+                .orderByColumn(fixture.getString(clickhouseOrderByKey));
+        JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
+        for (String colName : clickhouseColumns.keySet()) {
+            tableStmt.column(colName, clickhouseColumns.getString(colName));
+        }
+        tableStmt.execute(chcNoProxy);
+
+        // 3. Produce Avro records via REST proxy
+        int producedCount = confluentPlatform.produceAvroRecords(
+                topicName,
+                fixture.getJSONObject(schemaKey).toString(),
+                fixture.getJSONArray(recordsKey)
+        );
+        LOGGER.info("Produced {} records to topic {}", producedCount, topicName);
+
+        // 4. Setup sink connector with Avro converter
+        setupAvroConnector(topicName);
+
+        // 5. Wait for data to flow through
+        waitWhileCounting(chcNoProxy, topicName, 3);
+
+        // 6. Check for connector task failure
+        Optional<String> taskFailure = confluentPlatform.getFirstTaskFailureOpt(SINK_CONNECTOR_NAME);
+        if (taskFailure.isPresent()) {
+            Assertions.fail(String.format("Connector task failed for %s: %s", fileName, taskFailure.orElseThrow()));
+        }
+
+        // 7. Check row count
+        Assertions.assertEquals(expectedRowCount, countRows(chcNoProxy, topicName));
     }
 }
