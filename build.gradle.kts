@@ -37,6 +37,7 @@ plugins {
     id("com.github.johnrengelman.shadow") version "7.1.2"
     id("com.google.protobuf") version "0.9.5"
     id("java-test-fixtures")
+    id("org.sonarqube") version "7.2.3.7755"
 }
 
 group = "com.clickhouse.kafka"
