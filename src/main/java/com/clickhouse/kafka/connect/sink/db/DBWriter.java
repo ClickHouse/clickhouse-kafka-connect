@@ -11,9 +11,9 @@ import java.util.concurrent.ExecutionException;
 
 public interface DBWriter {
 
-    public boolean start(ClickHouseSinkConfig csc);
-    public void stop();
-    public void doInsert(List<Record> records, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException;
-    public void doInsert(List<Record> records, QueryIdentifier queryId, ErrorReporter errorReporter) throws IOException, ExecutionException, InterruptedException;
-    public long recordsInserted();
+    boolean start(ClickHouseSinkConfig csc);
+    void stop();
+    void doInsert(List<Record> records, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException;
+    void doInsert(List<Record> records, QueryIdentifier queryId, ErrorReporter errorReporter) throws IOException, ExecutionException, InterruptedException;
+    long recordsInserted();
 }
