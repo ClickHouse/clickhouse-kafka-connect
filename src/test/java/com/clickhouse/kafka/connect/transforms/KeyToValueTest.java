@@ -1,6 +1,5 @@
 package com.clickhouse.kafka.connect.transforms;
 
-import com.clickhouse.kafka.connect.transforms.KeyToValue;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
