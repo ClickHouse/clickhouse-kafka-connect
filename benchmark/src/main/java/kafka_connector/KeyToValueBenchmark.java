@@ -46,23 +46,45 @@ public class KeyToValueBenchmark {
 
             Schema keySchema = Schema.INT32_SCHEMA;
 
-            Schema valueSchema = SchemaBuilder.struct()
+            Schema valueSchemaV1 = SchemaBuilder.struct()
+                    .name("com.example.Record")
+                    .version(1)
                     .field("off16", Schema.INT16_SCHEMA)
                     .field("string", Schema.STRING_SCHEMA)
                     .build();
 
+            Schema valueSchemaV2 = SchemaBuilder.struct()
+                    .name("com.example.Record")
+                    .version(2)
+                    .field("off16", Schema.INT16_SCHEMA)
+                    .field("string", Schema.STRING_SCHEMA)
+                    .field("extra_field", Schema.OPTIONAL_STRING_SCHEMA)
+                    .build();
+
             List<SinkRecord> array = new ArrayList<>();
             for (int n = 0; n < records; n++) {
-                Struct value_struct = new Struct(valueSchema)
-                        .put("off16", (short) n)
-                        .put("string", "test string");
+                // Alternate between schema versions to simulate schema evolution
+                // This tests cache hits and misses
+                Schema currentSchema = (n % 2 == 0) ? valueSchemaV1 : valueSchemaV2;
+
+                Struct value_struct;
+                if (currentSchema == valueSchemaV1) {
+                    value_struct = new Struct(valueSchemaV1)
+                            .put("off16", (short) n)
+                            .put("string", "test string");
+                } else {
+                    value_struct = new Struct(valueSchemaV2)
+                            .put("off16", (short) n)
+                            .put("string", "test string")
+                            .put("extra_field", "extra value");
+                }
 
                 SinkRecord sr = new SinkRecord(
                         TOPIC_NAME,
                         PARTITION,
                         keySchema,
                         n, // integer key
-                        valueSchema,
+                        currentSchema,
                         value_struct,
                         n,
                         System.currentTimeMillis(),
