@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(KeyToValue.class.getName());
@@ -23,6 +24,8 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
 
     private String keyFieldName;
     private Cache<Schema, Schema> schemaUpdateCache;
+
+    protected AtomicInteger cacheMisses = new AtomicInteger(0);
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -80,6 +83,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
             }
 
             schemaUpdateCache.put(oldValue.schema(), newValueSchema);
+            cacheMisses.incrementAndGet();
         }
 
         Struct newValue = new Struct(newValueSchema);

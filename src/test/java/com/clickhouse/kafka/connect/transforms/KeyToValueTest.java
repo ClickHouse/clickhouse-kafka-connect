@@ -11,8 +11,18 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+
+import io.confluent.connect.avro.AvroConverter;
+import io.confluent.kafka.schemaregistry.avro.AvroSchema;
+import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.connect.data.SchemaAndValue;
 
 public class KeyToValueTest {
     @Test
@@ -153,5 +163,74 @@ public class KeyToValueTest {
                 .put("timestamp_int64", new Date(System.currentTimeMillis()))
                 .put("date_date", new Date(System.currentTimeMillis()));
         return new SinkRecord(topic, partition, null, "{\"sample\": \"keys\"}", schema, value_struct, offset);
+    }
+
+    @Test
+    public void applyWithEvolutionAvroSchemasTest() throws Exception {
+        String topic = "test_evolution_topic";
+        MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
+
+        org.apache.avro.Schema avroSchema1 = org.apache.avro.SchemaBuilder.record("TestRecord")
+                .fields()
+                .name("string_field").type().stringType().noDefault()
+                .endRecord();
+
+        org.apache.avro.Schema avroSchema2 = org.apache.avro.SchemaBuilder.record("TestRecord")
+                .fields()
+                .name("string_field").type().stringType().noDefault()
+                .name("string_field2").type().optional().stringType()
+                .endRecord();
+
+        schemaRegistry.register(topic + "-value", new AvroSchema(avroSchema1));
+        schemaRegistry.register(topic + "-value", new AvroSchema(avroSchema2));
+
+        AvroConverter converter = new AvroConverter(schemaRegistry);
+        Map<String, Object> converterConfig = new HashMap<>();
+        converterConfig.put(KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-url");
+        converter.configure(converterConfig, false);
+
+        KafkaAvroSerializer serializer = new KafkaAvroSerializer(schemaRegistry);
+
+        GenericRecord record1 = new GenericData.Record(avroSchema1);
+        record1.put("string_field", "value1");
+
+        GenericRecord record2 = new GenericData.Record(avroSchema2);
+        record2.put("string_field", "value2");
+        record2.put("string_field2", "value3");
+
+        byte[] bytes1 = serializer.serialize(topic, record1);
+        SchemaAndValue sav1 = converter.toConnectData(topic, bytes1);
+        SinkRecord sinkRecord1 = new SinkRecord(topic, 0, null, "{\"key1\": \"val1\"}", sav1.schema(), sav1.value(), 0);
+
+        byte[] bytes2 = serializer.serialize(topic, record2);
+        SchemaAndValue sav2 = converter.toConnectData(topic, bytes2);
+        SinkRecord sinkRecord2 = new SinkRecord(topic, 0, null, "{\"key2\": \"val2\"}", sav2.schema(), sav2.value(), 1);
+
+        try(KeyToValue<SinkRecord> keyToValue = new KeyToValue<>()) {
+            keyToValue.configure(new HashMap<>());
+            SinkRecord newRecord1 = keyToValue.apply(sinkRecord1);
+            SinkRecord newRecord2 = keyToValue.apply(sinkRecord2);
+
+            for (int i = 0; i < 10; i++) {
+                keyToValue.apply(sinkRecord1);
+                keyToValue.apply(sinkRecord2);
+            }
+
+            Assertions.assertEquals(2, keyToValue.cacheMisses.get());
+
+            Assertions.assertTrue(newRecord1.value() instanceof Struct);
+            Assertions.assertNotNull(((Struct) newRecord1.value()).get("_key"));
+            Assertions.assertEquals("{\"key1\": \"val1\"}", ((Struct) newRecord1.value()).get("_key"));
+            Assertions.assertNotNull(((Struct) newRecord1.value()).schema().field("string_field"));
+            Assertions.assertNull(((Struct) newRecord1.value()).schema().field("string_field2"));
+
+            Assertions.assertTrue(newRecord2.value() instanceof Struct);
+            Assertions.assertNotNull(((Struct) newRecord2.value()).get("_key"));
+            Assertions.assertEquals("{\"key2\": \"val2\"}", ((Struct) newRecord2.value()).get("_key"));
+            Assertions.assertNotNull(((Struct) newRecord2.value()).schema().field("string_field"));
+            Assertions.assertNotNull(((Struct) newRecord2.value()).schema().field("string_field2"));
+
+            Assertions.assertNotEquals(((Struct) newRecord1.value()).schema(), ((Struct) newRecord2.value()).schema());
+        }
     }
 }
