@@ -1,6 +1,6 @@
 ---
 x-ch-common: &ch-common
-#  TODO: add different settings files for different CH versions as necessary (see dbt-clickhouse for reference)
+#  TODO: add different settings files for different CH versions as necessary (see https://github.com/ClickHouse/dbt-clickhouse/blob/main/tests/integration/docker-compose.yml for reference)
   volumes:
     - /var/lib/clickhouse
     - type: bind
