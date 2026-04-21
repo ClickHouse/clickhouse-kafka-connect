@@ -23,7 +23,9 @@ import java.util.regex.Pattern;
 public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
 
-    private static final String CONFLUENT_VERSION = "7.5.0"; // TODO: this is >2 years outdated and should be upgraded or removed outright
+    private static final String CONFLUENT_VERSION = "7.9.6";
+    private static final String DATAGEN_VERSION = "0.6.4-7.6.0";
+
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
             "confluentinc/cp-kafka-rest:" + CONFLUENT_VERSION
     );
@@ -39,9 +41,9 @@ public class ConfluentPlatform {
     private static final DockerImageName CP_SCHEMA_REGISTRY = DockerImageName.parse(
             "confluentinc/cp-schema-registry:" + CONFLUENT_VERSION
     );
-    // 0.4.0-6.0.1
+
     private static final DockerImageName CP_DATA_GEN = DockerImageName.parse(
-            "cnfldemos/cp-server-connect-datagen:0.6.2-7.5.0"
+            "cnfldemos/cp-server-connect-datagen:" + DATAGEN_VERSION
     );
 
     private static final DockerImageName CP_CONTROL_CENTER = DockerImageName.parse(
