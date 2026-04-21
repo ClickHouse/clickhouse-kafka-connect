@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message RecordNullableFields {
+  int32 id = 1;
+  Details details = 2;
+
+  message Details {
+    optional string name = 1;
+    optional int32 age = 2;
+  }
+}

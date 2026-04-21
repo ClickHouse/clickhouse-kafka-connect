@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+import "google/protobuf/timestamp.proto";
+
+message NullableTimestampNested {
+  int32 id = 1;
+  EventInfo event = 2;
+
+  message EventInfo {
+    string name = 1;
+    google.protobuf.Timestamp occurred_at = 2;
+  }
+}

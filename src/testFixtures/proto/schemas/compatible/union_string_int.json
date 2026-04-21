@@ -1,0 +1,21 @@
+{
+  "description": "Oneof { string | int32 } -> CH Variant(String, Int32)",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "mixed": "Variant(\"String\", \"Int32\")"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "mixed_string": "hello"},
+    {"id": 2, "mixed_int": 42},
+    {"id": 3, "mixed_string": "world"},
+    {"id": 4, "mixed_int": 99},
+    {"id": 5, "mixed_string": "foo"},
+    {"id": 6, "mixed_int": 7},
+    {"id": 7, "mixed_string": "bar"},
+    {"id": 8, "mixed_int": 123},
+    {"id": 9, "mixed_string": "baz"},
+    {"id": 10, "mixed_int": 0}
+  ],
+  "expected_row_count": 10
+}

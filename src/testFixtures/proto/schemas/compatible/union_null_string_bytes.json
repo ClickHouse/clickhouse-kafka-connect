@@ -1,0 +1,21 @@
+{
+  "description": "Oneof { string | bytes } with absent case for null",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "content": "Variant(String, String)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "text": "hello"},
+    {"id": 2},
+    {"id": 3, "text": "world"},
+    {"id": 4},
+    {"id": 5, "text": "test"},
+    {"id": 6, "data": "AQ=="},
+    {"id": 7},
+    {"id": 8, "text": "more"},
+    {"id": 9, "data": "Ag=="},
+    {"id": 10}
+  ],
+  "expected_row_count": 10
+}

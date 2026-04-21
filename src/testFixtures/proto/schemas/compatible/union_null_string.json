@@ -1,0 +1,21 @@
+{
+  "description": "Optional string (proto3 field presence via `optional` keyword)",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "name": "Nullable(String)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "name": "Alice"},
+    {"id": 2},
+    {"id": 3, "name": "Charlie"},
+    {"id": 4},
+    {"id": 5, "name": "Eve"},
+    {"id": 6, "name": "Frank"},
+    {"id": 7},
+    {"id": 8, "name": "Harriet"},
+    {"id": 9, "name": "Ivan"},
+    {"id": 10}
+  ],
+  "expected_row_count": 10
+}

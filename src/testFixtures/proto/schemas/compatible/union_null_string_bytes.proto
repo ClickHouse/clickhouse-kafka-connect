@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message NullableStringBytes {
+  int32 id = 1;
+  oneof content {
+    string text = 2;
+    bytes data = 3;
+  }
+}

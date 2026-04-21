@@ -1,0 +1,17 @@
+{
+  "description": "Oneof { TypeA | TypeB } -> CH Variant(Tuple, Tuple)",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "payload": "Variant(Tuple(label String), Tuple(count Int32))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "type_a": {"label": "foo"}},
+    {"id": 3, "type_b": {"count": 42}},
+    {"id": 5, "type_a": {"label": "bar"}},
+    {"id": 6, "type_b": {"count": 99}},
+    {"id": 8, "type_a": {"label": "baz"}},
+    {"id": 9, "type_b": {"count": 7}}
+  ],
+  "expected_row_count": 6
+}

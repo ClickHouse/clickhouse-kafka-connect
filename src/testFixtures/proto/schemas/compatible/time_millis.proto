@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message TimeMillis {
+  int32 id = 1;
+  int32 event_time = 2;
+}
