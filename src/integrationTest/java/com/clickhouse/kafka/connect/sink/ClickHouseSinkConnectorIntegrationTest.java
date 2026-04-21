@@ -212,6 +212,17 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
+    private void setupProtobufConnector(String topicName) throws IOException, InterruptedException {
+        LOGGER.info("Setting up Protobuf connector for topic {}...", topicName);
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+
+        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_protobuf.json")));
+        String connectorConfig = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, 1 /* tasks.max=1 for ease of error parsing */, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
+
+        confluentPlatform.createConnect(connectorConfig);
+        Thread.sleep(1000);
+    }
+
     private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
@@ -320,6 +331,91 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
         // 4. Setup sink connector with Avro converter
         setupAvroConnector(topicName);
+
+        // 5. Wait for data to flow through
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
+
+        // 6. Check for connector task failure
+        Optional<String> taskFailure = confluentPlatform.getFirstTaskFailureOpt(SINK_CONNECTOR_NAME);
+        if (taskFailure.isPresent()) {
+            Assertions.fail(String.format("Connector task failed for %s: %s", fileName, taskFailure.orElseThrow()));
+        }
+
+        // 7. Check row count
+        Assertions.assertEquals(expectedRowCount, ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
+    }
+
+    private static Stream<String> getCompatibleProtoSchemaPaths() {
+        final String schemaDir = "src/testFixtures/proto/schemas/compatible";
+        return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles((dir, name) -> name.endsWith(".json"))))
+                .map(file -> schemaDir + "/" + file.getName());
+    }
+
+
+    /*
+        Test sinking Protobuf records with various schemas that the connector currently supports.
+
+        Each fixture is a pair of files sharing a basename, located under `src/testFixtures/proto/schemas/compatible`:
+          - <name>.proto: proto3 IDL. The first top-level message is the record type (REST Proxy v2 uses MessageIndexes 0 by default).
+          - <name>.json:  { description, clickhouse_columns, clickhouse_order_by, records, expected_row_count }
+                          Records follow protobuf JSON encoding (https://protobuf.dev/programming-guides/json/).
+
+        To add a new compatible fixture, drop a matching <name>.proto + <name>.json pair into the directory above.
+        The test picks up new fixtures automatically by listing the *.json files.
+
+        To add a new incompatible fixture, place the pair under `src/testFixtures/proto/schemas/incompatible` instead.
+        Over time, the goal is to fix the connector to make previously incompatible schemas compatible.
+     */
+    @ParameterizedTest
+    @MethodSource("getCompatibleProtoSchemaPaths")
+    public void protoSchemaTest(String path) throws Exception {
+        Path jsonPath = Paths.get(path);
+        JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(jsonPath)));
+
+        // fixture JSON keys
+        final String descriptionKey = "description";
+        final String clickhouseColumnsKey = "clickhouse_columns";
+        final String clickhouseOrderByKey = "clickhouse_order_by";
+        final String recordsKey = "records";
+        final String expectedRowCountKey = "expected_row_count";
+
+        int expectedRowCount = fixture.getInt(expectedRowCountKey);
+
+        // Derive basename and sibling .proto path
+        String fileName = jsonPath.getFileName().toString();
+        String baseName = fileName.replace(".json", "");
+        Path protoPath = jsonPath.resolveSibling(baseName + ".proto");
+        String protoSchemaIdl = String.join("\n", Files.readAllLines(protoPath));
+
+        String topicName = "proto_test_" + baseName.replace("-", "_");
+
+        LOGGER.info("Running protobuf integration test: {} (topic: {}, expected rows: {})", fixture.getString(descriptionKey), topicName, expectedRowCount);
+
+        // 1. Create topic
+        confluentPlatform.createTopic(topicName, 1);
+
+        // 2. Create ClickHouse table
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
+        CreateTableStatement tableStmt = new CreateTableStatement()
+                .tableName(topicName)
+                .engine("MergeTree")
+                .orderByColumn(fixture.getString(clickhouseOrderByKey));
+        JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
+        for (String colName : clickhouseColumns.keySet()) {
+            tableStmt.column(colName, clickhouseColumns.getString(colName));
+        }
+        tableStmt.execute(chcNoProxy);
+
+        // 3. Produce Protobuf records via REST proxy
+        int producedCount = confluentPlatform.produceProtoRecords(
+                topicName,
+                protoSchemaIdl,
+                fixture.getJSONArray(recordsKey)
+        );
+        LOGGER.info("Produced {} records to topic {}", producedCount, topicName);
+
+        // 4. Setup sink connector with Protobuf converter
+        setupProtobufConnector(topicName);
 
         // 5. Wait for data to flow through
         ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);

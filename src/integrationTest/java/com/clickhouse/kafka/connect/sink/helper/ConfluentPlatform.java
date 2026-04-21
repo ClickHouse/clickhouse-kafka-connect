@@ -67,6 +67,7 @@ public class ConfluentPlatform {
     // ref: https://docs.confluent.io/platform/current/kafka-rest/api.html#post--topics-(string-topic_name)
     // NOTE: the below keys are constants in Confluent rest proxy API v2.
     private static final String AVRO_V2_APPLICATION_TYPE = "application/vnd.kafka.avro.v2+json";
+    private static final String PROTOBUF_V2_APPLICATION_TYPE = "application/vnd.kafka.protobuf.v2+json";
     private static final String TOPIC_ENDPOINT_RESPONSE_OFFSETS_KEY = "offsets";
     private static final String TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY = "error";
     private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY = "tasks";
@@ -531,6 +532,53 @@ public class ConfluentPlatform {
 
             if (response.code() != 200) {
                 throw new IOException("Failed to produce Avro records to topic " + topicName + ": " + responseBodyString);
+            }
+
+            JSONObject responseObj = new JSONObject(responseBodyString);
+            JSONArray offsets = responseObj.getJSONArray(TOPIC_ENDPOINT_RESPONSE_OFFSETS_KEY);
+            int successCount = 0;
+            for (int i = 0; i < offsets.length(); i++) {
+                JSONObject offset = offsets.getJSONObject(i);
+                if (!offset.has(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY) || offset.isNull(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY)) {
+                    successCount++;
+                } else {
+                    LOGGER.warn("Record {} failed: {}", i, offset.get(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY));
+                }
+            }
+            LOGGER.info("Successfully produced {} of {} records to topic {}", successCount, records.length(), topicName);
+            return successCount;
+        }
+    }
+
+    public int produceProtoRecords(String topicName, String protoSchemaIdl, JSONArray records) throws IOException {
+        final String produceEndpoint = String.format("%s/topics/%s", getRestProxyEndpoint(), topicName);
+
+        JSONArray wrappedRecords = new JSONArray();
+        for (int i = 0; i < records.length(); i++) {
+            JSONObject wrapper = new JSONObject();
+            wrapper.put("value", records.getJSONObject(i));
+            wrappedRecords.put(wrapper);
+        }
+
+        JSONObject payload = new JSONObject();
+        payload.put("value_schema", protoSchemaIdl);
+        payload.put("records", wrappedRecords);
+
+        OkHttpClient client = new OkHttpClient();
+        MediaType PROTOBUF_V2 = MediaType.get(PROTOBUF_V2_APPLICATION_TYPE);
+        RequestBody body = RequestBody.create(payload.toString(), PROTOBUF_V2);
+        Request request = new Request.Builder()
+                .url(produceEndpoint)
+                .addHeader("Content-Type", PROTOBUF_V2_APPLICATION_TYPE)
+                .post(body)
+                .build();
+
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            final String responseBodyString = responseBody.string();
+            LOGGER.info("Produce Protobuf records response code: {} for topic: {}", response.code(), topicName);
+
+            if (response.code() != 200) {
+                throw new IOException("Failed to produce Protobuf records to topic " + topicName + ": " + responseBodyString);
             }
 
             JSONObject responseObj = new JSONObject(responseBodyString);
