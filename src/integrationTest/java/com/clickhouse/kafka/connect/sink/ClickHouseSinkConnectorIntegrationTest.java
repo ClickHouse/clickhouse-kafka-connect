@@ -16,8 +16,6 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
-
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -301,7 +299,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, 1);
 
         // 2. Create ClickHouse table
-        dropTable(chcNoProxy, topicName);
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         CreateTableStatement tableStmt = new CreateTableStatement()
                 .tableName(topicName)
                 .engine("MergeTree")
@@ -324,7 +322,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         setupAvroConnector(topicName);
 
         // 5. Wait for data to flow through
-        waitWhileCounting(chcNoProxy, topicName, 3);
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
 
         // 6. Check for connector task failure
         Optional<String> taskFailure = confluentPlatform.getFirstTaskFailureOpt(SINK_CONNECTOR_NAME);
@@ -333,6 +331,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
 
         // 7. Check row count
-        Assertions.assertEquals(expectedRowCount, countRows(chcNoProxy, topicName));
+        Assertions.assertEquals(expectedRowCount, ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 }
