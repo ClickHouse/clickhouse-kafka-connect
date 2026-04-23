@@ -1,18 +1,10 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
-import org.junit.platform.launcher.LauncherSession;
-import org.junit.platform.launcher.LauncherSessionListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.ComposeContainer;
 
 import java.io.File;
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.Map;
-
 
 /**
  * This class represents a CH cluster that runs locally as defined by src/testFixtures/docker/cluster/docker-compose.yml.
@@ -48,7 +40,10 @@ public class ClickHouseCluster {
     }
 
     public void start() {
-        container.start();
+        container
+                .withEnv("DOCKER_ROOT", new File("src/testFixtures/docker").getAbsolutePath())
+                .withEnv("CH_VERSION", ClickHouseTestHelpers.getClickhouseVersion())
+                .start();
     }
 
     public void stop() {
