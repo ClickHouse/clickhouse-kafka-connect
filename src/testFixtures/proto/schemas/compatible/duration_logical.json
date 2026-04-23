@@ -2,7 +2,7 @@
   "description": "Duration: google.protobuf.Duration (seconds+nanos). Semantic mismatch with Avro's month+day+ms duration.",
   "clickhouse_columns": {
     "id": "Int32",
-    "duration": "String"
+    "duration": "Tuple(`seconds` Int64, `nano` Nullable(Int32))"
   },
   "clickhouse_order_by": "id",
   "records": [

@@ -2,7 +2,8 @@
   "description": "Oneof { TypeA | TypeB } -> CH Variant(Tuple, Tuple)",
   "clickhouse_columns": {
     "id": "Int32",
-    "payload": "Variant(Tuple(label String), Tuple(count Int32))"
+    "type_a": "Nullable(Tuple(label String))",
+    "type_b": "Nullable(Tuple(count Int32))"
   },
   "clickhouse_order_by": "id",
   "records": [

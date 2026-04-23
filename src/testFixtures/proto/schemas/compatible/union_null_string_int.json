@@ -2,7 +2,8 @@
   "description": "Oneof { string | int32 } with absent case for null",
   "clickhouse_columns": {
     "id": "Int32",
-    "mixed": "Variant(\"String\", \"Int32\")"
+    "mixed_string": "Nullable(String)",
+    "mixed_int": "Nullable(Int32)"
   },
   "clickhouse_order_by": "id",
   "records": [
