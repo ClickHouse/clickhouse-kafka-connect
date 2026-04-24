@@ -301,6 +301,10 @@ public class ClickHouseWriter implements DBWriter {
                                     }
                                 }
 
+                                if ("VARIANT".equalsIgnoreCase(colTypeName) && Schema.Type.STRUCT.getName().equalsIgnoreCase(dataTypeName)) {
+                                    continue;
+                                }
+
                                 validSchema = false;
                                 LOGGER.error(String.format("Table column name [%s] type [%s] is not matching data column type [%s]", col.getName(), colTypeName, dataTypeName));
                             }
@@ -840,7 +844,7 @@ public class ClickHouseWriter implements DBWriter {
         } catch (Exception e) {
             // Note: this part will be removed once V1 is deprecated
             LOGGER.error("Error inserting records", e);
-            if (e.getMessage().indexOf("ClickHouseException: Code: 33") != -1 && retry == true) {
+            if (e.getMessage() != null && e.getMessage().contains("ClickHouseException: Code: 33") && retry) {
                 LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
                 Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);

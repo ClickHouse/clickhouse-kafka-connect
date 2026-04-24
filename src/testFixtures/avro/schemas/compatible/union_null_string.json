@@ -1,0 +1,30 @@
+{
+  "description": "Union: nullable string [null, string]",
+  "schema": {
+    "type": "record",
+    "name": "NullableString",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "name", "type": ["null", "string"], "default": null}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "name": "Nullable(String)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "name": {"string": "Alice"}},
+    {"id": 2, "name": null},
+    {"id": 3, "name": {"string": "Charlie"}},
+    {"id": 4, "name": null},
+    {"id": 5, "name": {"string": "Eve"}},
+    {"id": 6, "name": {"string": "Frank"}},
+    {"id": 7, "name": null},
+    {"id": 8, "name": {"string": "Harriet"}},
+    {"id": 9, "name": {"string": "Ivan"}},
+    {"id": 10, "name": null}
+  ],
+  "expected_row_count": 10
+}

@@ -1,0 +1,39 @@
+{
+  "description": "Union: union of two different record types [recordA, recordB]",
+  "schema": {
+    "type": "record",
+    "name": "TwoRecords",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "payload", "type": [{
+        "type": "record",
+        "name": "TypeA",
+        "fields": [
+          {"name": "label", "type": "string"}
+        ]
+      }, {
+        "type": "record",
+        "name": "TypeB",
+        "fields": [
+          {"name": "count", "type": "int"}
+        ]
+      }]
+      }
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "payload": "Variant(Tuple(label String), Tuple(count Int32))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "payload": {"com.clickhouse.kafka.connect.avro.test.TypeA": {"label": "foo"}}},
+    {"id": 3, "payload": {"com.clickhouse.kafka.connect.avro.test.TypeB": {"count": 42}}},
+    {"id": 5, "payload": {"com.clickhouse.kafka.connect.avro.test.TypeA": {"label": "bar"}}},
+    {"id": 6, "payload": {"com.clickhouse.kafka.connect.avro.test.TypeB": {"count": 99}}},
+    {"id": 8, "payload": {"com.clickhouse.kafka.connect.avro.test.TypeA": {"label": "baz"}}},
+    {"id": 9, "payload": {"com.clickhouse.kafka.connect.avro.test.TypeB": {"count": 7}}}
+  ],
+  "expected_row_count": 6
+}

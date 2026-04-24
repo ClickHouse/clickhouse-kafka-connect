@@ -1,0 +1,30 @@
+{
+  "description": "Union: 3-way nullable union [null, string, int]",
+  "schema": {
+    "type": "record",
+    "name": "NullableStringInt",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "mixed", "type": ["null", "string", "int"], "default": null}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "mixed": "Variant(\"String\", \"Int32\")"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "mixed": {"string": "hello"}},
+    {"id": 2, "mixed": null},
+    {"id": 3, "mixed": {"int": 42}},
+    {"id": 4, "mixed": null},
+    {"id": 5, "mixed": {"string": "world"}},
+    {"id": 6, "mixed": {"int": 99}},
+    {"id": 7, "mixed": null},
+    {"id": 8, "mixed": {"string": "test"}},
+    {"id": 9, "mixed": {"int": 7}},
+    {"id": 10, "mixed": null}
+  ],
+  "expected_row_count": 10
+}

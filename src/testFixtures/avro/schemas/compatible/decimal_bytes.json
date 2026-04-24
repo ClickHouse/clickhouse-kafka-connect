@@ -1,0 +1,30 @@
+{
+  "description": "Logical: decimal on bytes type (precision 10, scale 2)",
+  "schema": {
+    "type": "record",
+    "name": "DecimalBytes",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "amount", "type": {"type": "bytes", "logicalType": "decimal", "precision": 10, "scale": 2}}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "amount": "Decimal(10, 2)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "amount": "d"},
+    {"id": 2, "amount": "y"},
+    {"id": 3, "amount": "\u0001,"},
+    {"id": 4, "amount": "\u0001\u0090"},
+    {"id": 5, "amount": "\u0001\u00f4"},
+    {"id": 6, "amount": "\u0002X"},
+    {"id": 7, "amount": "\u0002\u00bc"},
+    {"id": 8, "amount": "\u0003 "},
+    {"id": 9, "amount": "\u0003\u0084"},
+    {"id": 10, "amount": "\u0003\u00e8"}
+  ],
+  "expected_row_count": 10
+}

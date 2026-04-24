@@ -1,0 +1,50 @@
+{
+  "description": "Nested: 3 levels deep (record in record in record)",
+  "schema": {
+    "type": "record",
+    "name": "NestedDeep",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "level1", "type": {
+        "type": "record",
+        "name": "Level1",
+        "fields": [
+          {"name": "name", "type": "string"},
+          {"name": "level2", "type": {
+            "type": "record",
+            "name": "Level2",
+            "fields": [
+              {"name": "value", "type": "int"},
+              {"name": "level3", "type": {
+                "type": "record",
+                "name": "Level3",
+                "fields": [
+                  {"name": "tag", "type": "string"}
+                ]
+              }}
+            ]
+          }}
+        ]
+      }}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "level1": "Tuple(name String, level2 Tuple(value Int32, level3 Tuple(tag String)))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "level1": {"name": "a", "level2": {"value": 1, "level3": {"tag": "x"}}}},
+    {"id": 2, "level1": {"name": "b", "level2": {"value": 2, "level3": {"tag": "y"}}}},
+    {"id": 3, "level1": {"name": "c", "level2": {"value": 3, "level3": {"tag": "z"}}}},
+    {"id": 4, "level1": {"name": "d", "level2": {"value": 4, "level3": {"tag": "w"}}}},
+    {"id": 5, "level1": {"name": "e", "level2": {"value": 5, "level3": {"tag": "v"}}}},
+    {"id": 6, "level1": {"name": "f", "level2": {"value": 6, "level3": {"tag": "u"}}}},
+    {"id": 7, "level1": {"name": "g", "level2": {"value": 7, "level3": {"tag": "t"}}}},
+    {"id": 8, "level1": {"name": "h", "level2": {"value": 8, "level3": {"tag": "s"}}}},
+    {"id": 9, "level1": {"name": "i", "level2": {"value": 9, "level3": {"tag": "r"}}}},
+    {"id": 10, "level1": {"name": "j", "level2": {"value": 10, "level3": {"tag": "q"}}}}
+  ],
+  "expected_row_count": 10
+}
