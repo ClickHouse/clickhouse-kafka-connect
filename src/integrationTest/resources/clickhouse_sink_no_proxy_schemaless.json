@@ -12,7 +12,7 @@
     "database": "%s",
     "username": "%s",
     "password": "%s",
-    "ssl": "true",
+    "ssl": "%b",
     "exactlyOnce" : "%b"
   }
 }

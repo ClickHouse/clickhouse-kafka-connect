@@ -4,8 +4,11 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 import java.util.Map;
@@ -34,44 +37,48 @@ class TableTest extends ClickHouseBase {
         assertEquals(5, mapValueType.getPrecision());
     }
 
-    @Test
-    public void extractNullables() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void extractNullables(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("off16", "Int16")
                 .column("date_number", "Nullable(Date)")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .deploymentType(deploymentType)
+                .orderByColumn("off16").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
-        assertEquals(table.getRootColumnsList().size(), 2);
-        assertEquals(table.getAllColumnsList().size(), 3);
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        assertEquals(2, table.getRootColumnsList().size());
+        assertEquals(3, table.getAllColumnsList().size());
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
     }
 
-    @Test
-    public void extractCommentV1() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void extractCommentV1(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")
-                .engine("MergeTree()").orderByColumn("tuple()").execute(chc);
+                .deploymentType(deploymentType)
+                .orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
         assertEquals(table.getRootColumnsList().size(), 2);
-        ClickHouseTestHelpers.dropTable(chc, tableName);
+        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
     }
 
     @Test
