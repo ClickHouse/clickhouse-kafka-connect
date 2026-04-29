@@ -36,8 +36,8 @@ class TableTest extends ClickHouseBase {
 
     @Test
     public void extractNullables() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
@@ -56,9 +56,9 @@ class TableTest extends ClickHouseBase {
 
     @Test
     public void extractCommentV1() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);

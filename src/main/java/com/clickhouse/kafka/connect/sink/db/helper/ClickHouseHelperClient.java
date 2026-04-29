@@ -27,7 +27,6 @@ import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,9 +44,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
     private final String hostname;
     private final int port;
+    @Getter
     private final String username;
     @Getter
     private final String database;
+    @Getter
     private final String password;
     private final boolean sslEnabled;
     private final String jdbcConnectionProperties;
@@ -261,17 +262,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
         return queryV1(query, null);
     }
 
-    public Records queryV2(String query) {
-        return queryV2(query, (ClickHouseFormat) null);
-    }
-
-    public Records queryV2(String query, @Nullable ClickHouseFormat clickHouseFormat) {
-        QuerySettings settings = new QuerySettings();
-        if (clickHouseFormat != null)
-            settings.setFormat(clickHouseFormat);
-        return queryV2(query, settings);
-    }
-
     public ClickHouseResponse queryV1(String query, ClickHouseFormat clickHouseFormat) {
         int retryCount = 0;
         Exception ce = null;
@@ -292,6 +282,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
             }
         }
         throw new RuntimeException(ce);
+    }
+
+    public Records queryV2(String query) {
+        return queryV2(query, new QuerySettings());
     }
 
     public Records queryV2(String query, QuerySettings settings) {

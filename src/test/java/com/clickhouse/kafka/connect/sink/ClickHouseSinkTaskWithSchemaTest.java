@@ -106,8 +106,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void arrayTypesTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "array_string_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -128,8 +128,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void arrayNullableSubtypesTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "array_nullable_subtypes_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -160,8 +160,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void mapTypesTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "map_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -181,8 +181,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void nullArrayTypeTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("nullable_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -205,8 +205,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void nullableArrayTypeTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("nullable_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -230,8 +230,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
     public void materializedViewsBug() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("m_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic + "mate");
@@ -270,8 +270,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("special-char-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -292,8 +292,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
     public void nullValueDataTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("null-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -319,8 +319,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
     public void supportDatesTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("support-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -366,8 +366,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void supportArrayDateTime64Test() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("support-array-datetime64-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -391,8 +391,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void detectUnsupportedDataConversions() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("support-unsupported-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -422,8 +422,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void supportZonedDatesStringTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("support-dates-string-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -448,9 +448,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void supportFormattedDatesStringTest() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.DATE_TIME_FORMAT, "format_date=yyyy-MM-dd HH:mm:ss.SSSSSSSSS");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("support-formatted-dates-string-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -488,8 +488,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void withEmptyDataRecordsTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("schema_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -511,8 +511,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void withLowCardinalityTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -536,8 +536,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void withUUIDTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("schema_empty_records_lc_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -559,8 +559,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithDefaultsTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -585,8 +585,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithEphemeralTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -611,8 +611,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithDefaultsAndNullableTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -637,8 +637,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithDecimalTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("decimal-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -662,8 +662,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithFixedStringTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("fixed-string-value-table-test");
         int fixedStringSize = RandomUtils.insecure().randomInt(1, 100);
@@ -690,8 +690,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void writeBooleanValueToIntTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("schema-with-boolean-and-int-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -802,8 +802,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithFixedStringMismatchTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("fixed-string-mismatch-table-test");
         int fixedStringSize = RandomUtils.insecure().randomInt(2, 100);
@@ -831,8 +831,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithNullableDecimalTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("nullable-decimal-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -856,8 +856,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void schemaWithBytesTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("bytes-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
@@ -878,8 +878,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
     @Test
     public void supportEnumTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("enum-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
@@ -903,8 +903,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @SinceClickHouseVersion("24.1")
     public void schemaWithTupleOfMapsWithVariantTest() {
         Assumptions.assumeFalse(isCloud, "Skip test since experimental is not available in cloud");
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = "tuple-array-map-variant-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
 
@@ -968,8 +968,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             LOGGER.warn("Skip test since experimental is not available in cloud");
             return;
         }
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = "nested-tuple-map-array-and-variant-table-test";
         ClickHouseTestHelpers.dropTable(chc, topic);
 
@@ -1037,8 +1037,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void unsignedIntegers() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("unsigned-integers-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1063,8 +1063,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void changeSchemaWhileRunning() throws InterruptedException {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("change-schema-while-running-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(CHANGE_SCHEMA_TABLE)
@@ -1101,8 +1101,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void changeSchemaWhileRunningAddDefaultColumnOldSchemaData() throws InterruptedException {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("change-schema-add-default-old-schema-data-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(CHANGE_SCHEMA_TABLE)
@@ -1141,8 +1141,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void changeSchemaWhileRunningWithRefreshEnabled() throws InterruptedException {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         props.put(ClickHouseSinkConfig.TABLE_REFRESH_INTERVAL, "1");
         String topic = createTopicName("change-schema-while-running-table-test-with-refresh-enabled");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1179,8 +1179,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
     @Test
     public void tupleTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("tuple-table-test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1204,8 +1204,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
     @Test
     public void tupleTestWithDefault() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("tuple-table-test-default");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1231,8 +1231,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void nestedTupleTestWithDefault() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("nested-tuple-table-test-default");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1267,8 +1267,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
      */
     @Test
     public void jacksonStructJsonInsertTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("jackson-struct-json-insert");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1368,8 +1368,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
      */
     @Test
     public void jacksonStructWithNullsJsonInsertTest() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("jackson-struct-nulls-json-insert");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1446,8 +1446,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void coolSchemaWithRandomFields() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("cool-schema-with-random-field");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1481,8 +1481,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     @SinceClickHouseVersion("24.10")
     public void testWritingJsonAsStringWithRowBinary() {
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
         String topic = createTopicName("schema_json_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1511,8 +1511,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @SinceClickHouseVersion("24.10")
     public void testWritingProtoMessageWithRowBinary() throws Exception {
 
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
         String topic = createTopicName("protobuf_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1673,8 +1673,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         // This test is running only cloud
         if (!isCloud)
             return;
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "exactly_once_state_mismatch_test_" + split + "_" + batch + "_" + System.currentTimeMillis();
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1719,8 +1719,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         String topic = createTopicName("test_avro_union_string");
 
         List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(Image.getClassSchema()), Arrays.asList(image1, image2));
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic)
@@ -1774,8 +1774,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         List<SinkRecord> records = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(Event.getClassSchema()), events);
 
-        Map<String, String> props = createProps();
-        ClickHouseHelperClient chc = createClient(props);
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic)
