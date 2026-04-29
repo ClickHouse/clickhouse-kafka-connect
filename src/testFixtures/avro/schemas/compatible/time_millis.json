@@ -1,0 +1,30 @@
+{
+  "description": "Timestamp: time-millis logical type",
+  "schema": {
+    "type": "record",
+    "name": "TimeMillis",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "event_time", "type": {"type": "int", "logicalType": "time-millis"}}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "event_time": "Int32"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "event_time": 0},
+    {"id": 2, "event_time": 3600000},
+    {"id": 3, "event_time": 7200000},
+    {"id": 4, "event_time": 10800000},
+    {"id": 5, "event_time": 14400000},
+    {"id": 6, "event_time": 18000000},
+    {"id": 7, "event_time": 21600000},
+    {"id": 8, "event_time": 25200000},
+    {"id": 9, "event_time": 28800000},
+    {"id": 10, "event_time": 32400000}
+  ],
+  "expected_row_count": 10
+}

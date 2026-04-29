@@ -1,0 +1,30 @@
+{
+  "description": "Combination: array of nullable strings",
+  "schema": {
+    "type": "record",
+    "name": "ArrayNullableStrings",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "tags", "type": {"type": "array", "items": ["null", "string"]}}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "tags": "Array(Nullable(String))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "tags": [{"string": "a"}, null, {"string": "b"}]},
+    {"id": 2, "tags": [null, null]},
+    {"id": 3, "tags": [{"string": "c"}]},
+    {"id": 4, "tags": []},
+    {"id": 5, "tags": [{"string": "d"}, {"string": "e"}, null]},
+    {"id": 6, "tags": [null]},
+    {"id": 7, "tags": [{"string": "f"}, {"string": "g"}]},
+    {"id": 8, "tags": []},
+    {"id": 9, "tags": [null, {"string": "h"}, null]},
+    {"id": 10, "tags": [{"string": "i"}]}
+  ],
+  "expected_row_count": 10
+}

@@ -1,0 +1,30 @@
+{
+  "description": "Logical: uuid logical type on string",
+  "schema": {
+    "type": "record",
+    "name": "UuidLogical",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "uuid_field", "type": {"type": "string", "logicalType": "uuid"}}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "uuid_field": "UUID"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "uuid_field": "550e8400-e29b-41d4-a716-446655440001"},
+    {"id": 2, "uuid_field": "550e8400-e29b-41d4-a716-446655440002"},
+    {"id": 3, "uuid_field": "550e8400-e29b-41d4-a716-446655440003"},
+    {"id": 4, "uuid_field": "550e8400-e29b-41d4-a716-446655440004"},
+    {"id": 5, "uuid_field": "550e8400-e29b-41d4-a716-446655440005"},
+    {"id": 6, "uuid_field": "550e8400-e29b-41d4-a716-446655440006"},
+    {"id": 7, "uuid_field": "550e8400-e29b-41d4-a716-446655440007"},
+    {"id": 8, "uuid_field": "550e8400-e29b-41d4-a716-446655440008"},
+    {"id": 9, "uuid_field": "550e8400-e29b-41d4-a716-446655440009"},
+    {"id": 10, "uuid_field": "550e8400-e29b-41d4-a716-446655440010"}
+  ],
+  "expected_row_count": 10
+}

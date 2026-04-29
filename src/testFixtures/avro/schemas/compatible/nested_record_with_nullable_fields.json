@@ -1,0 +1,37 @@
+{
+  "description": "Nested: record with nullable inner fields",
+  "schema": {
+    "type": "record",
+    "name": "RecordNullableFields",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "details", "type": {
+        "type": "record",
+        "name": "Details",
+        "fields": [
+          {"name": "name", "type": ["null", "string"], "default": null},
+          {"name": "age", "type": ["null", "int"], "default": null}
+        ]
+      }}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "details": "Tuple(name Nullable(String), age Nullable(Int32))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "details": {"name": {"string": "Alice"}, "age": {"int": 30}}},
+    {"id": 2, "details": {"name": null, "age": {"int": 25}}},
+    {"id": 3, "details": {"name": {"string": "Charlie"}, "age": null}},
+    {"id": 4, "details": {"name": null, "age": null}},
+    {"id": 5, "details": {"name": {"string": "Eve"}, "age": {"int": 40}}},
+    {"id": 6, "details": {"name": null, "age": {"int": 35}}},
+    {"id": 7, "details": {"name": {"string": "Grace"}, "age": null}},
+    {"id": 8, "details": {"name": null, "age": null}},
+    {"id": 9, "details": {"name": {"string": "Ivy"}, "age": {"int": 50}}},
+    {"id": 10, "details": {"name": {"string": "Jack"}, "age": {"int": 55}}}
+  ],
+  "expected_row_count": 10
+}

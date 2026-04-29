@@ -1,0 +1,30 @@
+{
+  "description": "Union: non-nullable mixed types [string, int]",
+  "schema": {
+    "type": "record",
+    "name": "StringIntUnion",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "mixed", "type": ["string", "int"]}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "mixed": "Variant(\"String\", \"Int32\")"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "mixed": {"string": "hello"}},
+    {"id": 2, "mixed": {"int": 42}},
+    {"id": 3, "mixed": {"string": "world"}},
+    {"id": 4, "mixed": {"int": 99}},
+    {"id": 5, "mixed": {"string": "foo"}},
+    {"id": 6, "mixed": {"int": 7}},
+    {"id": 7, "mixed": {"string": "bar"}},
+    {"id": 8, "mixed": {"int": 123}},
+    {"id": 9, "mixed": {"string": "baz"}},
+    {"id": 10, "mixed": {"int": 0}}
+  ],
+  "expected_row_count": 10
+}
