@@ -1807,9 +1807,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveDisabledRejectsNewField() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         // auto.evolve defaults to false
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_disabled_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1834,9 +1834,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveAddsNullableColumn() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_nullable_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1864,9 +1864,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveAddsNonNullableFieldAsNullable() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_non_nullable_as_nullable_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1889,9 +1889,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveMultipleNewColumns() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_multi_cols_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1923,9 +1923,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveCachesSchemaAfterDDL() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_cache_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1957,9 +1957,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveMixedSchemaInSingleBatch() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_mixed_batch_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -1986,9 +1986,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveMixedSchemaOlderRecordsGetNull() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_older_records_null_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2033,9 +2033,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveLogicalTypes() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_logical_types_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2080,9 +2080,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveRejectsStructField() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_reject_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2114,11 +2114,11 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // STRUCT field auto-evolved as JSON column when auto.evolve.struct.to.json=true
     @Test
     public void autoEvolveStructToJsonCreatesJsonColumn() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "true");
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_to_json_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2144,11 +2144,11 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // V1 records (no struct) inserted first, then V2 records (with struct) trigger JSON column creation.
     @Test
     public void autoEvolveStructToJsonMixedBatchOlderRecordsGetDefault() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "true");
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_json_mixed_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2178,10 +2178,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // STRUCT field with auto.evolve.struct.to.json explicitly false rejects with helpful error message
     @Test
     public void autoEvolveStructToJsonExplicitlyFalseRejectsStruct() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "false");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_json_false_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2213,9 +2213,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveArrayAndMapFields() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_array_map_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2245,9 +2245,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveTripleSchemaInOneBatch() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_triple_schema_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2276,9 +2276,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveThreeSeparateBatches() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_three_batches_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2334,9 +2334,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveMixedSchemasTenRecordsInOneBatch() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_mixed_ten_records_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2405,9 +2405,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // auto-evolve adds columns for every supported primitive + logical type in a single batch
     @Test
     public void autoEvolveAllPrimitiveAndLogicalTypes() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_all_types_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2463,9 +2463,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // auto-evolve creates Array columns with different element types (Int32, Float64, Bool, String)
     @Test
     public void autoEvolveTypedArrayColumns() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_typed_arrays_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2496,10 +2496,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // DDL refresh timeout - retries set to 0 so refresh loop never runs, throws RetriableException
     @Test
     public void autoEvolveDdlRefreshTimeoutThrowsRetriable() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_DDL_REFRESH_RETRIES, "0");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_ddl_timeout_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2534,9 +2534,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // ALTER TABLE itself fails (table dropped externally after cache populated)
     @Test
     public void autoEvolveDdlExecutionFailureThrowsRuntimeException() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_ddl_exec_failure_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2577,10 +2577,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // STRUCT field without struct-to-json flag throws SchemaTypeInferenceException with helpful message
     @Test
     public void autoEvolveUnsupportedStructTypeThrowsError() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         // auto.evolve.struct.to.json is false by default
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_unsupported_struct_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2613,9 +2613,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // Avro-style union(string, bytes) STRUCT collapses to Nullable(String), not JSON
     @Test
     public void autoEvolveStringBytesUnionCollapsesToString() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_union_string_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2641,10 +2641,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     @Test
     @SinceClickHouseVersion("24.1")
     public void autoEvolveMixedUnionCreatesVariantColumn() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "allow_experimental_variant_type=1");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_variant_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2668,9 +2668,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveSchemalessRecordsThrowError() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_schemaless_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2711,9 +2711,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // Avro union(string, bytes) fields auto-evolved as Nullable(String) columns
     @Test
     public void autoEvolveAvroUnionStringBytesCreatesStringColumn() throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_avro_union_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2763,9 +2763,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveMixedBatchLastRecordOlderSchema() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_last_record_older_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2803,9 +2803,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveMultiVersionUnionSemantics() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_union_semantics_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2838,9 +2838,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveInterleavedSchemaVersions() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_non_monotonic_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2870,10 +2870,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     public void autoEvolveCrossPartitionSchemaDrift() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_cross_partition_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2904,9 +2904,9 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // Mixed batch where older records lack auto-evolved Array/Map columns.
     @Test
     public void autoEvolveMixedBatchArrayMapFieldsMissingInOlderRecords() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_mixed_array_map_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
@@ -2938,10 +2938,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     // Mixed batch where older records lack an auto-evolved Variant column.
     @Test
     public void autoEvolveMixedBatchVariantFieldMissingInOlderRecords() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "allow_experimental_variant_type=1");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_mixed_variant_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
