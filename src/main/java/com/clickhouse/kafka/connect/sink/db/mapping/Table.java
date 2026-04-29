@@ -82,7 +82,7 @@ public class Table {
         String parentName = column.getName().substring(0, column.getName().lastIndexOf("."));
         Column parent = allColumnsMap.getOrDefault(parentName, null);
         if (parent == null) {
-            LOGGER.error("Got non-root column, but its parent was not found to be updated. {}", column);
+            LOGGER.warn("Got non-root column, but its parent was not found to be updated. {}", column);
             return;
         }
 

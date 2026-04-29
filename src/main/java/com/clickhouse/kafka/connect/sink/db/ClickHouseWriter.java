@@ -29,10 +29,6 @@ import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
-import com.google.gson.ExclusionStrategy;
-import com.google.gson.FieldAttributes;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -61,34 +57,37 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static com.clickhouse.kafka.connect.util.DataJson.GSON;
+import static com.clickhouse.kafka.connect.util.DataJson.OBJECT_MAPPER;
 
 public class ClickHouseWriter implements DBWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
+    private static final long TIMEOUT_FOR_SHUTDOWN = 5; // seconds
+
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
-    private Map<String, Table> mapping = null;
-    private AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
+    private final Map<String, Table> mapping;
+    private final AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
     private final SinkTaskStatistics statistics;
+
+    private ScheduledExecutorService scheduledExecutor;
+
     public ClickHouseWriter(SinkTaskStatistics statistics) {
-        this.mapping = new HashMap<String, Table>();
+        this.mapping = new ConcurrentHashMap<>();
         this.statistics = statistics;
     }
 
-    protected void setClient(ClickHouseHelperClient chc) {
-        this.chc = chc;
-    }
-    protected void setSinkConfig(ClickHouseSinkConfig csc) {
-        this.csc = csc;
-    }
     protected Map<String, Table> getMapping() {
         return mapping;
     }
@@ -96,7 +95,7 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
-        setSinkConfig(csc);
+        this.csc = csc;
         String clientVersion = csc.getClientVersion();
         boolean useClientV2 = clientVersion.equals("V1") ? false : true;
 
@@ -109,6 +108,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
+                .setSslSocketSni(csc.getSslSocketSni())
                 .build();
 
         if (!chc.ping()) {
@@ -136,41 +136,37 @@ public class ClickHouseWriter implements DBWriter {
             return false;
         }
 
-
-
         LOGGER.debug("Ping was successful.");
-
         this.updateMapping(csc.getDatabase());
         if (mapping.isEmpty()) {
             LOGGER.error("Did not find any tables in destination Please create before running.");
             return false;
         }
 
+        startBackgroundTableSync(csc.getDatabase());
+
         return true;
     }
 
-    public void updateMapping(String database) {
+    public boolean updateMapping(String database) {
         // Do not start a new update cycle if one is already in progress
-        if (this.isUpdateMappingRunning.get()) {
-            return;
+        // Atomically compare and set isUpdateMappingRunning
+        if (!this.isUpdateMappingRunning.compareAndSet(false, true)) {
+            return false; // in progress
         }
-        this.isUpdateMappingRunning.set(true);
 
         LOGGER.debug("Update table mapping.");
 
         try {
             // Getting tables from ClickHouse
             List<Table> tableList = this.chc.extractTablesMapping(database, this.mapping);
-            if (tableList.isEmpty()) {
-                return;
-            }
-
             // Adding new tables to mapping, or update existing tables
             // TODO: check Kafka Connect's topics name or topics regex config and
             // only add tables to in-memory mapping that matches the topics we consume.
             for (Table table : tableList) {
-                mapping.put(table.getFullName(), table);
+                this.mapping.put(table.getFullName(), table);
             }
+            return true;
         } finally {
             this.isUpdateMappingRunning.set(false);
         }
@@ -179,9 +175,19 @@ public class ClickHouseWriter implements DBWriter {
     @Override
     public void stop() {
         LOGGER.debug("Stopping ClickHouseWriter");
+        if (scheduledExecutor != null) {
+            try {
+                scheduledExecutor.shutdownNow();
+                if (!scheduledExecutor.awaitTermination(TIMEOUT_FOR_SHUTDOWN, TimeUnit.SECONDS)) {
+                    LOGGER.error("Failed to shutdown scheduled executor after " + TIMEOUT_FOR_SHUTDOWN + " seconds");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to shutdown scheduled executor", e);
+            } finally {
+                scheduledExecutor = null;
+            }
+        }
     }
-
-
 
     public ClickHouseNode getServer() {
         return chc.getServer();
@@ -305,6 +311,14 @@ public class ClickHouseWriter implements DBWriter {
         return validSchema;
     }
 
+    /**
+     * BASES array maps precision levels to scaling factors for date/time values.
+     * The index corresponds to the precision (e.g., index 3 = precision 3).
+     * Value at each index is the scaling factor (e.g., value 1 = no scaling).
+     * Example: BASES[3] == 1 means precision 3 uses no scaling.
+     */
+    private int[] BASES = new int[] { 1_000, 100, 10, 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000 };
+
     protected void doWriteDates(Type type, OutputStream stream, Data value, int precision, String columnName) throws IOException {
         // TODO: develop more specific tests to have better coverage
         if (value.getObject() == null) {
@@ -362,13 +376,14 @@ public class ClickHouseWriter implements DBWriter {
                 }
                 break;
             case DateTime64:
-                if (value.getFieldType().equals(Schema.Type.INT64)) {
-                    if (value.getObject().getClass().getName().endsWith(".Date")) {
-                        Date date = (Date) value.getObject();
-                        BinaryStreamUtils.writeInt64(stream, date.getTime());
+                if ( value.getFieldType().equals(Schema.Type.INT64)) {
+                    if (value.getObject() instanceof Date) {
+                        doWriteDate(stream, (Date) value.getObject(), precision);
                     } else {
                         BinaryStreamUtils.writeInt64(stream, (Long) value.getObject());
                     }
+                } else if (value.getFieldType().equals(Schema.Type.INT32) && value.getObject() instanceof Date) {
+                    doWriteDate(stream, (Date) value.getObject(), precision);
                 } else if (value.getFieldType().equals(Schema.Type.STRING)) {
                     try {
                         long seconds;
@@ -422,156 +437,171 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
+    private void doWriteDate(OutputStream stream, Date date, int precision ) throws IOException {
+        long ts = date.getTime();
+        if (precision > 3) {
+            ts *= BASES[precision];
+        } else if (precision < 3) {
+            ts /= BASES[precision];
+        }
+        BinaryStreamUtils.writeInt64(stream, ts);
+    }
+
     protected void doWriteColValue(Column col, OutputStream stream, Data value, boolean defaultsSupport) throws IOException {
         Type columnType = col.getType();
 
-        switch (columnType) {
-            case INT8:
-            case INT16:
-            case INT32:
-            case INT64:
-            case UINT8:
-            case UINT16:
-            case UINT32:
-            case UINT64:
-            case FLOAT32:
-            case FLOAT64:
-            case BOOLEAN:
-            case UUID:
-            case STRING:
-            case Enum8:
-            case Enum16:
-                doWritePrimitive(columnType, value.getFieldType(), stream, value.getObject(), col);
-                break;
-            case FIXED_STRING:
-                doWriteFixedString(columnType, stream, value.getObject(), col.getPrecision());
-                break;
-            case Date:
-            case Date32:
-            case DateTime:
-            case DateTime64:
-                doWriteDates(columnType, stream, value, col.getPrecision(), col.getName());
-                break;
-            case Decimal:
-                if (value.getObject() == null) {
-                    BinaryStreamUtils.writeNull(stream);
-                    return;
-                } else {
-                    BigDecimal decimal = (BigDecimal) value.getObject();
-                    BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
-                }
-                break;
-            case MAP:
-                Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
-                int mapSize = mapTmp.size();
-                BinaryStreamUtils.writeVarInt(stream, mapSize);
-                mapTmp.forEach((key, mapValue) -> {
-                    try {
-                        doWritePrimitive(col.getMapKeyType(), value.getMapKeySchema().type(), stream, key, col);
-                        doWriteColValue(col.getMapValueType(), stream, new Data(value.getNestedValueSchema(), mapValue), defaultsSupport);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+        try {
+            switch (columnType) {
+                case INT8:
+                case INT16:
+                case INT32:
+                case INT64:
+                case UINT8:
+                case UINT16:
+                case UINT32:
+                case UINT64:
+                case FLOAT32:
+                case FLOAT64:
+                case BOOLEAN:
+                case UUID:
+                case STRING:
+                case Enum8:
+                case Enum16:
+                    doWritePrimitive(columnType, value.getFieldType(), stream, value.getObject(), col);
+                    break;
+                case FIXED_STRING:
+                    doWriteFixedString(columnType, stream, value.getObject(), col.getPrecision());
+                    break;
+                case Date:
+                case Date32:
+                case DateTime:
+                case DateTime64:
+                    doWriteDates(columnType, stream, value, col.getPrecision(), col.getName());
+                    break;
+                case Decimal:
+                    if (value.getObject() == null) {
+                        BinaryStreamUtils.writeNull(stream);
+                        return;
+                    } else {
+                        BigDecimal decimal = (BigDecimal) value.getObject();
+                        BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
                     }
-                });
-                break;
-            case ARRAY:
-                List<?> arrObject = (List<?>) value.getObject();
-
-                if (arrObject == null) {
-                    if (defaultsSupport) {
-                        BinaryStreamUtils.writeNonNull(stream);
-                    }
-                } else {
-                    int sizeArrObject = arrObject.size();
-                    BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
-                    arrObject.forEach(v -> {
+                    break;
+                case MAP:
+                    Map<?, ?> mapTmp = (Map<?, ?>) value.getObject();
+                    int mapSize = mapTmp.size();
+                    BinaryStreamUtils.writeVarInt(stream, mapSize);
+                    mapTmp.forEach((key, mapValue) -> {
                         try {
-                            if (col.getArrayType().isNullable() && v != null) {
-                                BinaryStreamUtils.writeNonNull(stream);
-                            }
-                            doWriteColValue(col.getArrayType(), stream, new Data(value.getNestedValueSchema(), v), defaultsSupport);
+                            doWritePrimitive(col.getMapKeyType(), value.getMapKeySchema().type(), stream, key, col);
+                            doWriteColValue(col.getMapValueType(), stream, new Data(value.getNestedValueSchema(), mapValue), defaultsSupport);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
                     });
-                }
-                break;
-            case TUPLE:
-                Map<?, ?> jsonMapValues;
+                    break;
+                case ARRAY:
+                    List<?> arrObject = (List<?>) value.getObject();
 
-                Object underlyingObject = value.getObject();
-                if (underlyingObject.getClass() != Struct.class) {
-                    // Tuples in the root structure are parsed using StructToJsonMap
-                    jsonMapValues = (Map<?, ?>) underlyingObject;
-                } else {
-                    jsonMapValues = StructToJsonMap.toJsonMap((Struct) underlyingObject);
-                }
-
-                col.getTupleFields().forEach(column -> {
-                    String[] colNameSplit = column.getName().split("\\.");
-                    String fieldName = colNameSplit.length > 0 ? colNameSplit[colNameSplit.length - 1] : column.getName();
-                    Data innerData = (Data) jsonMapValues.get(fieldName);
-                    try {
-                        // we need to apply here the default and nullable logic
-                        doWriteCol(innerData, jsonMapValues.containsKey(fieldName), column, stream, false);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-                break;
-            case VARIANT:
-                // https://github.com/ClickHouse/ClickHouse/pull/58047/files#diff-f56b7f61d5a82c440bb1a078ea8e5dcf2679dc92adbbc28bd89638cbe499363dR368-R384
-                // https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L10-L56
-                mapTmp = (Map<?, ?>) value.getObject();
-                Optional<Data> variantValueOption = mapTmp.values().stream()
-                        .map(o -> (Data) o)
-                        .filter(data -> data.getObject() != null)
-                        .findFirst();
-
-                // Null Discriminator (https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L65)
-                int nullDiscriminator = 255;
-                if (variantValueOption.isEmpty()) {
-                    BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
-                } else {
-                    Data variantValue = variantValueOption.get();
-
-                    String fieldTypeName = variantValue.getFieldType().getName();
-                    Optional<Integer> globalDiscriminator = col.getVariantGlobalDiscriminator(fieldTypeName);
-                    if (globalDiscriminator.isEmpty()) {
-                        LOGGER.error("Unable to determine the global discriminator of {} variant! Writing NULL variant instead.", fieldTypeName);
-                        BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
-                        return;
-                    }
-                    BinaryStreamUtils.writeUnsignedInt8(stream, globalDiscriminator.get());
-
-                    // Variants support parametrized types, such as Decimal(x, y). Because of that, we can't use
-                    // the doWritePrimitive method.
-                    doWriteColValue(
-                            col.getVariantGlobalDiscriminators().get(globalDiscriminator.get()).getT1(),
-                            stream,
-                            variantValue,
-                            defaultsSupport
-                    );
-                }
-                break;
-            case JSON:
-                if (csc.isBinaryFormatWrtiteJsonAsString()) {
-                    if (value.getFieldType() == Schema.Type.STRUCT) {
-                        byte[] jsonBytes = GSON.toJson(value).getBytes(StandardCharsets.UTF_8);
-                        BinaryStreamUtils.writeString(stream, jsonBytes);
-                    } else if (value.getFieldType() == Schema.Type.STRING) {
-                        BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
+                    if (arrObject == null) {
+                        if (defaultsSupport) {
+                            BinaryStreamUtils.writeNonNull(stream);
+                        }
                     } else {
-                        throw new RuntimeException("Unsupported field type: " + value.getFieldType() + " for column type [JSON]");
+                        int sizeArrObject = arrObject.size();
+                        BinaryStreamUtils.writeVarInt(stream, sizeArrObject);
+                        arrObject.forEach(v -> {
+                            try {
+                                if (col.getArrayType().isNullable() && v != null) {
+                                    BinaryStreamUtils.writeNonNull(stream);
+                                }
+                                doWriteColValue(col.getArrayType(), stream, new Data(value.getNestedValueSchema(), v), defaultsSupport);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
                     }
                     break;
-                } else {
-                    throw new RuntimeException("Writing JSON in binary is not supported yet. Use `input_format_binary_read_json_as_string=1` in clickhouse settings to allow writing as string");
-                }
-            default:
-                // If you wonder, how NESTED works in JDBC:
-                // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
-                LOGGER.error("Cannot serialize unsupported type {}", columnType);
+                case TUPLE:
+                    Map<?, ?> jsonMapValues;
+
+                    Object underlyingObject = value.getObject();
+                    if (underlyingObject.getClass() != Struct.class) {
+                        // Tuples in the root structure are parsed using StructToJsonMap
+                        jsonMapValues = (Map<?, ?>) underlyingObject;
+                    } else {
+                        jsonMapValues = StructToJsonMap.toJsonMap((Struct) underlyingObject);
+                    }
+
+                    col.getTupleFields().forEach(column -> {
+                        String[] colNameSplit = column.getName().split("\\.");
+                        String fieldName = colNameSplit.length > 0 ? colNameSplit[colNameSplit.length - 1] : column.getName();
+                        Data innerData = (Data) jsonMapValues.get(fieldName);
+                        try {
+                            // we need to apply here the default and nullable logic
+                            doWriteCol(innerData, jsonMapValues.containsKey(fieldName), column, stream, false);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                    break;
+                case VARIANT:
+                    // https://github.com/ClickHouse/ClickHouse/pull/58047/files#diff-f56b7f61d5a82c440bb1a078ea8e5dcf2679dc92adbbc28bd89638cbe499363dR368-R384
+                    // https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L10-L56
+                    mapTmp = (Map<?, ?>) value.getObject();
+                    Optional<Data> variantValueOption = mapTmp.values().stream()
+                            .map(o -> (Data) o)
+                            .filter(data -> data.getObject() != null)
+                            .findFirst();
+
+                    // Null Discriminator (https://github.com/ClickHouse/ClickHouse/blob/658a8e9a9b1658cd12c78365f9829b35d016f1b2/src/Columns/ColumnVariant.h#L65)
+                    int nullDiscriminator = 255;
+                    if (variantValueOption.isEmpty()) {
+                        BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
+                    } else {
+                        Data variantValue = variantValueOption.get();
+
+                        String fieldTypeName = variantValue.getFieldType().getName();
+                        Optional<Integer> globalDiscriminator = col.getVariantGlobalDiscriminator(fieldTypeName);
+                        if (globalDiscriminator.isEmpty()) {
+                            LOGGER.error("Unable to determine the global discriminator of {} variant! Writing NULL variant instead.", fieldTypeName);
+                            BinaryStreamUtils.writeUnsignedInt8(stream, nullDiscriminator);
+                            return;
+                        }
+                        BinaryStreamUtils.writeUnsignedInt8(stream, globalDiscriminator.get());
+
+                        // Variants support parametrized types, such as Decimal(x, y). Because of that, we can't use
+                        // the doWritePrimitive method.
+                        doWriteColValue(
+                                col.getVariantGlobalDiscriminators().get(globalDiscriminator.get()).getT1(),
+                                stream,
+                                variantValue,
+                                defaultsSupport
+                        );
+                    }
+                    break;
+                case JSON:
+                    if (csc.isBinaryFormatWrtiteJsonAsString()) {
+                        if (value.getFieldType() == Schema.Type.STRUCT) {
+                            byte[] jsonBytes = OBJECT_MAPPER.writeValueAsBytes(value);
+                            BinaryStreamUtils.writeString(stream, jsonBytes);
+                        } else if (value.getFieldType() == Schema.Type.STRING) {
+                            BinaryStreamUtils.writeString(stream, ((String) value.getObject()).getBytes(StandardCharsets.UTF_8));
+                        } else {
+                            throw new RuntimeException("Unsupported field type: " + value.getFieldType() + " for column type [JSON]");
+                        }
+                        break;
+                    } else {
+                        throw new RuntimeException("Writing JSON in binary is not supported yet. Use `input_format_binary_read_json_as_string=1` in clickhouse settings to allow writing as string");
+                    }
+                default:
+                    // If you wonder, how NESTED works in JDBC:
+                    // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
+                    LOGGER.error("Cannot serialize unsupported type {}", columnType);
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error writing value of " + (value == null ? "<value null>" : value.getFieldType() ) + " to the column `" + col.getName() + "` of type " + columnType, e);
+            throw e;
         }
     }
 
@@ -664,13 +694,13 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeUnsignedInt8(stream, (Byte) value);
                     break;
                 case UINT16:
-                    BinaryStreamUtils.writeUnsignedInt16(stream, (Short) value);
+                    BinaryStreamUtils.writeUnsignedInt16(stream, ((Number) value).shortValue());
                     break;
                 case UINT32:
-                    BinaryStreamUtils.writeUnsignedInt32(stream, (Integer) value);
+                    BinaryStreamUtils.writeUnsignedInt32(stream, ((Number) value).intValue());
                     break;
                 case UINT64:
-                    BinaryStreamUtils.writeUnsignedInt64(stream, (Long) value);
+                    BinaryStreamUtils.writeUnsignedInt64(stream, ((Number) value).longValue());
                     break;
                 case FLOAT32:
                     BinaryStreamUtils.writeFloat32(stream, (Float) value);
@@ -802,8 +832,7 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error("Error inserting records can cause by schema changes", e);
             if (e.getCode() == 33 && retry == true) {
                 LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
-                updateMapping(table.getDatabase());
-                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 throw e;
@@ -813,14 +842,34 @@ public class ClickHouseWriter implements DBWriter {
             LOGGER.error("Error inserting records", e);
             if (e.getMessage().indexOf("ClickHouseException: Code: 33") != -1 && retry == true) {
                 LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
-                updateMapping(table.getDatabase());
-                Table tableTmp = getTable(table.getDatabase(), table.getName());
+                Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 throw e;
             }
         }
     }
+
+    private Table urgentTableUpdate(Table table) {
+        Table tableTmp;
+        if (updateMapping(table.getDatabase())) {
+            LOGGER.debug("urgentTableUpdate({}): update complete", table.getName());
+            tableTmp = getTable(table.getDatabase(), table.getName());
+        } else {
+            LOGGER.debug("urgentTableUpdate({}): update still running", table.getName());
+            tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
+            if (tableTmp == null) {
+                LOGGER.error("Failed to describe table {}.{} via ClickHouseHelperClient.describeTable(); falling back to existing mapping.",
+                        table.getDatabase(), table.getCleanName());
+                tableTmp = getTable(table.getDatabase(), table.getName());
+            }
+        }
+        if (tableTmp == null) {
+            throw new IllegalStateException("Unable to refresh table mapping for " + table.getDatabase() + "." + table.getName());
+        }
+        return tableTmp;
+    }
+
     protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
 
@@ -948,11 +997,10 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
     protected void doInsertJsonV1(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
-        //https://devqa.io/how-to-convert-java-map-to-json/
         boolean enableDbTopicSplit = csc.isEnableDbTopicSplit();
         String dbTopicSplitChar = csc.getDbTopicSplitChar();
         LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
-        Gson gson = new Gson();
+
         long s1 = System.currentTimeMillis();
 
         long dataSerializeTime = 0;
@@ -976,7 +1024,7 @@ public class ClickHouseWriter implements DBWriter {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
-                java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
+
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
                         LOGGER.trace("Record: {}", record.getTopicAndPartition());
@@ -995,15 +1043,17 @@ public class ClickHouseWriter implements DBWriter {
                                 break;
                         }
                         long beforeSerialize = System.currentTimeMillis();
-                        String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
+                        Map<String, Object> cleaned = cleanupExtraFields(data, table);
+                        byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(cleaned);
                         dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
 
-                        LOGGER.trace("topic {} partition {} offset {} payload {}",
-                                record.getTopic(),
-                                record.getRecordOffsetContainer().getPartition(),
-                                record.getRecordOffsetContainer().getOffset(),
-                                gsonString);
-                        byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                        if (LOGGER.isTraceEnabled()) {
+                            LOGGER.trace("topic {} partition {} offset {} payload {}",
+                                    record.getTopic(),
+                                    record.getRecordOffsetContainer().getPartition(),
+                                    record.getRecordOffsetContainer().getOffset(),
+                                    new String(bytes, StandardCharsets.UTF_8));
+                        }
                         statistics.bytesInserted(bytes.length);
                         BinaryStreamUtils.writeBytes(stream, bytes);
                     } else {
@@ -1025,11 +1075,9 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     protected void doInsertJsonV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
-        //https://devqa.io/how-to-convert-java-map-to-json/
         boolean enableDbTopicSplit = csc.isEnableDbTopicSplit();
         String dbTopicSplitChar = csc.getDbTopicSplitChar();
         LOGGER.trace("enableDbTopicSplit: {}", enableDbTopicSplit);
-        Gson gson = new Gson();
         long s1 = System.currentTimeMillis();
 
         Record first = records.get(0);
@@ -1053,10 +1101,8 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-        //insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        java.lang.reflect.Type gsonType = new TypeToken<HashMap>() {}.getType();
         long dataSerializeTime = 0;
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
@@ -1074,14 +1120,16 @@ public class ClickHouseWriter implements DBWriter {
                         break;
                 }
                 long beforeSerialize = System.currentTimeMillis();
-                String gsonString = gson.toJson(cleanupExtraFields(data, table), gsonType);
+                Map<String, Object> cleaned = cleanupExtraFields(data, table);
+                byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(cleaned);
                 dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
-                LOGGER.trace("topic {} partition {} offset {} payload {}",
-                        record.getTopic(),
-                        record.getRecordOffsetContainer().getPartition(),
-                        record.getRecordOffsetContainer().getOffset(),
-                        gsonString);
-                byte[] bytes = gsonString.getBytes(StandardCharsets.UTF_8);
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace("topic {} partition {} offset {} payload {}",
+                            record.getTopic(),
+                            record.getRecordOffsetContainer().getPartition(),
+                            record.getRecordOffsetContainer().getOffset(),
+                            new String(bytes, StandardCharsets.UTF_8));
+                }
                 statistics.bytesInserted(bytes.length);
                 BinaryStreamUtils.writeBytes(stream, bytes);
             } else {
@@ -1281,6 +1329,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
+                .setSslSocketSni(csc.getSslSocketSni())
                 .build();
 
         ClickHouseNode server = chcTmp.getServer();
@@ -1306,13 +1355,15 @@ public class ClickHouseWriter implements DBWriter {
         String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);
         if (table == null) {
-            this.updateMapping(database);
-            table = this.mapping.get(tableName);//If null, update then do it again to be sure
+            if (this.updateMapping(database)) {
+                table = this.mapping.get(tableName);//If null, update then do it again to be sure
+            } else {
+                String cleanTopicName = Utils.getMappedOrTopicTableName(topic, csc.getTopicToTableMap());
+                table = chc.describeTable(database, cleanTopicName.replace("`", "").trim());
+            }
         }
 
         if (table == null) {
-            this.updateMapping(database);
-
             if (csc.isSuppressTableExistenceException()) {
                 LOGGER.warn("Table [{}] does not exist, but error was suppressed.", tableName);
             } else {
@@ -1331,19 +1382,24 @@ public class ClickHouseWriter implements DBWriter {
         return 0;
     }
 
-    private static class SchemaFieldExclusionStrategy implements ExclusionStrategy {
-
-        @Override
-        public boolean shouldSkipField(FieldAttributes f) {
-            if (f.getDeclaringClass() == Data.class && f.getName().equals("schema"))  {
-                return true;
+    private void startBackgroundTableSync(String database) {
+        // Add table mapping refresher
+        if (csc.getTableRefreshInterval() > 0) {
+            if (scheduledExecutor == null) {
+                scheduledExecutor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = Executors.defaultThreadFactory().newThread(r);
+                        t.setDaemon(true);
+                        t.setName("clickhouse-table-sync");
+                        return t;
+                    }
+                });
             }
-            return false;
-        }
 
-        @Override
-        public boolean shouldSkipClass(Class<?> clazz) {
-            return false;
+            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(database, this);
+            scheduledExecutor.scheduleAtFixedRate(tableMappingRefresher, csc.getTableRefreshInterval(), csc.getTableRefreshInterval(),
+                    TimeUnit.MILLISECONDS);
         }
     }
 }

@@ -1,12 +1,16 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.*;
+import com.clickhouse.client.api.query.GenericRecord;
+import com.clickhouse.client.api.query.Records;
+import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,56 +20,62 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static org.junit.Assert.assertTrue;
 
 public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
     private static final Properties properties = System.getProperties();
 
-    private ClickHouseHelperClient createClient(Map<String,String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-
-        String hostname = csc.getHostname();
-        int port = csc.getPort();
-        String database = csc.getDatabase();
-        String username = csc.getUsername();
-        String password = csc.getPassword();
-        boolean sslEnabled = csc.isSslEnabled();
-        int timeout = csc.getTimeout();
-
-
-        return new ClickHouseHelperClient.ClickHouseClientBuilder(hostname, port, csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(username)
-                .setPassword(password)
-                .sslEnable(sslEnabled)
-                .setTimeout(timeout)
-                .setRetry(csc.getRetry())
-                .build();
-    }
-
-
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, String.valueOf(properties.getOrDefault("clickhouse.host", "clickhouse")));
-        props.put(ClickHouseSinkConnector.PORT, String.valueOf(properties.getOrDefault("clickhouse.port", ClickHouseProtocol.HTTP.getDefaultPort())));
-        props.put(ClickHouseSinkConnector.DATABASE, String.valueOf(properties.getOrDefault("clickhouse.database", "default")));
-        props.put(ClickHouseSinkConnector.USERNAME, String.valueOf(properties.getOrDefault("clickhouse.username", "default")));
-        props.put(ClickHouseSinkConnector.PASSWORD, String.valueOf(properties.getOrDefault("clickhouse.password", "")));
+        props.put(ClickHouseSinkConnector.HOSTNAME, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.PORT, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP));
+        props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
+        props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
+        props.put(ClickHouseSinkConnector.PASSWORD, properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP));
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
         return props;
     }
 
+    private static boolean checkSequentialRows(ClickHouseHelperClient chc, String tableName, int totalRecords) {
+        String queryCount = String.format("SELECT DISTINCT `off16` FROM `%s` ORDER BY `off16` ASC", tableName);
+        try (Records records = chc.queryV2(queryCount)) {
+            int expectedIndexCount = 0;
+            for (GenericRecord record : records) {
+                int currentIndexCount = record.getInteger(1);
+                if (currentIndexCount != expectedIndexCount) {
+                    LOGGER.error("currentIndexCount: {}, expectedIndexCount: {}", currentIndexCount, expectedIndexCount);
+                    return false;
+                }
+                expectedIndexCount++;
+            }
 
+            LOGGER.info("Total Records: {}, expectedIndexCount: {}", totalRecords, expectedIndexCount);
+            return totalRecords == expectedIndexCount;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @BeforeAll
+    public static void checkPropsExist() {
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
+        ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
+    }
 
     @Test
     public void overlappingDataTest() {
         Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = "schemaless_overlap_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `indexCount` Int64, `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = ReplicatedMergeTree ORDER BY off16");
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("off16", "Int16").column("str", "String")
+                .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
+                .column("p_int64", "Int64").column("p_float32", "Float32")
+                .column("p_float64", "Float64").column("p_bool", "Bool")
+                .engine("ReplicatedMergeTree").orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         Collection<SinkRecord> firstBatch = new ArrayList<>();
         Collection<SinkRecord> secondBatch = new ArrayList<>();
@@ -102,8 +112,8 @@ public class ClickHouseCloudTest {
         chst.stop();
         LOGGER.info("Total Records: {}", sr.size());
         LOGGER.info("Row Count: {}", ClickHouseTestHelpers.countRows(chc, topic));
-        assertTrue(ClickHouseTestHelpers.countRows(chc, topic) >= sr.size());
-        assertTrue(ClickHouseTestHelpers.checkSequentialRows(chc, topic, sr.size()));
+        Assertions.assertTrue(ClickHouseTestHelpers.countRows(chc, topic) >= sr.size());
+        Assertions.assertTrue(checkSequentialRows(chc, topic, sr.size()));
         ClickHouseTestHelpers.dropTable(chc, topic);
     }
 }

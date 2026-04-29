@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -347,6 +348,36 @@ public class SchemalessTestData {
             Map<String, Object> value_struct = new HashMap<>();
             value_struct.put("str", "num" + n);
             value_struct.put("decimal_14_2", new BigDecimal(String.format("%d.%d", n, 2)));
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
+    public static Collection<SinkRecord> createDateTimeTypes(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("str", "num" + n);
+            value_struct.put("date", new Date());
+            value_struct.put("datetime", new Date());
+            value_struct.put("datetime64_3", new Date());
+            value_struct.put("datetime64_6", new Date());
+            value_struct.put("datetime64_9", new Date());
+            value_struct.put("datetime64_12", new Date());
+            value_struct.put("datetime64_15", new Date());
+            value_struct.put("datetime64_18", new Date());
 
             SinkRecord sr = new SinkRecord(
                     topic,

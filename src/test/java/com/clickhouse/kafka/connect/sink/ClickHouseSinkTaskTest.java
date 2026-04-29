@@ -1,18 +1,15 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.ClickHouseClient;
-import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseNodeSelector;
-import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
+import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
@@ -36,6 +33,20 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     public static final int DEFAULT_TOTAL_RECORDS = 1000;
+
+    private static final CreateTableStatement PRIMITIVE_TYPES_TABLE = new CreateTableStatement()
+            .column("off16", "Int16")
+            .column("str", "String")
+            .column("p_int8", "Int8")
+            .column("p_int16", "Int16")
+            .column("p_int32", "Int32")
+            .column("p_int64", "Int64")
+            .column("p_float32", "Float32")
+            .column("p_float64", "Float64")
+            .column("p_bool", "Bool")
+            .engine("MergeTree")
+            .orderByColumn("off16");
+
     public Collection<SinkRecord> createDBTopicSplit(int dbRange, long timeStamp, String topic, int partition, String splitChar) {
         Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
@@ -93,37 +104,24 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    public ClickHouseResponseSummary dropTable(ClickHouseHelperClient chc, String tableName) {
-        String dropTable = String.format("DROP TABLE IF EXISTS %s", tableName);
-        try (ClickHouseClient client = ClickHouseClient.builder()
-                .options(chc.getDefaultClientOptions())
-                .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
-                .build();
-             ClickHouseResponse response = client.read(chc.getServer())
-                     .query(dropTable)
-                     .executeAndWait()) {
-            return response.getSummary();
-        } catch (ClickHouseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
 //    @Test TODO: Fix this test
     public void testDBTopicSplit() {
-        Map<String, String> props =  createProps();
+        Map<String, String> props =  getBaseProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
         props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
         long timeStamp = System.currentTimeMillis();
-        createClient(props, false);
+        ClickHouseTestHelpers.createClient(props);
         String tableName = createTopicName("splitTopic");
         int dbRange = 10;
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = String.format("%d_%d" , i, timeStamp);
             String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
-            dropTable(chc, tmpTableName);
-            createDatabase(databaseName, chc);
-            createTable(chc, tmpTableName, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, `p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+            ClickHouseTestHelpers.dropTable(chc, tmpTableName);
+            ClickHouseTestHelpers.createDatabase(databaseName, chc);
+            new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                    .tableName(tmpTableName)
+                    .execute(chc);
         });
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
@@ -136,7 +134,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             fail("Exception should not be thrown");
         }
         LongStream.range(0, dbRange).forEachOrdered(i -> {
-            int count = countRows(chc, String.valueOf(i), tableName);
+            int count = ClickHouseTestHelpers.countRows(chc, String.valueOf(i), tableName);
             assertEquals(DEFAULT_TOTAL_RECORDS, count);
         });
     }
@@ -144,13 +142,14 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void simplifiedBatchingSchemaless() {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
@@ -169,16 +168,17 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     public void clientNameTest() throws Exception {
         // TODO: fix instability of the test.
         if (isCloud) {
-            // TODO: Temp disable for cloud because query logs not available in time. This is passing on cloud but is flaky.
+            // TODO: Temp disable for cloud because executeQueryIgnoreResult logs not available in time. This is passing on cloud but is flaky.
             return;
         }
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
@@ -192,7 +192,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
         chc.queryV2("SYSTEM FLUSH LOGS " + (isCloud ? "ON CLUSTER 'default'" : "")).close();
 
-        String getLogRecords = String.format("SELECT http_user_agent, query FROM clusterAllReplicas('default', system.query_log) " +
+        String getLogRecords = String.format("SELECT http_user_agent, executeQueryIgnoreResult FROM clusterAllReplicas('default', system.query_log) " +
                         "   WHERE query_kind = 'Insert' " +
                         "   AND type = 'QueryStart'" +
                         "   AND has(databases,'%1$s') " +
@@ -215,13 +215,14 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void statisticsTest() throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("topic.statistics_test-01");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE `%s` ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2));
         sr.addAll(SchemalessTestData.createPrimitiveTypes(topic, 3));
@@ -279,13 +280,14 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
 
     @Test
     public void receiveLagTimeTest() throws Exception {
-        Map<String, String> props = createProps();
+        Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
-        ClickHouseHelperClient chc = createClient(props);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("schemaless_simple_batch_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.createTable(chc, topic, "CREATE TABLE %s ( `off16` Int16, `str` String, `p_int8` Int8, `p_int16` Int16, `p_int32` Int32, " +
-                "`p_int64` Int64, `p_float32` Float32, `p_float64` Float64, `p_bool` Bool) Engine = MergeTree ORDER BY off16");
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -336,6 +338,220 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         eventReceiveLag = mBeanServer.getAttribute(topicMbeanName, "MeanReceiveLag");
         assertTrue((Long)eventReceiveLag < 1000L, "eventReceiveLag: " + eventReceiveLag);
         assertTrue((Long)eventReceiveLag > 300L, "eventReceiveLag: " + eventReceiveLag);
+
+        chst.stop();
+    }
+
+    @Test
+    public void preCommitReturnsInsertedOffsetsForMultipleTopics() {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic1 = createTopicName("precommit_offsets_t1");
+        String topic2 = createTopicName("precommit_offsets_t2");
+
+        ClickHouseTestHelpers.dropTable(chc, topic1);
+        ClickHouseTestHelpers.dropTable(chc, topic2);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic1)
+                .execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic2)
+                .execute(chc);
+
+        int totalRecordsTopic1 = 100;
+        int totalRecordsTopic2 = 200;
+        int partition = 0;
+
+        List<SinkRecord> allRecords = new ArrayList<>();
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic1, partition, totalRecordsTopic1));
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic2, partition, totalRecordsTopic2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(allRecords);
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(new TopicPartition(topic1, partition), new OffsetAndMetadata(0));
+        currentOffsets.put(new TopicPartition(topic2, partition), new OffsetAndMetadata(0));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        TopicPartition tp1 = new TopicPartition(topic1, partition);
+        assertTrue(committedOffsets.containsKey(tp1), "Should contain offset for topic1");
+        assertEquals(totalRecordsTopic1, committedOffsets.get(tp1).offset(),
+                "Committed offset for topic1 should be maxOffset + 1");
+
+        TopicPartition tp2 = new TopicPartition(topic2, partition);
+        assertTrue(committedOffsets.containsKey(tp2), "Should contain offset for topic2");
+        assertEquals(totalRecordsTopic2, committedOffsets.get(tp2).offset(),
+                "Committed offset for topic2 should be maxOffset + 1");
+
+        chst.stop();
+    }
+
+    @Test
+    public void preCommitReturnsCurrentOffsetsWhenIgnorePartitions() {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic = createTopicName("precommit_ignore_partitions");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
+
+        int totalRecords = 100;
+        int partition = 0;
+
+        List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, partition, totalRecords);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(new TopicPartition(topic, partition), new OffsetAndMetadata(totalRecords));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertSame(currentOffsets, committedOffsets,
+                "preCommit should return the same currentOffsets map when ignorePartitionsWhenBatching is true");
+
+        chst.stop();
+    }
+
+    @Test
+    public void closeRemovesRevokedPartitionFromPreCommitOffsets() {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic1 = createTopicName("precommit_close_remove_t1");
+        String topic2 = createTopicName("precommit_close_remove_t2");
+
+        ClickHouseTestHelpers.dropTable(chc, topic1);
+        ClickHouseTestHelpers.dropTable(chc, topic2);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic1)
+                .execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic2)
+                .execute(chc);
+
+        int totalRecordsTopic1 = 50;
+        int totalRecordsTopic2 = 70;
+        int partition = 0;
+
+        List<SinkRecord> allRecords = new ArrayList<>();
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic1, partition, totalRecordsTopic1));
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic2, partition, totalRecordsTopic2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(allRecords);
+
+        TopicPartition revoked = new TopicPartition(topic1, partition);
+        chst.close(List.of(revoked));
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(revoked, new OffsetAndMetadata(0));
+        TopicPartition active = new TopicPartition(topic2, partition);
+        currentOffsets.put(active, new OffsetAndMetadata(0));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertFalse(committedOffsets.containsKey(revoked),
+                "preCommit should not return offsets for revoked partition after close()");
+        assertTrue(committedOffsets.containsKey(active),
+                "preCommit should still return offsets for active partition");
+        assertEquals(totalRecordsTopic2, committedOffsets.get(active).offset(),
+                "Committed offset for active partition should be maxOffset + 1");
+
+        chst.stop();
+    }
+
+    @Test
+    public void onPartitionsRevokedRemovesRevokedPartitionFromPreCommitOffsets() {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConfig.REPORT_INSERTED_OFFSETS, "true");
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic1 = createTopicName("precommit_revoke_remove_t1");
+        String topic2 = createTopicName("precommit_revoke_remove_t2");
+
+        ClickHouseTestHelpers.dropTable(chc, topic1);
+        ClickHouseTestHelpers.dropTable(chc, topic2);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic1)
+                .execute(chc);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic2)
+                .execute(chc);
+
+        int totalRecordsTopic1 = 40;
+        int totalRecordsTopic2 = 60;
+        int partition = 0;
+
+        List<SinkRecord> allRecords = new ArrayList<>();
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic1, partition, totalRecordsTopic1));
+        allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic2, partition, totalRecordsTopic2));
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(allRecords);
+
+        TopicPartition revoked = new TopicPartition(topic1, partition);
+        chst.onPartitionsRevoked(List.of(revoked));
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(revoked, new OffsetAndMetadata(0));
+        TopicPartition active = new TopicPartition(topic2, partition);
+        currentOffsets.put(active, new OffsetAndMetadata(0));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertFalse(committedOffsets.containsKey(revoked),
+                "preCommit should not return offsets for revoked partition after onPartitionsRevoked()");
+        assertTrue(committedOffsets.containsKey(active),
+                "preCommit should still return offsets for active partition");
+        assertEquals(totalRecordsTopic2, committedOffsets.get(active).offset(),
+                "Committed offset for active partition should be maxOffset + 1");
+
+        chst.stop();
+    }
+
+    @Test
+    public void preCommitReturnsCurrentOffsetsWhenReportingInsertedOffsetsDisabled() {
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic = createTopicName("precommit_report_offsets_off");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                .tableName(topic)
+                .execute(chc);
+
+        int partition = 0;
+        int totalRecords = 100;
+        List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, partition, totalRecords);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(records);
+
+        Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        currentOffsets.put(new TopicPartition(topic, partition), new OffsetAndMetadata(999));
+
+        Map<TopicPartition, OffsetAndMetadata> committedOffsets = chst.preCommit(currentOffsets);
+
+        assertSame(currentOffsets, committedOffsets,
+                "preCommit should return currentOffsets when reportInsertedOffsets is false");
+        assertEquals(999, committedOffsets.get(new TopicPartition(topic, partition)).offset(),
+                "Offset should match the value from currentOffsets");
 
         chst.stop();
     }

@@ -50,10 +50,11 @@ repositories {
 }
 
 extra.apply {
-    set("clickHouseDriverVersion", "0.9.4")
+    set("clickHouseDriverVersion", "0.9.5")
     set("kafkaVersion", "2.7.0")
     set("gson", "2.13.1")
-    set("jackson", "2.19.1")
+    set("jackson", "2.21.2")
+    set("jackson-annotations", "2.21")
     set("httpclient", "5.5.1")
 
     // Testing dependencies
@@ -72,8 +73,7 @@ extra.apply {
     // Test extra test dependencies
     set("kafkaPlatformSchemaRegistry", "7.9.1")
     set("kafkaPlatformProtobuf", "7.9.1")
-    set("testcontainers", "1.21.3")
-    set("toxiproxy", "1.21.0")
+    set("testcontainers", "2.0.3")
     set("org.json", "20250517")
     set("libprotobuf", "3.25.8")
     set("commons.lang3", "3.19.0")
@@ -99,7 +99,7 @@ dependencies {
     // To parse JSON response from ClickHouse to parse complex data types correctly
     implementation("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${project.extra["jackson"]}")
-    implementation("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson"]}")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson-annotations"]}}")
 
     /*
         Will in side the Confluent Archive
@@ -111,7 +111,7 @@ dependencies {
     clickhouseDependencies("com.google.code.gson:gson:${project.extra["gson"]}")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
     clickhouseDependencies("com.fasterxml.jackson.core:jackson-databind:${project.extra["jackson"]}")
-    clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson"]}")
+    clickhouseDependencies("com.fasterxml.jackson.core:jackson-annotations:${project.extra["jackson-annotations"]}}")
 
     // Unit Tests
     testImplementation(platform("org.junit:junit-bom:${project.extra["junitJupiterVersion"]}"))
@@ -122,11 +122,11 @@ dependencies {
     testImplementation("org.mockito:mockito-junit-jupiter:${project.extra["mockitoVersion"]}")
 
     // IntegrationTests
-    testImplementation("org.testcontainers:clickhouse:${project.extra["testcontainers"]}")
-    testImplementation("org.testcontainers:kafka:${project.extra["testcontainers"]}")
+    testImplementation("org.testcontainers:testcontainers-clickhouse:${project.extra["testcontainers"]}")
+    testImplementation("org.testcontainers:testcontainers-kafka:${project.extra["testcontainers"]}")
     testImplementation("com.squareup.okhttp3:okhttp:${project.extra["okhttp"]}")
     testImplementation("org.json:json:${project.extra["org.json"]}")
-    testImplementation("org.testcontainers:toxiproxy:${project.extra["toxiproxy"]}")
+    testImplementation("org.testcontainers:testcontainers-toxiproxy:${project.extra["testcontainers"]}")
     testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")

@@ -12,6 +12,8 @@ import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.sink.state.provider.InMemoryState;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.Assert;
@@ -25,11 +27,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ProcessingTest {
 
@@ -266,7 +271,8 @@ public class ProcessingTest {
         List<Record> records = createRecords("test", 1);
         List<Record> recordsHead = records.subList(1, 2);
         StateProvider stateProvider = new InMemoryState();
-        stateProvider.setStateRecord(new StateRecord("test", 1, 5000, 4000, State.AFTER_PROCESSING));
+        String topic = "test";
+        stateProvider.setStateRecord(new StateRecord(topic, 1, 5000, 4000, State.AFTER_PROCESSING, topic));
         DBWriter dbWriter = new InMemoryDBWriter();
         Processing processingWithoutConfig = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(new HashMap<>()), sinkTaskStatistics);
         Assert.assertThrows(RuntimeException.class, () -> processingWithoutConfig.doLogic(recordsHead));
@@ -277,6 +283,33 @@ public class ProcessingTest {
         Processing processing = new Processing(stateProvider, dbWriter, null, clickHouseConfig, sinkTaskStatistics);
         processing.doLogic(recordsHead);
         assertEquals(0, dbWriter.recordsInserted());
+    }
+
+    @Test
+    @DisplayName("Db topic split stores processed topic key in state offsets")
+    public void dbTopicSplitUsesProcessedTopicForStateOffsets() throws IOException, ExecutionException, InterruptedException {
+        String kafkaTopic = "orders";
+        String database = "defaultdb";
+        int partition = 1;
+        List<Record> records = createRecords(database, kafkaTopic, partition);
+
+        HashMap<String, String> config = new HashMap<>();
+        config.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
+        config.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
+
+        InMemoryState stateProvider = new InMemoryState();
+        DBWriter dbWriter = new InMemoryDBWriter();
+        Processing processing = new Processing(stateProvider, dbWriter, null, new ClickHouseSinkConfig(config), sinkTaskStatistics);
+        processing.doLogic(records);
+
+        Map<TopicPartition, OffsetAndMetadata> offsets = stateProvider.getLastInsertedOffsetsSnapshot();
+        TopicPartition originalTopicPartition = new TopicPartition(kafkaTopic, partition);
+        TopicPartition processedTopicPartition = new TopicPartition(database + "." + kafkaTopic, partition);
+
+        assertTrue(offsets.containsKey(originalTopicPartition),
+                "State offsets should contain original topic");
+        assertFalse(offsets.containsKey(processedTopicPartition),
+                "State offsets should not contain processed database.topic key");
     }
 
 }

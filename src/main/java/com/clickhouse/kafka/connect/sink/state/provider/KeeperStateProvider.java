@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink.state.provider;
 
 import com.clickhouse.client.ClickHouseClient;
 import com.clickhouse.client.ClickHouseException;
-import com.clickhouse.client.ClickHouseNode;
 import com.clickhouse.client.ClickHouseNodeSelector;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseResponse;
@@ -11,8 +10,8 @@ import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.state.BaseStateProviderImpl;
 import com.clickhouse.kafka.connect.sink.state.State;
-import com.clickhouse.kafka.connect.sink.state.StateProvider;
 import com.clickhouse.kafka.connect.sink.state.StateRecord;
 import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
@@ -21,12 +20,9 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class KeeperStateProvider implements StateProvider {
+public class KeeperStateProvider extends BaseStateProviderImpl {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KeeperStateProvider.class);
-    private ClickHouseNode server = null;
-    private int pingTimeOut = 100;
-
 
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
@@ -111,7 +107,7 @@ public class KeeperStateProvider implements StateProvider {
             long totalResultsFound = response.getSummary().getResultRows();
             if ( totalResultsFound == 0) {
                 LOGGER.info("Read state record: topic {} partition {} with NONE state", topic, partition);
-                return new StateRecord(topic, partition, 0, 0, State.NONE);
+                return new StateRecord(topic, partition, 0, 0, State.NONE, topic);
             } else if(totalResultsFound > 1){
                 LOGGER.warn("There was more than 1 state records for query: {} ({} found)", selectStr, totalResultsFound);
             }
@@ -122,7 +118,7 @@ public class KeeperStateProvider implements StateProvider {
             State state = State.valueOf(r.getValue(3).asString());
             LOGGER.debug("read state record: topic {} partition {} with {} state max {} min {}", topic, partition, state, maxOffset, minOffset);
 
-            StateRecord stateRecord = new StateRecord(topic, partition, maxOffset, minOffset, state);
+            StateRecord stateRecord = new StateRecord(topic, partition, maxOffset, minOffset, state, topic);
             StateRecord storedRecord = stateMap.get(csc.getZkDatabase() + "-" + key);
             if (storedRecord != null && !stateRecord.equals(storedRecord)) {
                 LOGGER.warn("State record is changed: {} -> {}", storedRecord, stateRecord);
@@ -156,6 +152,7 @@ public class KeeperStateProvider implements StateProvider {
             response.close();
         }
 
+        super.setStateRecord(stateRecord);
         stateMap.put(csc.getZkDatabase() + "-" + key, stateRecord);
     }
 }

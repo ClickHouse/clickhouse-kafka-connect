@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static com.clickhouse.kafka.connect.ClickHouseSinkConnector.CLIENT_VERSION;
 
@@ -51,6 +52,15 @@ public class ClickHouseSinkConfig {
     public static final String BYPASS_SCHEMA_VALIDATION = "bypassSchemaValidation";
     public static final String BYPASS_FIELD_CLEANUP = "bypassFieldCleanup";
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
+    public static final String BUFFER_COUNT = "bufferCount";
+    public static final String BUFFER_FLUSH_TIME = "bufferFlushTime";
+    public static final String REPORT_INSERTED_OFFSETS = "reportInsertedOffsets";
+    public static final String ERROR_TOLERANCE_ALL = "all";
+    public static final String ERROR_TOLERANCE_NONE = "none";
+    public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
+
+    public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
+    public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
 
     public static final int MILLI_IN_A_SEC = 1000;
     private static final String databaseDefault = "default";
@@ -64,6 +74,9 @@ public class ClickHouseSinkConfig {
     public static final Integer tableRefreshIntervalDefault = 0;
     public static final Boolean exactlyOnceDefault = Boolean.FALSE;
     public static final Boolean customInsertFormatDefault = Boolean.FALSE;
+    public static final Integer bufferCountDefault = 0;
+    public static final Long bufferFlushTimeDefault = 0L;
+    public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
 
     private final String hostname;
     private final int port;
@@ -94,7 +107,11 @@ public class ClickHouseSinkConfig {
     private final boolean bypassSchemaValidation;
     private final boolean bypassFieldCleanup;
     private final boolean ignorePartitionsWhenBatching;
+    private final int bufferCount;
+    private final long bufferFlushTime;
+    private final boolean reportInsertedOffsets;
     private final boolean binaryFormatWrtiteJsonAsString;
+    private final String sslSocketSni;
 
     public enum InsertFormats {
         NONE,
@@ -184,8 +201,8 @@ public class ClickHouseSinkConfig {
         exactlyOnce = Boolean.parseBoolean(props.getOrDefault(EXACTLY_ONCE,"false"));
         suppressTableExistenceException = Boolean.parseBoolean(props.getOrDefault("suppressTableExistenceException","false"));
 
-        String errorsToleranceString = props.getOrDefault("errors.tolerance", "none").trim();
-        errorsTolerance = errorsToleranceString.equalsIgnoreCase("all");
+        String errorsToleranceString = props.getOrDefault(ERRORS_TOLERANCE, ERROR_TOLERANCE_NONE).trim();
+        errorsTolerance = errorsToleranceString.equalsIgnoreCase(ERROR_TOLERANCE_ALL);
 
         Map<String, String> clickhouseSettings = new HashMap<>();
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
@@ -270,7 +287,14 @@ public class ClickHouseSinkConfig {
         this.bypassSchemaValidation = Boolean.parseBoolean(props.getOrDefault(BYPASS_SCHEMA_VALIDATION, "false"));
         this.bypassFieldCleanup = Boolean.parseBoolean(props.getOrDefault(BYPASS_FIELD_CLEANUP, "false"));
         this.ignorePartitionsWhenBatching = Boolean.parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
+        this.bufferCount = Integer.parseInt(props.getOrDefault(BUFFER_COUNT, bufferCountDefault.toString()));
+        this.bufferFlushTime = Long.parseLong(props.getOrDefault(BUFFER_FLUSH_TIME, bufferFlushTimeDefault.toString()));
+        this.reportInsertedOffsets = Boolean.parseBoolean(props.getOrDefault(REPORT_INSERTED_OFFSETS, reportInsertedOffsetsDefault.toString()));
+        this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
 
+        if (this.bufferCount > 0) {
+            LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
+        }
 
         String jsonAsString = getClickhouseSettings().get("input_format_binary_read_json_as_string");
         this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
@@ -279,6 +303,18 @@ public class ClickHouseSinkConfig {
                 hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
         LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
+
+        try {
+            long retryTimeout = Long.parseLong(props.getOrDefault(CONNECTOR_RETRY_TIMEOUT, "60000"));
+            if (retryTimeout < MINIMAL_RETRY_TIMEOUT_THR_WARN) {
+                LOGGER.warn("{} is too low and can cause unstable work. Please check configuration. " +
+                        "Value should be in 'ms' and at least '{}' ({} seconds).",
+                        CONNECTOR_RETRY_TIMEOUT, MINIMAL_RETRY_TIMEOUT_THR_WARN,
+                        TimeUnit.MILLISECONDS.toSeconds(MINIMAL_RETRY_TIMEOUT_THR_WARN));
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to validate some configuration", e);
+        }
     }
 
     public void addClickHouseSetting(String key, String value, boolean override) {
@@ -609,6 +645,52 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Ignore partitions when batching."
+        );
+        configDef.define(BUFFER_COUNT,
+                ConfigDef.Type.INT,
+                bufferCountDefault,
+                ConfigDef.Range.atLeast(0),
+                ConfigDef.Importance.LOW,
+                "Number of records to buffer before flushing to ClickHouse. 0 means no buffering (default). " +
+                        "When enabled, records from multiple poll() calls are accumulated and flushed as a single large batch.",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Buffer record count."
+        );
+        configDef.define(BUFFER_FLUSH_TIME,
+                ConfigDef.Type.LONG,
+                bufferFlushTimeDefault,
+                ConfigDef.Range.atLeast(0),
+                ConfigDef.Importance.LOW,
+                "Maximum time in milliseconds to buffer records before flushing, regardless of buffer count. " +
+                        "0 means no time-based flushing (default). Only effective when bufferCount > 0.",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Buffer flush time in ms."
+        );
+        configDef.define(REPORT_INSERTED_OFFSETS,
+                ConfigDef.Type.BOOLEAN,
+                reportInsertedOffsetsDefault,
+                ConfigDef.Importance.LOW,
+                "Report only successfully inserted offsets in preCommit. default: " +
+                        reportInsertedOffsetsDefault,
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Report inserted offsets."
+        );
+        configDef.define(SSL_SOCKET_SNI,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.LOW,
+                "Override the SNI hostname sent in the client handshake. When set, the client will explicitly include the specified name as the server_name extension in the TLS ClientHello." +
+                        "This is useful to avoid handshake failure when routing TLS traffic through a proxy, where the proxy hostname and the server hostname may differ. Default: ''",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.MEDIUM,
+                "SSL Socket SNI"
         );
         return configDef;
     }
