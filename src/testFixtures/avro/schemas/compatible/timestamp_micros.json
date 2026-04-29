@@ -1,0 +1,30 @@
+{
+  "description": "Timestamp: timestamp-micros logical type",
+  "schema": {
+    "type": "record",
+    "name": "TimestampMicros",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "created_at", "type": {"type": "long", "logicalType": "timestamp-micros"}}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "created_at": "DateTime64(6)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "created_at": 1700000000000000},
+    {"id": 2, "created_at": 1700000001000000},
+    {"id": 3, "created_at": 1700000002000000},
+    {"id": 4, "created_at": 1700000003000000},
+    {"id": 5, "created_at": 1700000004000000},
+    {"id": 6, "created_at": 1700000005000000},
+    {"id": 7, "created_at": 1700000006000000},
+    {"id": 8, "created_at": 1700000007000000},
+    {"id": 9, "created_at": 1700000008000000},
+    {"id": 10, "created_at": 1700000009000000}
+  ],
+  "expected_row_count": 10
+}

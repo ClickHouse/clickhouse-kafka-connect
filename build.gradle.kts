@@ -157,6 +157,7 @@ dependencies {
     testFixturesImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
     testFixturesImplementation("com.google.code.gson:gson:${project.extra["gson"]}")
     testFixturesImplementation("org.json:json:${project.extra["org.json"]}")
+    testFixturesImplementation("org.testcontainers:testcontainers:${project.extra["testcontainers"]}")
 }
 
 
@@ -181,7 +182,11 @@ tasks.withType<JavaCompile> {
 }
 
 tasks.withType<Test> {
-    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1
+    if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
+        maxParallelForks = 1
+    } else {
+        maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1
+    }
     tasks.getByName("check").dependsOn(this)
 //    systemProperty("file.encoding", "windows-1252") // run tests with different encoding
     useJUnitPlatform()
@@ -333,7 +338,6 @@ task("testJar", type = Jar::class) {
     archiveClassifier.set("test")
     from(sourceSets.testFixtures.get().allSource)
 }
-
 publishing {
     publications {
         create<MavenPublication>("mavenJava") {
@@ -344,4 +348,3 @@ publishing {
         }
     }
 }
-

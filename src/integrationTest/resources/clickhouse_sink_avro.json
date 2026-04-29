@@ -1,0 +1,19 @@
+{
+  "name": "%s",
+  "config": {
+    "name": "%s",
+    "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "tasks.max": "%d",
+    "topics": "%s",
+    "hostname": "%s",
+    "port": "%s",
+    "database": "default",
+    "username": "%s",
+    "password": "%s",
+    "ssl": "false",
+    "exactlyOnce" : "false",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+    "client_version": "V2"
+  }
+}

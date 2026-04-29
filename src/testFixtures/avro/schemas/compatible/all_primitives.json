@@ -1,0 +1,40 @@
+{
+  "description": "Baseline: all non-null Avro primitive types",
+  "schema": {
+    "type": "record",
+    "name": "AllPrimitives",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "name", "type": "string"},
+      {"name": "amount", "type": "long"},
+      {"name": "rate", "type": "float"},
+      {"name": "score", "type": "double"},
+      {"name": "active", "type": "boolean"},
+      {"name": "serialized", "type": "bytes"}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "name": "String",
+    "amount": "Int64",
+    "rate": "Float32",
+    "score": "Float64",
+    "active": "Bool",
+    "serialized": "String"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "name": "Alice", "amount": 1000, "rate": 1.5, "score": 99.99, "active": true, "serialized": "\u0000"},
+    {"id": 2, "name": "Bob", "amount": 2000, "rate": 2.5, "score": 88.88, "active": false, "serialized": "\u0000"},
+    {"id": 3, "name": "Charlie", "amount": 3000, "rate": 3.5, "score": 77.77, "active": true, "serialized": "\u0000"},
+    {"id": 4, "name": "Diana", "amount": 4000, "rate": 4.5, "score": 66.66, "active": false, "serialized": "\u00FF"},
+    {"id": 5, "name": "Eve", "amount": 5000, "rate": 5.5, "score": 55.55, "active": true, "serialized": "\u00FF"},
+    {"id": 6, "name": "Frank", "amount": 6000, "rate": 6.5, "score": 44.44, "active": false, "serialized": "\u00FF"},
+    {"id": 7, "name": "Grace", "amount": 7000, "rate": 7.5, "score": 33.33, "active": true, "serialized": "\uFFFF"},
+    {"id": 8, "name": "Hank", "amount": 8000, "rate": 8.5, "score": 22.22, "active": false, "serialized": "\uFFFF"},
+    {"id": 9, "name": "Ivy", "amount": 9000, "rate": 9.5, "score": 11.11, "active": true, "serialized": "\uFFFF"},
+    {"id": 10, "name": "Jack", "amount": 10000, "rate": 10.5, "score": 0.01, "active": false, "serialized": "\uFFFF"}
+  ],
+  "expected_row_count": 10
+}

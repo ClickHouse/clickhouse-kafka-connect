@@ -1,0 +1,40 @@
+{
+  "description": "Nested: array of records",
+  "schema": {
+    "type": "record",
+    "name": "ArrayOfRecords",
+    "namespace": "com.clickhouse.kafka.connect.avro.test",
+    "fields": [
+      {"name": "id", "type": "int"},
+      {"name": "items", "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Item",
+          "fields": [
+            {"name": "name", "type": "string"},
+            {"name": "qty", "type": "int"}
+          ]
+        }
+      }}
+    ]
+  },
+  "clickhouse_columns": {
+    "id": "Int32",
+    "items": "Array(Tuple(name String, qty Int32))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "items": [{"name": "a", "qty": 1}, {"name": "b", "qty": 2}]},
+    {"id": 2, "items": [{"name": "c", "qty": 3}]},
+    {"id": 3, "items": [{"name": "d", "qty": 4}, {"name": "e", "qty": 5}, {"name": "f", "qty": 6}]},
+    {"id": 4, "items": []},
+    {"id": 5, "items": [{"name": "g", "qty": 7}]},
+    {"id": 6, "items": [{"name": "h", "qty": 8}, {"name": "i", "qty": 9}]},
+    {"id": 7, "items": []},
+    {"id": 8, "items": [{"name": "j", "qty": 10}]},
+    {"id": 9, "items": [{"name": "k", "qty": 11}, {"name": "l", "qty": 12}]},
+    {"id": 10, "items": [{"name": "m", "qty": 13}]}
+  ],
+  "expected_row_count": 10
+}
