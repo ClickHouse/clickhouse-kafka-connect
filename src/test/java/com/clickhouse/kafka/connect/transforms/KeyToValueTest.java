@@ -166,6 +166,28 @@ public class KeyToValueTest {
     }
 
     @Test
+    public void testKeyTypeChange() {
+        try(KeyToValue<SinkRecord> keyToValue = new KeyToValue<>()) {
+            keyToValue.configure(new HashMap<>());
+
+            Schema valueSchema = SchemaBuilder.struct()
+                    .field("string_field", Schema.STRING_SCHEMA)
+                    .build();
+            Struct valueStruct = new Struct(valueSchema)
+                    .put("string_field", "value");
+
+            SinkRecord record1 = new SinkRecord("topic1", 0, Schema.STRING_SCHEMA, "key1", valueSchema, valueStruct, 0);
+            SinkRecord newRecord1 = keyToValue.apply(record1);
+
+            SinkRecord record2 = new SinkRecord("topic1", 0, Schema.INT32_SCHEMA, 123, valueSchema, valueStruct, 1);
+            SinkRecord newRecord2 = keyToValue.apply(record2);
+
+            Assertions.assertEquals("key1", ((Struct) newRecord1.value()).get("_key"));
+            Assertions.assertEquals(123, ((Struct) newRecord2.value()).get("_key"));
+        }
+    }
+
+    @Test
     public void applyWithEvolutionAvroSchemasTest() throws Exception {
         String topic = "test_evolution_topic";
         MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();

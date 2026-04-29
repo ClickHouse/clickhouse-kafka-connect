@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R> {
@@ -23,9 +24,33 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
                     "Field name on the record value to extract the record key into.");
 
     private String keyFieldName;
-    private Cache<Schema, Schema> schemaUpdateCache;
+    private Cache<CacheKey, Schema> schemaUpdateCache;
 
     protected AtomicInteger cacheMisses = new AtomicInteger(0);
+
+    private static class CacheKey {
+        private final Schema valueSchema;
+        private final Schema keySchema;
+
+        public CacheKey(Schema valueSchema, Schema keySchema) {
+            this.valueSchema = valueSchema;
+            this.keySchema = keySchema;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            CacheKey cacheKey = (CacheKey) o;
+            return Objects.equals(valueSchema, cacheKey.valueSchema) &&
+                    Objects.equals(keySchema, cacheKey.keySchema);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(valueSchema, keySchema);
+        }
+    }
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -58,7 +83,8 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     private R applyWithSchema(R record) {
         final Struct oldValue = (Struct) record.value();
 
-        Schema newValueSchema = schemaUpdateCache.get(oldValue.schema());
+        CacheKey cacheKey = new CacheKey(oldValue.schema(), record.keySchema());
+        Schema newValueSchema = schemaUpdateCache.get(cacheKey);
 
         if (newValueSchema == null) {
             final SchemaBuilder builder = SchemaBuilder.struct();
@@ -82,7 +108,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
                 newValueSchema.fields().forEach(f -> LOGGER.debug("Field: {}", f));
             }
 
-            schemaUpdateCache.put(oldValue.schema(), newValueSchema);
+            schemaUpdateCache.put(cacheKey, newValueSchema);
             cacheMisses.incrementAndGet();
         }
 
