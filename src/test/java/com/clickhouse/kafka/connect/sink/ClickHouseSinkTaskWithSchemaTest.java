@@ -62,6 +62,7 @@ import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -2342,10 +2343,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
 
-        // Single batch with 10 records spanning 3 schema versions:
+        // Single batch with 10 records spanning 3 schema versions, ordered so the
+        // newest schema (V3) is LAST. Auto-evolve only inspects the last record's
+        // schema, so only fields present in V3 will be added (name, email, country).
+        // V2-only fields (age, score, active, city) will NOT be evolved.
         //   Records 1–5:  Schema V1 (3 fields: off16, p_int64, name)
         //   Records 6–7:  Schema V2 (8 fields: off16, p_int64, name, email, age, score, active, city)
-        //   Records 8–10: Schema V3 (5 fields: off16, p_int64, name, email, country)
+        //   Records 8–10: Schema V3 (5 fields: off16, p_int64, name, email, country)  <-- LAST
         List<SinkRecord> batch = new ArrayList<>();
         batch.addAll(SchemaTestData.createRichSchemaV1(topic, 1, 5, 0));
         batch.addAll(SchemaTestData.createRichSchemaV2(topic, 1, 2, 5));
@@ -2358,21 +2362,27 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
 
-        // Verify all evolved columns from all versions exist
+        // Only columns present in the LAST record's schema (V3) should be added.
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
-        assertTrue(described.getRootColumnsMap().containsKey("name"), "V1 column 'name' should exist");
-        assertTrue(described.getRootColumnsMap().containsKey("email"), "V2 column 'email' should exist");
-        assertTrue(described.getRootColumnsMap().containsKey("age"), "V2 column 'age' should exist");
-        assertTrue(described.getRootColumnsMap().containsKey("score"), "V2 column 'score' should exist");
-        assertTrue(described.getRootColumnsMap().containsKey("active"), "V2 column 'active' should exist");
-        assertTrue(described.getRootColumnsMap().containsKey("city"), "V2 column 'city' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("name"), "V3 column 'name' should exist");
+        assertTrue(described.getRootColumnsMap().containsKey("email"), "V3 column 'email' should exist");
         assertTrue(described.getRootColumnsMap().containsKey("country"), "V3 column 'country' should exist");
 
-        // Verify NULL distribution:
-        //   name: all 10 records have it - 0 NULLs
-        //   email: V1 records (5) lack it - 5 NULLs
-        //   age: only V2 records (2) have it - 8 NULLs
-        //   country: only V3 records (3) have it - 7 NULLs
+        // V2-only fields are NOT added because the last record (V3) does not include them.
+        // This documents the trade-off of last-record-only schema detection.
+        assertFalse(described.getRootColumnsMap().containsKey("age"),
+                "V2-only column 'age' should NOT be added (last record is V3)");
+        assertFalse(described.getRootColumnsMap().containsKey("score"),
+                "V2-only column 'score' should NOT be added (last record is V3)");
+        assertFalse(described.getRootColumnsMap().containsKey("active"),
+                "V2-only column 'active' should NOT be added (last record is V3)");
+        assertFalse(described.getRootColumnsMap().containsKey("city"),
+                "V2-only column 'city' should NOT be added (last record is V3)");
+
+        // Verify NULL distribution for the columns that DO exist:
+        //   name:    all 10 records have it -> 0 NULLs
+        //   email:   V1 records (5) lack it -> 5 NULLs
+        //   country: only V3 records (3) have it -> 7 NULLs
         try {
             String nameNullQuery = String.format(
                     "SELECT COUNT(*) FROM `%s` WHERE `name` IS NULL SETTINGS select_sequential_consistency = 1", topic);
@@ -2385,12 +2395,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             Records emailNulls = chc.getClient().queryRecords(emailNullQuery).get();
             assertEquals(5, Integer.parseInt(emailNulls.iterator().next().getString(1)),
                     "V1 records (5) should have NULL for email");
-
-            String ageNullQuery = String.format(
-                    "SELECT COUNT(*) FROM `%s` WHERE `age` IS NULL SETTINGS select_sequential_consistency = 1", topic);
-            Records ageNulls = chc.getClient().queryRecords(ageNullQuery).get();
-            assertEquals(8, Integer.parseInt(ageNulls.iterator().next().getString(1)),
-                    "V1 (5) + V3 (3) records should have NULL for age");
 
             String countryNullQuery = String.format(
                     "SELECT COUNT(*) FROM `%s` WHERE `country` IS NULL SETTINGS select_sequential_consistency = 1", topic);
@@ -2771,8 +2775,11 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
 
-        // Build batch where V2 records come first and V1 (older) records are last.
-        // Before the fix, only the last record was checked - V1 has no new fields, so ALTER TABLE was skipped.
+        // Build batch where V2 records come first and V1 (older) records are LAST.
+        // Auto-evolve only inspects the last record's schema, so V1 (which has no
+        // new fields) means no ALTER TABLE is issued. This test documents that
+        // trade-off: producers SHOULD ensure the newest schema is the last record
+        // in a batch when relying on auto-evolve.
         List<SinkRecord> batch = new ArrayList<>();
         batch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 3));
         batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 2));
@@ -2782,23 +2789,14 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(batch);
         chst.stop();
 
+        // All 5 rows are still inserted (V2 extra field is dropped because the
+        // table doesn't have the column and input_format_skip_unknown_fields=1).
         assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
 
-        // The new column from V2 should exist even though V1 was the last record
+        // The new column is NOT added because the LAST record (V1) does not include it.
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
-        assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
-                "Column 'new_string_field' should be added even when last record is V1 (older schema)");
-
-        // V1 records should have NULL for the new column
-        String nullCountQuery = String.format(
-                "SELECT COUNT(*) FROM `%s` WHERE `new_string_field` IS NULL SETTINGS select_sequential_consistency = 1", topic);
-        try {
-            Records nullRecords = chc.getClient().queryRecords(nullCountQuery).get();
-            int nullCount = Integer.parseInt(nullRecords.iterator().next().getString(1));
-            assertEquals(2, nullCount, "V1 records should have NULL for new_string_field");
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        assertFalse(described.getRootColumnsMap().containsKey("new_string_field"),
+                "Column 'new_string_field' should NOT be added when the last record is V1 (older schema)");
     }
 
     @Test
@@ -2811,8 +2809,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
         ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
 
-        // Batch with V1, V2, V3, V4 - each version adds a different field.
-        // All new fields should be added in a single ALTER TABLE.
+        // Batch with V1, V2, V3, V4 in order. Auto-evolve only inspects the LAST
+        // record's schema (V4), which only adds `v4_float_field`. The unique
+        // fields from V2 (`new_string_field`) and V3 (`v3_bool_field`) are NOT
+        // added because they are absent from V4.
         List<SinkRecord> batch = new ArrayList<>();
         batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 2));
         batch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 2));
@@ -2826,14 +2826,17 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(8, ClickHouseTestHelpers.countRows(chc, topic));
 
-        // Verify all fields from V2, V3, V4 exist
+        // Only V4's unique field is added (V4 is the last record's schema).
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
-        assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
-                "V2 column 'new_string_field' should exist");
-        assertTrue(described.getRootColumnsMap().containsKey("v3_bool_field"),
-                "V3 column 'v3_bool_field' should exist");
         assertTrue(described.getRootColumnsMap().containsKey("v4_float_field"),
-                "V4 column 'v4_float_field' should exist");
+                "V4 column 'v4_float_field' should exist (V4 is last record)");
+
+        // V2 and V3 unique fields are NOT added because the last record (V4) does not include them.
+        // This documents the trade-off of last-record-only schema detection.
+        assertFalse(described.getRootColumnsMap().containsKey("new_string_field"),
+                "V2-only column 'new_string_field' should NOT be added (last record is V4)");
+        assertFalse(described.getRootColumnsMap().containsKey("v3_bool_field"),
+                "V3-only column 'v3_bool_field' should NOT be added (last record is V4)");
     }
 
     @Test
@@ -2882,7 +2885,11 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         // Records from different partitions with different schema versions.
         // With ignorePartitionsWhenBatching=true, they are merged into a single batch.
         // Partition 0: V2 records (has new_string_field)
-        // Partition 1: V1 records (no new_string_field) - these may end up last
+        // Partition 1: V1 records (no new_string_field) - these are last in the merged batch
+        // Auto-evolve only inspects the last record's schema (V1), so the new
+        // column is NOT added. This documents the trade-off when schema drifts
+        // across partitions: the producer of the last partition's records
+        // determines which schema is used for evolution.
         List<SinkRecord> batch = new ArrayList<>();
         batch.addAll(SchemaTestData.createSchemaV2WithNewNullableField(topic, 0, 3));
         batch.addAll(SchemaTestData.createSchemaV1(topic, 1, 3));
@@ -2894,11 +2901,11 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         assertEquals(6, ClickHouseTestHelpers.countRows(chc, topic));
 
-        // The new column from V2 (partition 0) should exist even though
-        // V1 records from partition 1 may be last in the merged batch
+        // The new column from V2 is NOT added because the last record in the
+        // merged cross-partition batch is V1 (older schema).
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
-        assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
-                "Column 'new_string_field' should be added with cross-partition schema drift");
+        assertFalse(described.getRootColumnsMap().containsKey("new_string_field"),
+                "Column 'new_string_field' should NOT be added when last record across partitions is V1");
     }
 
     // Mixed batch where older records lack auto-evolved Array/Map columns.
