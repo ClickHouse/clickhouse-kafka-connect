@@ -1,5 +1,8 @@
 package com.clickhouse.kafka.connect.transforms;
 
+import org.apache.kafka.common.cache.Cache;
+import org.apache.kafka.common.cache.LRUCache;
+import org.apache.kafka.common.cache.SynchronizedCache;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.ConnectRecord;
@@ -11,19 +14,49 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(KeyToValue.class.getName());
-    public static final ConfigDef CONFIG_DEF = new ConfigDef().define("field", ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
+    public static final ConfigDef CONFIG_DEF = new ConfigDef()
+            .define("field", ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
                     "Field name on the record value to extract the record key into.");
 
     private String keyFieldName;
-    private Schema valueSchema;
+    private Cache<CacheKey, Schema> schemaUpdateCache;
+
+    protected AtomicInteger cacheMisses = new AtomicInteger(0);
+
+    private static class CacheKey {
+        private final Schema valueSchema;
+        private final Schema keySchema;
+
+        public CacheKey(Schema valueSchema, Schema keySchema) {
+            this.valueSchema = valueSchema;
+            this.keySchema = keySchema;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            CacheKey cacheKey = (CacheKey) o;
+            return Objects.equals(valueSchema, cacheKey.valueSchema) &&
+                    Objects.equals(keySchema, cacheKey.keySchema);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(valueSchema, keySchema);
+        }
+    }
 
     @Override
     public void configure(Map<String, ?> configs) {
         final SimpleConfig config = new SimpleConfig(CONFIG_DEF, configs);
         keyFieldName = config.getString("field");
+        schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(16));
     }
 
     @Override
@@ -50,21 +83,37 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     private R applyWithSchema(R record) {
         final Struct oldValue = (Struct) record.value();
 
-        if (valueSchema == null) {
+        CacheKey cacheKey = new CacheKey(oldValue.schema(), record.keySchema());
+        Schema newValueSchema = schemaUpdateCache.get(cacheKey);
+
+        if (newValueSchema == null) {
             final SchemaBuilder builder = SchemaBuilder.struct();
-            builder.name(oldValue.schema().name());
-            builder.version(oldValue.schema().version());
-            builder.doc(oldValue.schema().doc());
+
+            if (oldValue.schema().name() != null) {
+                builder.name(oldValue.schema().name());
+            }
+            if (oldValue.schema().version() != null) {
+                builder.version(oldValue.schema().version());
+            }
+            if (oldValue.schema().doc() != null) {
+                builder.doc(oldValue.schema().doc());
+            }
             oldValue.schema().fields().forEach(f -> {
                 builder.field(f.name(), f.schema());
             });
             builder.field(keyFieldName, record.keySchema() == null ? Schema.OPTIONAL_STRING_SCHEMA : record.keySchema());
-            valueSchema = builder.build();
-            valueSchema.schema().fields().forEach(f -> LOGGER.debug("Field: {}", f));
+            newValueSchema = builder.build();
+
+            if (LOGGER.isDebugEnabled()) {
+                newValueSchema.fields().forEach(f -> LOGGER.debug("Field: {}", f));
+            }
+
+            schemaUpdateCache.put(cacheKey, newValueSchema);
+            cacheMisses.incrementAndGet();
         }
 
-        Struct newValue = new Struct(valueSchema);
-        valueSchema.fields().forEach(f -> {
+        Struct newValue = new Struct(newValueSchema);
+        newValueSchema.fields().forEach(f -> {
             if (f.name().equals(keyFieldName)) {
                 newValue.put(f, record.key());
             } else {
@@ -72,7 +121,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
             }
         });
         LOGGER.debug("New schema value: {}", newValue);
-        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), valueSchema, newValue, record.timestamp());
+        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), newValueSchema, newValue, record.timestamp());
     }
 
     @Override
@@ -82,7 +131,7 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
 
     @Override
     public void close() {
-        valueSchema = null;
+        schemaUpdateCache = null;
     }
 
     public static class SimpleConfig extends AbstractConfig {
