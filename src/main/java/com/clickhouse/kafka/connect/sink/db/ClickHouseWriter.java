@@ -33,6 +33,8 @@ import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.errors.RetriableException;
+import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,8 +50,10 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -207,6 +211,26 @@ public class ClickHouseWriter implements DBWriter {
         String database = first.getDatabase();
         Table table = getTable(database, topic);
         if (table == null) { return; }//We checked the error flag in getTable, so we don't need to check it again here
+
+        if (csc.isAutoEvolve()) {
+            // Check the last record's schema for new fields.
+            // Limitation: if a batch contains multiple schema versions, only the last one is checked.
+            // A full scan across all records can be implemented later if needed.
+            Record last = records.get(records.size() - 1);
+            Map<String, Schema> lastFields = new LinkedHashMap<>();
+            if (last.getFields() != null) {
+                for (Field f : last.getFields()) {
+                    lastFields.put(f.name(), f.schema());
+                }
+            }
+            table = evolveTableSchema(table, lastFields);
+        }
+
+        doInsertBatch(records, table, queryId);
+    }
+
+    private void doInsertBatch(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
+        Record first = records.get(0);
         LOGGER.debug("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
         switch (first.getSchemaType()) {
             case SCHEMA:
@@ -234,7 +258,8 @@ public class ClickHouseWriter implements DBWriter {
             Type type = col.getType();
             boolean isNullable = col.isNullable();
             boolean hasDefault = col.hasDefault();
-            if (!isNullable && !hasDefault) {
+            // Variant has a native NULL discriminator (255) so it can accept missing values without Nullable or DEFAULT.
+            if (!isNullable && !hasDefault && type != Type.VARIANT) {
                 Map<String, Schema> schemaMap = record.getFields().stream().collect(Collectors.toMap(Field::name, Field::schema));
                 var objSchema = schemaMap.get(colName);
                 Data obj = record.getJsonMap().get(colName);
@@ -278,6 +303,9 @@ public class ClickHouseWriter implements DBWriter {
                                 LOGGER.debug("Data schema name: {}", objSchema.name());
 
                                 if (colTypeName.equals("TUPLE") && dataTypeName.equals("STRUCT"))
+                                    continue;
+
+                                if (colTypeName.equals("VARIANT") && dataTypeName.equals("STRUCT"))
                                     continue;
 
                                 if (INT_TYPES.contains(colTypeName)) {
@@ -498,6 +526,9 @@ public class ClickHouseWriter implements DBWriter {
                     mapTmp.forEach((key, mapValue) -> {
                         try {
                             doWritePrimitive(col.getMapKeyType(), value.getMapKeySchema().type(), stream, key, col);
+                            if (col.getMapValueType() != null && col.getMapValueType().isNullable() && mapValue != null) {
+                                BinaryStreamUtils.writeNonNull(stream);
+                            }
                             doWriteColValue(col.getMapValueType(), stream, new Data(value.getNestedValueSchema(), mapValue), defaultsSupport);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
@@ -731,7 +762,7 @@ public class ClickHouseWriter implements DBWriter {
                                 } else if (unionData.getObject() instanceof byte[]) {
                                     BinaryStreamUtils.writeString(stream, (byte[]) unionData.getObject());
                                 } else {
-                                    throw new DataException("Not implemented conversion from " + unionData.getObject().getClass() + " to String");
+                                    BinaryStreamUtils.writeString(stream, unionData.getObject().toString().getBytes(StandardCharsets.UTF_8));
                                 }
                                 break;
                             }
@@ -790,6 +821,10 @@ public class ClickHouseWriter implements DBWriter {
                         return;//And we're done
                     } else if (colType == Type.ARRAY) {//If the column is an array
                         BinaryStreamUtils.writeNonNull(stream);//Then we send nonNull
+                    } else if (colType == Type.VARIANT) {
+                        BinaryStreamUtils.writeNonNull(stream);
+                        BinaryStreamUtils.writeUnsignedInt8(stream, 255);
+                        return;
                     } else {
                         throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", name));
                     }
@@ -802,7 +837,10 @@ public class ClickHouseWriter implements DBWriter {
                 if (!col.isNullable() && value.getObject() == null) {
                     if (colType == Type.ARRAY)
                         BinaryStreamUtils.writeNonNull(stream);
-                    else
+                    else if (colType == Type.VARIANT) {
+                        BinaryStreamUtils.writeUnsignedInt8(stream, 255);
+                        return;
+                    } else
                         throw new RuntimeException(String.format("An attempt to write null into not nullable column '%s'", name));
                 }
             }
@@ -817,12 +855,73 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeNonNull(stream);
                 }
                 BinaryStreamUtils.writeNull(stream);
+            } else if (col.getType() == Type.VARIANT) {
+                // Variant has a native NULL discriminator (255) — no Nullable/DEFAULT needed.
+                if (defaultsSupport) {
+                    BinaryStreamUtils.writeNonNull(stream);
+                }
+                BinaryStreamUtils.writeUnsignedInt8(stream, 255);
             } else {
                 // no filled and not nullable
                 LOGGER.error("Column {} is not nullable and no value is provided", name);
                 throw new RuntimeException();
             }
         }
+    }
+
+    protected Table evolveTableSchema(Table table, Map<String, Schema> allFields) throws InterruptedException {
+        if (allFields.isEmpty()) {
+            throw new RuntimeException(
+                    "auto.evolve requires a Connect schema (Avro, Protobuf, or JSON Schema). " +
+                    "Schemaless or string records are not supported with auto.evolve=true.");
+        }
+
+        Set<String> missingColumns = table.getMissingColumns(allFields.keySet());
+
+        if (missingColumns.isEmpty()) {
+            return table;
+        }
+
+        LOGGER.info("Detected {} new field(s) not present in table {}: {}", missingColumns.size(), table.getName(), missingColumns);
+
+        List<String> columnDefs = new ArrayList<>();
+
+        for (String fieldName : missingColumns) {
+            Schema fieldSchema = allFields.get(fieldName);
+            if (fieldSchema == null) {
+                continue;
+            }
+
+            String chType = Column.connectTypeToClickHouseType(fieldSchema, csc.isAutoEvolveStructToJson());
+            String defaultExpr = Column.defaultExpressionForType(chType);
+            columnDefs.add(String.format("%s %s%s", Utils.escapeName(fieldName), chType, defaultExpr));
+        }
+
+        if (!columnDefs.isEmpty()) {
+            chc.alterTableAddColumns(table.getDatabase(), table.getCleanName(), columnDefs, csc.getClickhouseSettings());
+            LOGGER.info("Schema evolution complete for table {}. Added columns: {}", table.getName(), columnDefs);
+            table = refreshTableAfterDDL(table, missingColumns);
+        }
+
+        return table;
+    }
+
+    private static final long DDL_REFRESH_BACKOFF_MS = 200;
+
+    private Table refreshTableAfterDDL(Table table, Set<String> expectedNewColumns) throws InterruptedException {
+        int maxRetries = csc.getAutoEvolveDdlRefreshRetries();
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            Table refreshed = urgentTableUpdate(table);
+            Set<String> stillMissing = refreshed.getMissingColumns(expectedNewColumns);
+            if (stillMissing.isEmpty()) {
+                return refreshed;
+            }
+            LOGGER.warn("DDL refresh attempt {}/{}: columns {} not yet visible, retrying in {}ms",
+                    attempt + 1, maxRetries, stillMissing, DDL_REFRESH_BACKOFF_MS);
+            Thread.sleep(DDL_REFRESH_BACKOFF_MS);
+        }
+        throw new RetriableException(String.format(
+                "DDL propagation timeout: columns not visible after %d retries", maxRetries));
     }
 
     protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults, boolean retry) throws IOException, ExecutionException, InterruptedException {

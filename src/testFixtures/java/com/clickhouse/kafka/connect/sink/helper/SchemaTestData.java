@@ -1585,4 +1585,566 @@ public class SchemaTestData {
                         schemaAndValues.add(new SinkRecord(topic, 0, null, null, schemaAndValue.schema(), schemaAndValue.value(), schemaAndValues.size())),
                         ArrayList::addAll);
     }
+
+    public static Collection<SinkRecord> createSchemaV1(String topic, int partition) {
+        return createSchemaV1(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV1(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V1 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .build();
+
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Struct value_struct = new Struct(SCHEMA_V1)
+                    .put("off16", (short) n)
+                    .put("p_int64", n);
+
+            array.add(new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, SCHEMA_V1,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            ));
+        });
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithNewNullableField(String topic, int partition) {
+        return createSchemaV2WithNewNullableField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithNewNullableField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_string_field", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        long offset = totalRecords; // continue offsets from V1
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_string_field", "value_" + n);
+
+            array.add(new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, SCHEMA_V2,
+                    value_struct,
+                    offset + n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithNewNonNullableField(String topic, int partition) {
+        return createSchemaV2WithNewNonNullableField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithNewNonNullableField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("non_nullable_field", Schema.STRING_SCHEMA)
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("non_nullable_field", "required_" + n);
+
+            array.add(new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, SCHEMA_V2,
+                    value_struct,
+                    offset + n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithMultipleNewNullableFields(String topic, int partition) {
+        return createSchemaV2WithMultipleNewNullableFields(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithMultipleNewNullableFields(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_string_field", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("new_int32_field", SchemaBuilder.int32().optional().build())
+                .field("new_float64_field", SchemaBuilder.float64().optional().build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_string_field", "val_" + n)
+                    .put("new_int32_field", (int) n)
+                    .put("new_float64_field", n * 1.5);
+
+            array.add(new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, SCHEMA_V2,
+                    value_struct,
+                    offset + n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithStructField(String topic, int partition) {
+        return createSchemaV2WithStructField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithStructField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema INNER_SCHEMA = SchemaBuilder.struct()
+                .field("nested_str", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_struct_field", SchemaBuilder.struct()
+                        .field("nested_str", Schema.OPTIONAL_STRING_SCHEMA)
+                        .optional()
+                        .build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct nested = new Struct(SCHEMA_V2.field("new_struct_field").schema())
+                    .put("nested_str", "nested_" + n);
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_struct_field", nested);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithArrayAndMapFields(String topic, int partition) {
+        return createSchemaV2WithArrayAndMapFields(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithArrayAndMapFields(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_array_field", SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).optional().build())
+                .field("new_map_field", SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.int32().optional().build()).optional().build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_array_field", Arrays.asList("a_" + n, "b_" + n))
+                    .put("new_map_field", Collections.singletonMap("key_" + n, (int) n));
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    public static Collection<SinkRecord> createSchemaV3WithExtraField(String topic, int partition) {
+        return createSchemaV3WithExtraField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV3WithExtraField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V3 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_string_field", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("v3_bool_field", SchemaBuilder.bool().optional().build())
+                .build();
+
+        long offset = totalRecords * 2L; // after V1 and V2 offsets
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V3)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_string_field", "v3_" + n)
+                    .put("v3_bool_field", n % 2 == 0);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V3, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    /**
+     * Schema V4 with a unique field (v4_float_field) not in V2 or V3.
+     * Fields: off16, p_int64, v4_float_field.
+     */
+    public static Collection<SinkRecord> createSchemaV4WithUniqueField(String topic, int partition) {
+        return createSchemaV4WithUniqueField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV4WithUniqueField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V4 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("v4_float_field", SchemaBuilder.float64().optional().build())
+                .build();
+
+        long offset = totalRecords * 3L; // after V1, V2, V3 offsets
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V4)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("v4_float_field", (double) n * 1.5);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V4, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    /**
+     * Rich V1 schema with 3 fields: off16, p_int64, name.
+     */
+    public static Collection<SinkRecord> createRichSchemaV1(String topic, int partition, int totalRecords, long startOffset) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("name", "user_" + n);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA, value_struct,
+                    startOffset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    /**
+     * Rich V2 schema with 8 fields: off16, p_int64, name, email, age, score, active, city.
+     */
+    public static Collection<SinkRecord> createRichSchemaV2(String topic, int partition, int totalRecords, long startOffset) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("email", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("age", SchemaBuilder.int32().optional().build())
+                .field("score", SchemaBuilder.float64().optional().build())
+                .field("active", SchemaBuilder.bool().optional().build())
+                .field("city", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("name", "user_" + n)
+                    .put("email", "user_" + n + "@example.com")
+                    .put("age", 20 + (int) n)
+                    .put("score", n * 1.5)
+                    .put("active", n % 2 == 0)
+                    .put("city", "city_" + n);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA, value_struct,
+                    startOffset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    /**
+     * Rich V3 schema with 5 fields: off16, p_int64, name, email, country.
+     * Drops some V2 fields (age, score, active, city) and adds country.
+     */
+    public static Collection<SinkRecord> createRichSchemaV3(String topic, int partition, int totalRecords, long startOffset) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("name", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("email", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("country", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("name", "user_" + n)
+                    .put("email", "user_" + n + "@example.com")
+                    .put("country", "country_" + n);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA, value_struct,
+                    startOffset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+
+    public static Collection<SinkRecord> createSchemaV2WithLogicalTypes(String topic, int partition) {
+        return createSchemaV2WithLogicalTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithLogicalTypes(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_decimal_field", Decimal.builder(2).optional().build())
+                .field("new_date_field", org.apache.kafka.connect.data.Date.builder().optional().build())
+                .field("new_timestamp_field", Timestamp.builder().optional().build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_decimal_field", BigDecimal.valueOf(n * 100 + 50, 2))
+                    .put("new_date_field", Date.from(java.time.Instant.ofEpochMilli(n * 86400000L)))
+                    .put("new_timestamp_field", Date.from(java.time.Instant.ofEpochMilli(System.currentTimeMillis())));
+
+            array.add(new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, SCHEMA_V2,
+                    value_struct,
+                    offset + n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    // Schema with all supported primitive types + logical types as new columns
+    public static Collection<SinkRecord> createSchemaV2WithAllPrimitiveTypes(String topic, int partition) {
+        return createSchemaV2WithAllPrimitiveTypes(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithAllPrimitiveTypes(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_int8", SchemaBuilder.int8().optional().build())
+                .field("new_int16", SchemaBuilder.int16().optional().build())
+                .field("new_int32", SchemaBuilder.int32().optional().build())
+                .field("new_int64", SchemaBuilder.int64().optional().build())
+                .field("new_float32", SchemaBuilder.float32().optional().build())
+                .field("new_float64", SchemaBuilder.float64().optional().build())
+                .field("new_bool", SchemaBuilder.bool().optional().build())
+                .field("new_string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("new_bytes", Schema.OPTIONAL_BYTES_SCHEMA)
+                .field("new_decimal", Decimal.builder(4).optional().build())
+                .field("new_date", org.apache.kafka.connect.data.Date.builder().optional().build())
+                .field("new_timestamp", Timestamp.builder().optional().build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_int8", (byte) n)
+                    .put("new_int16", (short) n)
+                    .put("new_int32", (int) n)
+                    .put("new_int64", n * 100L)
+                    .put("new_float32", (float) n * 1.1f)
+                    .put("new_float64", n * 2.2)
+                    .put("new_bool", n % 2 == 0)
+                    .put("new_string", "str_" + n)
+                    .put("new_bytes", ("bytes_" + n).getBytes())
+                    .put("new_decimal", java.math.BigDecimal.valueOf(n * 100 + 50, 4))
+                    .put("new_date", Date.from(java.time.Instant.ofEpochMilli(n * 86400000L)))
+                    .put("new_timestamp", Date.from(java.time.Instant.ofEpochMilli(System.currentTimeMillis())));
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    // Schema with arrays of different element types
+    public static Collection<SinkRecord> createSchemaV2WithTypedArrays(String topic, int partition) {
+        return createSchemaV2WithTypedArrays(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithTypedArrays(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("arr_int32", SchemaBuilder.array(SchemaBuilder.int32().optional().build()).optional().build())
+                .field("arr_float64", SchemaBuilder.array(SchemaBuilder.float64().optional().build()).optional().build())
+                .field("arr_bool", SchemaBuilder.array(SchemaBuilder.bool().optional().build()).optional().build())
+                .field("arr_string", SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).optional().build())
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("arr_int32", Arrays.asList((int) n, (int) n + 1))
+                    .put("arr_float64", Arrays.asList(n * 1.1, n * 2.2))
+                    .put("arr_bool", Arrays.asList(n % 2 == 0, n % 2 != 0))
+                    .put("arr_string", Arrays.asList("a_" + n, "b_" + n));
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    // Schema with an Avro-style union STRUCT (all STRING/BYTES fields) that should collapse to String
+    public static Collection<SinkRecord> createSchemaV2WithStringBytesUnionField(String topic, int partition) {
+        return createSchemaV2WithStringBytesUnionField(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+
+    public static Collection<SinkRecord> createSchemaV2WithStringBytesUnionField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        // Simulates how Confluent AvroConverter represents union(string, bytes)
+        // AvroConverter sets schema.name() to "io.confluent.connect.avro.Union"
+        Schema UNION_SCHEMA = SchemaBuilder.struct()
+                .name("io.confluent.connect.avro.Union")
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("bytes", Schema.OPTIONAL_BYTES_SCHEMA)
+                .optional()
+                .build();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("new_union_field", UNION_SCHEMA)
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct unionValue = new Struct(UNION_SCHEMA)
+                    .put("string", "union_str_" + n);
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("new_union_field", unionValue);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
+
+    // Schema with an Avro-style union STRUCT (string + int) that should map to Variant(String, Int32)
+    public static Collection<SinkRecord> createSchemaV2WithMixedTypeUnionField(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+
+        Schema UNION_SCHEMA = SchemaBuilder.struct()
+                .name("io.confluent.connect.avro.Union")
+                .field("string", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("int", Schema.OPTIONAL_INT32_SCHEMA)
+                .optional()
+                .build();
+
+        Schema SCHEMA_V2 = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("p_int64", Schema.INT64_SCHEMA)
+                .field("mixed_union", UNION_SCHEMA)
+                .build();
+
+        long offset = totalRecords;
+        for (long n = 0; n < totalRecords; n++) {
+            Struct unionValue;
+            if (n % 2 == 0) {
+                unionValue = new Struct(UNION_SCHEMA).put("string", "val_" + n);
+            } else {
+                unionValue = new Struct(UNION_SCHEMA).put("int", (int) n);
+            }
+            Struct value_struct = new Struct(SCHEMA_V2)
+                    .put("off16", (short) n)
+                    .put("p_int64", n)
+                    .put("mixed_union", unionValue);
+
+            array.add(new SinkRecord(
+                    topic, partition, null, null, SCHEMA_V2, value_struct,
+                    offset + n, System.currentTimeMillis(), TimestampType.CREATE_TIME
+            ));
+        }
+        return array;
+    }
 }
