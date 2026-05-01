@@ -33,7 +33,7 @@ plugins {
     signing
    // checkstyle
     id("com.diffplug.spotless") version "7.0.2"
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
     id("com.google.protobuf") version "0.9.5"
     id("java-test-fixtures")
 }
