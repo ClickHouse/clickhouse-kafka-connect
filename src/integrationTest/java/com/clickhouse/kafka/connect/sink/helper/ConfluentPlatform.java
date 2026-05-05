@@ -503,26 +503,26 @@ public class ConfluentPlatform {
         }
     }
 
-    public int produceAvroRecords(String topicName, String avroSchemaJson, JSONArray records) throws IOException {
+    public int produceRecordsViaRest(String topicName, String applicationType, String valueSchema, JSONArray records) throws IOException {
         final String produceEndpoint = String.format("%s/topics/%s", getRestProxyEndpoint(), topicName);
 
-        JSONArray wrappedRecords = new JSONArray();
+        final JSONArray wrappedRecords = new JSONArray();
         for (int i = 0; i < records.length(); i++) {
             JSONObject wrapper = new JSONObject();
             wrapper.put("value", records.getJSONObject(i));
             wrappedRecords.put(wrapper);
         }
 
-        JSONObject payload = new JSONObject();
-        payload.put("value_schema", avroSchemaJson);
+        final JSONObject payload = new JSONObject();
+        payload.put("value_schema", valueSchema);
         payload.put("records", wrappedRecords);
 
-        OkHttpClient client = new OkHttpClient();
-        MediaType AVRO_V2 = MediaType.get(AVRO_V2_APPLICATION_TYPE);
-        RequestBody body = RequestBody.create(payload.toString(), AVRO_V2);
-        Request request = new Request.Builder()
+        final OkHttpClient client = new OkHttpClient();
+        final MediaType mediaType = MediaType.get(applicationType);
+        final RequestBody body = RequestBody.create(payload.toString(), mediaType);
+        final Request request = new Request.Builder()
                 .url(produceEndpoint)
-                .addHeader("Content-Type", AVRO_V2_APPLICATION_TYPE)
+                .addHeader("Content-Type", applicationType)
                 .post(body)
                 .build();
 
@@ -531,11 +531,11 @@ public class ConfluentPlatform {
             LOGGER.info("Produce Avro records response code: {} for topic: {}", response.code(), topicName);
 
             if (response.code() != 200) {
-                throw new IOException("Failed to produce Avro records to topic " + topicName + ": " + responseBodyString);
+                throw new IOException("Failed to produce records to topic " + topicName + ": " + responseBodyString);
             }
 
-            JSONObject responseObj = new JSONObject(responseBodyString);
-            JSONArray offsets = responseObj.getJSONArray(TOPIC_ENDPOINT_RESPONSE_OFFSETS_KEY);
+            final JSONObject responseObj = new JSONObject(responseBodyString);
+            final JSONArray offsets = responseObj.getJSONArray(TOPIC_ENDPOINT_RESPONSE_OFFSETS_KEY);
             int successCount = 0;
             for (int i = 0; i < offsets.length(); i++) {
                 JSONObject offset = offsets.getJSONObject(i);
@@ -550,51 +550,12 @@ public class ConfluentPlatform {
         }
     }
 
-    public int produceProtoRecords(String topicName, String protoSchemaIdl, JSONArray records) throws IOException {
-        final String produceEndpoint = String.format("%s/topics/%s", getRestProxyEndpoint(), topicName);
+    public int produceAvroRecords(String topicName, String avroSchemaJson, JSONArray records) throws IOException {
+        return produceRecordsViaRest(topicName, AVRO_V2_APPLICATION_TYPE, avroSchemaJson, records);
+    }
 
-        JSONArray wrappedRecords = new JSONArray();
-        for (int i = 0; i < records.length(); i++) {
-            JSONObject wrapper = new JSONObject();
-            wrapper.put("value", records.getJSONObject(i));
-            wrappedRecords.put(wrapper);
-        }
-
-        JSONObject payload = new JSONObject();
-        payload.put("value_schema", protoSchemaIdl);
-        payload.put("records", wrappedRecords);
-
-        OkHttpClient client = new OkHttpClient();
-        MediaType PROTOBUF_V2 = MediaType.get(PROTOBUF_V2_APPLICATION_TYPE);
-        RequestBody body = RequestBody.create(payload.toString(), PROTOBUF_V2);
-        Request request = new Request.Builder()
-                .url(produceEndpoint)
-                .addHeader("Content-Type", PROTOBUF_V2_APPLICATION_TYPE)
-                .post(body)
-                .build();
-
-        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
-            final String responseBodyString = responseBody.string();
-            LOGGER.info("Produce Protobuf records response code: {} for topic: {}", response.code(), topicName);
-
-            if (response.code() != 200) {
-                throw new IOException("Failed to produce Protobuf records to topic " + topicName + ": " + responseBodyString);
-            }
-
-            JSONObject responseObj = new JSONObject(responseBodyString);
-            JSONArray offsets = responseObj.getJSONArray(TOPIC_ENDPOINT_RESPONSE_OFFSETS_KEY);
-            int successCount = 0;
-            for (int i = 0; i < offsets.length(); i++) {
-                JSONObject offset = offsets.getJSONObject(i);
-                if (!offset.has(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY) || offset.isNull(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY)) {
-                    successCount++;
-                } else {
-                    LOGGER.warn("Record {} failed: {}", i, offset.get(TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY));
-                }
-            }
-            LOGGER.info("Successfully produced {} of {} records to topic {}", successCount, records.length(), topicName);
-            return successCount;
-        }
+    public int produceProtoRecords(String topicName, String protoSchema, JSONArray records) throws IOException {
+        return produceRecordsViaRest(topicName, PROTOBUF_V2_APPLICATION_TYPE,  protoSchema, records);
     }
 
     /**

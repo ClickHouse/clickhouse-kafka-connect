@@ -1,5 +1,5 @@
 {
-  "description": "Combination: array of nullable strings (via repeated google.protobuf.StringValue)",
+  "description": "Combination: array of nullable strings",
   "clickhouse_columns": {
     "id": "Int32",
     "tags": "Array(Nullable(String))"

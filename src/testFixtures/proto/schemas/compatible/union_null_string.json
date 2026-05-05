@@ -1,5 +1,5 @@
 {
-  "description": "Optional string (proto3 field presence via `optional` keyword)",
+  "description": "Nullable/optional string",
   "clickhouse_columns": {
     "id": "Int32",
     "name": "Nullable(String)"

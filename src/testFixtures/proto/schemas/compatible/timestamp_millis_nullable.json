@@ -1,5 +1,5 @@
 {
-  "description": "Timestamp: nullable google.protobuf.Timestamp (unset field = null)",
+  "description": "Timestamp: nullable google.protobuf.Timestamp",
   "clickhouse_columns": {
     "id": "Int32",
     "created_at": "Nullable(DateTime64(3))"

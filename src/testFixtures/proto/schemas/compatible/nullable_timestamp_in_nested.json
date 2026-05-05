@@ -1,5 +1,5 @@
 {
-  "description": "Combination: nullable google.protobuf.Timestamp inside a nested message (unset field = null)",
+  "description": "Combination: nullable google.protobuf.Timestamp inside a nested message",
   "clickhouse_columns": {
     "id": "Int32",
     "event": "Tuple(name String, occurred_at Nullable(DateTime64(3)))"

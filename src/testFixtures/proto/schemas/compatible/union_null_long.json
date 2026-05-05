@@ -1,5 +1,5 @@
 {
-  "description": "Optional int64 (proto3 field presence via `optional` keyword)",
+  "description": "Nullable/optional int64",
   "clickhouse_columns": {
     "id": "Int32",
     "big_value": "Nullable(Int64)"

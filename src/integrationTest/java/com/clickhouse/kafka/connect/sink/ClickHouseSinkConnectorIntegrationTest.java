@@ -282,7 +282,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         The test will pick up the new schema automatically.
 
         To add a new incompatible schema, follow the same instructions as above but add the schema to `src/testFixtures/avro/schemas/incompatible`.
-        Over time, the goal is to fix the connector to make previously incompatible schemas compatible.
+        Over time, the goal is to fix the connector to make previously incompatible schemas compatible wherever possible.
      */
     @ParameterizedTest
     @MethodSource("getCompatibleAvroSchemaPaths")
@@ -351,20 +351,19 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 .map(file -> schemaDir + "/" + file.getName());
     }
 
-
     /*
         Test sinking Protobuf records with various schemas that the connector currently supports.
 
         Each fixture is a pair of files sharing a basename, located under `src/testFixtures/proto/schemas/compatible`:
-          - <name>.proto: proto3 IDL. The first top-level message is the record type (REST Proxy v2 uses MessageIndexes 0 by default).
+          - <name>.proto: proto3 IDL. The first top-level message is the record type.
           - <name>.json:  { description, clickhouse_columns, clickhouse_order_by, records, expected_row_count }
                           Records follow protobuf JSON encoding (https://protobuf.dev/programming-guides/json/).
 
-        To add a new compatible fixture, drop a matching <name>.proto + <name>.json pair into the directory above.
-        The test picks up new fixtures automatically by listing the *.json files.
+        To add a new compatible schema, add a matching <name>.proto + <name>.json pair into the directory above with the same structure as other files.
+        The test picks up new fixtures automatically.
 
-        To add a new incompatible fixture, place the pair under `src/testFixtures/proto/schemas/incompatible` instead.
-        Over time, the goal is to fix the connector to make previously incompatible schemas compatible.
+        To add a new incompatible schema, follow the same instructions as above but add the .json + .proto pair under `src/testFixtures/proto/schemas/incompatible`.
+        Over time, the goal is to fix the connector to make previously incompatible schemas compatible wherever possible.
      */
     @ParameterizedTest
     @MethodSource("getCompatibleProtoSchemaPaths")
@@ -385,7 +384,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         String fileName = jsonPath.getFileName().toString();
         String baseName = fileName.replace(".json", "");
         Path protoPath = jsonPath.resolveSibling(baseName + ".proto");
-        String protoSchemaIdl = String.join("\n", Files.readAllLines(protoPath));
+        String protoSchema = String.join("\n", Files.readAllLines(protoPath));
 
         String topicName = "proto_test_" + baseName.replace("-", "_");
 
@@ -409,7 +408,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         // 3. Produce Protobuf records via REST proxy
         int producedCount = confluentPlatform.produceProtoRecords(
                 topicName,
-                protoSchemaIdl,
+                protoSchema,
                 fixture.getJSONArray(recordsKey)
         );
         LOGGER.info("Produced {} records to topic {}", producedCount, topicName);

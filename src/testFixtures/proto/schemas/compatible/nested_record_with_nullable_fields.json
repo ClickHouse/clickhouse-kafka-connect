@@ -1,5 +1,5 @@
 {
-  "description": "Nested: message with optional inner fields (proto3 optional for field presence tracking)",
+  "description": "Nested: message with optional inner fields",
   "clickhouse_columns": {
     "id": "Int32",
     "details": "Tuple(name Nullable(String), age Nullable(Int32))"

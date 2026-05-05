@@ -1,5 +1,5 @@
 {
-  "description": "Duration: google.protobuf.Duration (seconds+nanos). Semantic mismatch with Avro's month+day+ms duration.",
+  "description": "Duration: google.protobuf.Duration (seconds+nanos)",
   "clickhouse_columns": {
     "id": "Int32",
     "duration": "Tuple(`seconds` Int64, `nano` Nullable(Int32))"

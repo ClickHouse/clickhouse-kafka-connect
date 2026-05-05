@@ -1,5 +1,5 @@
 {
-  "description": "Oneof { TypeA | TypeB } -> CH Variant(Tuple, Tuple)",
+  "description": "Oneof { TypeA | TypeB } -> separate Nullable CH tuples. Not always valid because tuples cannot be Nullable before CH version 26.1 (see: https://clickhouse.com/docs/operations/settings/settings#allow_experimental_nullable_tuple_type)",
   "clickhouse_columns": {
     "id": "Int32",
     "type_a": "Nullable(Tuple(label String))",

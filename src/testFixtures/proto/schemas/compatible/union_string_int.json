@@ -1,5 +1,5 @@
 {
-  "description": "Oneof { string | int32 } -> CH Variant(String, Int32)",
+  "description": "Oneof { string | int32 } -> separate Nullable CH fields",
   "clickhouse_columns": {
     "id": "Int32",
     "mixed_string": "Nullable(String)",
