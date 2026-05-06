@@ -1,20 +1,5 @@
 package com.clickhouse.kafka.connect.transforms;
 
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.SchemaBuilder;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.data.Time;
-import org.apache.kafka.connect.data.Timestamp;
-import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
-import java.util.UUID;
-
 import io.confluent.connect.avro.AvroConverter;
 import io.confluent.kafka.schemaregistry.avro.AvroSchema;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
@@ -22,7 +7,25 @@ import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaAndValue;
+import org.apache.kafka.connect.data.SchemaBuilder;
+import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.data.Time;
+import org.apache.kafka.connect.data.Timestamp;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
+import java.util.stream.Stream;
 
 public class KeyToValueTest {
     @Test
@@ -254,5 +257,36 @@ public class KeyToValueTest {
 
             Assertions.assertNotEquals(((Struct) newRecord1.value()).schema(), ((Struct) newRecord2.value()).schema());
         }
+    }
+
+    @ParameterizedTest(name = "cacheSize={0}, shouldSucceed={1}")
+    @MethodSource("schemaCacheSizeConfigurations")
+    public void configureWithSchemaCacheMaxSizeValidationTest(Integer schemaCacheMaxSize, boolean shouldSucceed) {
+        try (KeyToValue<SinkRecord> keyToValue = new KeyToValue<>()) {
+            Map<String, Object> config = new HashMap<>();
+            if (schemaCacheMaxSize != null) {
+                config.put("shema_cache_max_size", schemaCacheMaxSize);
+            }
+
+            if (shouldSucceed) {
+                keyToValue.configure(config);
+                SinkRecord record = generateSampleRecord(UUID.randomUUID().toString(), 0, 0);
+                Assertions.assertNotNull(keyToValue.apply(record));
+                return;
+            }
+            Assertions.assertThrows(IllegalArgumentException.class, () -> keyToValue.configure(config));
+        }
+    }
+
+    private static Stream<Arguments> schemaCacheSizeConfigurations() {
+        return Stream.of(
+                Arguments.of(null, true),
+                Arguments.of(16, true),
+                Arguments.of(1000, true),
+                Arguments.of(128, true),
+                Arguments.of(15, false),
+                Arguments.of(1001, false),
+                Arguments.of(-1, false),
+                Arguments.of(0, false));
     }
 }

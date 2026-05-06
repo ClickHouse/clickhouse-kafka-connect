@@ -19,9 +19,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(KeyToValue.class.getName());
+
+    private static final String FIELD_NAME_CONF = "field";
+    private static final String SCHEMA_MAX_SIZE_CONF = "shema_cache_max_size";
+    private static final int CACHE_MAX_SIZE_LOWER_BOUND = 16;
+    private static final int CACHE_MAX_SIZE_HIGH_BOUND = 1000;
+    private static final String CACHE_SIZE_RANGE = "[" + CACHE_MAX_SIZE_LOWER_BOUND + " , " + CACHE_MAX_SIZE_HIGH_BOUND + "]";
+
     public static final ConfigDef CONFIG_DEF = new ConfigDef()
-            .define("field", ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
-                    "Field name on the record value to extract the record key into.");
+            .define(FIELD_NAME_CONF, ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
+                    "Field name on the record value to extract the record key into.")
+            .define(SCHEMA_MAX_SIZE_CONF, ConfigDef.Type.INT, 32, ConfigDef.Importance.MEDIUM,
+                    "Maximum number of key schemas to cache. Older values will be discarded. Value range is " + CACHE_SIZE_RANGE);
 
     private String keyFieldName;
     private Cache<CacheKey, Schema> schemaUpdateCache;
@@ -56,7 +65,11 @@ public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R>
     public void configure(Map<String, ?> configs) {
         final SimpleConfig config = new SimpleConfig(CONFIG_DEF, configs);
         keyFieldName = config.getString("field");
-        schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(16));
+        final int cacheMaxSize = config.getInt(SCHEMA_MAX_SIZE_CONF);
+        if (cacheMaxSize < CACHE_MAX_SIZE_LOWER_BOUND || cacheMaxSize > CACHE_MAX_SIZE_HIGH_BOUND) {
+            throw new IllegalArgumentException(SCHEMA_MAX_SIZE_CONF + " should be in range " + CACHE_SIZE_RANGE);
+        }
+        schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(cacheMaxSize));
     }
 
     @Override
