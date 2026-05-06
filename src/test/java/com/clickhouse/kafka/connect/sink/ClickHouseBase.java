@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
+import org.testcontainers.utility.MountableFile;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -48,7 +49,12 @@ public class ClickHouseBase {
                     cmd.getHostConfig().withMemory(1024 * 1024 * 1024 * 2L);
                 })
                 .withExposedPorts(8123)
-                .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1");
+                .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
+                // Enable embedded clickhouse-keeper + keeper_map_path_prefix so EO tests
+                // can use the KeeperMap-backed connect_state table on standalone CH.
+                .withCopyFileToContainer(
+                        MountableFile.forClasspathResource("clickhouse_keeper_map.xml"),
+                        "/etc/clickhouse-server/config.d/keeper_map.xml");
         db.start();
     }
 
