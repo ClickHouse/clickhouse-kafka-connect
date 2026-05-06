@@ -6,6 +6,12 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import org.apache.kafka.connect.data.Date;
+import org.apache.kafka.connect.data.Decimal;
+import org.apache.kafka.connect.data.Field;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.Time;
+import org.apache.kafka.connect.data.Timestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.clickhouse.kafka.connect.util.reactor.function.Tuple2;
@@ -15,9 +21,11 @@ import com.clickhouse.kafka.connect.util.reactor.function.Tuples;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -29,7 +37,15 @@ public class Column {
     private static final Pattern DECIMAL_TYPE_PATTERN = Pattern.compile("Decimal(?<size>\\d{2,3})?\\s*(\\((?<a1>\\d{1,}\\s*)?,*\\s*(?<a2>\\d{1,})?\\))?");
     private static final Pattern SIMPLE_AGGREGATE_FUNCTION_TYPE_PATTERN = Pattern.compile("^SimpleAggregateFunction\\s*\\([^,]+,\\s*(.+)\\)$");
 
+    private static final int DECIMAL128_MAX_PRECISION = 38;
     private static final Logger LOGGER = LoggerFactory.getLogger(Column.class);
+
+
+    // Confluent converter union schema markers
+    static final String AVRO_UNION_SCHEMA_NAME = "io.confluent.connect.avro.Union";
+    static final String PROTOBUF_UNION_SCHEMA_PREFIX = "io.confluent.connect.protobuf.Union";
+    static final String GENERALIZED_UNION_PREFIX = "connect_union_";
+    static final String CONNECT_UNION_PARAMETER = "org.apache.kafka.connect.data.Union";
 
     private String name;
     private Type type;
@@ -358,6 +374,148 @@ public class Column {
         return data;
     }
 
+    public static String connectTypeToClickHouseType(Schema connectSchema) {
+        return connectTypeToClickHouseType(connectSchema, false);
+    }
+
+    public static String connectTypeToClickHouseType(Schema connectSchema, boolean structToJson) {
+        String baseType = resolveBaseType(connectSchema, structToJson);
+
+        // ClickHouse forbids Nullable wrapping for Array, Map, and Variant types.
+        if (connectSchema.type() == Schema.Type.ARRAY || connectSchema.type() == Schema.Type.MAP || baseType.startsWith("Variant(")) {
+            return baseType;
+        }
+
+        return "Nullable(" + baseType + ")";
+    }
+
+    private static String resolveBaseType(Schema connectSchema, boolean structToJson) {
+        // Check logical types first (same pattern as JDBC connector)
+        if (connectSchema.name() != null) {
+            switch (connectSchema.name()) {
+                case Decimal.LOGICAL_NAME:
+                    int precision = DECIMAL128_MAX_PRECISION;
+                    int scale = 0;
+                    if (connectSchema.parameters() != null && connectSchema.parameters().containsKey("scale")) {
+                        scale = Integer.parseInt(connectSchema.parameters().get("scale"));
+                    }
+                    return String.format("Decimal(%d, %d)", precision, scale);
+                case Date.LOGICAL_NAME:
+                    return "Date32";
+                case Time.LOGICAL_NAME:
+                    return "Int64";
+                case Timestamp.LOGICAL_NAME:
+                    return "DateTime64(3)";
+            }
+        }
+
+        // Then check primitive types
+        switch (connectSchema.type()) {
+            case INT8:
+                return "Int8";
+            case INT16:
+                return "Int16";
+            case INT32:
+                return "Int32";
+            case INT64:
+                return "Int64";
+            case FLOAT32:
+                return "Float32";
+            case FLOAT64:
+                return "Float64";
+            case BOOLEAN:
+                return "Bool";
+            case STRING:
+                return "String";
+            case BYTES:
+                return "String";
+            case ARRAY:
+                if (connectSchema.valueSchema() == null) {
+                    return "Array(String)";
+                }
+                String elementType = connectTypeToClickHouseType(connectSchema.valueSchema(), structToJson);
+                return "Array(" + elementType + ")";
+            case MAP:
+                String keyType = resolveBaseType(connectSchema.keySchema(), structToJson);
+                String valType = connectTypeToClickHouseType(connectSchema.valueSchema(), structToJson);
+                return "Map(" + keyType + ", " + valType + ")";
+            case STRUCT:
+                if (isUnionSchema(connectSchema)) {
+                    return resolveUnionType(connectSchema, structToJson);
+                }
+                if (structToJson) {
+                    return "JSON";
+                }
+                throw new SchemaTypeInferenceException(
+                        "Cannot auto-evolve STRUCT fields to ClickHouse columns. " +
+                        "Set auto.evolve.struct.to.json=true to map STRUCT to JSON, " +
+                        "or manually create the column as Tuple, JSON, or Nested type.");
+            default:
+                throw new SchemaTypeInferenceException("Unsupported Connect type for auto-evolution: " + connectSchema.type());
+        }
+    }
+
+    // Type groups that ClickHouse considers suspicious when mixed inside a Variant.
+    // See: https://clickhouse.com/docs/sql-reference/data-types/variant
+    private static final Set<String> SUSPICIOUS_NUMERIC_TYPES = Set.of(
+            "Int8", "Int16", "Int32", "Int64",
+            "UInt8", "UInt16", "UInt32", "UInt64",
+            "Float32", "Float64"
+    );
+    private static final Set<String> SUSPICIOUS_DATE_TYPES = Set.of(
+            "Date32", "DateTime64(3)"
+    );
+
+    private static String resolveUnionType(Schema connectSchema, boolean structToJson) {
+        if (connectSchema.fields() == null || connectSchema.fields().isEmpty()) {
+            return "String";
+        }
+
+        LinkedHashSet<String> chTypes = new LinkedHashSet<>();
+        for (Field field : connectSchema.fields()) {
+            chTypes.add(resolveBaseType(field.schema(), structToJson));
+        }
+
+        // All branches resolve to the same ClickHouse type (e.g. union(string, bytes) → String)
+        if (chTypes.size() == 1) {
+            return chTypes.iterator().next();
+        }
+
+        // Check for suspicious similar types that ClickHouse rejects by default
+        if (hasSuspiciousSimilarTypes(chTypes)) {
+            return "String";
+        }
+
+        // Multiple distinct types map to Variant(T1, T2, ...) requires ClickHouse 24.1+.
+        return "Variant(" + String.join(", ", chTypes) + ")";
+    }
+
+    private static boolean hasSuspiciousSimilarTypes(Set<String> chTypes) {
+        int numericCount = 0;
+        int dateCount = 0;
+        for (String t : chTypes) {
+            if (SUSPICIOUS_NUMERIC_TYPES.contains(t)) numericCount++;
+            if (SUSPICIOUS_DATE_TYPES.contains(t)) dateCount++;
+        }
+        return numericCount > 1 || dateCount > 1;
+    }
+
+    static boolean isUnionSchema(Schema connectSchema) {
+        if (connectSchema.type() != Schema.Type.STRUCT) {
+            return false;
+        }
+        String name = connectSchema.name();
+        if (name != null
+                && (name.equals(AVRO_UNION_SCHEMA_NAME)
+                    || name.startsWith(PROTOBUF_UNION_SCHEMA_PREFIX)
+                    || name.startsWith(GENERALIZED_UNION_PREFIX))) {
+            return true;
+        }
+        return connectSchema.parameters() != null
+                && connectSchema.parameters().containsKey(CONNECT_UNION_PARAMETER);
+    }
+
+
     public Integer convertEnumValues(String value) {
         if ( this.enumValues != null ) {
             return enumValues.get(value);
@@ -390,5 +548,15 @@ public class Column {
         ) + (variantTypes == null ? "" :
                 String.format(", variantTypes=%s", variantTypes.stream().map(Tuple2::getT2).collect(Collectors.joining(", ", "[", "]")))
         ) + "}";
+    }
+
+    // Returns a DEFAULT expression for non-Nullable types (Array, Map) so RowBinaryWithDefaults can handle missing fields.
+    public static String defaultExpressionForType(String chType) {
+        if (chType.startsWith("Array(")) {
+            return " DEFAULT []";
+        } else if (chType.startsWith("Map(")) {
+            return " DEFAULT map()";
+        }
+        return "";
     }
 }

@@ -8,9 +8,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -76,6 +79,16 @@ public class Table {
             rootColumnsList.add(column);
             rootColumnsMap.put(column.getName(), column);
         }
+    }
+
+    public Set<String> getMissingColumns(Collection<String> fieldNames) {
+        Set<String> missing = new LinkedHashSet<>();
+        for (String fieldName : fieldNames) {
+            if (!rootColumnsMap.containsKey(fieldName)) {
+                missing.add(fieldName);
+            }
+        }
+        return missing;
     }
 
     private void handleNonRoot(Column column) {
