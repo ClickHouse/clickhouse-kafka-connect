@@ -48,7 +48,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static ClickHouseCluster cluster;
     private static ClickHouseHelperClient chc;
     public static ToxiproxyContainer toxiproxy;
-    public static Proxy proxy;
+    public static Proxy clickhouseProxy;
     private static final int PROXY_PORT = 8666;
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
@@ -106,8 +106,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         } else {
             upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
         }
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
-        LOGGER.info("Proxy configured {}", proxy.getListen());
+        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
+        LOGGER.info("Proxy configured {}", clickhouseProxy.getListen());
         chc = ClickHouseTestHelpers.createClient(getTestProperties());
     }
 
@@ -290,10 +290,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         while (databaseCount != lastCount || loopCount < 5) {
             if (loopCount == 0) {
                 LOGGER.info("Disabling proxy");
-                proxy.disable();
-            } else if (!proxy.isEnabled()) {
+                clickhouseProxy.disable();
+            } else if (!clickhouseProxy.isEnabled()) {
                 LOGGER.info("Re-enabling proxy");
-                proxy.enable();
+                clickhouseProxy.enable();
             }
             Thread.sleep(3500);
             databaseCount = ClickHouseTestHelpers.countRows(chc, topicName, deploymentType);

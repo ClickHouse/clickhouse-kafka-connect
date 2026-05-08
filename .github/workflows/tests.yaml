@@ -110,7 +110,7 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
-      - name: Setup cluster, run tests, tear down cluster
+      - name: Run Tests
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
           CLIENT_VERSION: ${{ matrix.client }}

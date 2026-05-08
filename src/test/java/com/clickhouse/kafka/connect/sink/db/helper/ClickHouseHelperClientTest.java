@@ -104,9 +104,13 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
         ClickHouseHelperClient adminChc = chc;
         ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername, clusterClause));
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s CREATE ON *.* TO `%s`", clusterClause, testUsername));
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s DROP ON *.* TO `%s`", clusterClause, testUsername));
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s SHOW ON *.* TO `%s`", clusterClause, testUsername));
+        if (deploymentType.isLocalCluster()) {
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s CREATE ON *.* TO `%s`", clusterClause, testUsername));
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s DROP ON *.* TO `%s`", clusterClause, testUsername));
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s SHOW ON *.* TO `%s`", clusterClause, testUsername));
+        } else {
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
+        }
 
         Map<String, String> props = getBaseProps();
         props.put("username", testUsername);
@@ -128,8 +132,8 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Table normalTable = chc.describeTable(chc.getDatabase(), normalTopic);
             Assertions.assertEquals(1, normalTable.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, nestedTopic, deploymentType);
-            ClickHouseTestHelpers.dropTable(chc, normalTopic, deploymentType);
+            ClickHouseTestHelpers.dropTable(adminChc, nestedTopic, deploymentType);
+            ClickHouseTestHelpers.dropTable(adminChc, normalTopic, deploymentType);
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`%s", testUsername, clusterClause));
         }
     }

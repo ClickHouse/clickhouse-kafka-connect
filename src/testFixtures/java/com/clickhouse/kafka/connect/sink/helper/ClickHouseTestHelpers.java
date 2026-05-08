@@ -135,7 +135,6 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    // TODO: is this necessary?
     public static List<JSONObject> getAllRowsAsJsonCloud(ClickHouseHelperClient chc, String tableName) {
         String query = getClusterAllReplicasQuery(chc, tableName);
         QuerySettings querySettings = new QuerySettings();

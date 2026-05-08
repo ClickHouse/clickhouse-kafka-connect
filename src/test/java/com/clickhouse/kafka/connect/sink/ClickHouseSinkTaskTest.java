@@ -138,11 +138,10 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         } catch (Exception e) {
             fail("Exception should not be thrown");
         }
-        // TODO: uncomment this when fixed
-//        LongStream.range(0, dbRange).forEachOrdered(i -> {
-//            int count = ClickHouseTestHelpers.countRows(chc, String.valueOf(i), tableName);
-//            assertEquals(DEFAULT_TOTAL_RECORDS, count);
-//        });
+        LongStream.range(0, dbRange).forEachOrdered(i -> {
+            int count = ClickHouseTestHelpers.countRows(chc, String.valueOf(i), tableName, deploymentType);
+            assertEquals(DEFAULT_TOTAL_RECORDS, count);
+        });
     }
 
 
