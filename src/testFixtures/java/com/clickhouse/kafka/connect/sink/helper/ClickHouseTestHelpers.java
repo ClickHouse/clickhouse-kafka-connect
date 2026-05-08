@@ -316,7 +316,7 @@ public class ClickHouseTestHelpers {
                 "FROM %s " +
                 "WHERE type = 'QueryFinish' " +
                 "AND query_kind = 'Insert' " +
-                "AND executeQueryIgnoreResult ILIKE '%%%s%%'", from, topic);
+                "AND query ILIKE '%%%s%%'", from, topic);
         try (Records records = chc.queryV2(sql)) {
             String value = records.iterator().next().getString(1);
             return Integer.parseInt(value);

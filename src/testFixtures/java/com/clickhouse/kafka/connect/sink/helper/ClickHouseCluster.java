@@ -2,7 +2,9 @@ package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.testcontainers.containers.ComposeContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.io.File;
 import java.util.Map;
@@ -22,7 +24,7 @@ public class ClickHouseCluster {
     public static final String ONE_SHARD_THREE_REPLICAS = "one_shard_three_replicas";
 
     public ClickHouseCluster() {
-        this.container = new ComposeContainer(composeFile);
+        this.container = new ComposeContainer(composeFile).waitingFor("nginx", Wait.defaultWaitStrategy());
     }
 
     public static Integer getPort() {
@@ -46,11 +48,6 @@ public class ClickHouseCluster {
                 .withEnv("DOCKER_ROOT", new File("src/testFixtures/docker").getAbsolutePath())
                 .withEnv("CH_VERSION", ClickHouseTestHelpers.getClickhouseVersion())
                 .start();
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public void stop() {

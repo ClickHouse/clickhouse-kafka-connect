@@ -189,10 +189,11 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void materializedViewsBug(ClickHouseDeploymentType deploymentType) {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
 
         String topic = createTopicName("m_array_string_table_test");
         // Drop the MV and its target table before the source table to avoid orphaned dependencies
-        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("DROP VIEW IF EXISTS `%s_mv`", topic));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("DROP VIEW IF EXISTS `%s_mv`%s", topic, clusterClause));
         ClickHouseTestHelpers.dropTable(chc, topic + "_mate", deploymentType);
         ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
@@ -202,7 +203,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
                 .engine("Null")
                 .deploymentType(deploymentType)
                 .execute(chc);
-        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("CREATE MATERIALIZED VIEW `%s_mv` TO `%s_mate` AS SELECT off16 FROM `%s`", topic, topic, topic));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("CREATE MATERIALIZED VIEW `%s_mv`%s TO `%s_mate` AS SELECT off16 FROM `%s`", topic, clusterClause, topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();

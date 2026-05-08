@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -311,8 +312,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     private static Stream<Arguments> getCompatibleAvroSchemaPaths() {
         final String schemaDir = "src/testFixtures/avro/schemas/compatible";
-        final Stream<String> filePathsStream = Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
-        return deploymentTypesForTests().flatMap(deploymentType -> filePathsStream.map(path -> Arguments.of(deploymentType, path)));
+        final List<String> filePathsStream = Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName()).collect(Collectors.toList());
+        return deploymentTypesForTests().flatMap(deploymentType -> filePathsStream.stream().map(path -> Arguments.of(deploymentType, path)));
     }
 
     /*
