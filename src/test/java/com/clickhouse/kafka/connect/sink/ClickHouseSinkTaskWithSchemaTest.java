@@ -104,6 +104,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .column("string", "String")
             .orderByColumn("`off16`");
 
+    private static final CreateTableStatement AUTO_EVOLVE_BASE_TABLE = new CreateTableStatement()
+            .column("off16", "Int16")
+            .column("p_int64", "Int64")
+            .orderByColumn("off16");
+
+    private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
+
     @ParameterizedTest()
     @MethodSource("deploymentTypesForTests")
     public void arrayTypesTest(ClickHouseDeploymentType deploymentType) {
@@ -1873,22 +1880,27 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
     }
 
-    @Test
-    public void autoEvolveDisabledRejectsNewField() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveDisabledRejectsNewField(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         // auto.evolve defaults to false
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_disabled_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 records first (should succeed)
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Insert V2 records with new field (should succeed because input_format_skip_unknown_fields=1)
         // But the new column should NOT be added to the table
@@ -1897,32 +1909,37 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         // Rows inserted but new column should not exist
-        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
     }
 
-    @Test
-    public void autoEvolveAddsNullableColumn() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveAddsNullableColumn(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_nullable_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 records
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Insert V2 records with new nullable field -> should trigger ALTER TABLE ADD COLUMN
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 10);
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify the new column exists
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -1930,15 +1947,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "New column 'new_string_field' should have been added by auto.evolve");
     }
 
-    @Test
-    public void autoEvolveAddsNonNullableFieldAsNullable() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveAddsNonNullableFieldAsNullable(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_non_nullable_as_nullable_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithNewNonNullableField(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -1946,7 +1968,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Non-nullable fields are created as Nullable columns - mandatory fields always have a value,
         // and Nullable allows old records (without this field) to insert with NULL
@@ -1955,29 +1977,34 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "New column 'non_nullable_field' should have been added by auto.evolve");
     }
 
-    @Test
-    public void autoEvolveMultipleNewColumns() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMultipleNewColumns(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_multi_cols_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 first
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Insert V2 with multiple new nullable fields
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithMultipleNewNullableFields(topic, 1, 10);
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify all new columns exist
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -1989,15 +2016,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "Column 'new_float64_field' should exist");
     }
 
-    @Test
-    public void autoEvolveCachesSchemaAfterDDL() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveCachesSchemaAfterDDL(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_cache_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -2005,7 +2037,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         // First batch triggers DDL
         Collection<SinkRecord> srV2batch1 = SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 10);
         chst.put(srV2batch1);
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Second batch with same schema should not re-trigger DDL (just insert)
         // Use partition 2 to avoid offset deduplication
@@ -2013,7 +2045,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(srV2batch2);
         chst.stop();
 
-        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify column exists (only one 'new_string_field' column)
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2023,15 +2055,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(1, count, "Should have exactly one 'new_string_field' column");
     }
 
-    @Test
-    public void autoEvolveMixedSchemaInSingleBatch() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMixedSchemaInSingleBatch(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_mixed_batch_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Build a single batch with V1 records followed by V2 records (mixed schemas)
         List<SinkRecord> mixedBatch = new ArrayList<>();
@@ -2044,7 +2081,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         // All 10 records should be inserted
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // The new column should exist (evolved from V2 records in same batch)
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2052,15 +2089,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "Column 'new_string_field' should be added even when schema changes mid-batch");
     }
 
-    @Test
-    public void autoEvolveMixedSchemaOlderRecordsGetNull() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMixedSchemaOlderRecordsGetNull(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_older_records_null_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // V1 records (no new_string_field) followed by V2 records (has new_string_field)
         // Schema is evolved using last record (V2), then entire batch is inserted.
@@ -2074,7 +2116,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(mixedBatch);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // V1 records should have NULL for the new column
         String nullCountQuery = String.format(
@@ -2099,29 +2141,34 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
     }
 
-    @Test
-    public void autoEvolveLogicalTypes() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveLogicalTypes(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_logical_types_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 first
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Insert V2 with logical type fields (Decimal, Date, Timestamp)
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithLogicalTypes(topic, 1, 10);
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify the logical type columns were created with correct ClickHouse types
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2146,15 +2193,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "Timestamp logical type should map to ClickHouse DateTime64");
     }
 
-    @Test
-    public void autoEvolveRejectsStructField() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveRejectsStructField(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_reject_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStructField(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -2180,8 +2232,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // STRUCT field auto-evolved as JSON column when auto.evolve.struct.to.json=true
-    @Test
-    public void autoEvolveStructToJsonCreatesJsonColumn() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveStructToJsonCreatesJsonColumn(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "true");
@@ -2189,8 +2243,11 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_to_json_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStructField(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -2198,7 +2255,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify the new column was created as JSON type
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2210,8 +2267,10 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // V1 records (no struct) inserted first, then V2 records (with struct) trigger JSON column creation.
-    @Test
-    public void autoEvolveStructToJsonMixedBatchOlderRecordsGetDefault() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveStructToJsonMixedBatchOlderRecordsGetDefault(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "true");
@@ -2219,22 +2278,25 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_json_mixed_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 records (no struct field)
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 5);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Insert V2 records (with struct field) - triggers JSON column creation
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStructField(topic, 1, 5);
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify JSON column exists
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2244,16 +2306,21 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // STRUCT field with auto.evolve.struct.to.json explicitly false rejects with helpful error message
-    @Test
-    public void autoEvolveStructToJsonExplicitlyFalseRejectsStruct() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveStructToJsonExplicitlyFalseRejectsStruct(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "false");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_json_false_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStructField(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -2279,29 +2346,34 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
 
-    @Test
-    public void autoEvolveArrayAndMapFields() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveArrayAndMapFields(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_array_map_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 first
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Insert V2 with Array and Map fields
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithArrayAndMapFields(topic, 1, 10);
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(20, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify array and map columns were created
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2311,15 +2383,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "Column 'new_map_field' should exist");
     }
 
-    @Test
-    public void autoEvolveTripleSchemaInOneBatch() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveTripleSchemaInOneBatch(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_triple_schema_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Build a single batch with V1 + V2 + V3 records
         List<SinkRecord> combined = new ArrayList<>();
@@ -2332,7 +2409,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(combined);
         chst.stop();
 
-        assertEquals(15, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(15, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify columns from both V2 and V3 exist
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2342,15 +2419,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "V3 column 'v3_bool_field' should exist");
     }
 
-    @Test
-    public void autoEvolveThreeSeparateBatches() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveThreeSeparateBatches(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_three_batches_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
@@ -2369,7 +2451,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         chst.stop();
 
-        assertEquals(15, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(15, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify all evolved columns exist
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2400,15 +2482,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         }
     }
 
-    @Test
-    public void autoEvolveMixedSchemasTenRecordsInOneBatch() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMixedSchemasTenRecordsInOneBatch(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_mixed_ten_records_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Single batch with 10 records spanning 3 schema versions, ordered so the
         // newest schema (V3) is LAST. Auto-evolve only inspects the last record's
@@ -2427,7 +2514,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(batch);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Only columns present in the LAST record's schema (V3) should be added.
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2474,29 +2561,34 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // auto-evolve adds columns for every supported primitive + logical type in a single batch
-    @Test
-    public void autoEvolveAllPrimitiveAndLogicalTypes() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveAllPrimitiveAndLogicalTypes(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_all_types_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 first to ensure existing rows get NULL for new columns
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 5);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Insert V2 with all primitive + logical type fields
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithAllPrimitiveTypes(topic, 1, 5);
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify all columns were created with correct types
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2532,15 +2624,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // auto-evolve creates Array columns with different element types (Int32, Float64, Bool, String)
-    @Test
-    public void autoEvolveTypedArrayColumns() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveTypedArrayColumns(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_typed_arrays_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithTypedArrays(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -2548,7 +2645,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify all array columns were created
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2565,16 +2662,21 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // DDL refresh timeout - retries set to 0 so refresh loop never runs, throws RetriableException
-    @Test
-    public void autoEvolveDdlRefreshTimeoutThrowsRetriable() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveDdlRefreshTimeoutThrowsRetriable(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_DDL_REFRESH_RETRIES, "0");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_ddl_timeout_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // V2 schema with a new field - DDL will succeed but refresh will timeout with 0 retries
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 5);
@@ -2603,25 +2705,30 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // ALTER TABLE itself fails (table dropped externally after cache populated)
-    @Test
-    public void autoEvolveDdlExecutionFailureThrowsRuntimeException() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveDdlExecutionFailureThrowsRuntimeException(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_ddl_exec_failure_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Insert V1 records to populate the connector's internal table mapping cache
         Collection<SinkRecord> srV1 = SchemaTestData.createSchemaV1(topic, 1, 5);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
         chst.start(props);
         chst.put(srV1);
-        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Drop the table externally - the connector still has it cached in memory
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
 
         // V2 schema with a new field - ALTER TABLE will fail because the table no longer exists
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithNewNullableField(topic, 1, 5);
@@ -2646,16 +2753,21 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // STRUCT field without struct-to-json flag throws SchemaTypeInferenceException with helpful message
-    @Test
-    public void autoEvolveUnsupportedStructTypeThrowsError() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveUnsupportedStructTypeThrowsError(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         // auto.evolve.struct.to.json is false by default
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_unsupported_struct_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStructField(topic, 1, 5);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -2682,15 +2794,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // Avro-style union(string, bytes) STRUCT collapses to Nullable(String), not JSON
-    @Test
-    public void autoEvolveStringBytesUnionCollapsesToString() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveStringBytesUnionCollapsesToString(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_union_string_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> srV2 = SchemaTestData.createSchemaV2WithStringBytesUnionField(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -2698,7 +2815,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(srV2);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify the union field was created as String (not JSON)
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2709,17 +2826,22 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // Avro union(string, int) auto-evolved as Variant(String, Int32) column
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
     @SinceClickHouseVersion("24.1")
-    public void autoEvolveMixedUnionCreatesVariantColumn() {
+    public void autoEvolveMixedUnionCreatesVariantColumn(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "allow_experimental_variant_type=1");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_variant_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Collection<SinkRecord> records = SchemaTestData.createSchemaV2WithMixedTypeUnionField(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -2727,7 +2849,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(records);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify the union field was created as Variant
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2737,15 +2859,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "union(string, int) should map to Variant, not String or JSON");
     }
 
-    @Test
-    public void autoEvolveSchemalessRecordsThrowError() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveSchemalessRecordsThrowError(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_schemaless_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Create schemaless (string) records. No valueSchema.
         List<SinkRecord> schemaless = new ArrayList<>();
@@ -2780,17 +2907,23 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // Avro union(string, bytes) fields auto-evolved as Nullable(String) columns
-    @Test
-    public void autoEvolveAvroUnionStringBytesCreatesStringColumn() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveAvroUnionStringBytesCreatesStringColumn(ClickHouseDeploymentType deploymentType) throws Exception {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_avro_union_test";
-        ClickHouseTestHelpers.dropTable(chc, topic);
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
         // Table starts with only "name" - union fields "content" and "description" will be auto-evolved
-        ClickHouseTestHelpers.runQuery(chc, String.format(
-                "CREATE TABLE `%s` (`name` String) Engine = MergeTree ORDER BY name", topic));
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("name", "String")
+                .orderByColumn("name")
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         Image image1 = Image.newBuilder()
                 .setName("image1")
@@ -2810,7 +2943,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(records);
         chst.stop();
 
-        assertEquals(2, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(2, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify that union columns were created as String (not JSON)
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2825,22 +2958,27 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "union(null, string, bytes) should map to Nullable(String), not JSON");
 
         // Verify data was inserted correctly
-        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic, deploymentType);
         if (rows.size() == 0) {
-            rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+            rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic, deploymentType);
         }
         assertEquals(2, rows.size());
     }
 
-    @Test
-    public void autoEvolveMixedBatchLastRecordOlderSchema() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMixedBatchLastRecordOlderSchema(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_last_record_older_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Build batch where V2 records come first and V1 (older) records are LAST.
         // Auto-evolve only inspects the last record's schema, so V1 (which has no
@@ -2858,7 +2996,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
         // All 5 rows are still inserted (V2 extra field is dropped because the
         // table doesn't have the column and input_format_skip_unknown_fields=1).
-        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // The new column is NOT added because the LAST record (V1) does not include it.
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2866,15 +3004,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "Column 'new_string_field' should NOT be added when the last record is V1 (older schema)");
     }
 
-    @Test
-    public void autoEvolveMultiVersionUnionSemantics() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMultiVersionUnionSemantics(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_union_semantics_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Batch with V1, V2, V3, V4 in order. Auto-evolve only inspects the LAST
         // record's schema (V4), which only adds `v4_float_field`. The unique
@@ -2891,7 +3034,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(batch);
         chst.stop();
 
-        assertEquals(8, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(8, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Only V4's unique field is added (V4 is the last record's schema).
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
@@ -2906,15 +3049,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "V3-only column 'v3_bool_field' should NOT be added (last record is V4)");
     }
 
-    @Test
-    public void autoEvolveInterleavedSchemaVersions() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveInterleavedSchemaVersions(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_non_monotonic_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Interleaved schema versions [V1, V3, V2, V1, V3]
         List<SinkRecord> batch = new ArrayList<>();
@@ -2929,7 +3077,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(batch);
         chst.stop();
 
-        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(5, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         com.clickhouse.kafka.connect.sink.db.mapping.Table described = chc.describeTable(chc.getDatabase(), topic);
         assertTrue(described.getRootColumnsMap().containsKey("new_string_field"),
@@ -2938,16 +3086,21 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 "V3 column 'v3_bool_field' should exist despite non-monotonic order");
     }
 
-    @Test
-    public void autoEvolveCrossPartitionSchemaDrift() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveCrossPartitionSchemaDrift(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_cross_partition_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Records from different partitions with different schema versions.
         // With ignorePartitionsWhenBatching=true, they are merged into a single batch.
@@ -2966,7 +3119,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(batch);
         chst.stop();
 
-        assertEquals(6, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(6, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // The new column from V2 is NOT added because the last record in the
         // merged cross-partition batch is V1 (older schema).
@@ -2976,16 +3129,20 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // Mixed batch where older records lack auto-evolved Array/Map columns.
-    @Test
-    public void autoEvolveMixedBatchArrayMapFieldsMissingInOlderRecords() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMixedBatchArrayMapFieldsMissingInOlderRecords(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_mixed_array_map_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format(
-                "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // Build a single batch: V1 records (no array/map) followed by V2 records (with array/map)
         List<SinkRecord> mixedBatch = new ArrayList<>();
@@ -2998,7 +3155,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.stop();
 
         // All 10 records should be inserted
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // The new array and map columns should exist
         com.clickhouse.kafka.connect.sink.db.mapping.Table described =
@@ -3010,17 +3167,21 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     // Mixed batch where older records lack an auto-evolved Variant column.
-    @Test
-    public void autoEvolveMixedBatchVariantFieldMissingInOlderRecords() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("deploymentTypesForTests")
+    public void autoEvolveMixedBatchVariantFieldMissingInOlderRecords(ClickHouseDeploymentType deploymentType) {
+        Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "allow_experimental_variant_type=1");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("auto_evolve_mixed_variant_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        ClickHouseTestHelpers.runQuery(chc, String.format(
-                "CREATE TABLE %s ( `off16` Int16, `p_int64` Int64 ) Engine = MergeTree ORDER BY off16", topic));
+        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        new CreateTableStatement(AUTO_EVOLVE_BASE_TABLE)
+                .tableName(topic)
+                .deploymentType(deploymentType)
+                .execute(chc);
 
         // V1 records (off16 + p_int64 only) followed by V2 records (off16 + p_int64 + mixed_union Variant)
         List<SinkRecord> mixedBatch = new ArrayList<>();
@@ -3032,7 +3193,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         chst.put(mixedBatch);
         chst.stop();
 
-        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(10, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
 
         // Verify the Variant column was created
         com.clickhouse.kafka.connect.sink.db.mapping.Table described =

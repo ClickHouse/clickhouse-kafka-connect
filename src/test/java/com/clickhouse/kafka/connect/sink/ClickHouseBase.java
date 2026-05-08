@@ -24,6 +24,7 @@ import java.util.stream.Stream;
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected ClickHouseContainer db;
+    protected ClickHouseCluster cluster;
     protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
     protected static boolean isCluster = ClickHouseTestHelpers.isCluster();
     protected String database = ClickHouseTestHelpers.DATABASE_DEFAULT;
@@ -40,10 +41,8 @@ public class ClickHouseBase {
     @BeforeAll
     public void setup() throws IOException {
         if (isCluster) {
-            // cluster lifecycle is managed by Gradle and must be started before tests run
-            if (!ClickHouseCluster.isStarted()) {
-                throw new IOException("cluster is not running - aborting tests");
-            }
+            cluster = new ClickHouseCluster();
+            cluster.start();
         } else if (!isCloud) {
             setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         }
@@ -72,7 +71,9 @@ public class ClickHouseBase {
 
     @AfterAll
     protected void tearDown() {
-        if (!isCloud && !isCluster) {
+        if (isCluster) {
+            cluster.stop();
+        } else if (!isCloud) {
             ClickHouseContainer ch = getDb();
             if (ch != null) {
                 LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));

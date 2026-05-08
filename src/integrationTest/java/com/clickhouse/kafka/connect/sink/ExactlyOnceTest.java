@@ -35,6 +35,7 @@ public class ExactlyOnceTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ExactlyOnceTest.class);
     public static ConfluentPlatform confluentPlatform;
     private static ClickHouseCloudAPI clickhouseCloudAPI;
+    private static ClickHouseCluster cluster;
     private static ClickHouseHelperClient chc;
     private static final Properties cloudProperties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
@@ -49,6 +50,10 @@ public class ExactlyOnceTest {
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
             .orderByColumn("symbol");
+    private static final String SCHEMALESS_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json";
+    private static final String SCHEMALESS_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless_cluster.json";
+    private static final String SCHEMA_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy.json";
+    private static final String SCHEMA_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_cluster.json";
 
     public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
         if (isCluster) {
@@ -85,6 +90,9 @@ public class ExactlyOnceTest {
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
             clickhouseCloudAPI = new ClickHouseCloudAPI(cloudProperties);
+        } else {
+            cluster = new ClickHouseCluster();
+            cluster.start();
         }
 
         chc = ClickHouseTestHelpers.createClient(getTestProperties());
@@ -99,6 +107,9 @@ public class ExactlyOnceTest {
     public static void tearDown() {
         if (confluentPlatform != null) {
             confluentPlatform.close();
+        }
+        if (cluster != null) {
+            cluster.stop();
         }
     }
 
@@ -119,48 +130,62 @@ public class ExactlyOnceTest {
         assertTrue(compareSchemalessCounts("multiPartitionTopic_" + deploymentType, 3, deploymentType));
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void checkSpottyNetwork(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException, URISyntaxException {
+    @Test
+    public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetwork requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
-        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition_" + deploymentType, 1, deploymentType);
+        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void checkSpottyNetworkMulti(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException, URISyntaxException {
+    @Test
+    public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetworkMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
-        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions_" + deploymentType, 3, deploymentType);
+        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
     }
 
     private static void setupSchemaConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
-        setupConnector("src/integrationTest/resources/clickhouse_sink_no_proxy.json", topicName, taskCount, deploymentType);
+        setupConnector(topicName, taskCount, deploymentType, false);
         Thread.sleep(5 * 1000);
     }
 
     private static void setupSchemalessConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
         LOGGER.info("Setting schemaless up connector...");
-        setupConnector("src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json", topicName, taskCount, deploymentType);
+        setupConnector(topicName, taskCount, deploymentType, true);
         Thread.sleep(5 * 1000);
     }
 
-    private static void setupConnector(String fileName, String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException {
+    private static void setupConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType, boolean schemaless) throws IOException {
         System.out.println("Setting up connector...");
         ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
         new CreateTableStatement(STOCK_TABLE)
                 .tableName(topicName).deploymentType(deploymentType).execute(chc);
+
+        String fileName;
+        switch (deploymentType) {
+            case CLOUD:
+                fileName = schemaless ? SCHEMALESS_SINK_CONFIG : SCHEMA_SINK_CONFIG;
+                break;
+            case THREE_SHARDS_ONE_REPLICA_EACH:
+            case ONE_SHARD_THREE_REPLICAS:
+                fileName = schemaless ? SCHEMALESS_SINK_CONFIG_CLUSTER : SCHEMA_SINK_CONFIG_CLUSTER;
+                break;
+            default:
+                throw new RuntimeException("Unsupported deployment type: " + deploymentType);
+        }
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
         String jsonString;
         if (isCluster) {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
                     "host.docker.internal", ClickHouseCluster.getPort().toString(),
-                    ClickHouseTestHelpers.DATABASE_DEFAULT,
-                    ClickHouseTestHelpers.USERNAME_DEFAULT, "",
-                    false, true); // ssl=false, exactlyOnce=true
+                    chc.getDatabase(),
+                    chc.getUsername(),
+                    chc.getPassword(),
+                    false, true, // ssl=false, exactlyOnce=true
+                    deploymentType.clusterName // keeperOnCluster=<clusterName>
+            );
         } else {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
                     cloudProperties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP),
@@ -194,7 +219,7 @@ public class ExactlyOnceTest {
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
     }
 
-    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions, ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException, URISyntaxException {
+    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions) throws InterruptedException, IOException, URISyntaxException {
         boolean allSuccess = true;
         int runCount = 1;
         do {
@@ -202,15 +227,15 @@ public class ExactlyOnceTest {
             confluentPlatform.createTopic(topicName, numberOfPartitions);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
-            setupSchemalessConnector(topicName, numberOfPartitions, deploymentType);
+            setupSchemalessConnector(topicName, numberOfPartitions, ClickHouseDeploymentType.CLOUD);
 
             clickhouseCloudAPI.restartService();
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
 
             LOGGER.info("Expected Total: {}", count);
-            ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 7, deploymentType);
+            ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 7, ClickHouseDeploymentType.CLOUD);
 
-            int[] databaseCounts = getCounts(chc, topicName, deploymentType);
+            int[] databaseCounts = getCounts(chc, topicName, ClickHouseDeploymentType.CLOUD);
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
@@ -223,7 +248,7 @@ public class ExactlyOnceTest {
 
             confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
             confluentPlatform.deleteTopic(topicName);
-            ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
+            ClickHouseTestHelpers.dropTable(chc, topicName, ClickHouseDeploymentType.CLOUD);
             runCount++;
         } while (runCount < 3 && allSuccess);
 

@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import org.testcontainers.containers.ComposeContainer;
 
 import java.io.File;
@@ -35,7 +36,8 @@ public class ClickHouseCluster {
                 ClickHouseSinkConnector.DATABASE, database,
                 ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT,
                 ClickHouseSinkConnector.PASSWORD, "",
-                ClickHouseSinkConnector.SSL_ENABLED, "false"
+                ClickHouseSinkConnector.SSL_ENABLED, "false",
+                ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "insert_quorum=3,insert_quorum_parallel=0,distributed_ddl_task_timeout=-1"
         );
     }
 
@@ -44,6 +46,11 @@ public class ClickHouseCluster {
                 .withEnv("DOCKER_ROOT", new File("src/testFixtures/docker").getAbsolutePath())
                 .withEnv("CH_VERSION", ClickHouseTestHelpers.getClickhouseVersion())
                 .start();
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void stop() {

@@ -104,7 +104,9 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
         ClickHouseHelperClient adminChc = chc;
         ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername, clusterClause));
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s CREATE ON *.* TO `%s`", clusterClause, testUsername));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s DROP ON *.* TO `%s`", clusterClause, testUsername));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s SHOW ON *.* TO `%s`", clusterClause, testUsername));
 
         Map<String, String> props = getBaseProps();
         props.put("username", testUsername);

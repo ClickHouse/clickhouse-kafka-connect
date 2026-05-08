@@ -221,6 +221,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static int sumRows(ClickHouseHelperClient chc, String tableName, String column, ClickHouseDeploymentType deploymentType) {
+        optimizeTable(chc, tableName, deploymentType);
         String from = buildFromClause(chc, tableName, deploymentType);
         String queryCount = "SELECT SUM(`" + column + "`) FROM " + from;
         try (Records records = chc.queryV2(queryCount)) {
@@ -232,11 +233,12 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType deploymentType) {
+        optimizeTable(chc, tableName, deploymentType);
         String from = buildFromClause(chc, tableName, deploymentType);
         String queryCount = "SELECT COUNT(*) FROM " + from + " WHERE str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
         try (Records records = chc.queryV2(queryCount)) {
             String value = records.iterator().next().getString(1);
-            return (int) (Float.parseFloat(value));
+            return Integer.parseInt(value);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

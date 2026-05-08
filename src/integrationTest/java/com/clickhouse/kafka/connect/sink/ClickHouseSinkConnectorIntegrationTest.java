@@ -45,6 +45,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnectorIntegrationTest.class);
     public static ConfluentPlatform confluentPlatform;
     private static ClickHouseContainer db;
+    private static ClickHouseCluster cluster;
     private static ClickHouseHelperClient chc;
     public static ToxiproxyContainer toxiproxy;
     public static Proxy proxy;
@@ -78,7 +79,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
-        if (!isCluster) {
+        if (isCluster) {
+            cluster = new ClickHouseCluster();
+            cluster.start();
+        } else {
             db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE)
                     .withNetwork(network)
                     .withNetworkAliases(ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS);
@@ -114,7 +118,9 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     @AfterAll
     public static void tearDown() {
-        if (!isCluster) {
+        if (isCluster) {
+            cluster.stop();
+        } else {
             db.stop();
         }
         toxiproxy.stop();
@@ -252,7 +258,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_avro.json")));
-        String connectorConfig = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, 1 /* tasks.max=1 for ease of error parsing */, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        String connectorConfig = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, 1 /* tasks.max=1 for ease of error parsing */, topicName, "toxiproxy", PROXY_PORT, chc.getUsername(), chc.getPassword());
 
         confluentPlatform.createConnect(connectorConfig);
         Thread.sleep(1000);
@@ -303,11 +309,11 @@ public class ClickHouseSinkConnectorIntegrationTest {
         assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
     }
 
-    private static Stream<String> getCompatibleAvroSchemaPaths() {
+    private static Stream<Arguments> getCompatibleAvroSchemaPaths() {
         final String schemaDir = "src/testFixtures/avro/schemas/compatible";
-        return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
+        final Stream<String> filePathsStream = Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
+        return deploymentTypesForTests().flatMap(deploymentType -> filePathsStream.map(path -> Arguments.of(deploymentType, path)));
     }
-
 
     /*
         Test sinking Avro records with various schemas that the connector currently supports.
@@ -322,11 +328,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Over time, the goal is to fix the connector to make previously incompatible schemas compatible.
      */
     @ParameterizedTest
-    @MethodSource({"deploymentTypesForTests", "getCompatibleAvroSchemaPaths"})
-    public void avroSchemaTest(Arguments args) throws Exception {
-        String path = (String)args.get()[0];
-        ClickHouseDeploymentType deploymentType = (ClickHouseDeploymentType)args.get()[1];
-
+    @MethodSource("getCompatibleAvroSchemaPaths")
+    public void avroSchemaTest(ClickHouseDeploymentType deploymentType, String path) throws Exception {
         Path schemaPath = Paths.get(path);
         JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(schemaPath)));
 
@@ -353,8 +356,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
         CreateTableStatement tableStmt = new CreateTableStatement()
                 .tableName(topicName)
-                .engine("MergeTree")
-                .orderByColumn(fixture.getString(clickhouseOrderByKey));
+                .orderByColumn(fixture.getString(clickhouseOrderByKey))
+                .deploymentType(deploymentType);
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         for (String colName : clickhouseColumns.keySet()) {
             tableStmt.column(colName, clickhouseColumns.getString(colName));

@@ -78,8 +78,9 @@ services:
     ports:
       - '10726:8123'
     volumes:
-      - ${DOCKER_ROOT:-.}/nginx/local.conf:/etc/nginx/conf.d/local.conf
-    container_name: clickhouse-nginx
+      - type: bind
+        source: ${DOCKER_ROOT:-.}/nginx/local.conf
+        target: /etc/nginx/conf.d/local.conf
     depends_on:
       ch0: { condition: service_healthy }
       ch1: { condition: service_healthy }
