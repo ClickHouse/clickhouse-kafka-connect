@@ -5,11 +5,6 @@
 detects new fields in incoming records and issues `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` against ClickHouse.
 Disabled by default. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/277)
 
-## Improvements
-* Added a local cluster test environment. This is an important addition to the test framework because it allows
-verifying changes in a more realistic environment. It can be used to test compatibility of this sink
-connector with different Kafka Connect runtime versions. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/717)
-
 ## Bug Fixes
 * Fixed RowBinary serialization for Map columns with Nullable value types. The nullable marker byte was missing
 when writing map values, causing `CANNOT_READ_ALL_DATA` errors for `Map(K, Nullable(V))` columns. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/687)
