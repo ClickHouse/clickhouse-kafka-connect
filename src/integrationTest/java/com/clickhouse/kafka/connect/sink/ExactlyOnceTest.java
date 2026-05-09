@@ -128,7 +128,8 @@ public class ExactlyOnceTest {
                 properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP),
                 true);
 
-        confluentPlatform.createConnect(jsonString);
+        int responseCode = confluentPlatform.createConnect(jsonString);
+        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
     }
 
 

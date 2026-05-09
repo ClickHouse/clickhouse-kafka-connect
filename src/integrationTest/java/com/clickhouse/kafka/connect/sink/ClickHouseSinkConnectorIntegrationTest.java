@@ -46,12 +46,13 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .column("insertTime", "DateTime DEFAULT now()")
             .engine("MergeTree")
             .orderByColumn("symbol");
+    private static final Path RESOURCES_ROOT = Path.of("src", "integrationTest", "resources");
 
     @BeforeAll
     public static void setup() {
         Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
-        String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();
+        String confluentArchive = new File(Path.of("build", "confluentArchive").toString()).getAbsolutePath();
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
@@ -167,11 +168,11 @@ public class ClickHouseSinkConnectorIntegrationTest {
     }
 
     private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
-        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen.json", topicName, numberOfPartitions, numberOfRecords);
+        return confluentPlatform.generateData(Path.of(RESOURCES_ROOT.toString(), "stock_gen.json").toString(), topicName, numberOfPartitions, numberOfRecords);
     }
 
     private int generateSchemalessData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
-        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
+        return confluentPlatform.generateData(Path.of(RESOURCES_ROOT.toString(), "stock_gen_json.json").toString(), topicName, numberOfPartitions, numberOfRecords);
     }
 
     private void setupConnector(String topicName, int taskCount) throws IOException, InterruptedException {
@@ -179,48 +180,30 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
-
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
-        // The client makes requests with absolute URIs when a proxy is configured - currently, requests with absolute paths are rejected by CH server.
-        // To work around this, transparently connect to the toxiproxy endpoint and avoid configuring the proxy settings on the client. The proxy will relay relative URIs, which the CH server expects.
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
-
-        confluentPlatform.createConnect(jsonString);
-        Thread.sleep(1000);
+        int responseCode = confluentPlatform.createConnect(SinkConfigs.BASE.getJsonPayload(taskCount, topicName));
+        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
     }
 
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
-
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
-
-        confluentPlatform.createConnect(jsonString);
-        Thread.sleep(1000);
+        int responseCode = confluentPlatform.createConnect(SinkConfigs.BASE_SCHEMALESS.getJsonPayload(taskCount, topicName));
+        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
     }
 
     private void setupAvroConnector(String topicName) throws IOException, InterruptedException {
         LOGGER.info("Setting up Avro connector for topic {}...", topicName);
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_avro.json")));
-        String connectorConfig = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, 1 /* tasks.max=1 for ease of error parsing */, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
-
-        confluentPlatform.createConnect(connectorConfig);
-        Thread.sleep(1000);
+        int responseCode = confluentPlatform.createConnect(SinkConfigs.AVRO.getJsonPayload(1, topicName));
+        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
     }
 
     private void setupProtobufConnector(String topicName) throws IOException, InterruptedException {
         LOGGER.info("Setting up Protobuf connector for topic {}...", topicName);
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_protobuf.json")));
-        String connectorConfig = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, 1 /* tasks.max=1 for ease of error parsing */, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
-
-        confluentPlatform.createConnect(connectorConfig);
-        Thread.sleep(1000);
+        int responseCode = confluentPlatform.createConnect(SinkConfigs.PROTOBUF.getJsonPayload(1, topicName));
+        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
     }
 
     private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
@@ -228,12 +211,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
-
-        String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
-        String jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
-
-        confluentPlatform.createConnect(jsonString);
-        Thread.sleep(1000);
+        int responseCode = confluentPlatform.createConnect(SinkConfigs.JDBC_PROP.getJsonPayload(taskCount, topicName));
+        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
     }
 
     private void checkInterruptTest(String topicName, int parCount) throws InterruptedException, IOException {
@@ -266,9 +245,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 
-    private static Stream<String> getCompatibleAvroSchemaPaths() {
-        final String schemaDir = "src/testFixtures/avro/schemas/compatible";
-        return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
+    private static Stream<Path> getCompatibleAvroSchemaPaths() {
+        final File schemaDir = new File(Path.of("src", "testFixtures", "proto", "schemas", "compatible").toString());
+        Assertions.assertTrue(schemaDir.exists());
+        return Stream.of(Objects.requireNonNull(schemaDir.listFiles())).map(file -> Path.of(schemaDir.toPath().toString(), file.getName()));
     }
 
 
@@ -286,8 +266,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
      */
     @ParameterizedTest
     @MethodSource("getCompatibleAvroSchemaPaths")
-    public void avroSchemaTest(String path) throws Exception {
-        Path schemaPath = Paths.get(path);
+    public void avroSchemaTest(Path schemaPath) throws Exception {
         JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(schemaPath)));
 
         // fixture JSON keys
@@ -345,10 +324,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Assertions.assertEquals(expectedRowCount, ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
     }
 
-    private static Stream<String> getCompatibleProtoSchemaPaths() {
-        final String schemaDir = "src/testFixtures/proto/schemas/compatible";
-        return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles((dir, name) -> name.endsWith(".json"))))
-                .map(file -> schemaDir + "/" + file.getName());
+    private static Stream<Path> getCompatibleProtoSchemaPaths() {
+        final File schemaDir = new File(Path.of("src", "testFixtures", "proto", "schemas", "compatible").toString());
+        Assertions.assertTrue(schemaDir.exists());
+        return Stream.of(Objects.requireNonNull(schemaDir.listFiles((dir, name) -> name.endsWith(".json")))).map(file -> Path.of(schemaDir.toPath().toString(), file.getName()));
     }
 
     /*
@@ -367,8 +346,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
      */
     @ParameterizedTest
     @MethodSource("getCompatibleProtoSchemaPaths")
-    public void protoSchemaTest(String path) throws Exception {
-        Path jsonPath = Paths.get(path);
+    public void protoSchemaTest(Path jsonPath) throws Exception {
         JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(jsonPath)));
 
         // fixture JSON keys
@@ -427,5 +405,26 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
         // 7. Check row count
         Assertions.assertEquals(expectedRowCount, ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
+    }
+
+    private static enum SinkConfigs {
+        BASE("clickhouse_sink.json"),
+        BASE_SCHEMALESS("clickhouse_sink_schemaless.json"),
+        PROTOBUF("clickhouse_sink_protobuf.json"),
+        AVRO("clickhouse_sink_avro.json"),
+        JDBC_PROP("clickhouse_sink_with_jdbc_prop.json");
+
+        final Path pathToJsonConfig;
+        SinkConfigs(String jsonFileName) {
+            pathToJsonConfig = RESOURCES_ROOT.resolve(jsonFileName);
+            Assertions.assertTrue(Files.exists(pathToJsonConfig));
+        }
+
+        public String getJsonPayload(int taskCount, String topicName) throws IOException {
+            String configFormat = String.join("", Files.readAllLines(pathToJsonConfig));
+            // The client makes requests with absolute URIs when a proxy is configured - currently, requests with absolute paths are rejected by CH server.
+            // To work around this, transparently connect to the toxiproxy endpoint and avoid configuring the proxy settings on the client. The proxy will relay relative URIs, which the CH server expects.
+            return String.format(configFormat, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName, "toxiproxy", 8666, db.getUsername(), db.getPassword());
+        }
     }
 }

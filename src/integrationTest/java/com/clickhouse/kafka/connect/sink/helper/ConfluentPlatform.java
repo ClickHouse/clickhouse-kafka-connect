@@ -332,7 +332,7 @@ public class ConfluentPlatform {
         return false;
     }
 
-    public void createConnect(String payload) throws IOException {
+    public int createConnect(String payload) throws IOException {
         String connectRestEndpoint = getConnectRestEndPoint();
         OkHttpClient client = new OkHttpClient();
         String connectorsEndpoint = String.format("%s/connectors", connectRestEndpoint);
@@ -345,8 +345,10 @@ public class ConfluentPlatform {
                 .build();
         try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
             String responseBodyString = responseBody.string();
-            LOGGER.info("Create connectors response code: {}", response.code());
+            int code = response.code();
+            LOGGER.info("Create connectors response code: {}", code);
             LOGGER.debug("Create connectors response body: {}", responseBodyString);
+            return code;
         }
     }
 
