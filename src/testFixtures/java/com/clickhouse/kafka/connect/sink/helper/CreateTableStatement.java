@@ -7,26 +7,26 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
+@SuppressWarnings({"OptionalUsedAsFieldOrParameterType"})
 public class CreateTableStatement {
     private String tableName;
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
-    private String engine; // defaults to MergeTree/ReplicatedMergeTree if unset
-    private String orderByColumn;
+    private Optional<String> engineOpt = Optional.empty(); // defaults to MergeTree/ReplicatedMergeTree if unset
+    private Optional<String> orderByColumnOpt =  Optional.empty();
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
-    private ClickHouseDeploymentType deploymentType = ClickHouseDeploymentType.STANDALONE;
 
     public CreateTableStatement() {}
 
     public CreateTableStatement(CreateTableStatement template) {
         this.tableName = template.tableName;
         this.schema = new LinkedHashMap<>(template.schema);
-        this.engine = template.engine;
-        this.orderByColumn = template.orderByColumn;
+        this.engineOpt = template.engineOpt;
+        this.orderByColumnOpt = template.orderByColumnOpt;
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
-        this.deploymentType = template.deploymentType;
     }
 
     public CreateTableStatement tableName(String tableName) {
@@ -40,12 +40,12 @@ public class CreateTableStatement {
     }
 
     public CreateTableStatement engine(String engine) {
-        this.engine = engine;
+        this.engineOpt = Optional.of(engine);
         return this;
     }
 
     public CreateTableStatement orderByColumn(String orderByColumn) {
-        this.orderByColumn = orderByColumn;
+        this.orderByColumnOpt = Optional.of(orderByColumn);
         return this;
     }
 
@@ -56,11 +56,6 @@ public class CreateTableStatement {
 
     public CreateTableStatement ifNotExists(boolean ifNotExists) {
         this.ifNotExists = ifNotExists;
-        return this;
-    }
-
-    public CreateTableStatement deploymentType(ClickHouseDeploymentType deploymentType) {
-        this.deploymentType = deploymentType;
         return this;
     }
 
@@ -76,15 +71,21 @@ public class CreateTableStatement {
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
                 .append("`").append(tableName).append("`");
-        if (deploymentType.isLocalCluster()) {
-            sql.append(" ON CLUSTER '").append(deploymentType.clusterName).append("'");
+        if (ClickHouseTestHelpers.isCluster()) {
+            var cluster = ClickHouseCluster.getClusterFromEnvVar();
+            sql.append(" ON CLUSTER '").append(cluster.getName()).append("'");
         }
         sql.append(" ")
-                .append("(").append(columns).append(")").append(" ")
-                .append("Engine = ").append(engine != null ? engine : deploymentType.getMergeTreeEngine());
-        if (orderByColumn != null) {
-            sql.append(" ORDER BY ").append(orderByColumn);
+                .append("(").append(columns).append(")").append(" ");
+
+        if (engineOpt.isPresent()) {
+            sql.append("Engine = ").append(engineOpt.get());
+        } else {
+            var engine = ClickHouseTestHelpers.isCluster() ? ClickHouseCluster.getClusterFromEnvVar().getMergeTreeEngine() : "MergeTree";
+            sql.append("Engine = ").append(engine);
         }
+
+        orderByColumnOpt.ifPresent(s -> sql.append(" ORDER BY ").append(s));
 
         try {
             if (settings != null && !settings.isEmpty()) {

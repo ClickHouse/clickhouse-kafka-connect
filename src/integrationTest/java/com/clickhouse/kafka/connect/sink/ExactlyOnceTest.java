@@ -7,7 +7,6 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCloudAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
@@ -55,13 +54,6 @@ public class ExactlyOnceTest {
     private static final String SCHEMA_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy.json";
     private static final String SCHEMA_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_cluster.json";
 
-    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
-        if (isCluster) {
-            return Stream.of(ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH, ClickHouseDeploymentType.ONE_SHARD_THREE_REPLICAS);
-        }
-        return Stream.of(ClickHouseDeploymentType.CLOUD);
-    }
-
     private static Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
         props.put(ClickHouseSinkConfig.PROXY_TYPE, "IGNORE");
@@ -91,7 +83,7 @@ public class ExactlyOnceTest {
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
             clickhouseCloudAPI = new ClickHouseCloudAPI(cloudProperties);
         } else {
-            cluster = new ClickHouseCluster();
+            cluster = ClickHouseCluster.getClusterFromEnvVar();
             cluster.start();
         }
 
@@ -118,16 +110,14 @@ public class ExactlyOnceTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void checkTotalsEqual(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("singlePartitionTopic_" + deploymentType, 1, deploymentType));
+    @Test
+    public void checkTotalsEqual() throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1));
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void checkTotalsEqualMulti(ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("multiPartitionTopic_" + deploymentType, 3, deploymentType));
+    @Test
+    public void checkTotalsEqualMulti() throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3));
     }
 
     @Test
@@ -144,35 +134,29 @@ public class ExactlyOnceTest {
         checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
     }
 
-    private static void setupSchemaConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
+    private static void setupSchemaConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
-        setupConnector(topicName, taskCount, deploymentType, false);
+        setupConnector(topicName, taskCount, false);
         Thread.sleep(5 * 1000);
     }
 
-    private static void setupSchemalessConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
+    private static void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting schemaless up connector...");
-        setupConnector(topicName, taskCount, deploymentType, true);
+        setupConnector(topicName, taskCount, true);
         Thread.sleep(5 * 1000);
     }
 
-    private static void setupConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType, boolean schemaless) throws IOException {
+    private static void setupConnector(String topicName, int taskCount, boolean schemaless) throws IOException {
         System.out.println("Setting up connector...");
-        ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topicName);
         new CreateTableStatement(STOCK_TABLE)
-                .tableName(topicName).deploymentType(deploymentType).execute(chc);
+                .tableName(topicName).execute(chc);
 
         String fileName;
-        switch (deploymentType) {
-            case CLOUD:
-                fileName = schemaless ? SCHEMALESS_SINK_CONFIG : SCHEMA_SINK_CONFIG;
-                break;
-            case THREE_SHARDS_ONE_REPLICA_EACH:
-            case ONE_SHARD_THREE_REPLICAS:
-                fileName = schemaless ? SCHEMALESS_SINK_CONFIG_CLUSTER : SCHEMA_SINK_CONFIG_CLUSTER;
-                break;
-            default:
-                throw new RuntimeException("Unsupported deployment type: " + deploymentType);
+        if (isCloud) {
+            fileName = schemaless ? SCHEMALESS_SINK_CONFIG : SCHEMA_SINK_CONFIG;
+        } else {
+            fileName = schemaless ? SCHEMALESS_SINK_CONFIG_CLUSTER : SCHEMA_SINK_CONFIG_CLUSTER;
         }
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
@@ -184,7 +168,7 @@ public class ExactlyOnceTest {
                     chc.getUsername(),
                     chc.getPassword(),
                     false, true, // ssl=false, exactlyOnce=true
-                    deploymentType.clusterName // keeperOnCluster=<clusterName>
+                    ClickHouseCluster.getClusterFromEnvVar().getName() // keeperOnCluster=<clusterName>
             );
         } else {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
@@ -207,15 +191,15 @@ public class ExactlyOnceTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-    private boolean compareSchemalessCounts(String topicName, int partitions, ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException {
+    private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
         LOGGER.info("Expected Total: {}", count);
-        setupSchemalessConnector(topicName, partitions, deploymentType);
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 5, deploymentType);
+        setupSchemalessConnector(topicName, partitions);
+        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 5);
 
-        int[] databaseCounts = getCounts(chc, topicName, deploymentType);
-        ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
+        int[] databaseCounts = getCounts(chc, topicName);
+        ClickHouseTestHelpers.dropTable(chc, topicName);
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
     }
 
@@ -227,15 +211,15 @@ public class ExactlyOnceTest {
             confluentPlatform.createTopic(topicName, numberOfPartitions);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
-            setupSchemalessConnector(topicName, numberOfPartitions, ClickHouseDeploymentType.CLOUD);
+            setupSchemalessConnector(topicName, numberOfPartitions);
 
             clickhouseCloudAPI.restartService();
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
 
             LOGGER.info("Expected Total: {}", count);
-            ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 7, ClickHouseDeploymentType.CLOUD);
+            ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 7);
 
-            int[] databaseCounts = getCounts(chc, topicName, ClickHouseDeploymentType.CLOUD);
+            int[] databaseCounts = getCounts(chc, topicName);
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
@@ -248,7 +232,7 @@ public class ExactlyOnceTest {
 
             confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
             confluentPlatform.deleteTopic(topicName);
-            ClickHouseTestHelpers.dropTable(chc, topicName, ClickHouseDeploymentType.CLOUD);
+            ClickHouseTestHelpers.dropTable(chc, topicName);
             runCount++;
         } while (runCount < 3 && allSuccess);
 
@@ -261,8 +245,8 @@ public class ExactlyOnceTest {
         return chc.queryV2(queryString);
     }
 
-    private static int[] getCounts(ClickHouseHelperClient chc, String tableName, ClickHouseDeploymentType deploymentType) {
-        String from = ClickHouseTestHelpers.buildFromClause(chc, tableName, deploymentType);
+    private static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
+        String from = ClickHouseTestHelpers.buildFromClause(chc, tableName);
         String queryCount = "SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM " + from + " SETTINGS select_sequential_consistency = 1";
         try (Records records = chc.queryV2(queryCount)) {
             GenericRecord first = StreamSupport.stream(records.spliterator(), false).findFirst().orElseThrow();

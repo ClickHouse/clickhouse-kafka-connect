@@ -2,8 +2,6 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
-import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
@@ -18,7 +16,6 @@ import org.testcontainers.containers.Network;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Stream;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseBase {
@@ -29,19 +26,10 @@ public class ClickHouseBase {
     protected static boolean isCluster = ClickHouseTestHelpers.isCluster();
     protected String database = ClickHouseTestHelpers.DATABASE_DEFAULT;
 
-    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
-        if (isCluster) {
-            return Stream.of(ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH, ClickHouseDeploymentType.ONE_SHARD_THREE_REPLICAS);
-        } else if (isCloud) {
-            return Stream.of(ClickHouseDeploymentType.CLOUD);
-        }
-        return Stream.of(ClickHouseDeploymentType.STANDALONE);
-    }
-
     @BeforeAll
     public void setup() throws IOException {
         if (isCluster) {
-            cluster = new ClickHouseCluster();
+            cluster = ClickHouseCluster.getClusterFromEnvVar();
             cluster.start();
         } else if (!isCloud) {
             setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
@@ -49,7 +37,7 @@ public class ClickHouseBase {
 
         try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
             setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
-            ClickHouseTestHelpers.createDatabase(database, tmpClient, isCluster ? ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH : ClickHouseDeploymentType.STANDALONE);
+            ClickHouseTestHelpers.createDatabase(database, tmpClient);
             tmpClient.ping();
         }
     }

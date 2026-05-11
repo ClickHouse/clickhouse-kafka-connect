@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -43,14 +42,13 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
             .column("p_bool", "Bool")
             .orderByColumn("off16");
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferingDisabledByDefault(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void bufferingDisabledByDefault() {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("buffer_disabled_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
@@ -59,18 +57,17 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.put(sr);
         task.stop();
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferFlushOnSizeThreshold(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void bufferFlushOnSizeThreshold() {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("buffer_size_flush_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         // Send 300 records (below threshold of 500) - should NOT be flushed yet
         List<SinkRecord> batch1 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
@@ -78,35 +75,34 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.start(props);
         task.put(batch1);
 
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
                 "Records should be buffered, not flushed yet");
 
         // Send 300 more records (total 600 > threshold 500) - should trigger flush
         List<SinkRecord> batch2 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
         task.put(batch2);
 
-        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic),
                 "Buffer should have been flushed after reaching threshold");
 
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferGracefulShutdownRedelivers(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void bufferGracefulShutdownRedelivers() {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "5000");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("buffer_shutdown_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, 1, 100);
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
         task.put(records);
 
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
                 "Records should be buffered, not flushed yet");
 
         // Simulate real framework shutdown: close(all) then stop()
@@ -116,19 +112,18 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.close(Collections.singletonList(tp));
         task.stop();
 
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
                 "Unflushed records should NOT be written — they'll be redelivered on restart");
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferRebalanceRemovesRevokedPartitions(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void bufferRebalanceRemovesRevokedPartitions() {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "5000");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("buffer_rebalance_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -140,7 +135,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2, 100));
         task.put(allRecords);
 
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
                 "All 300 records should be buffered");
 
         // Simulate cooperative rebalance: P2 revoked
@@ -154,30 +149,29 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.put(moreRecords);
 
         // Only P0 and P1 records should have been written — P2 records were removed by close()
-        int totalRows = ClickHouseTestHelpers.countRows(chc, topic, deploymentType);
+        int totalRows = ClickHouseTestHelpers.countRows(chc, topic);
         assertEquals(5200, totalRows,
                 "Only P0 (2600) + P1 (2600) records should be written, P2 records removed by rebalance");
 
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferFlushOnTimeThreshold(ClickHouseDeploymentType deploymentType) throws InterruptedException {
+    @Test
+    public void bufferFlushOnTimeThreshold() throws InterruptedException {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "50000");
         props.put(ClickHouseSinkConfig.BUFFER_FLUSH_TIME, "2000");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("buffer_time_flush_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         List<SinkRecord> records = SchemalessTestData.createPrimitiveTypes(topic, 1, 100);
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
         task.put(records);
 
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
                 "Records should be buffered, not flushed yet");
 
         // Wait for the time threshold to pass
@@ -186,21 +180,20 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         // Next put (even empty) should trigger time-based flush
         task.put(new ArrayList<>());
 
-        assertEquals(100, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(100, ClickHouseTestHelpers.countRows(chc, topic),
                 "Buffered records should be flushed after time threshold");
 
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferAccumulatesMultipleBatches(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void bufferAccumulatesMultipleBatches() {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "2500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("buffer_multi_batch_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -214,7 +207,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         }
 
         // 5 * 400 = 2000, still below 2500 threshold
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
                 "Records should still be buffered (2000 < 2500)");
 
         // One more batch to push over threshold
@@ -222,7 +215,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.put(finalBatch);
         totalRecords += finalBatch.size();
 
-        assertEquals(totalRecords, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(totalRecords, ClickHouseTestHelpers.countRows(chc, topic),
                 "All accumulated records should be flushed after crossing threshold");
 
         task.stop();
@@ -241,9 +234,8 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
 
     // ==================== Offset management tests (crash & rebalance safety) ====================
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void preCommitReturnsEmptyWhenAllBuffered(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void preCommitReturnsEmptyWhenAllBuffered() {
         // Simulates crash safety: if records are only buffered (not flushed to CH),
         // preCommit() must return empty so offsets are NOT committed.
         // On crash/restart, Kafka redelivers these records.
@@ -251,8 +243,8 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "5000");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("precommit_empty_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -273,17 +265,16 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void preCommitReturnsCorrectOffsetsAfterFlush(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void preCommitReturnsCorrectOffsetsAfterFlush() {
         // After buffer flushes to ClickHouse, preCommit() must return the correct
         // offsets so the framework commits them.
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("precommit_offset_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -295,7 +286,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.put(allRecords);
 
         // Verify data reached ClickHouse
-        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic));
 
         // preCommit should return offsets for both partitions
         Map<TopicPartition, OffsetAndMetadata> currentOffsets = new java.util.HashMap<>();
@@ -311,17 +302,16 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void preCommitClearsAfterReturning(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void preCommitClearsAfterReturning() {
         // After preCommit() returns offsets, the next call should return empty
         // if no new data was flushed (matches S3's getOffsetToCommitAndReset pattern).
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("precommit_reset_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -340,17 +330,16 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void preCommitExcludesRevokedPartitionsAfterRebalance(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void preCommitExcludesRevokedPartitionsAfterRebalance() {
         // After close() revokes a partition, preCommit() must NOT return offsets
         // for that partition, even if data was previously flushed for it.
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("precommit_rebalance_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -362,7 +351,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         allRecords.addAll(SchemalessTestData.createPrimitiveTypes(topic, 2, 200));
         task.put(allRecords);
 
-        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic));
 
         // Simulate rebalance: revoke P2
         task.close(Collections.singletonList(new TopicPartition(topic, 2)));
@@ -378,9 +367,8 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void crashAfterFlushIsIdempotent(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void crashAfterFlushIsIdempotent() {
         // Verifies that if ClickHouse receives data and then a crash happens
         // AFTER preCommit but BEFORE the framework commits, the data is safe:
         // Kafka will redeliver, and ClickHouse gets duplicates (at-least-once).
@@ -389,8 +377,8 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("crash_after_flush_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -398,7 +386,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         // Batch 1: flush 600 records
         List<SinkRecord> batch1 = SchemalessTestData.createPrimitiveTypes(topic, 1, 600);
         task.put(batch1);
-        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic));
 
         Map<TopicPartition, OffsetAndMetadata> offsets1 = task.preCommit(new java.util.HashMap<>());
         assertEquals(600, offsets1.get(new TopicPartition(topic, 1)).offset());
@@ -406,7 +394,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         // Batch 2: buffer 200 records (below threshold, not flushed)
         List<SinkRecord> batch2 = SchemalessTestData.createPrimitiveTypes(topic, 1, 200);
         task.put(batch2);
-        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic),
                 "Batch 2 should still be buffered");
 
         // preCommit returns empty — batch 2 not flushed
@@ -424,17 +412,16 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
 
     // ==================== Insert failure edge cases (putDirect fails) ====================
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void putDirectFailsNoErrorTolerance_offsetsNotCommitted(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void putDirectFailsNoErrorTolerance_offsetsNotCommitted() {
         // Edge case: buffer flush triggers putDirect → insert fails → exception propagates.
         // Offsets must NOT be committed so Kafka redelivers on restart (at-least-once).
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("insert_fail_no_tolerance_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -443,11 +430,11 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         List<SinkRecord> batch1 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
         task.put(batch1);
 
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
                 "Records should be buffered, not flushed yet");
 
         // Drop the table to make the next insert fail
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topic);
 
         // Add 300 more records to cross threshold → triggers flush → insert fails
         List<SinkRecord> batch2 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
@@ -463,9 +450,8 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.stop();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void putDirectFailsWithErrorTolerance_offsetsCommitted(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void putDirectFailsWithErrorTolerance_offsetsCommitted() {
         // Edge case: buffer flush triggers putDirect → insert fails → error tolerance swallows it.
         // With error tolerance, records go to DLQ and offsets ARE committed (same as non-buffered behavior).
         Map<String, String> props = getBaseProps();
@@ -473,8 +459,8 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.ERRORS_TOLERANCE, ClickHouseSinkConfig.ERROR_TOLERANCE_ALL);
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("insert_fail_tolerance_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -484,7 +470,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.put(batch1);
 
         // Drop the table to make the next insert fail
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topic);
 
         // Add 300 more records to cross threshold → triggers flush → insert fails but is tolerated
         List<SinkRecord> batch2 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
@@ -504,15 +490,14 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
 
     // ==================== Partition tests ====================
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void bufferMultiplePartitions(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void bufferMultiplePartitions() {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("buffer_multi_partition_test");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         task.start(props);
@@ -526,7 +511,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         task.put(allRecords);
 
         // 600 > 500 threshold, should be flushed
-        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic, deploymentType),
+        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic),
                 "Records from all partitions should be flushed together");
 
         task.stop();

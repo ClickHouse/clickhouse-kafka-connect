@@ -6,7 +6,6 @@ import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
@@ -15,6 +14,7 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -38,16 +38,14 @@ public class FailureTest extends ClickHouseBase {
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "DEBUG");
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    void testSchemaValidationFailure(ClickHouseDeploymentType deploymentType) throws Exception {
+    @Test
+    void testSchemaValidationFailure() throws Exception {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
-        ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic)
-                .deploymentType(deploymentType)
                 .column("off16", "Int16").column("uint8", "UInt8").column("uint16", "UInt16")
                 .column("uint32", "UInt32").column("uint64", "UInt64")
                 .orderByColumn("off16").execute(chc);
@@ -83,12 +81,12 @@ public class FailureTest extends ClickHouseBase {
         assertEquals(dlq.size(), ((Long)sentToDQL).longValue());
 
         task.stop();
-        assertEquals(200, ClickHouseTestHelpers.countRows(chc, topic, deploymentType));
+        assertEquals(200, ClickHouseTestHelpers.countRows(chc, topic));
         List<SinkRecord> sr = new ArrayList<>(200);
         sr.addAll(validRecordsPart1);
         sr.addAll(validRecordsPart3);
 
-        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr, deploymentType));
+        assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
     }
 
     public static List<SinkRecord> createInvalidRecords(String topic, int partition, int totalRecords) {

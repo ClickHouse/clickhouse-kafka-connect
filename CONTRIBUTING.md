@@ -10,7 +10,7 @@ So you want to get started developing with our Kafka Connect Sink Connector, eh?
 ## Building and Running Feature Tests
 You can compile and run the feature tests locally by going to the root project folder and running one of the following:
 - `./gradlew clean test`: run tests against a 1-node (standalone) ClickHouse instance.
-- `CLICKHOUSE_CLUSTER_MODE=true ./gradlew clean test`: run tests against a 3-node ClickHouse cluster.
+- `CLICKHOUSE_CLUSTER_NAME=<three_shards_one_replica_each/one_shard_three_replicas> ./gradlew clean test`: run tests against two possible ClickHouse clusters.
 
 _Note: this doesn't produce a release artifact, you'll have to execute a later step for that._
 
@@ -18,7 +18,7 @@ _Note: this doesn't produce a release artifact, you'll have to execute a later s
 Integration tests run against both Docker and ClickHouse Cloud. You can compile and run the integration test suite locally by going to the root project folder and running:
 
 ```bash
-CLICKHOUSE_CLUSTER_MODE=<true/false> ./gradlew clean integrationTest \
+CLICKHOUSE_CLUSTER_NAME=<three_shards_one_replica_each/one_shard_three_replicas> ./gradlew clean integrationTest \
   -Dclickhouse.host=<YOUR_CH_HOST> \
   -Dclickhouse.port=<YOUR_CH_PORT> \
   -Dclickhouse.password=<YOUR_CH_PASSWORD> \

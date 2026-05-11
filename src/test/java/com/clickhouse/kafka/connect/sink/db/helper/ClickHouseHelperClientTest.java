@@ -2,8 +2,8 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
@@ -42,69 +42,63 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         Assertions.assertTrue(chc.ping());
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void showTables(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void showTables() {
         String topic = createTopicName("simple_table_test");
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).deploymentType(deploymentType).execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
             List<String> tableNames = table.stream().map(Table::getCleanName).collect(Collectors.toList());
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+            ClickHouseTestHelpers.dropTable(chc, topic);
         }
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void describeNestedFlattenedTable(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void describeNestedFlattenedTable() {
         String topic = createTopicName("nested_flattened_table_test");
         new CreateTableStatement()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .deploymentType(deploymentType)
                 .orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertEquals(3, table.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+            ClickHouseTestHelpers.dropTable(chc, topic);
         }
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void ignoreArrayWithNestedTable(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void ignoreArrayWithNestedTable() {
         String topic = createTopicName("nested_table_test");
         new CreateTableStatement()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Array(Nested (innerInt Int32, innerString String))")
-                .deploymentType(deploymentType)
                 .orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
             Assertions.assertNull(table);
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+            ClickHouseTestHelpers.dropTable(chc, topic);
         }
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
+    @Test
     @SinceClickHouseVersion("24.1")
-    public void describeNestedUnFlattenedTable(ClickHouseDeploymentType deploymentType) {
+    public void describeNestedUnFlattenedTable() {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         String testUsername = createTestUsername("unflatten");
-        String clusterClause = deploymentType.isLocalCluster() ? " ON CLUSTER '" + deploymentType.clusterName + "'" : "";
+        String clusterClause = isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVar().getName() + "'" : "";
         ClickHouseHelperClient adminChc = chc;
         ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername, clusterClause));
-        if (deploymentType.isLocalCluster()) {
+        if (isCluster) {
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s CREATE ON *.* TO `%s`", clusterClause, testUsername));
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s DROP ON *.* TO `%s`", clusterClause, testUsername));
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s SHOW ON *.* TO `%s`", clusterClause, testUsername));
@@ -121,9 +115,8 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(nestedTopic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .deploymentType(deploymentType)
                 .orderByColumn("num").execute(chc);
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).deploymentType(deploymentType).execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).execute(chc);
 
         try {
             Table nestedTable = chc.describeTable(chc.getDatabase(), nestedTopic);
@@ -132,15 +125,14 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Table normalTable = chc.describeTable(chc.getDatabase(), normalTopic);
             Assertions.assertEquals(1, normalTable.getRootColumnsList().size());
         } finally {
-            ClickHouseTestHelpers.dropTable(adminChc, nestedTopic, deploymentType);
-            ClickHouseTestHelpers.dropTable(adminChc, normalTopic, deploymentType);
+            ClickHouseTestHelpers.dropTable(adminChc, nestedTopic);
+            ClickHouseTestHelpers.dropTable(adminChc, normalTopic);
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`%s", testUsername, clusterClause));
         }
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
         new CreateTableStatement()
@@ -153,7 +145,6 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .column("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL")
                 .column("map_eph", "Map(String, UInt64) EPHEMERAL")
                 .column("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL")
-                .deploymentType(deploymentType)
                 .orderByColumn("off16").execute(chc);
 
         try {
@@ -165,7 +156,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Assertions.assertEquals("off16", table.getAllColumnsList().get(0).getName());
             Assertions.assertEquals("off16", table.getRootColumnsList().get(0).getName());
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic, deploymentType);
+            ClickHouseTestHelpers.dropTable(chc, topic);
         }
     }
 }

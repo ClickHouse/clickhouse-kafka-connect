@@ -5,7 +5,6 @@ import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -75,7 +74,7 @@ public class ClickHouseCloudTest {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = "schemaless_overlap_table_test";
-        ClickHouseTestHelpers.dropTable(chc, topic, ClickHouseDeploymentType.CLOUD);
+        ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic)
                 .column("off16", "Int16").column("str", "String")
@@ -83,7 +82,6 @@ public class ClickHouseCloudTest {
                 .column("p_int64", "Int64").column("p_float32", "Float32")
                 .column("p_float64", "Float64").column("p_bool", "Bool")
                 .orderByColumn("off16")
-                .deploymentType(ClickHouseDeploymentType.CLOUD)
                 .execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         Collection<SinkRecord> firstBatch = new ArrayList<>();
@@ -120,9 +118,9 @@ public class ClickHouseCloudTest {
         chst.put(thirdBatch);
         chst.stop();
         LOGGER.info("Total Records: {}", sr.size());
-        LOGGER.info("Row Count: {}", ClickHouseTestHelpers.countRows(chc, topic, ClickHouseDeploymentType.CLOUD));
-        Assertions.assertTrue(ClickHouseTestHelpers.countRows(chc, topic, ClickHouseDeploymentType.CLOUD) >= sr.size());
+        LOGGER.info("Row Count: {}", ClickHouseTestHelpers.countRows(chc, topic));
+        Assertions.assertTrue(ClickHouseTestHelpers.countRows(chc, topic) >= sr.size());
         Assertions.assertTrue(checkSequentialRows(chc, topic, sr.size()));
-        ClickHouseTestHelpers.dropTable(chc, topic, ClickHouseDeploymentType.CLOUD);
+        ClickHouseTestHelpers.dropTable(chc, topic);
     }
 }

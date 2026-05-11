@@ -5,7 +5,6 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import eu.rekawek.toxiproxy.Proxy;
@@ -64,13 +63,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .column("insertTime", "DateTime DEFAULT now()")
             .orderByColumn("symbol");
 
-    public static Stream<ClickHouseDeploymentType> deploymentTypesForTests() {
-        if (isCluster) {
-            return Stream.of(ClickHouseDeploymentType.THREE_SHARDS_ONE_REPLICA_EACH, ClickHouseDeploymentType.ONE_SHARD_THREE_REPLICAS);
-        }
-        return Stream.of(ClickHouseDeploymentType.STANDALONE);
-    }
-
     @BeforeAll
     public static void setup() throws IOException {
         Assumptions.assumeFalse(isCloud, "ClickHouseSinkConnectorIntegrationTest is not supported against cloud");
@@ -81,7 +73,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
         if (isCluster) {
-            cluster = new ClickHouseCluster();
+            cluster = ClickHouseCluster.getClusterFromEnvVar();
             cluster.start();
         } else {
             db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE)
@@ -128,75 +120,68 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.close();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void stockGenSingleTaskTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
-        String topicName = "stockGenSingleTaskTest_" + deploymentType;
+    @Test
+    public void stockGenSingleTaskTest() throws IOException, InterruptedException {
+        String topicName = "stockGenSingleTaskTest";
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
-        setupConnector(topicName, 1, deploymentType);
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3, deploymentType);
-        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
+        setupConnector(topicName, 1);
+        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3);
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName));
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void stockGenWithJdbcPropSingleTaskTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
-        String topicName = "stockGenWithJdbcPropSingleTaskTest_" + deploymentType;
+    @Test
+    public void stockGenWithJdbcPropSingleTaskTest() throws IOException, InterruptedException {
+        String topicName = "stockGenWithJdbcPropSingleTaskTest";
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateData(topicName, 1, 100);
-        setupConnectorWithJdbcProperties(topicName, 1, deploymentType);
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3, deploymentType);
-        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
+        setupConnectorWithJdbcProperties(topicName, 1);
+        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3);
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName));
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void stockGenSingleTaskSchemalessTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
-        String topicName = "stockGenSingleTaskSchemalessTest_" + deploymentType;
+    @Test
+    public void stockGenSingleTaskSchemalessTest() throws IOException, InterruptedException {
+        String topicName = "stockGenSingleTaskSchemalessTest";
         confluentPlatform.createTopic(topicName, 1);
         int dataCount = generateSchemalessData(topicName, 1, 100);
-        setupSchemalessConnector(topicName, 1, deploymentType);
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3, deploymentType);
-        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
+        setupSchemalessConnector(topicName, 1);
+        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3);
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName));
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void stockGenSingleTaskInterruptTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
-        checkInterruptTest("stockGenSingleTaskInterruptTest_" + deploymentType, 1, deploymentType);
+    @Test
+    public void stockGenSingleTaskInterruptTest() throws IOException, InterruptedException {
+        checkInterruptTest("stockGenSingleTaskInterruptTest", 1);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void stockGenMultiTaskInterruptTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
-        checkInterruptTest("stockGenMultiTaskInterruptTest_" + deploymentType, 3, deploymentType);
+    @Test
+    public void stockGenMultiTaskInterruptTest() throws IOException, InterruptedException {
+        checkInterruptTest("stockGenMultiTaskInterruptTest", 3);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void stockGenMultiTaskTopicTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
-        String topicName = "stockGenMultiTaskTopicTest_" + deploymentType;
+    @Test
+    public void stockGenMultiTaskTopicTest() throws IOException, InterruptedException {
+        String topicName = "stockGenMultiTaskTopicTest";
         int parCount = 3;
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateData(topicName, parCount, 200);
-        setupConnector(topicName, parCount, deploymentType);
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3, deploymentType);
+        setupConnector(topicName, parCount);
+        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3);
         LOGGER.info(confluentPlatform.getConnectors());
-        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName));
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void stockGenMultiTaskSchemalessTest(ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
-        String topicName = "stockGenMultiTaskSchemalessTest_" + deploymentType;
+    @Test
+    public void stockGenMultiTaskSchemalessTest() throws IOException, InterruptedException {
+        String topicName = "stockGenMultiTaskSchemalessTest";
         int parCount = 3;
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateSchemalessData(topicName, parCount, 200);
-        setupSchemalessConnector(topicName, parCount, deploymentType);
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3, deploymentType);
+        setupSchemalessConnector(topicName, parCount);
+        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3);
         LOGGER.info(confluentPlatform.getConnectors());
-        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName));
     }
 
     private static Map<String, String> getTestProperties() {
@@ -225,11 +210,11 @@ public class ClickHouseSinkConnectorIntegrationTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-    private void setupConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
+    private void setupConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topicName);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chc);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink.json")));
         String jsonString;
@@ -240,10 +225,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
-    private void setupSchemalessConnector(String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
+    private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
-        ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topicName);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chc);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_schemaless.json")));
         String jsonString;
@@ -265,11 +250,11 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
-    private void setupConnectorWithJdbcProperties(String topicName, int taskCount, ClickHouseDeploymentType deploymentType) throws IOException, InterruptedException {
+    private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).deploymentType(deploymentType).execute(chc);
+        ClickHouseTestHelpers.dropTable(chc, topicName);
+        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chc);
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get("src/integrationTest/resources/clickhouse_sink_with_jdbc_prop.json")));
         String jsonString;
@@ -280,11 +265,11 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Thread.sleep(1000);
     }
 
-    private void checkInterruptTest(String topicName, int parCount, ClickHouseDeploymentType deploymentType) throws InterruptedException, IOException {
+    private void checkInterruptTest(String topicName, int parCount) throws InterruptedException, IOException {
         confluentPlatform.createTopic(topicName, parCount);
         int dataCount = generateData(topicName, parCount, 2500);
-        setupConnector(topicName, parCount, deploymentType);
-        int databaseCount = ClickHouseTestHelpers.countRows(chc, topicName, deploymentType);
+        setupConnector(topicName, parCount);
+        int databaseCount = ClickHouseTestHelpers.countRows(chc, topicName);
         int lastCount = 0;
         int loopCount = 0;
 
@@ -297,7 +282,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 clickhouseProxy.enable();
             }
             Thread.sleep(3500);
-            databaseCount = ClickHouseTestHelpers.countRows(chc, topicName, deploymentType);
+            databaseCount = ClickHouseTestHelpers.countRows(chc, topicName);
             if (lastCount == databaseCount) {
                 loopCount++;
             } else {
@@ -307,13 +292,12 @@ public class ClickHouseSinkConnectorIntegrationTest {
             lastCount = databaseCount;
         }
 
-        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
+        assertTrue(dataCount <= ClickHouseTestHelpers.countRows(chc, topicName));
     }
 
-    private static Stream<Arguments> getCompatibleAvroSchemaPaths() {
+    private static Stream<String> getCompatibleAvroSchemaPaths() {
         final String schemaDir = "src/testFixtures/avro/schemas/compatible";
-        final List<String> filePathsStream = Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName()).collect(Collectors.toList());
-        return deploymentTypesForTests().flatMap(deploymentType -> filePathsStream.stream().map(path -> Arguments.of(deploymentType, path)));
+        return Stream.of(Objects.requireNonNull(new File(schemaDir).listFiles())).map(file -> schemaDir + "/" + file.getName());
     }
 
     /*
@@ -330,7 +314,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
      */
     @ParameterizedTest
     @MethodSource("getCompatibleAvroSchemaPaths")
-    public void avroSchemaTest(ClickHouseDeploymentType deploymentType, String path) throws Exception {
+    public void avroSchemaTest(String path) throws Exception {
         Path schemaPath = Paths.get(path);
         JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(schemaPath)));
 
@@ -354,11 +338,10 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createTopic(topicName, 1);
 
         // 2. Create ClickHouse table
-        ClickHouseTestHelpers.dropTable(chc, topicName, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, topicName);
         CreateTableStatement tableStmt = new CreateTableStatement()
                 .tableName(topicName)
-                .orderByColumn(fixture.getString(clickhouseOrderByKey))
-                .deploymentType(deploymentType);
+                .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         for (String colName : clickhouseColumns.keySet()) {
             tableStmt.column(colName, clickhouseColumns.getString(colName));
@@ -377,7 +360,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         setupAvroConnector(topicName);
 
         // 5. Wait for data to flow through
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3, deploymentType);
+        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 3);
 
         // 6. Check for connector task failure
         Optional<String> taskFailure = confluentPlatform.getFirstTaskFailureOpt(SINK_CONNECTOR_NAME);
@@ -386,6 +369,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
         }
 
         // 7. Check row count
-        Assertions.assertEquals(expectedRowCount, ClickHouseTestHelpers.countRows(chc, topicName, deploymentType));
+        Assertions.assertEquals(expectedRowCount, ClickHouseTestHelpers.countRows(chc, topicName));
     }
 }

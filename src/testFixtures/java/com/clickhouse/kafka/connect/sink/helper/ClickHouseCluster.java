@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink.helper;
 
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
-import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 
@@ -12,23 +11,34 @@ import java.util.Map;
 /**
  * This class represents a CH cluster that runs locally as defined by src/testFixtures/docker/cluster/docker-compose.yml.
  */
-public class ClickHouseCluster {
+public enum ClickHouseCluster {
+    THREE_SHARDS_ONE_REPLICA_EACH("three_shards_one_replica_each"),
+
+    /**
+     * Cluster {@code one_shard_three_replicas}: 1 shard replicated to all 3 nodes.
+     * DDL uses ReplicatedMergeTree; SELECTs can use the local table or {@code cluster} interchangeably.
+     */
+    ONE_SHARD_THREE_REPLICAS("one_shard_three_replicas");
+
     // fixed port mapped by docker-compose.yml: "10726:8123" for clickhouse-nginx
     // requests to the cluster are round-robin'ed
     private static final String CLUSTER_HOST = "localhost";
     private static final int CLUSTER_PORT = 10726;
-    private static final File composeFile = new File("src/testFixtures/docker/clickhouse/cluster/docker-compose.yml");
     private final ComposeContainer container;
 
-    public static final String THREE_SHARDS_ONE_REPLICA_EACH = "three_shards_one_replica_each";
-    public static final String ONE_SHARD_THREE_REPLICAS = "one_shard_three_replicas";
+    private final String name; // may be null
 
-    public ClickHouseCluster() {
-        this.container = new ComposeContainer(composeFile).waitingFor("nginx", Wait.defaultWaitStrategy());
+    ClickHouseCluster(String name) {
+        this.name = name;
+        this.container = new ComposeContainer(new File("src/testFixtures/docker/clickhouse/cluster/docker-compose.yml")).waitingFor("nginx", Wait.defaultWaitStrategy());
     }
 
     public static Integer getPort() {
         return CLUSTER_PORT;
+    }
+
+    public String getName() {
+        return name;
     }
 
     public static Map<String, String> getClusterProps(String database) {
@@ -52,5 +62,25 @@ public class ClickHouseCluster {
 
     public void stop() {
         container.stop();
+    }
+
+    public String getMergeTreeEngine() {
+        // {database} and {table} are ClickHouse auto-substitution variables.
+        // {replica} is defined in config.xml via <replica from_env="REPLICA_NUM"/>.
+        if (this == ONE_SHARD_THREE_REPLICAS) {
+            // all nodes replicate the same data, so omit {shard}
+            return "ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}')";
+        }
+        return "MergeTree";
+    }
+
+    public static ClickHouseCluster getClusterFromEnvVar() {
+        String clusterName = System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLUSTER_NAME);
+        if (THREE_SHARDS_ONE_REPLICA_EACH.name.equalsIgnoreCase(clusterName)) {
+            return THREE_SHARDS_ONE_REPLICA_EACH;
+        } else if (ONE_SHARD_THREE_REPLICAS.name.equalsIgnoreCase(clusterName)) {
+            return ONE_SHARD_THREE_REPLICAS;
+        }
+        throw new IllegalArgumentException(String.format("Unknown cluster name from env var %s: %s", ClickHouseTestHelpers.CLICKHOUSE_CLUSTER_NAME, clusterName));
     }
 }

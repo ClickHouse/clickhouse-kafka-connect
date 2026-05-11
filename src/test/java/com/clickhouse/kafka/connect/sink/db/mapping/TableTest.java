@@ -4,7 +4,6 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseDeploymentType;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -37,48 +36,44 @@ class TableTest extends ClickHouseBase {
         assertEquals(5, mapValueType.getPrecision());
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void extractNullables(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void extractNullables() {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, tableName);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("off16", "Int16")
                 .column("date_number", "Nullable(Date)")
-                .deploymentType(deploymentType)
                 .orderByColumn("off16").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
         assertEquals(2, table.getRootColumnsList().size());
         assertEquals(3, table.getAllColumnsList().size());
-        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("deploymentTypesForTests")
-    public void extractCommentV1(ClickHouseDeploymentType deploymentType) {
+    @Test
+    public void extractCommentV1() {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, tableName);
         new CreateTableStatement()
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")
-                .deploymentType(deploymentType)
                 .orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
         assertEquals(table.getRootColumnsList().size(), 2);
-        ClickHouseTestHelpers.dropTable(chc, tableName, deploymentType);
+        ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 
     @Test
