@@ -24,13 +24,12 @@ public enum ClickHouseCluster {
     // requests to the cluster are round-robin'ed
     private static final String CLUSTER_HOST = "localhost";
     private static final int CLUSTER_PORT = 10726;
-    private final ComposeContainer container;
+    private static ComposeContainer container;
 
     private final String name; // may be null
 
     ClickHouseCluster(String name) {
         this.name = name;
-        this.container = new ComposeContainer(new File("src/testFixtures/docker/clickhouse/cluster/docker-compose.yml")).waitingFor("nginx", Wait.defaultWaitStrategy());
     }
 
     public static Integer getPort() {
@@ -53,7 +52,9 @@ public enum ClickHouseCluster {
         );
     }
 
+    /** not thread safe */
     public void start() {
+        container = new ComposeContainer(new File("src/testFixtures/docker/clickhouse/cluster/docker-compose.yml")).waitingFor("nginx", Wait.defaultWaitStrategy());
         container
                 .withEnv("DOCKER_ROOT", new File("src/testFixtures/docker").getAbsolutePath())
                 .withEnv("CH_VERSION", ClickHouseTestHelpers.getClickhouseVersion())
@@ -61,7 +62,9 @@ public enum ClickHouseCluster {
     }
 
     public void stop() {
-        container.stop();
+        if (container != null) {
+            container.stop();
+        }
     }
 
     public String getMergeTreeEngine() {
