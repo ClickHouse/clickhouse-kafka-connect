@@ -13,6 +13,11 @@ import java.util.Map;
  * This class represents a CH cluster that runs locally as defined by src/testFixtures/docker/cluster/docker-compose.yml.
  */
 public enum ClickHouseCluster {
+    /**
+     * Cluster {@code three_shards_one_replica_each}: 3 shards (ch0, ch1, ch2),
+     * each with 1 replica.
+     * DDL uses MergeTree; SELECTs must use {@code cluster} to query across shards.
+     */
     THREE_SHARDS_ONE_REPLICA_EACH("three_shards_one_replica_each"),
 
     /**

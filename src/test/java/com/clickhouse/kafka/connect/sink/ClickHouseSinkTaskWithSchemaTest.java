@@ -239,7 +239,7 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = createTopicName("m_array_string_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic + "mate");
+        ClickHouseTestHelpers.dropTable(chc, topic + "_mate");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic)
