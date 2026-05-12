@@ -10,8 +10,6 @@ import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.Serializable;
 import java.util.Collection;

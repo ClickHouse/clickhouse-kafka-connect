@@ -26,8 +26,6 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -138,20 +136,20 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
         runWithWriter(props, (chw) -> {
 
-                chw.updateMapping(chc.getDatabase());
-                Map<String, Table> tables = chw.getMapping();
-                assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+                    chw.updateMapping(chc.getDatabase());
+                    Map<String, Table> tables = chw.getMapping();
+                    assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
 
 
-                new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
+                    new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
 
-                Table table = chw.getTable(chc.getDatabase(), topic);
-                assertNotNull(table);
-                assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
+                    Table table = chw.getTable(chc.getDatabase(), topic);
+                    assertNotNull(table);
+                    assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
 
-                tables = chw.getMapping();
-                assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
-            });
+                    tables = chw.getMapping();
+                    assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+                });
 
         ClickHouseTestHelpers.dropTable(chc, topic);
     }

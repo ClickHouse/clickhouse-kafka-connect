@@ -10,8 +10,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -258,13 +256,11 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     @Test
     public void tableMappingTest() {
         Map<String, String> props = getTestProperties();
-        props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-
         String topic = "mapping_table_test";
         String tableName = createTopicName("table_mapping_test");
-        // Update table mapping to use unique table name
         props.put(ClickHouseSinkConfig.TABLE_MAPPING, topic + "=" + tableName);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
         ClickHouseTestHelpers.dropTable(chc, tableName);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);

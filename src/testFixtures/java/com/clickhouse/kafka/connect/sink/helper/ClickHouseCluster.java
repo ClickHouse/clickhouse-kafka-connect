@@ -64,6 +64,7 @@ public enum ClickHouseCluster {
     public void stop() {
         if (container != null) {
             container.stop();
+            container = null;
         }
     }
 

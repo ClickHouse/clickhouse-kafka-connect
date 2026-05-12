@@ -6,8 +6,6 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 import java.util.Map;
@@ -72,7 +70,7 @@ class TableTest extends ClickHouseBase {
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
-        assertEquals(table.getRootColumnsList().size(), 2);
+        assertEquals(2, table.getRootColumnsList().size());
         ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 

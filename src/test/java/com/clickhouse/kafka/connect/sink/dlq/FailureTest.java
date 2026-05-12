@@ -15,8 +15,6 @@ import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -37,7 +35,6 @@ public class FailureTest extends ClickHouseBase {
     static {
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "DEBUG");
     }
-
     @Test
     void testSchemaValidationFailure() throws Exception {
         Map<String, String> props = getBaseProps();
