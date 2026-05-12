@@ -192,11 +192,11 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
         String flushLogsCluster = isCloud ? " ON CLUSTER 'default'"
-                : isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVar().getName() + "'" : "";
+                : isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
         chc.queryV2("SYSTEM FLUSH LOGS" + flushLogsCluster).close();
 
         String queryLogFrom = isCluster
-                ? "clusterAllReplicas('" + ClickHouseCluster.getClusterFromEnvVar().getName() + "', system, query_log, rand())"
+                ? "clusterAllReplicas('" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "', system, query_log, rand())"
                 : "system.query_log";
         String getLogRecords = String.format("SELECT http_user_agent, query FROM " + queryLogFrom +
                         "   WHERE query_kind = 'Insert' " +

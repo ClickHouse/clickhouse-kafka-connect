@@ -11,7 +11,6 @@ import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +25,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -73,7 +71,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
         if (isCluster) {
-            cluster = ClickHouseCluster.getClusterFromEnvVar();
+            cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
             cluster.start();
         } else {
             db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE)
@@ -95,7 +93,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
         String upstream;
         if (isCluster) {
-            upstream = String.format("host.docker.internal:%d", ClickHouseCluster.getPort());
+            upstream = String.format("host.docker.internal:%d", cluster.getPort());
         } else {
             upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
         }
@@ -190,7 +188,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
         if (isCluster) {
-            props.putAll(ClickHouseCluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
+            props.putAll(cluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
         } else {
             // standalone
             props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());

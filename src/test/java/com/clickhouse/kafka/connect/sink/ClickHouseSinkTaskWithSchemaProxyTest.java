@@ -93,7 +93,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         if (isCloud) {
             upstream = String.format("%s:%d", csc.getHostname(), csc.getPort());
         } else if (isCluster) {
-            upstream = String.format("host.docker.internal:%d", ClickHouseCluster.getPort());
+            upstream = String.format("host.docker.internal:%d", cluster.getPort());
         } else {
             upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
         }
@@ -184,7 +184,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void materializedViewsBug() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String clusterClause = isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVar().getName() + "'" : "";
+        String clusterClause = isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
 
         String topic = createTopicName("m_array_string_table_test");
         // Drop the MV and its target table before the source table to avoid orphaned dependencies

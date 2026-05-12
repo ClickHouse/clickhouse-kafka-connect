@@ -75,8 +75,8 @@ services:
   nginx:
     image: 'nginx:1.30.0'
     hostname: nginx
-    ports:
-      - '10726:8123'
+    expose:
+      - '8123'
     volumes:
       - type: bind
         source: ${DOCKER_ROOT:-.}/nginx/local.conf

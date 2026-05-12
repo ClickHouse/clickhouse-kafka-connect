@@ -10,8 +10,6 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -59,7 +57,7 @@ public class ExactlyOnceTest {
         props.put(ClickHouseSinkConfig.PROXY_TYPE, "IGNORE");
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
         if (isCluster) {
-            props.putAll(ClickHouseCluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
+            props.putAll(cluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
         } else {
             // cloud
             props.putAll(Map.of(
@@ -83,7 +81,7 @@ public class ExactlyOnceTest {
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
             clickhouseCloudAPI = new ClickHouseCloudAPI(cloudProperties);
         } else {
-            cluster = ClickHouseCluster.getClusterFromEnvVar();
+            cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
             cluster.start();
         }
 
@@ -163,12 +161,12 @@ public class ExactlyOnceTest {
         String jsonString;
         if (isCluster) {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                    "host.docker.internal", ClickHouseCluster.getPort().toString(),
+                    "host.docker.internal", cluster.getPort().toString(),
                     chc.getDatabase(),
                     chc.getUsername(),
                     chc.getPassword(),
                     false, true, // ssl=false, exactlyOnce=true
-                    ClickHouseCluster.getClusterFromEnvVar().getName() // keeperOnCluster=<clusterName>
+                    ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() // keeperOnCluster=<clusterName>
             );
         } else {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,

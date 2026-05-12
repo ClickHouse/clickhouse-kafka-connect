@@ -72,7 +72,7 @@ public class CreateTableStatement {
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
                 .append("`").append(tableName).append("`");
         if (ClickHouseTestHelpers.isCluster()) {
-            var cluster = ClickHouseCluster.getClusterFromEnvVar();
+            var cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
             sql.append(" ON CLUSTER '").append(cluster.getName()).append("'");
         }
         sql.append(" ")
@@ -81,7 +81,7 @@ public class CreateTableStatement {
         if (engineOpt.isPresent()) {
             sql.append("Engine = ").append(engineOpt.get());
         } else {
-            var engine = ClickHouseTestHelpers.isCluster() ? ClickHouseCluster.getClusterFromEnvVar().getMergeTreeEngine() : "MergeTree";
+            var engine = ClickHouseTestHelpers.isCluster() ? ClickHouseCluster.getClusterFromEnvVarOrThrow().getMergeTreeEngine() : "MergeTree";
             sql.append("Engine = ").append(engine);
         }
 

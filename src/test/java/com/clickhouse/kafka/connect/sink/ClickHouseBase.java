@@ -29,7 +29,7 @@ public class ClickHouseBase {
     @BeforeAll
     public void setup() throws IOException {
         if (isCluster) {
-            cluster = ClickHouseCluster.getClusterFromEnvVar();
+            cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
             cluster.start();
         } else if (!isCloud) {
             setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
@@ -109,7 +109,7 @@ public class ClickHouseBase {
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
             props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "insert_quorum=3");
         } else if (isCluster) {
-            props.putAll(ClickHouseCluster.getClusterProps(database));
+            props.putAll(cluster.getClusterProps(database));
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
             props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());

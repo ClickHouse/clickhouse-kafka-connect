@@ -6,6 +6,7 @@ import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.io.File;
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -20,27 +21,32 @@ public enum ClickHouseCluster {
      */
     ONE_SHARD_THREE_REPLICAS("one_shard_three_replicas");
 
-    // fixed port mapped by docker-compose.yml: "10726:8123" for clickhouse-nginx
-    // requests to the cluster are round-robin'ed
+    // requests to the cluster are round-robin'ed by nginx
     private static final String CLUSTER_HOST = "localhost";
-    private static final int CLUSTER_PORT = 10726;
-    private static ComposeContainer container;
+    private static final String NGINX_SERVICE = "nginx";
+    private static final int CLICKHOUSE_EXPOSED_PORT = 8123;
+    private static final File COMPOSE_FILE = new File("src/testFixtures/docker/clickhouse/cluster/docker-compose.yml");
 
+    private ComposeContainer container;
+    private volatile int hostPort = -1; // assigned in start()
     private final String name; // may be null
 
     ClickHouseCluster(String name) {
         this.name = name;
     }
 
-    public static Integer getPort() {
-        return CLUSTER_PORT;
+    public Integer getPort() {
+        if (hostPort < 0) {
+            throw new RuntimeException("No port exposed because cluster is not running. Please call start() before getPort().");
+        }
+        return hostPort;
     }
 
     public String getName() {
         return name;
     }
 
-    public static Map<String, String> getClusterProps(String database) {
+    public Map<String, String> getClusterProps(String database) {
         return Map.of(
                 ClickHouseSinkConnector.HOSTNAME, CLUSTER_HOST,
                 ClickHouseSinkConnector.PORT, getPort().toString(),
@@ -54,17 +60,25 @@ public enum ClickHouseCluster {
 
     /** not thread safe */
     public void start() {
-        container = new ComposeContainer(new File("src/testFixtures/docker/clickhouse/cluster/docker-compose.yml")).waitingFor("nginx", Wait.defaultWaitStrategy());
+        container = new ComposeContainer(COMPOSE_FILE)
+                .withExposedService(NGINX_SERVICE, CLICKHOUSE_EXPOSED_PORT, Wait
+                        .forHttp("/")
+                        .forStatusCode(200)
+                        .forResponsePredicate("Ok."::equals)
+                        .withStartupTimeout(Duration.ofMinutes(1)));
         container
                 .withEnv("DOCKER_ROOT", new File("src/testFixtures/docker").getAbsolutePath())
                 .withEnv("CH_VERSION", ClickHouseTestHelpers.getClickhouseVersion())
                 .start();
+        hostPort = container.getServicePort(NGINX_SERVICE, CLICKHOUSE_EXPOSED_PORT);
     }
 
+    /** not thread safe */
     public void stop() {
         if (container != null) {
             container.stop();
             container = null;
+            hostPort = -1;
         }
     }
 
@@ -78,7 +92,7 @@ public enum ClickHouseCluster {
         return "MergeTree";
     }
 
-    public static ClickHouseCluster getClusterFromEnvVar() {
+    public static ClickHouseCluster getClusterFromEnvVarOrThrow() {
         String clusterName = System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLUSTER_NAME);
         if (THREE_SHARDS_ONE_REPLICA_EACH.name.equalsIgnoreCase(clusterName)) {
             return THREE_SHARDS_ONE_REPLICA_EACH;

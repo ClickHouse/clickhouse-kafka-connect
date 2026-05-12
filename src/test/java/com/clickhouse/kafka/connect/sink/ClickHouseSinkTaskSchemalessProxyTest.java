@@ -71,7 +71,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         if (isCloud) {
             upstream = String.format("%s:%d", csc.getHostname(), csc.getPort());
         } else if (isCluster) {
-            upstream = String.format("host.docker.internal:%d", ClickHouseCluster.getPort());
+            upstream = String.format("host.docker.internal:%d", cluster.getPort());
         } else {
             upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
         }
