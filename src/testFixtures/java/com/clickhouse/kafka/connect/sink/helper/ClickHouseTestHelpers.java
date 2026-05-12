@@ -206,6 +206,7 @@ public class ClickHouseTestHelpers {
         return countRows(chc, String.format("%s.%s", database, topic));
     }
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
+        optimizeTable(chc, tableName);
         String from = buildFromClause(chc, tableName);
         String queryCount = "SELECT COUNT(*) FROM " + from + " SETTINGS select_sequential_consistency = 1";
 
@@ -232,6 +233,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRowsWithEmojis(ClickHouseHelperClient chc, String tableName) {
+        optimizeTable(chc, tableName);
         String from = buildFromClause(chc, tableName);
         String queryCount = "SELECT COUNT(*) FROM " + from + " WHERE str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
         try (Records records = chc.queryV2(queryCount)) {
