@@ -557,20 +557,6 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     }
 
     @Test
-    public void strictChunkingStartsWithValidConfig() {
-        // Valid EO + buffer combo must start without throwing.
-        Map<String, String> props = strictChunkingProps(500);
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("strict_start_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
-
-        ClickHouseSinkTask task = new ClickHouseSinkTask();
-        task.start(props);
-        task.stop();
-    }
-
-    @Test
     public void strictChunkingTailRecordsRemainBuffered() throws InterruptedException {
         // Below-threshold records must NOT flush. Tail stays in buffer for next put().
         // This is the core determinism guarantee — flushes only happen at fixed N boundary.
@@ -591,6 +577,33 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         assertCountStaysAt(chc, topic, 0, 2_000,
                 "Tail records below bufferCount must remain buffered");
         task.stop();
+    }
+
+    /**
+     * Builds {@code count} primitive-type records starting from {@code startOffset}.
+     * Mirrors {@link SchemalessTestData#createPrimitiveTypes} but lets the caller
+     * pick the starting Kafka offset, which the shared helper does not support.
+     */
+    private static List<SinkRecord> createRecordsFromOffset(String topic, int partition,
+                                                            long startOffset, int count) {
+        List<SinkRecord> out = new ArrayList<>(count);
+        for (long i = 0; i < count; i++) {
+            long off = startOffset + i;
+            Map<String, Object> v = new java.util.HashMap<>();
+            v.put("str", "num" + off);
+            v.put("off16", (short) off);
+            v.put("p_int8", (byte) off);
+            v.put("p_int16", (short) off);
+            v.put("p_int32", (int) off);
+            v.put("p_int64", off);
+            v.put("p_float32", (float) (off * 1.1));
+            v.put("p_float64", off * 1.111111);
+            v.put("p_bool", true);
+            out.add(new SinkRecord(topic, partition, null, null, null, v, off,
+                    System.currentTimeMillis(),
+                    org.apache.kafka.common.record.TimestampType.CREATE_TIME));
+        }
+        return out;
     }
 
     /**
@@ -755,122 +768,197 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     // ==================== Replay & dedup tests (token + state machine) ====================
 
     /**
-     * Verifies dedup token reuse on flush replay. Mirrors the most common real-world
-     * crash recovery: the connector flushed a chunk to ClickHouse, but the broker offset
-     * commit (or rebalance) was lost before Kafka recorded progress. On restart Kafka
-     * redelivers the same offsets, the buffer fills to the same {@code bufferCount},
-     * the chunk reproduces the same {@code (min, max)} → same dedup token →
-     * ClickHouse no-ops the second insert.
+     * Restarts the connector if {@code withRestart} is true (full crash simulation:
+     * stop the current task, return a fresh one started with the same config).
+     * Otherwise reuses the same task — models a mid-run replay (e.g. a Connect
+     * framework retry that re-delivers the same offsets to the still-running task).
      */
-    @Test
-    public void strictChunkingDedupesReplayedFlush() {
+    private ClickHouseSinkTask maybeRestart(ClickHouseSinkTask task,
+                                            Map<String, String> props,
+                                            boolean withRestart) {
+        if (!withRestart) {
+            return task;
+        }
+        task.stop();
+        ClickHouseSinkTask next = new ClickHouseSinkTask();
+        next.start(props);
+        return next;
+    }
+
+    /**
+     * Verifies dedup token reuse on flush replay. The connector flushed a chunk to
+     * ClickHouse but the broker offset commit (or rebalance) was lost before Kafka
+     * recorded progress. The same offsets get re-delivered — either after a restart
+     * ({@code withRestart=true}, the crash-recovery case) or to the same running task
+     * ({@code withRestart=false}, a Connect framework retry). Buffer fills to the
+     * same {@code bufferCount} and the chunk reproduces the same {@code (min, max)}
+     * → same dedup token → ClickHouse {@code AFTER_PROCESSING + SAME} branch
+     * suppresses the insert.
+     */
+    @ParameterizedTest(name = "withRestart={0}")
+    @CsvSource({"true", "false"})
+    public void strictChunkingDedupesReplayedFlush(boolean withRestart) throws InterruptedException {
         Map<String, String> props = strictChunkingProps(500);
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("strict_dedup_replay_test");
+        String topic = createTopicName("strict_dedup_replay_test_" + withRestart);
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
         // Run 1: flush 500 records → token topic-1-0-499, state stored AFTER_PROCESSING.
-        ClickHouseSinkTask runOne = new ClickHouseSinkTask();
-        runOne.start(props);
-        runOne.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 500));
-        assertEquals(500, ClickHouseTestHelpers.countRows(chc, topic),
+        ClickHouseSinkTask task = new ClickHouseSinkTask();
+        task.start(props);
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 500));
+        assertCountStaysAt(chc, topic, 500, 2_000,
                 "Run 1 should flush exactly 500 records");
-        // Simulate crash: offset commit lost (do not call preCommit). Buffer was already
-        // empty after the strict flush, so stop() drops nothing.
-        runOne.stop();
 
-        // Run 2: Kafka redelivers offsets [0, 499]. Buffer hits threshold, attempts flush.
-        // Same offsets → same token → ClickHouse insert_deduplication_token catches it,
-        // and the state machine's AFTER_PROCESSING + SAME branch suppresses the insert
-        // entirely.
-        ClickHouseSinkTask runTwo = new ClickHouseSinkTask();
-        runTwo.start(props);
-        runTwo.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 500));
-        assertEquals(500, ClickHouseTestHelpers.countRows(chc, topic),
-                "Run 2 must not duplicate — token + state machine dedup the replayed chunk");
-        runTwo.stop();
+        // Simulate replay: same offsets re-delivered after crash or Connect retry.
+        task = maybeRestart(task, props, withRestart);
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 500));
+        assertCountStaysAt(chc, topic, 500, 2_000,
+                "Replay must not duplicate — token + state machine dedup the replayed chunk");
+        task.stop();
     }
 
     /**
      * Replay scenario where run 1 had records buffered (below threshold) at crash time.
-     * Buffer content is volatile — lost on crash. Kafka offsets for those records were
-     * never committed (preCommit only returns flushed offsets). On restart Kafka
-     * redelivers the same offsets plus newly-arrived ones; the rebuilt buffer crosses
-     * threshold and flushes deterministically.
+     * Kafka offsets for those records were never committed (preCommit only returns
+     * flushed offsets). On replay the same offsets plus newly-arrived ones cross the
+     * threshold and flush deterministically.
      *
-     * <p>Mirrors chernser's first scenario: 200 records buffered then crash, restart
-     * sees the same 200 plus 300 new = 500 records → exactly 500 in CH.
+     * <p>Mirrors  first scenario: 200 records buffered, then 200 + 300 new
+     * = 500 records → exactly 500 in CH (not 700).
      */
-    @Test
-    public void strictChunkingDedupesReplayWithBufferedTail() {
+    @ParameterizedTest(name = "withRestart={0}")
+    @CsvSource({"true", "false"})
+    public void strictChunkingDedupesReplayWithBufferedTail(boolean withRestart) throws InterruptedException {
         Map<String, String> props = strictChunkingProps(500);
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("strict_dedup_tail_replay_test");
+        String topic = createTopicName("strict_dedup_tail_replay_test_" + withRestart);
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
-        // Run 1: 200 records arrive, all buffered (below threshold). No flush, no state.
-        ClickHouseSinkTask runOne = new ClickHouseSinkTask();
-        runOne.start(props);
-        runOne.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 200));
-        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
+        // 200 records arrive, all buffered (below threshold). No flush, no state.
+        ClickHouseSinkTask task = new ClickHouseSinkTask();
+        task.start(props);
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 200));
+        assertCountStaysAt(chc, topic, 0, 2_000,
                 "Run 1 buffered 200 records (below threshold) — none should reach CH");
-        runOne.stop();
 
-        // Run 2: Kafka redelivers offsets [0, 199] (uncommitted) plus 300 new = [0, 499].
-        // Buffer fills to 500, flushes once with token topic-1-0-499.
-        // No prior state → NONE branch → insert; state advances to AFTER_PROCESSING (0, 499).
-        ClickHouseSinkTask runTwo = new ClickHouseSinkTask();
-        runTwo.start(props);
-        runTwo.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 500));
-        assertEquals(500, ClickHouseTestHelpers.countRows(chc, topic),
-                "Run 2 must flush exactly 500 — the previously-buffered 200 plus 300 new");
-        runTwo.stop();
+        // Replay: with-restart drops the buffer; without-restart keeps the same 200
+        // plus the new put() that overlaps. Either way the next put() fills to 500
+        // (offsets [0, 499]) and flushes once.
+        task = maybeRestart(task, props, withRestart);
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 500));
+        assertCountStaysAt(chc, topic, 500, 2_000,
+                "Replay must flush exactly 500 — the original 200 plus 300 new offsets");
+        task.stop();
     }
 
     /**
      * Replay scenario where run 1 successfully flushed a chunk but kept tail records
-     * in the buffer, then crashed. On restart Kafka redelivers from the start because
-     * the flushed chunk's offsets were not committed (preCommit was never called).
-     * The state machine catches the replay via AFTER_PROCESSING + SAME, suppressing
-     * the second insert; subsequent records continue from the next chunk boundary.
+     * in the buffer. On replay the state machine catches the first chunk via
+     * {@code AFTER_PROCESSING + SAME} or {@code OVER_LAPPING} and suppresses
+     * re-insert; subsequent records continue from the next chunk boundary.
      *
-     * <p>Mirrors chernser's second scenario: a sequence of partial deliveries that
-     * cumulatively spans multiple chunks, with a replay in the middle, must end up
-     * with exactly the unique-record count in ClickHouse.
+     * <p><b>Why expected counts differ between variants:</b>
+     * <ul>
+     *   <li><b>{@code withRestart=true}</b> — {@code task.stop()} clears the
+     *       per-partition bucket. Replay rebuilds the bucket from scratch with
+     *       redelivered offsets {@code [0..999]}. Two clean chunks of 500
+     *       form: {@code [0..499]} (SAME, no insert) and {@code [500..999]}
+     *       (NEW, inserted). Final CH = 1000.</li>
+     *   <li><b>{@code withRestart=false}</b> — bucket retains the 200-record
+     *       tail {@code [500..699]} from run 1. The replayed put appends
+     *       {@code [0..999]} so FIFO order makes the next chunk a mix
+     *       {@code [500..699, 0..299]} with offset range {@code (0, 699)}.
+     *       State machine {@code OVER_LAPPING} splits at {@code stateMax=499}
+     *       and inserts only {@code [500..699]}. The following chunk
+     *       {@code [300..799]} similarly inserts only {@code [700..799]}.
+     *       The remaining tail {@code [800..999]} stays buffered (200 records
+     *       &lt; 500 threshold). Final CH = 800.</li>
+     * </ul>
+     * Both variants demonstrate correct dedup; they differ in how many records
+     * have been flushed by the time the test asserts. The 200 tail records in
+     * the no-restart variant flush as soon as further records cross the
+     * threshold — exercised by {@link #strictChunkingTailDrainsOnSubsequentChunk}.
      */
-    @Test
-    public void strictChunkingDedupesAcrossMultipleChunkReplays() {
+    @ParameterizedTest(name = "withRestart={0} → expected={1}")
+    @CsvSource({
+            "true,  1000",
+            "false, 800"
+    })
+    public void strictChunkingDedupesAcrossMultipleChunkReplays(boolean withRestart,
+                                                                int expectedRows)
+            throws InterruptedException {
         Map<String, String> props = strictChunkingProps(500);
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("strict_dedup_multi_chunk_test");
+        String topic = createTopicName("strict_dedup_multi_chunk_test_" + withRestart);
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
 
-        // Run 1: 500 records flush as one chunk (state (0, 499, AFTER)), then 200 more
-        // remain buffered as tail.
-        ClickHouseSinkTask runOne = new ClickHouseSinkTask();
-        runOne.start(props);
-        runOne.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 700));
-        assertEquals(500, ClickHouseTestHelpers.countRows(chc, topic),
+        ClickHouseSinkTask task = new ClickHouseSinkTask();
+        task.start(props);
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 700));
+        assertCountStaysAt(chc, topic, 500, 2_000,
                 "Run 1 should flush 500, hold 200 as tail");
-        runOne.stop();
 
-        // Run 2: Kafka redelivers offsets [0, 699] (offset commit lost; tail's offsets
-        // were never committed and the flushed chunk's commit was lost too) plus 300 new
-        // = [0, 999]. Buffer fills:
-        //   - [0, 499] hits threshold first → flush. State machine sees AFTER (0, 499) +
-        //     incoming (0, 499) → SAME → no insert.
-        //   - [500, 999] hits threshold → flush. State sees AFTER (0, 499) + incoming
-        //     (500, 999) → NEW → insert; state advances to (500, 999, AFTER).
-        // Net effect: ClickHouse has 1000 unique records, not 1700.
-        ClickHouseSinkTask runTwo = new ClickHouseSinkTask();
-        runTwo.start(props);
-        runTwo.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 1000));
-        assertEquals(1000, ClickHouseTestHelpers.countRows(chc, topic),
-                "Run 2 must end with 1000 unique records — the first chunk dedups via " +
-                "state machine SAME, the second chunk inserts as NEW");
-        runTwo.stop();
+        task = maybeRestart(task, props, withRestart);
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 1000));
+        assertCountStaysAt(chc, topic, expectedRows, 2_000,
+                "Replay outcome differs by variant — see Javadoc. With-restart=1000, " +
+                        "no-restart=800 with 200-record tail still buffered.");
+        task.stop();
+    }
+
+    /**
+     * Companion to the {@code withRestart=false} branch of
+     * {@link #strictChunkingDedupesAcrossMultipleChunkReplays}. Verifies that
+     * the 200-record tail left over after the OVER_LAPPING flushes is not lost —
+     * it flushes correctly as part of the next chunk once enough additional
+     * records arrive to cross the threshold again.
+     *
+     * <p>Sequence:
+     * <ol>
+     *   <li>{@code put(700)} → CH = 500, bucket holds tail {@code [500..699]}.</li>
+     *   <li>{@code put(1000)} (overlap [0..999]) → CH = 800, bucket holds tail
+     *       {@code [800..999]} (200 records).</li>
+     *   <li>{@code put(300 new)} (offsets {@code [1000..1299]}) → bucket fills
+     *       to 500 and flushes chunk {@code [800..1299]}. State machine sees
+     *       AFTER {@code (700, 799)} + incoming {@code (800, 1299)} → NEW →
+     *       insert all 500. Final CH = 800 + 500 = 1300. No records lost.</li>
+     * </ol>
+     */
+    @Test
+    public void strictChunkingTailDrainsOnSubsequentChunk() throws InterruptedException {
+        Map<String, String> props = strictChunkingProps(500);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String topic = createTopicName("strict_tail_drain_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
+
+        ClickHouseSinkTask task = new ClickHouseSinkTask();
+        task.start(props);
+
+        // Phase 1: 500 in CH, 200-record tail [500..699].
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 700));
+        assertCountStaysAt(chc, topic, 500, 2_000,
+                "Phase 1: 500 flushed, tail [500..699] held");
+
+        // Phase 2: replayed put with overlap. CH advances to 800; new tail [800..999]
+        // (200 records < threshold).
+        task.put(SchemalessTestData.createPrimitiveTypes(topic, 1, 1000));
+        assertCountStaysAt(chc, topic, 800, 2_000,
+                "Phase 2: OVER_LAPPING flushes net to 800; tail [800..999] held");
+
+        // Phase 3: 300 new records with offsets [1000..1299] (constructed manually
+        // because SchemalessTestData.createPrimitiveTypes always starts offsets at 0).
+        // Bucket = 200 tail + 300 new = 500 → chunk [800..1299] flushes via NEW branch.
+        // Final CH = 1300.
+        List<SinkRecord> phase3 = createRecordsFromOffset(topic, 1, 1000, 300);
+        task.put(phase3);
+        assertCountStaysAt(chc, topic, 1300, 2_000,
+                "Phase 3: tail drains as part of new chunk [800..1299]; final CH = 1300");
+
+        task.stop();
     }
 }
