@@ -22,6 +22,8 @@ jobs:
           distribution: 'adopt'
       - name: Setup and execute Gradle 'integrationTest' task
         uses: gradle/gradle-build-action@v2
+        env:
+          CLICKHOUSE_VERSION: cloud
         with:
           arguments: integrationTest
             --tests "com.clickhouse.kafka.connect.sink.ClickHouseCloudTest"
