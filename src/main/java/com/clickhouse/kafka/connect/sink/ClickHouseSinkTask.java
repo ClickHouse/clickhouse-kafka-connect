@@ -26,39 +26,14 @@ public class ClickHouseSinkTask extends SinkTask {
     private ClickHouseSinkConfig clickHouseSinkConfig;
     private ErrorReporter errorReporter;
 
-    // Internal buffering.
-    // At-least-once mode: single flat buffer, threshold = total record count, whole-buffer flush.
-    // Strict-chunking mode (exactly-once): per-partition buckets, threshold = per-partition count,
-    //   flushes in fixed bufferCount-sized chunks. Keeps batch boundaries deterministic across
-    //   retries so ClickHouse insert_deduplication_token reuses correctly.
+    // Internal buffering. See "Internal Buffering" section of docs/DESIGN.md.
     private List<SinkRecord> buffer;
     private Map<TopicPartition, List<SinkRecord>> perPartitionBuffer;
     private long lastFlushTime;
     private int bufferCount;
     private long bufferFlushTime;
     private boolean bufferingEnabled;
-
-    /**
-     * Sub-configuration of buffered insert mode that activates when the user opts into
-     * exactly-once delivery alongside buffering. Derived from
-     * {@code bufferingEnabled && clickHouseSinkConfig.isExactlyOnce()} in {@link #start}.
-     *
-     * <p>When true, {@link #put} routes through {@link #putStrict}, which buckets records
-     * per {@code (topic, partition)} and flushes in fixed {@code bufferCount}-sized chunks.
-     * Tail records below the threshold remain buffered until subsequent {@code put} calls
-     * grow them past the threshold. This guarantees every flush spans a deterministic offset
-     * range across retries, which is the precondition for ClickHouse
-     * {@code insert_deduplication_token} reuse and {@link
-     * com.clickhouse.kafka.connect.sink.processing.Processing} state-machine reconciliation.
-     *
-     * <p>When false, buffering (if enabled) uses the relaxed flat-buffer path from PR #658.
-     *
-     * <p>Note: this flag is bookkeeping for the boolean combination of
-     * {@code bufferCount > 0} + {@code exactlyOnce = true}. If the public configuration
-     * surface is later replaced by a single {@code deliveryMode} enum, this field collapses
-     * into the enum's {@code EXACTLY_ONCE_BUFFERED} variant.
-     */
-    private boolean strictChunking;
+    private boolean exactlyOnceAndBufferingEnabled;
     private Map<TopicPartition, OffsetAndMetadata> flushedOffsets;
 
     @Override
@@ -86,8 +61,8 @@ public class ClickHouseSinkTask extends SinkTask {
         this.bufferCount = clickHouseSinkConfig.getBufferCount();
         this.bufferFlushTime = clickHouseSinkConfig.getBufferFlushTime();
         this.bufferingEnabled = isBufferingEnabled(clickHouseSinkConfig);
-        this.strictChunking = isStrictChunkingMode(clickHouseSinkConfig);
-        this.buffer = (this.bufferingEnabled && !this.strictChunking)
+        this.exactlyOnceAndBufferingEnabled = isExactlyOnceAndBufferingEnabled(clickHouseSinkConfig);
+        this.buffer = (this.bufferingEnabled && !this.exactlyOnceAndBufferingEnabled)
                 ? new ArrayList<>(this.bufferCount)
                 : new ArrayList<>();
         this.perPartitionBuffer = new LinkedHashMap<>();
@@ -97,7 +72,7 @@ public class ClickHouseSinkTask extends SinkTask {
         if (this.bufferFlushTime > 0 && this.bufferCount == 0) {
             LOGGER.warn("bufferFlushTime is set but will be ignored because bufferCount is 0");
         }
-        if (this.strictChunking) {
+        if (this.exactlyOnceAndBufferingEnabled) {
             LOGGER.info("Buffering in strict-chunking mode (exactlyOnce=true): per-partition flush " +
                     "in fixed bufferCount={} chunks, time trigger disabled.", this.bufferCount);
         }
@@ -122,7 +97,7 @@ public class ClickHouseSinkTask extends SinkTask {
      * <p>If the public flag matrix is later replaced by a single {@code deliveryMode}
      * enum, this predicate collapses into {@code mode == EXACTLY_ONCE_BUFFERED}.
      */
-    static boolean isStrictChunkingMode(ClickHouseSinkConfig cfg) {
+    static boolean isExactlyOnceAndBufferingEnabled(ClickHouseSinkConfig cfg) {
         return isBufferingEnabled(cfg) && cfg.isExactlyOnce();
     }
 
@@ -161,10 +136,10 @@ public class ClickHouseSinkTask extends SinkTask {
             return;
         }
 
-        if (strictChunking) {
-            putStrict(records);
+        if (exactlyOnceAndBufferingEnabled) {
+            putBufferExactlyOnce(records);
         } else {
-            putRelaxed(records);
+            putBufferAtLeastOnce(records);
         }
     }
 
@@ -172,7 +147,7 @@ public class ClickHouseSinkTask extends SinkTask {
      * At-least-once buffering. Single flat buffer, threshold on total size,
      * whole-buffer flush. Preserves the semantics shipped in PR #658.
      */
-    private void putRelaxed(Collection<SinkRecord> records) {
+    private void putBufferAtLeastOnce(Collection<SinkRecord> records) {
         if (records != null && !records.isEmpty()) {
             buffer.addAll(records);
             LOGGER.debug("Buffered {} records, total buffer size: {}", records.size(), buffer.size());
@@ -198,7 +173,7 @@ public class ClickHouseSinkTask extends SinkTask {
      * is reproducible across retries — required for ClickHouse
      * insert_deduplication_token reuse and StateProvider range comparison.
      */
-    private void putStrict(Collection<SinkRecord> records) {
+    private void putBufferExactlyOnce(Collection<SinkRecord> records) {
         if (records != null && !records.isEmpty()) {
             for (SinkRecord r : records) {
                 TopicPartition tp = new TopicPartition(r.topic(), r.kafkaPartition());
@@ -213,9 +188,8 @@ public class ClickHouseSinkTask extends SinkTask {
         for (List<SinkRecord> bucket : perPartitionBuffer.values()) {
             while (bucket.size() >= bufferCount) {
                 List<SinkRecord> head = bucket.subList(0, bufferCount);
-                List<SinkRecord> chunk = new ArrayList<>(head);
+                flushChunk(head);
                 head.clear();
-                flushChunk(chunk);
             }
         }
         lastFlushTime = System.currentTimeMillis();
@@ -225,9 +199,8 @@ public class ClickHouseSinkTask extends SinkTask {
         if (buffer.isEmpty()) {
             return;
         }
-        List<SinkRecord> toFlush = new ArrayList<>(buffer);
+        flushChunk(buffer);
         buffer.clear();
-        flushChunk(toFlush);
         lastFlushTime = System.currentTimeMillis();
     }
 
@@ -341,7 +314,7 @@ public class ClickHouseSinkTask extends SinkTask {
         // Their offsets were never committed via preCommit(), so the new owner
         // will redeliver them — no data loss.
         int dropped = 0;
-        if (strictChunking) {
+        if (exactlyOnceAndBufferingEnabled) {
             for (TopicPartition tp : partitions) {
                 List<SinkRecord> bucket = perPartitionBuffer.remove(tp);
                 if (bucket != null) {
@@ -377,7 +350,7 @@ public class ClickHouseSinkTask extends SinkTask {
         // via preCommit(), so Kafka will redeliver them on restart (at-least-once).
         if (bufferingEnabled) {
             int remaining = 0;
-            if (strictChunking) {
+            if (exactlyOnceAndBufferingEnabled) {
                 for (List<SinkRecord> bucket : perPartitionBuffer.values()) {
                     remaining += bucket.size();
                 }

@@ -100,3 +100,14 @@ Finally, other cases are still possible. For example, suppose the maxOffset of o
 ### Scaling
 
 Our implementation of the `put` method for the SinkTask is single-threaded. By grouping records by topic and partition, before invoking the state machine, we ensure we track offsets in the same way as Kafka, i.e., by topic/partition. This allows us to easily exploit [the worker model](https://docs.confluent.io/platform/current/connect/concepts.html#distributed-workers) of the Kafka Connect framework. For each topic, a worker is assigned a set of partitions. This scales up to the number of workers equal to the number of partitions. Our use of ClickHouse keeper for our state store means work can easily be rebalanced and use this central record of our current position with strong consistency guarantees.
+
+### Internal Buffering
+
+The connector supports an optional internal buffer (`bufferCount > 0`) that coalesces records from multiple `poll()` calls into a single ClickHouse insert. This amortizes per-insert overhead for low-throughput topics and topics whose throughput is capped by broker fetch limits.
+
+Two flush strategies coexist:
+
+- **At-least-once buffered** (`exactlyOnce = false` AND `bufferCount > 0`): a single flat buffer triggers a whole-buffer flush when total record count exceeds `bufferCount` or `bufferFlushTime` elapses since the last flush. Original behavior shipped in PR #658.
+- **Exactly-once buffered** (`exactlyOnce = true` AND `bufferCount > 0`): records are bucketed per `(topic, partition)`. Each bucket is drained in fixed `bufferCount`-sized chunks; tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past the threshold. Each flush therefore spans a deterministic offset range, which is the precondition for ClickHouse `insert_deduplication_token` reuse and the state-machine reconciliation described above. The configuration validator rejects `bufferFlushTime > 0` and `ignorePartitionsWhenBatching = true` in this mode because both break batch-boundary determinism on retry.
+
+For the full design rationale, see [PR #736](https://github.com/ClickHouse/clickhouse-kafka-connect/pull/736).
