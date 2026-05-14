@@ -9,6 +9,8 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -81,24 +83,40 @@ public class ExactlyOnceTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
     }
 
-    @Test
-    public void checkTotalsEqual() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1));
+    /**
+     * Provides the config filenames each parametrized test runs against. The
+     * pair covers the existing schemaless EO config plus the buffering variant
+     * introduced in PR #736 so both code paths are exercised.
+     */
+    private static Stream<String> getConfigs() {
+        return Stream.of(
+                "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json",
+                "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless_buffer.json"
+        );
     }
 
-    @Test
-    public void checkTotalsEqualMulti() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3));
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("getConfigs")
+    public void checkTotalsEqual(String configPath) throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1, configPath));
     }
 
-    @Test
-    public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
-        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1);
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("getConfigs")
+    public void checkTotalsEqualMulti(String configPath) throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3, configPath));
     }
 
-    @Test
-    public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
-        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("getConfigs")
+    public void checkSpottyNetwork(String configPath) throws InterruptedException, IOException, URISyntaxException {
+        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1, configPath);
+    }
+
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("getConfigs")
+    public void checkSpottyNetworkMulti(String configPath) throws InterruptedException, IOException, URISyntaxException {
+        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3, configPath);
     }
 
     private static void setupSchemaConnector(String topicName, int taskCount) throws IOException, InterruptedException {
@@ -107,9 +125,10 @@ public class ExactlyOnceTest {
         Thread.sleep(5 * 1000);
     }
 
-    private static void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
-        LOGGER.info("Setting schemaless up connector...");
-        setupConnector("src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json", topicName, taskCount);
+    private static void setupSchemalessConnector(String topicName, int taskCount, String configPath)
+            throws IOException, InterruptedException {
+        LOGGER.info("Setting schemaless up connector with config {}", configPath);
+        setupConnector(configPath, topicName, taskCount);
         Thread.sleep(5 * 1000);
     }
 
@@ -140,14 +159,15 @@ public class ExactlyOnceTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-    private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
+    private boolean compareSchemalessCounts(String topicName, int partitions, String configPath)
+            throws InterruptedException, IOException {
         new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
                 .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
         ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
         int count = generateSchemalessData(topicName, partitions, 250);
         LOGGER.info("Expected Total: {}", count);
-        setupSchemalessConnector(topicName, partitions);
+        setupSchemalessConnector(topicName, partitions, configPath);
         ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 5);
 
         int[] databaseCounts = getCounts(chcNoProxy, topicName);//Essentially the final count
@@ -156,7 +176,8 @@ public class ExactlyOnceTest {
     }
 
 
-    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions) throws InterruptedException, IOException, URISyntaxException {
+    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions, String configPath)
+            throws InterruptedException, IOException, URISyntaxException {
         boolean allSuccess = true;
         int runCount = 1;
         do {
@@ -167,7 +188,7 @@ public class ExactlyOnceTest {
             ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
 
             int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
-            setupSchemalessConnector(topicName, numberOfPartitions);
+            setupSchemalessConnector(topicName, numberOfPartitions, configPath);
 
             clickhouseCloudAPI.restartService();
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
