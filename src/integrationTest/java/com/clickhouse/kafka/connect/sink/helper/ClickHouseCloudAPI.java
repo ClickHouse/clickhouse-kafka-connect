@@ -64,7 +64,7 @@ public class ClickHouseCloudAPI {
         String serviceId = properties.getProperty(CLICKHOUSE_CLOUD_SERVICE_ID);
         stopInstance(serviceId);
         Awaitility.await("service stopped")
-                .atMost(Duration.ofMinutes(10))
+                .atMost(Duration.ofMinutes(20))
                 .pollDelay(Duration.ofSeconds(2))
                 .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
                 .until(() -> "STOPPED".equals(getServiceState(serviceId)));
@@ -72,7 +72,7 @@ public class ClickHouseCloudAPI {
 
         startInstance(serviceId);
         Awaitility.await("service started")
-                .atMost(Duration.ofMinutes(10))
+                .atMost(Duration.ofMinutes(20))
                 .pollDelay(Duration.ofSeconds(2))
                 .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
                 .until(() -> "RUNNING".equals(getServiceState(serviceId)));
