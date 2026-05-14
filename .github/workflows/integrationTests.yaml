@@ -5,6 +5,9 @@ on:
     - cron: "00 05 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-run-cloud:
     runs-on: ubuntu-24.04-arm
