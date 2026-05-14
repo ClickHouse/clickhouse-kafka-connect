@@ -3,6 +3,9 @@ package com.clickhouse.kafka.connect.sink.helper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
+import org.testcontainers.shaded.org.awaitility.Awaitility;
+import org.testcontainers.shaded.org.awaitility.pollinterval.FibonacciPollInterval;
+import org.testcontainers.shaded.org.awaitility.pollinterval.FixedPollInterval;
 
 import java.io.IOException;
 import java.net.ProxySelector;
@@ -11,10 +14,12 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -54,40 +59,25 @@ public class ClickHouseCloudAPI {
     }
 
 
-    public String restartService() throws URISyntaxException, IOException, InterruptedException {
+    public void restartService() throws URISyntaxException, IOException, InterruptedException {
         LOGGER.info("Restarting service...");
         String serviceId = properties.getProperty(CLICKHOUSE_CLOUD_SERVICE_ID);
-        //1. Stop Instance
         stopInstance(serviceId);
+        Awaitility.await("service stopped")
+                .atMost(Duration.ofMinutes(10))
+                .pollDelay(Duration.ofSeconds(2))
+                .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
+                .until(() -> "STOPPED".equals(getServiceState(serviceId)));
+        LOGGER.info("Service {} stopped", serviceId);
 
-        //2. Wait
-        String serviceState = getServiceState(serviceId);
-        int loopCount = 0;
-        final int maxRetries = 60;
-        while(!serviceState.equals("STOPPED") && loopCount < maxRetries) {
-            LOGGER.debug("Service State: {}", serviceState);
-            Thread.sleep(5 * 1000);
-            serviceState = getServiceState(serviceId);
-            loopCount++;
-        }
-
-        //3. Start Instance
         startInstance(serviceId);
-        serviceState = getServiceState(serviceId);
-        loopCount = 0;
-        while(!serviceState.equals("RUNNING")) {
-            LOGGER.debug("Service State: {}", serviceState);
-            Thread.sleep(5 * 1000);
-            serviceState = getServiceState(serviceId);
+        Awaitility.await("service started")
+                .atMost(Duration.ofMinutes(10))
+                .pollDelay(Duration.ofSeconds(2))
+                .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
+                .until(() -> "RUNNING".equals(getServiceState(serviceId)));
 
-            if (loopCount >= maxRetries) {
-                fail("Failed to restart service in time.");
-            }
-            loopCount++;
-        }
-
-        LOGGER.info("Service restarted");
-        return serviceState;
+        LOGGER.info("Service {} restarted", serviceId);
     }
 
     private HttpResponse<String> executeRequest(String url, String method, HttpRequest.BodyPublisher body) throws URISyntaxException, IOException, InterruptedException {
