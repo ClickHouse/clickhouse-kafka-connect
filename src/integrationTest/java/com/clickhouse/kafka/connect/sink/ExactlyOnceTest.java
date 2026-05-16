@@ -33,7 +33,7 @@ public class ExactlyOnceTest {
     public static ConfluentPlatform confluentPlatform;
     private static ClickHouseCloudAPI clickhouseCloudAPI;
     private static ClickHouseCluster cluster;
-    private static ClickHouseHelperClient chc;
+    private static ClickHouseHelperClient chcNoProxy;
     private static final Properties cloudProperties = System.getProperties();
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
@@ -88,7 +88,7 @@ public class ExactlyOnceTest {
             cluster.start();
         }
 
-        chc = ClickHouseTestHelpers.createClient(getTestProperties());
+        chcNoProxy = ClickHouseTestHelpers.createClient(getTestProperties());
         Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
         String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();
@@ -149,9 +149,9 @@ public class ExactlyOnceTest {
 
     private static void setupConnector(String topicName, int taskCount, boolean schemaless) throws IOException {
         System.out.println("Setting up connector...");
-        ClickHouseTestHelpers.dropTable(chc, topicName);
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE)
-                .tableName(topicName).execute(chc);
+                .tableName(topicName).execute(chcNoProxy);
 
         String fileName;
         if (isCloud) {
@@ -165,9 +165,9 @@ public class ExactlyOnceTest {
         if (isCluster) {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
                     "host.docker.internal", cluster.getPort().toString(),
-                    chc.getDatabase(),
-                    chc.getUsername(),
-                    chc.getPassword(),
+                    chcNoProxy.getDatabase(),
+                    chcNoProxy.getUsername(),
+                    chcNoProxy.getPassword(),
                     false, true, // ssl=false, exactlyOnce=true
                     ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() // keeperOnCluster=<clusterName>
             );
@@ -197,10 +197,10 @@ public class ExactlyOnceTest {
         int count = generateSchemalessData(topicName, partitions, 250);
         LOGGER.info("Expected Total: {}", count);
         setupSchemalessConnector(topicName, partitions);
-        ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 5);
+        ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 5);
 
-        int[] databaseCounts = getCounts(chc, topicName);
-        ClickHouseTestHelpers.dropTable(chc, topicName);
+        int[] databaseCounts = getCounts(chcNoProxy, topicName);
+        ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
     }
 
@@ -218,13 +218,13 @@ public class ExactlyOnceTest {
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
 
             LOGGER.info("Expected Total: {}", count);
-            ClickHouseTestHelpers.waitWhileCounting(chc, topicName, 7);
+            ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 7);
 
-            int[] databaseCounts = getCounts(chc, topicName);
+            int[] databaseCounts = getCounts(chcNoProxy, topicName);
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
                 LOGGER.error("Duplicates: {}", databaseCounts[2]);
-                try (Records records = selectDuplicates(chc, topicName)) {
+                try (Records records = selectDuplicates(chcNoProxy, topicName)) {
                     records.forEach(record -> LOGGER.error("Duplicate: {}", record));
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -233,7 +233,7 @@ public class ExactlyOnceTest {
 
             confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
             confluentPlatform.deleteTopic(topicName);
-            ClickHouseTestHelpers.dropTable(chc, topicName);
+            ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
             runCount++;
         } while (runCount < 3 && allSuccess);
 
