@@ -5,6 +5,7 @@ on:
     - cron: "55 15 * * *"
   workflow_dispatch:
 
+# note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
 jobs:
   build-and-run-cloud:
     runs-on: ubuntu-24.04-arm

@@ -21,7 +21,7 @@ import java.util.Properties;
 import org.junit.jupiter.api.Assumptions;
 
 /**
- * NOTE: this test does NOT run against cluster or standalone ClickHouse.
+ * This test does NOT run against cluster or standalone ClickHouse.
  */
 public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);

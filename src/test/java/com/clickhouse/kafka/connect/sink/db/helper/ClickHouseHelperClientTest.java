@@ -7,6 +7,7 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 @ExtendWith(FromVersionConditionExtension.class)
@@ -106,7 +108,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
         Map<String, String> props = getBaseProps();
         props.put("username", testUsername);
-        props.put("password", "123FOURfive^&*91011");
+        props.put("password", RandomStringUtils.secure().nextAlphanumeric(10));
         chc = ClickHouseTestHelpers.createClient(props);
 
         new CreateTableStatement()

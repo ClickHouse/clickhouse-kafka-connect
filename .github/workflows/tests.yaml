@@ -15,6 +15,7 @@ on:
       - 'LICENSE'
       - 'docs/**'
 
+# note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
 jobs:
   standalone-tests:
     runs-on: ubuntu-latest

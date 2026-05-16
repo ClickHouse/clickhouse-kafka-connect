@@ -13,20 +13,22 @@ import java.util.Optional;
 public class CreateTableStatement {
     private String tableName;
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
-    private Optional<String> engineOpt = Optional.empty(); // defaults to MergeTree/ReplicatedMergeTree if unset
+    private String engine;
     private Optional<String> orderByColumnOpt =  Optional.empty();
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
+    private Optional<String> clusterClauseOpt;
 
     public CreateTableStatement() {}
 
     public CreateTableStatement(CreateTableStatement template) {
         this.tableName = template.tableName;
         this.schema = new LinkedHashMap<>(template.schema);
-        this.engineOpt = template.engineOpt;
+        this.engine = template.engine;
         this.orderByColumnOpt = template.orderByColumnOpt;
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
+        this.clusterClauseOpt = ClickHouseTestHelpers.isCluster() ? Optional.of("ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'") : Optional.empty();
     }
 
     public CreateTableStatement tableName(String tableName) {
@@ -40,7 +42,10 @@ public class CreateTableStatement {
     }
 
     public CreateTableStatement engine(String engine) {
-        this.engineOpt = Optional.of(engine);
+        if (ClickHouseTestHelpers.isCluster() && "MergeTree".equals(engine)) {
+            engine = ClickHouseCluster.getClusterFromEnvVarOrThrow().getMergeTreeEngine();
+        }
+        this.engine = engine;
         return this;
     }
 
@@ -71,19 +76,12 @@ public class CreateTableStatement {
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
                 .append("`").append(tableName).append("`");
-        if (ClickHouseTestHelpers.isCluster()) {
-            var cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
-            sql.append(" ON CLUSTER '").append(cluster.getName()).append("'");
-        }
-        sql.append(" ")
-                .append("(").append(columns).append(")").append(" ");
 
-        if (engineOpt.isPresent()) {
-            sql.append("Engine = ").append(engineOpt.get());
-        } else {
-            var engine = ClickHouseTestHelpers.isCluster() ? ClickHouseCluster.getClusterFromEnvVarOrThrow().getMergeTreeEngine() : "MergeTree";
-            sql.append("Engine = ").append(engine);
-        }
+        clusterClauseOpt.ifPresent(s -> sql.append(" ").append(s));
+
+        sql.append(" ").append("(").append(columns).append(")").append(" ");
+
+        sql.append("Engine = ").append(engine);
 
         orderByColumnOpt.ifPresent(s -> sql.append(" ORDER BY ").append(s));
 
