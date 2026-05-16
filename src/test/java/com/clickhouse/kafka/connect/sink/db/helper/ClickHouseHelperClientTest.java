@@ -96,9 +96,10 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         String testUsername = createTestUsername("unflatten");
+        String testPassword = RandomStringUtils.secure().nextAlphanumeric(10);
         String clusterClause = isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
         ClickHouseHelperClient adminChc = chc;
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername, clusterClause));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '%s' SETTINGS flatten_nested=0", testUsername, clusterClause, testPassword));
         if (isCluster) {
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s CREATE ON *.* TO `%s`", clusterClause, testUsername));
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s DROP ON *.* TO `%s`", clusterClause, testUsername));
@@ -109,7 +110,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
         Map<String, String> props = getBaseProps();
         props.put("username", testUsername);
-        props.put("password", RandomStringUtils.secure().nextAlphanumeric(10));
+        props.put("password", testPassword);
         chc = ClickHouseTestHelpers.createClient(props);
 
         new CreateTableStatement()

@@ -14,12 +14,16 @@ public class CreateTableStatement {
     private String tableName;
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
     private String engine;
-    private Optional<String> orderByColumnOpt =  Optional.empty();
+    private Optional<String> orderByColumnOpt = Optional.empty();
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
-    private Optional<String> clusterClauseOpt;
+    private Optional<String> clusterClauseOpt = Optional.empty();
 
-    public CreateTableStatement() {}
+    public CreateTableStatement() {
+        if (ClickHouseTestHelpers.isCluster()) {
+            this.clusterClauseOpt = Optional.of("ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'");
+        }
+    }
 
     public CreateTableStatement(CreateTableStatement template) {
         this.tableName = template.tableName;
@@ -28,7 +32,7 @@ public class CreateTableStatement {
         this.orderByColumnOpt = template.orderByColumnOpt;
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
-        this.clusterClauseOpt = ClickHouseTestHelpers.isCluster() ? Optional.of("ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'") : Optional.empty();
+        this.clusterClauseOpt = template.clusterClauseOpt;
     }
 
     public CreateTableStatement tableName(String tableName) {
