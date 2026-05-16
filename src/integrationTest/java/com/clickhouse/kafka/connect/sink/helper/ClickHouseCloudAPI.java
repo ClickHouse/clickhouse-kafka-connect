@@ -32,9 +32,14 @@ public class ClickHouseCloudAPI {
     private static final String CLICKHOUSE_CLOUD_API_KEY = "clickhouse.cloud.apiKey";
     private static final String CLICKHOUSE_CLOUD_API_SECRET = "clickhouse.cloud.secret";
     private static final String CLICKHOUSE_CLOUD_SERVICE_ID = "clickhouse.cloud.serviceId";
+    private static final String SERVICE_RESTART_TIMEOUT = "serviceRestartTimeout";
+    private final long serviceRestartTimeout;
 
     public ClickHouseCloudAPI(Properties properties) {
         this.properties = properties;
+
+        String timeoutStr = properties.getProperty(SERVICE_RESTART_TIMEOUT);
+        this.serviceRestartTimeout = timeoutStr == null ? 20L : Long.parseLong(timeoutStr);
     }
 
     public HttpResponse<String> stopInstance(String serviceId) throws URISyntaxException, IOException, InterruptedException {
@@ -64,7 +69,7 @@ public class ClickHouseCloudAPI {
         String serviceId = properties.getProperty(CLICKHOUSE_CLOUD_SERVICE_ID);
         stopInstance(serviceId);
         Awaitility.await("service stopped")
-                .atMost(Duration.ofMinutes(20))
+                .atMost(Duration.ofMinutes(serviceRestartTimeout))
                 .pollDelay(Duration.ofSeconds(2))
                 .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
                 .until(() -> "STOPPED".equals(getServiceState(serviceId)));
@@ -72,7 +77,7 @@ public class ClickHouseCloudAPI {
 
         startInstance(serviceId);
         Awaitility.await("service started")
-                .atMost(Duration.ofMinutes(20))
+                .atMost(Duration.ofMinutes(serviceRestartTimeout))
                 .pollDelay(Duration.ofSeconds(2))
                 .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
                 .until(() -> "RUNNING".equals(getServiceState(serviceId)));
