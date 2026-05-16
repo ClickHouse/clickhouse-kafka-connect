@@ -96,7 +96,10 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         String testUsername = createTestUsername("unflatten");
-        String testPassword = RandomStringUtils.secure().nextAlphanumeric(10);
+
+        String randomNums = new Random().ints(5, 0, 9).mapToObj(String::valueOf).collect(Collectors.joining(""));
+        String randomSpecialChar = List.of("!", "?", "^", "&", "*").get(new Random().nextInt(5));
+        String testPassword = randomSpecialChar + RandomStringUtils.secure().nextAlphanumeric(15) + randomNums;
         String clusterClause = isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
         ClickHouseHelperClient adminChc = chc;
         ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '%s' SETTINGS flatten_nested=0", testUsername, clusterClause, testPassword));
