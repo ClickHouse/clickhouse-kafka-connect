@@ -34,7 +34,6 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
-import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,6 +112,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
                 .setSslSocketSni(csc.getSslSocketSni())
+                .setClusterClause(csc.getClusterName())
                 .build();
 
         if (!chc.ping()) {
@@ -898,7 +898,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         if (!columnDefs.isEmpty()) {
-            chc.alterTableAddColumns(table.getDatabase(), table.getCleanName(), columnDefs, csc.getClickhouseSettings(), csc.getClusterNameForDistributedDDL());
+            chc.alterTableAddColumns(table.getDatabase(), table.getCleanName(), columnDefs, csc.getClickhouseSettings());
             LOGGER.info("Schema evolution complete for table {}. Added columns: {}", table.getName(), columnDefs);
             table = refreshTableAfterDDL(table, missingColumns);
         }

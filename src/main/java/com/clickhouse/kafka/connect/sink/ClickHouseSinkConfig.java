@@ -61,7 +61,7 @@ public class ClickHouseSinkConfig {
     public static final String AUTO_EVOLVE_DDL_REFRESH_RETRIES = "auto.evolve.ddl.refresh.retries";
     public static final String AUTO_EVOLVE_STRUCT_TO_JSON = "auto.evolve.struct.to.json";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
-    public static final String CLUSTER_NAME_FOR_DISTRIBUTED_DDL = "clusterNameForDistributedDDL";
+    public static final String CLUSTER_NAME = "clusterName";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
     public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
@@ -119,7 +119,7 @@ public class ClickHouseSinkConfig {
     private final boolean autoEvolveStructToJson;
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
-    private final String clusterNameForDistributedDDL;
+    private final String clusterName;
 
     public enum InsertFormats {
         NONE,
@@ -299,7 +299,7 @@ public class ClickHouseSinkConfig {
         this.bufferFlushTime = Long.parseLong(props.getOrDefault(BUFFER_FLUSH_TIME, bufferFlushTimeDefault.toString()));
         this.reportInsertedOffsets = Boolean.parseBoolean(props.getOrDefault(REPORT_INSERTED_OFFSETS, reportInsertedOffsetsDefault.toString()));
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
-        this.clusterNameForDistributedDDL = props.getOrDefault(CLUSTER_NAME_FOR_DISTRIBUTED_DDL, "");
+        this.clusterName = props.getOrDefault(CLUSTER_NAME, "");
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -739,7 +739,7 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Map STRUCT to JSON"
         );
-        configDef.define(CLUSTER_NAME_FOR_DISTRIBUTED_DDL,
+        configDef.define(CLUSTER_NAME,
                 ConfigDef.Type.STRING,
                 "",
                 ConfigDef.Importance.LOW,

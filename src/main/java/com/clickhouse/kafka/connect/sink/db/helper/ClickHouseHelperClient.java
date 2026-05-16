@@ -64,6 +64,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     @Getter
     private boolean useClientV2 = false;
     private final String sslSocketSni;
+    private final String clusterClause;
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -80,6 +81,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.proxyPort = builder.proxyPort;
         this.useClientV2 = builder.useClientV2;
         this.sslSocketSni = builder.sslSocketSni;
+        this.clusterClause = builder.clusterClause;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -471,11 +473,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
         return table;
     }
 
-    public void alterTableAddColumns(String database, String tableName, List<String> columnDefs, Map<String, String> clickhouseSettings, String clusterNameForDistributedDDL) {
+    public void alterTableAddColumns(String database, String tableName, List<String> columnDefs, Map<String, String> clickhouseSettings) {
         String addClauses = columnDefs.stream()
                 .map(colDef -> "ADD COLUMN IF NOT EXISTS " + colDef)
                 .collect(Collectors.joining(", "));
-        String clusterClause = !clusterNameForDistributedDDL.isEmpty() ? " ON CLUSTER '" + clusterNameForDistributedDDL + "'" : "";
         String sql = String.format("ALTER TABLE `%s`.`%s`%s %s", database, tableName, clusterClause, addClauses);
         LOGGER.info("Executing DDL: {}", sql);
         if (useClientV2) {
@@ -564,6 +565,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private int proxyPort = -1;
         private boolean useClientV2 = true;
         private String sslSocketSni = "";
+        private String clusterClause = "";
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -616,6 +618,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder setSslSocketSni(String sni) {
             this.sslSocketSni = sni;
+            return this;
+        }
+
+        public ClickHouseClientBuilder setClusterClause(String clusterName) {
+            this.clusterClause = " ON CLUSTER '" + clusterName + "'";
             return this;
         }
 
