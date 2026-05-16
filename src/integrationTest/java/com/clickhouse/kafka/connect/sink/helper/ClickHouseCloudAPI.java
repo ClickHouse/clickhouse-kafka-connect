@@ -33,6 +33,8 @@ public class ClickHouseCloudAPI {
     private static final String CLICKHOUSE_CLOUD_API_SECRET = "clickhouse.cloud.secret";
     private static final String CLICKHOUSE_CLOUD_SERVICE_ID = "clickhouse.cloud.serviceId";
     private static final String SERVICE_RESTART_TIMEOUT = "serviceRestartTimeout";
+    private static final long POLL_DELAY_SECONDS = 2L;
+    private static final long POLL_INTERVAL_SECONDS = 5L;
     private final long serviceRestartTimeout;
 
     public ClickHouseCloudAPI(Properties properties) {
@@ -70,16 +72,16 @@ public class ClickHouseCloudAPI {
         stopInstance(serviceId);
         Awaitility.await("service stopped")
                 .atMost(Duration.ofMinutes(serviceRestartTimeout))
-                .pollDelay(Duration.ofSeconds(2))
-                .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
+                .pollDelay(Duration.ofSeconds(POLL_DELAY_SECONDS))
+                .pollInterval(FixedPollInterval.fixed(POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
                 .until(() -> "STOPPED".equals(getServiceState(serviceId)));
         LOGGER.info("Service {} stopped", serviceId);
 
         startInstance(serviceId);
         Awaitility.await("service started")
                 .atMost(Duration.ofMinutes(serviceRestartTimeout))
-                .pollDelay(Duration.ofSeconds(2))
-                .pollInterval(FixedPollInterval.fixed(5, TimeUnit.SECONDS))
+                .pollDelay(Duration.ofSeconds(POLL_DELAY_SECONDS))
+                .pollInterval(FixedPollInterval.fixed(POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
                 .until(() -> "RUNNING".equals(getServiceState(serviceId)));
 
         LOGGER.info("Service {} restarted", serviceId);
