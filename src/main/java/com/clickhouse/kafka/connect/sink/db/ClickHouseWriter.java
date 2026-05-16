@@ -1433,6 +1433,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .setSslSocketSni(csc.getSslSocketSni())
+                .setClusterClause(csc.getClusterName())
                 .build();
 
         ClickHouseNode server = chcTmp.getServer();
