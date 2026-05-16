@@ -79,8 +79,7 @@ public class ClickHouseCloudTest {
                 .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
                 .column("p_int64", "Int64").column("p_float32", "Float32")
                 .column("p_float64", "Float64").column("p_bool", "Bool")
-                .orderByColumn("off16")
-                .execute(chc);
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         Collection<SinkRecord> firstBatch = new ArrayList<>();
         Collection<SinkRecord> secondBatch = new ArrayList<>();

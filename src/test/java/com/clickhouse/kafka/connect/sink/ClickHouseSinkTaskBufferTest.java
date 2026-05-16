@@ -38,6 +38,7 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
+            .engine("MergeTree")
             .orderByColumn("off16");
 
     @Test

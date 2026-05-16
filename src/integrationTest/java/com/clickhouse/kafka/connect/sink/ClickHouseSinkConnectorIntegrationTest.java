@@ -59,6 +59,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .column("account", "String")
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
+            .engine("MergeTree")
             .orderByColumn("symbol");
 
     @BeforeAll
@@ -339,6 +340,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         ClickHouseTestHelpers.dropTable(chc, topicName);
         CreateTableStatement tableStmt = new CreateTableStatement()
                 .tableName(topicName)
+                .engine("MergeTree")
                 .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         for (String colName : clickhouseColumns.keySet()) {

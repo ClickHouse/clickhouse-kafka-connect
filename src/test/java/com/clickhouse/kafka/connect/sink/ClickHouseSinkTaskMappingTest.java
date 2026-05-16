@@ -20,14 +20,14 @@ public class ClickHouseSinkTaskMappingTest extends ClickHouseBase{
             .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
             .column("p_int64", "Int64").column("p_float32", "Float32")
             .column("p_float64", "Float64").column("p_bool", "Bool")
-            .orderByColumn("off16");
+            .engine("MergeTree").orderByColumn("off16");
 
     private static final CreateTableStatement ARRAY_TYPES_TABLE = new CreateTableStatement()
             .column("off16", "Int16").column("arr", "Array(String)").column("arr_empty", "Array(String)")
             .column("arr_int8", "Array(Int8)").column("arr_int16", "Array(Int16)").column("arr_int32", "Array(Int32)")
             .column("arr_int64", "Array(Int64)").column("arr_float32", "Array(Float32)")
             .column("arr_float64", "Array(Float64)").column("arr_bool", "Array(Bool)")
-            .orderByColumn("off16");
+            .engine("MergeTree").orderByColumn("off16");
 
     @Test
     public void schemalessSingleTableMappingTest() {

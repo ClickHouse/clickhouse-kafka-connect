@@ -26,6 +26,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     private static final CreateTableStatement SINGLE_NUM_TABLE = new CreateTableStatement()
             .column("num", "String")
+            .engine("MergeTree")
             .orderByColumn("num");
 
     ClickHouseHelperClient chc = null;
@@ -62,7 +63,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .orderByColumn("num").execute(chc);
+                .engine("MergeTree").orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -79,7 +80,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Array(Nested (innerInt Int32, innerString String))")
-                .orderByColumn("num").execute(chc);
+                .engine("MergeTree").orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -115,7 +116,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(nestedTopic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .orderByColumn("num").execute(chc);
+                .engine("MergeTree").orderByColumn("num").execute(chc);
         new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).execute(chc);
 
         try {
@@ -145,7 +146,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .column("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL")
                 .column("map_eph", "Map(String, UInt64) EPHEMERAL")
                 .column("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL")
-                .orderByColumn("off16").execute(chc);
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);

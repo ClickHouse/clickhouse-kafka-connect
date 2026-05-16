@@ -41,7 +41,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
             .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
             .column("p_int64", "Int64").column("p_float32", "Float32")
             .column("p_float64", "Float64").column("p_bool", "Bool")
-            .orderByColumn("off16");
+            .engine("MergeTree").orderByColumn("off16");
 
     private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
             .column("off16", "Int16").column("map_string_string", "Map(String, String)")
@@ -49,7 +49,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
             .column("map_string_map", "Map(String, Map(String, Int64))")
             .column("map_string_array", "Map(String, Array(String))")
             .column("map_map_map", "Map(String, Map(String, Map(String, String)))")
-            .orderByColumn("off16");
+            .engine("MergeTree").orderByColumn("off16");
 
     @BeforeAll
     public void setup() throws IOException {
@@ -161,7 +161,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
                 .column("off16", "Int16").column("str", "String").column("null_str", "Nullable(String)")
                 .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
                 .column("p_int64", "Int64").column("p_float32", "Float32").column("p_float64", "Float64").column("p_bool", "Bool")
-                .orderByColumn("off16").execute(chc);
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypesWithNulls(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -185,7 +185,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
                 .column("arr_int64", "Array(Int64)").column("arr_float32", "Array(Float32)").column("arr_float64", "Array(Float64)")
                 .column("arr_bool", "Array(Bool)").column("arr_str_arr", "Array(Array(String))")
                 .column("arr_arr_str_arr", "Array(Array(Array(String)))").column("arr_map", "Array(Map(String, String))")
-                .orderByColumn("off16").execute(chc);
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createArrayType(topic, 1);
 
@@ -243,7 +243,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic).column("off16", "Int16").column("str", "String")
-                .orderByColumn("off16").execute(chc);
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDataWithEmojis(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -281,7 +281,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic).column("num", "String").column("decimal_14_2", "Decimal(14, 2)")
-                .orderByColumn("num").execute(chc);
+                .engine("MergeTree").orderByColumn("num").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDecimalTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
