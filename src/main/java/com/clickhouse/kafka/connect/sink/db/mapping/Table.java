@@ -29,6 +29,7 @@ public class Table {
 
     private final List<Column> rootColumnsList;
     private final Map<String, Column> rootColumnsMap;
+    @Getter
     private final List<Column> allColumnsList;
     private final Map<String, Column> allColumnsMap;
 
