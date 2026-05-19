@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.data;
 
+import com.clickhouse.kafka.connect.sink.data.convert.DebeziumRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.EmptyRecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.RecordConvertor;
 import com.clickhouse.kafka.connect.sink.data.convert.SchemaRecordConvertor;
@@ -52,11 +53,15 @@ public class Record {
     private static final RecordConvertor schemalessRecordConvertor = new SchemalessRecordConvertor();
     private static final RecordConvertor emptyRecordConvertor = new EmptyRecordConvertor();
     private static final RecordConvertor stringRecordConvertor = new StringRecordConvertor();
+    private static final RecordConvertor debeziumRecordConvertor = new DebeziumRecordConvertor();
     private static RecordConvertor getConvertor(Schema schema, Object data) {
         if (data == null ) {
             return emptyRecordConvertor;
         }
         if (schema != null && data instanceof Struct) {
+            if (schema.name() != null && schema.name().endsWith(".Envelope")) {
+                return debeziumRecordConvertor;
+            }
             return schemaRecordConvertor;
         }
         if (data instanceof Map) {
