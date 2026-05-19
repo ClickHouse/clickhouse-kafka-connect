@@ -20,6 +20,7 @@ import com.clickhouse.data.format.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.data.StructToJsonMap;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
@@ -234,6 +235,7 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.debug("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
         switch (first.getSchemaType()) {
             case SCHEMA:
+            case DEBEZIUM_CDC:
                 if (csc.isBypassRowBinary()) {
                     doInsertJson(records, table, queryId);
                 } else {
@@ -317,7 +319,7 @@ public class ClickHouseWriter implements DBWriter {
                                     continue;
                                 }
 
-                                if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
+                                if (("DECIMAL".equalsIgnoreCase(colTypeName) && "org.apache.kafka.connect.data.Decimal".equals(objSchema.name())))
                                     continue;
 
                                 if (type == Type.JSON) {
@@ -515,7 +517,10 @@ public class ClickHouseWriter implements DBWriter {
                         BinaryStreamUtils.writeNull(stream);
                         return;
                     } else {
-                        BigDecimal decimal = (BigDecimal) value.getObject();
+                        Object rawDecimal = value.getObject();
+                        BigDecimal decimal = (rawDecimal instanceof BigDecimal)
+                                ? (BigDecimal) rawDecimal
+                                : new BigDecimal(rawDecimal.toString());
                         BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
                     }
                     break;
@@ -981,7 +986,9 @@ public class ClickHouseWriter implements DBWriter {
         String topic = first.getSinkRecord().topic();
         String partition = first.getSinkRecord().kafkaPartition().toString();
 
-        if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
+        if (!csc.isBypassSchemaValidation()
+                && first.getSchemaType() != SchemaType.DEBEZIUM_CDC
+                && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
@@ -1043,7 +1050,9 @@ public class ClickHouseWriter implements DBWriter {
         String topic = first.getSinkRecord().topic();
         String partition = first.getSinkRecord().kafkaPartition().toString();
 
-        if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
+        if (!csc.isBypassSchemaValidation()
+                && first.getSchemaType() != SchemaType.DEBEZIUM_CDC
+                && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
@@ -1141,6 +1150,10 @@ public class ClickHouseWriter implements DBWriter {
                                     data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
                                 }
                                 break;
+                            case DEBEZIUM_CDC:
+                                data = new HashMap<>(record.getJsonMap().size());
+                                record.getJsonMap().forEach((k, v) -> data.put(k, v.getObject()));
+                                break;
                             default:
                                 data = (Map<String, Object>) record.getSinkRecord().value();
                                 break;
@@ -1217,6 +1230,10 @@ public class ClickHouseWriter implements DBWriter {
                         for (Field field : struct.schema().fields()) {
                             data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
                         }
+                        break;
+                    case DEBEZIUM_CDC:
+                        data = new HashMap<>(record.getJsonMap().size());
+                        record.getJsonMap().forEach((k, v) -> data.put(k, v.getObject()));
                         break;
                     default:
                         data = (Map<String, Object>) record.getSinkRecord().value();
