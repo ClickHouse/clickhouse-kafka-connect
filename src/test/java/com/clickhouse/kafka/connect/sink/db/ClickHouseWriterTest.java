@@ -4,6 +4,7 @@ import com.clickhouse.data.ClickHouseDataUpdater;
 import com.clickhouse.data.ClickHouseInputStream;
 import com.clickhouse.data.ClickHouseOutputStream;
 import com.clickhouse.data.ClickHousePipedOutputStream;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Record;
@@ -23,9 +24,12 @@ import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,12 +42,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseWriterTest extends ClickHouseBase {
@@ -284,5 +283,108 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         assertEquals(1, tuple.getInt("istextanswered"));
 
         ClickHouseTestHelpers.dropTable(chc, topic);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"V1", "V2"})
+    public void testSchemaRefreshedAfterCode131(String clientVersion) throws Exception {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String topic = createTopicName("code131_refresh_" + clientVersion);
+        String fullyQualifiedTableName = Utils.escapeTableName(chc.getDatabase(), topic);
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("name", "String")
+                .engine("MergeTree")
+                .orderByColumn("id")
+                .execute(chc);
+
+        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
+        assertTrue(writer.start(new ClickHouseSinkConfig(props)));
+
+        try {
+            Table cachedBefore = writer.getMapping().get(fullyQualifiedTableName);
+            assertNotNull(cachedBefore);
+            assertEquals(2, cachedBefore.getRootColumnsList().size());
+            assertFalse(cachedBefore.getRootColumnsMap().containsKey("extra"));
+
+            // NOTE: there may be a better way to reproduce code 131 - below is one way implemented with AI assistance.
+            //
+            // The connector serializes RowBinary in the cached column order [id Int32, name String]:
+            //   id = -1            -> little-endian bytes 0xFF 0xFF 0xFF 0xFF (4 varint-continuation bytes)
+            //   name = "XXXXXXXX"  -> single varint length byte 0x08, then 8 ASCII 'X's
+            // First 5 bytes on the wire: [0xFF, 0xFF, 0xFF, 0xFF, 0x08].
+            //
+            // ClickHouse parses in the new column order [extra String, id Int32, name String], so it
+            // reads those same 5 bytes as the varint length prefix of `extra`:
+            //   value = 0x7F | (0x7F << 7) | (0x7F << 14) | (0x7F << 21) | (0x08 << 28) = 2,415,919,103
+            // which exceeds DBMS_MAX_STRING_SIZE (1 GiB = 1,073,741,824) -> server throws
+            // TOO_LARGE_STRING_SIZE (131).
+            //
+            // ClickHouseWriter.doInsertRawBinary catches the exception, calls urgentTableUpdate
+            // (which refreshes the in-memory Table schema to [extra, id, name]), and retries.
+
+            // migrate schema backwards compatibly while writer is running
+            ClickHouseTestHelpers.runQuery(chc, "ALTER TABLE `" + topic + "` ADD COLUMN extra String DEFAULT '' FIRST");
+
+            Schema oldSchema = SchemaBuilder.struct()
+                    .field("id", Schema.INT32_SCHEMA)
+                    .field("name", Schema.STRING_SCHEMA)
+                    .build();
+            Struct value = new Struct(oldSchema).put("id", -1).put("name", "XXXXXXXX");
+            SinkRecord sr = new SinkRecord(topic, 0, null, null, oldSchema, value, 0,
+                    System.currentTimeMillis(), TimestampType.CREATE_TIME);
+            Record record = Record.convert(sr, false, ".", chc.getDatabase());
+
+            // Verify the server actually returns code 131
+            Exception thrown = assertThrows(Exception.class, () ->
+                    writer.doInsertRawBinary(List.of(record), cachedBefore,
+                            new QueryIdentifier(topic, "code131-direct-" + System.nanoTime()),
+                            cachedBefore.hasDefaults(), false));
+            assertTrue(exceptionChainContains(thrown, "Code: 131"),
+                    "Expected ClickHouse error Code: 131 in exception chain, got: " + thrown);
+
+            Assertions.assertDoesNotThrow(() -> writer.doInsert(List.of(record), new QueryIdentifier(topic, "code131-" + System.nanoTime())));
+
+            Table cachedAfter = writer.getMapping().get(fullyQualifiedTableName);
+            assertNotNull(cachedAfter);
+            assertEquals(3, cachedAfter.getRootColumnsList().size());
+            assertTrue(cachedAfter.getRootColumnsMap().containsKey("extra"));
+
+            assertEquals(1, ClickHouseTestHelpers.countRows(chc, topic));
+
+            // Verify the refreshed mapping by inserting record with the new schema
+            Schema newSchema = SchemaBuilder.struct()
+                    .field("id", Schema.INT32_SCHEMA)
+                    .field("name", Schema.STRING_SCHEMA)
+                    .field("extra", Schema.STRING_SCHEMA)
+                    .build();
+            Struct newValue = new Struct(newSchema).put("id", -1).put("name", "XXXXXXXX").put("extra", "XXXXXXXX");
+            SinkRecord sr2 = new SinkRecord(topic, 0, null, null, newSchema, newValue, 1,
+                    System.currentTimeMillis(), TimestampType.CREATE_TIME);
+            Record record2 = Record.convert(sr2, false, ".", chc.getDatabase());
+            writer.doInsert(List.of(record2), new QueryIdentifier(topic, "code131-new-schema-" + System.nanoTime()));
+
+            assertEquals(2, ClickHouseTestHelpers.countRows(chc, topic));
+            assertEquals(3, writer.getMapping().get(fullyQualifiedTableName).getRootColumnsList().size());
+        } finally {
+            writer.stop();
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    private static boolean exceptionChainContains(Throwable t, String target) {
+        while (t != null) {
+            if (t.getMessage() != null && t.getMessage().contains(target)) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
     }
 }
