@@ -933,23 +933,23 @@ public class ClickHouseWriter implements DBWriter {
                 doInsertRawBinaryV1(records, table, queryId, supportDefaults);
             }
         } catch (ServerException e) {
-            LOGGER.error("Error inserting records", e);
             if (UPDATE_TABLE_ERROR_CODES_V2.contains(e.getCode()) && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", e.getCode());
                 Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinaryV2(records, tableTmp, queryId, tableTmp.hasDefaults());
             } else {
+                LOGGER.error("Error inserting records", e);
                 throw e;
             }
         } catch (Exception e) {
             // Note: this part will be removed once V1 is deprecated
-            LOGGER.error("Error inserting records", e);
             Optional<String> updateTableException = UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().filter(code -> e.getMessage().contains(code)).findFirst();
             if (e.getMessage() != null && updateTableException.isPresent() && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.get(updateTableException.get()));
                 Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinaryV1(records, tableTmp, queryId, tableTmp.hasDefaults());
             } else {
+                LOGGER.error("Error inserting records", e);
                 throw e;
             }
         }

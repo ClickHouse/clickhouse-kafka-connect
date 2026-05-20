@@ -225,11 +225,12 @@ public class Utils {
     }
 
     public static void logDiffBetweenNewAndOldTable(Table oldTable, Table newTable) {
-        if (oldTable == null) {
-            LOGGER.info("New table discovered: {}", newTable.getFullName());
+        if (newTable == null) {
             return;
         }
-        if (newTable == null) {
+
+        if (oldTable == null) {
+            LOGGER.info("New table discovered: {}", newTable.getFullName());
             return;
         }
 
