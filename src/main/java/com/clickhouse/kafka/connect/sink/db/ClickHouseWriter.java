@@ -177,26 +177,6 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private void logDiffBetweenNewAndOldTable(Table oldTable, Table newTable) {
-        if (oldTable == null) {
-            LOGGER.info("New table discovered: {}", newTable.getFullName());
-            return;
-        }
-
-        final List<Column> oldColumns = oldTable.getAllColumnsList();
-        final List<Column> newColumns = newTable.getAllColumnsList();
-
-        int oldPos = 0;
-        int newPos = 0;
-
-        // TODO: for claude
-
-        // column count
-        // column position
-        // column name
-        // column types
-    }
-
     @Override
     public void stop() {
         LOGGER.debug("Stopping ClickHouseWriter");
@@ -953,7 +933,7 @@ public class ClickHouseWriter implements DBWriter {
                 doInsertRawBinaryV1(records, table, queryId, supportDefaults);
             }
         } catch (ServerException e) {
-            LOGGER.error("Error inserting records can cause by schema changes", e);
+            LOGGER.error("Error inserting records", e);
             if (UPDATE_TABLE_ERROR_CODES_V2.contains(e.getCode()) && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", e.getCode());
                 Table tableTmp = urgentTableUpdate(table);
@@ -992,6 +972,7 @@ public class ClickHouseWriter implements DBWriter {
         if (tableTmp == null) {
             throw new IllegalStateException("Unable to refresh table mapping for " + table.getDatabase() + "." + table.getName());
         }
+        Utils.logDiffBetweenNewAndOldTable(table, tableTmp);
         return tableTmp;
     }
 
