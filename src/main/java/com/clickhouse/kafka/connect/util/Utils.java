@@ -236,6 +236,7 @@ public class Utils {
 
         List<String> diffs = computeColumnDiff(oldTable, newTable);
         if (diffs.isEmpty()) {
+            LOGGER.info("No schema changes detected for table {}",  newTable.getFullName());
             return;
         }
 
@@ -276,6 +277,9 @@ public class Utils {
     // Limitation: two columns can match on (name, Type, nullable, precision, scale) but still differ in arrayType,
     // mapValueType, tupleFields, enumValues, etc. TODO: extend this if needed in the future.
     public static boolean columnsMatch(Column a, Column b) {
+        if (a == null || b == null) {
+            return false;
+        }
         return a.getName().equals(b.getName())
                 && a.getType() == b.getType()
                 && a.isNullable() == b.isNullable()

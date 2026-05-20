@@ -936,7 +936,7 @@ public class ClickHouseWriter implements DBWriter {
             if (UPDATE_TABLE_ERROR_CODES_V2.contains(e.getCode()) && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", e.getCode());
                 Table tableTmp = urgentTableUpdate(table);
-                doInsertRawBinaryV2(records, tableTmp, queryId, tableTmp.hasDefaults());
+                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 LOGGER.error("Error inserting records", e);
                 throw e;
@@ -947,7 +947,7 @@ public class ClickHouseWriter implements DBWriter {
             if (e.getMessage() != null && updateTableException.isPresent() && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.get(updateTableException.get()));
                 Table tableTmp = urgentTableUpdate(table);
-                doInsertRawBinaryV1(records, tableTmp, queryId, tableTmp.hasDefaults());
+                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
                 LOGGER.error("Error inserting records", e);
                 throw e;

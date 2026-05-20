@@ -313,8 +313,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             assertEquals(2, cachedBefore.getRootColumnsList().size());
             assertFalse(cachedBefore.getRootColumnsMap().containsKey("extra"));
 
-            // NOTE: there may be a better way to reproduce code 131 - below is one way implemented with AI assistance.
-            //
+            // Code 131 reproduction explanation:
             // The connector serializes RowBinary in the cached column order [id Int32, name String]:
             //   id = -1            -> little-endian bytes 0xFF 0xFF 0xFF 0xFF (4 varint-continuation bytes)
             //   name = "XXXXXXXX"  -> single varint length byte 0x08, then 8 ASCII 'X's
