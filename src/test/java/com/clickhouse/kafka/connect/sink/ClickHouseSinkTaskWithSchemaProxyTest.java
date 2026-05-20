@@ -184,7 +184,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void materializedViewsBug() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String clusterClause = isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
+        String clusterClause = ClickHouseTestHelpers.getClusterClauseOrEmpty();
 
         String topic = createTopicName("m_array_string_table_test");
         // Drop the MV and its target table before the source table to avoid orphaned dependencies

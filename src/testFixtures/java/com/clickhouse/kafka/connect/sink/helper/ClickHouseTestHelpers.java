@@ -76,6 +76,15 @@ public class ClickHouseTestHelpers {
         return true;
     }
 
+    public static String extractClientVersion() {
+        String clientVersion = System.getenv(ClickHouseTestHelpers.CLIENT_VERSION);
+        if (clientVersion != null && clientVersion.equals("V1")) {
+            return "V1";
+        } else {
+            return "V2";
+        }
+    }
+
     public static void executeQueryIgnoreResult(ClickHouseHelperClient chc, String query) {
         try (Records ignored = chc.queryV2(query)) {
             // success
@@ -107,7 +116,10 @@ public class ClickHouseTestHelpers {
     }
 
     private static OperationMetrics dropTableLoop(ClickHouseHelperClient chc, String tableName) {
-        String clusterClause = isCluster() ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "' SYNC" : "";
+        String clusterClause = getClusterClauseOrEmpty();
+        if (!clusterClause.isEmpty()) {
+            clusterClause = clusterClause + " SYNC";
+        }
         String dropTable = String.format("DROP TABLE IF EXISTS `%s`%s", tableName, clusterClause);
         try (Records records = chc.queryV2(dropTable)) {
             return records.getMetrics();
@@ -193,8 +205,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName) {
-        String clusterClause = isCluster() ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
-        String queryCount = String.format("OPTIMIZE TABLE `%s`%s", tableName, clusterClause);
+        String queryCount = String.format("OPTIMIZE TABLE `%s`%s", tableName, getClusterClauseOrEmpty());
         try (Records records = chc.queryV2(queryCount)) {
             return records.getMetrics();
         } catch (Exception e) {
@@ -360,8 +371,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static void createDatabase(String database, ClickHouseHelperClient chc) {
-        String clusterClause = isCluster() ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
-        String createDatabaseQuery = "CREATE DATABASE IF NOT EXISTS `" + database + "`" + clusterClause;
+        String createDatabaseQuery = "CREATE DATABASE IF NOT EXISTS `" + database + "`" + getClusterClauseOrEmpty();
         try (Records ignored = chc.queryV2(createDatabaseQuery)) {
             // success
         } catch (Exception e) {
@@ -371,8 +381,7 @@ public class ClickHouseTestHelpers {
     }
 
     public static void dropDatabase(ClickHouseHelperClient chc, String database) {
-        String clusterClause = isCluster() ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
-        String dropDatabaseQuery = "DROP DATABASE IF EXISTS `" + database + "`" + clusterClause;
+        String dropDatabaseQuery = "DROP DATABASE IF EXISTS `" + database + "`" + getClusterClauseOrEmpty();
         try (Records ignored = chc.queryV2(dropDatabaseQuery)) {
             // success
         } catch (Exception e) {
@@ -414,8 +423,11 @@ public class ClickHouseTestHelpers {
     }
 
     public static void clearTable(ClickHouseHelperClient chc, String tableName) {
-        String clusterClause = isCluster() ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
-        String sql = String.format("TRUNCATE TABLE `%s`%s", tableName, clusterClause);
+        String sql = String.format("TRUNCATE TABLE `%s`%s", tableName, getClusterClauseOrEmpty());
         executeQueryIgnoreResult(chc, sql);
+    }
+
+    public static String getClusterClauseOrEmpty() {
+        return isCluster() ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
     }
 }

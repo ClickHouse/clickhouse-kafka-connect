@@ -88,19 +88,9 @@ public class ClickHouseBase {
         this.database = database;
     }
 
-    public static String extractClientVersion() {
-        String clientVersion = System.getenv(ClickHouseTestHelpers.CLIENT_VERSION);
-        if (clientVersion != null && clientVersion.equals("V1")) {
-            return "V1";
-        } else {
-            return "V2";
-        }
-    }
-
     protected Map<String, String> getBaseProps() {
         Map<String, String> props = new HashMap<>();
-        String clientVersion = extractClientVersion();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, ClickHouseTestHelpers.extractClientVersion());
         if (isCloud) {
             props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);

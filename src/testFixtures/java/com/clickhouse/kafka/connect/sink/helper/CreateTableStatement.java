@@ -80,13 +80,9 @@ public class CreateTableStatement {
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
                 .append("`").append(tableName).append("`");
-
         clusterClauseOpt.ifPresent(s -> sql.append(" ").append(s));
-
         sql.append(" ").append("(").append(columns).append(")").append(" ");
-
         sql.append("Engine = ").append(engine);
-
         orderByColumnOpt.ifPresent(s -> sql.append(" ORDER BY ").append(s));
 
         try {

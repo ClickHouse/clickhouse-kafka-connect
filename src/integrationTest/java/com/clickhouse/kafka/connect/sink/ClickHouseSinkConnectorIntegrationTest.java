@@ -187,7 +187,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Map<String, String> props = new HashMap<>();
         props.put(ClickHouseSinkConfig.PROXY_TYPE, "IGNORE");
         props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, ClickHouseTestHelpers.extractClientVersion());
         if (isCluster) {
             props.putAll(cluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
         } else {

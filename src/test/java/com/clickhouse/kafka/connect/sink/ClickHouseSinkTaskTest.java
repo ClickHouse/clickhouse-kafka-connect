@@ -106,7 +106,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     }
 
     @Test
-    @Disabled // TODO: Fix this test
+    @Disabled // TODO: Fix this test (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
     public void testDBTopicSplit() {
         Map<String, String> props =  getBaseProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
@@ -192,8 +192,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
         assertTrue(ClickHouseTestHelpers.validateRows(chc, topic, sr));
 
-        String flushLogsCluster = isCloud ? " ON CLUSTER 'default'"
-                : isCluster ? " ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'" : "";
+        String flushLogsCluster = isCloud ? " ON CLUSTER 'default'" : ClickHouseTestHelpers.getClusterClauseOrEmpty();
         chc.queryV2("SYSTEM FLUSH LOGS" + flushLogsCluster).close();
 
         String queryLogFrom = isCluster
