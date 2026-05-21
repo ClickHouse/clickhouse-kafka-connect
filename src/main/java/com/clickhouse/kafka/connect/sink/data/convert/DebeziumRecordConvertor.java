@@ -57,9 +57,10 @@ public class DebeziumRecordConvertor extends RecordConvertor {
     private static final String FIELD_BEFORE = "before";
     private static final String FIELD_AFTER  = "after";
     private static final String FIELD_SOURCE = "source";
-    private static final String FIELD_LSN    = "lsn";
-    private static final String FIELD_GTID   = "gtid";
-    private static final String FIELD_POS    = "pos";
+    private static final String FIELD_LSN        = "lsn";
+    private static final String FIELD_GTID       = "gtid";
+    private static final String FIELD_POS        = "pos";
+    private static final String FIELD_CHANGE_LSN = "change_lsn";   // SQL Server
 
     private static final String OP_DELETE   = "d";
     private static final String OP_TRUNCATE = "t";
@@ -246,6 +247,22 @@ public class DebeziumRecordConvertor extends RecordConvertor {
         try {
             Object pos = source.get(FIELD_POS);
             if (pos instanceof Long) return (Long) pos;
+        } catch (Exception ignored) {}
+
+        // SQL Server: change_lsn = "00085734:000fd88d:0003" (VLF:block:entry)
+        // Pack into 64 bits: 24 bits VLF | 32 bits block | 8 bits entry
+        // Preserves correct LSN ordering within the 64-bit space.
+        try {
+            Object changeLsn = source.get(FIELD_CHANGE_LSN);
+            if (changeLsn instanceof String) {
+                String[] parts = ((String) changeLsn).split(":");
+                if (parts.length == 3) {
+                    long p1 = Long.parseLong(parts[0].trim(), 16) & 0xFFFFFFL;     // 24 bits
+                    long p2 = Long.parseLong(parts[1].trim(), 16) & 0xFFFFFFFFL;   // 32 bits
+                    long p3 = Long.parseLong(parts[2].trim(), 16) & 0xFFL;         //  8 bits
+                    return (p1 << 40) | (p2 << 8) | p3;
+                }
+            }
         } catch (Exception ignored) {}
 
         LOGGER.warn("Could not extract version from Debezium source struct — defaulting to 0");
