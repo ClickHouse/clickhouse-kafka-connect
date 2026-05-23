@@ -34,7 +34,6 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
-import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,6 +85,8 @@ public class ClickHouseWriter implements DBWriter {
     private final SinkTaskStatistics statistics;
 
     private ScheduledExecutorService scheduledExecutor;
+    private static final Set<Integer> UPDATE_TABLE_ERROR_CODES_V2 = Set.of(33, 131);
+    @Deprecated private static final Map<String, Integer> UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE = Map.of("ClickHouseException: Code: 33", 33, "ClickHouseException: Code: 131", 131);
 
     public ClickHouseWriter(SinkTaskStatistics statistics) {
         this.mapping = new ConcurrentHashMap<>();
@@ -932,22 +933,23 @@ public class ClickHouseWriter implements DBWriter {
                 doInsertRawBinaryV1(records, table, queryId, supportDefaults);
             }
         } catch (ServerException e) {
-            LOGGER.error("Error inserting records can cause by schema changes", e);
-            if (e.getCode() == 33 && retry == true) {
-                LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
+            if (UPDATE_TABLE_ERROR_CODES_V2.contains(e.getCode()) && retry) {
+                LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", e.getCode());
                 Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
+                LOGGER.error("Error inserting records", e);
                 throw e;
             }
         } catch (Exception e) {
             // Note: this part will be removed once V1 is deprecated
-            LOGGER.error("Error inserting records", e);
-            if (e.getMessage() != null && e.getMessage().contains("ClickHouseException: Code: 33") && retry) {
-                LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
+            Optional<String> updateTableException = UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().filter(code -> e.getMessage().contains(code)).findFirst();
+            if (e.getMessage() != null && updateTableException.isPresent() && retry) {
+                LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.get(updateTableException.get()));
                 Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
+                LOGGER.error("Error inserting records", e);
                 throw e;
             }
         }
@@ -956,10 +958,10 @@ public class ClickHouseWriter implements DBWriter {
     private Table urgentTableUpdate(Table table) {
         Table tableTmp;
         if (updateMapping(table.getDatabase())) {
-            LOGGER.debug("urgentTableUpdate({}): update complete", table.getName());
+            LOGGER.warn("urgentTableUpdate({}): update complete", table.getName());
             tableTmp = getTable(table.getDatabase(), table.getName());
         } else {
-            LOGGER.debug("urgentTableUpdate({}): update still running", table.getName());
+            LOGGER.warn("urgentTableUpdate({}): update still running", table.getName());
             tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
             if (tableTmp == null) {
                 LOGGER.error("Failed to describe table {}.{} via ClickHouseHelperClient.describeTable(); falling back to existing mapping.",
@@ -970,6 +972,7 @@ public class ClickHouseWriter implements DBWriter {
         if (tableTmp == null) {
             throw new IllegalStateException("Unable to refresh table mapping for " + table.getDatabase() + "." + table.getName());
         }
+        Utils.logDiffBetweenNewAndOldTable(table, tableTmp);
         return tableTmp;
     }
 

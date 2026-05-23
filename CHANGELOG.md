@@ -1,6 +1,12 @@
-# 1.3.9, (unreleased)
+# 1.3.10, (unreleased)
 ## New Features
 * Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0` and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
+
+# 1.3.9, 2026-05-21
+
+## Bug Fixes
+* To gracefully handle live schema drift between the connector and ClickHouse, refresh the table mappings when connector encounters `Code: 131. DB::Exception: Too large string size` and log column-level schema updates. Now, the connector refreshes its table mappings automatically when ClickHouse returns either `Code: 33` or `Code: 131` and retries the insert. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/751)
+
 
 # 1.3.8, 2026-05-08
 
