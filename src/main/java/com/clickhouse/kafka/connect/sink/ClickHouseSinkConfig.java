@@ -742,7 +742,7 @@ public class ClickHouseSinkConfig {
         configDef.define(CLUSTER_NAME,
                 ConfigDef.Type.STRING,
                 "",
-                ConfigDef.Importance.LOW,
+                ConfigDef.Importance.MEDIUM,
                 "Cluster name to include in all distributed DDL queries run by the connector",
                 ddlGroup,
                 ++ddlOrderInGroup,

@@ -622,7 +622,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         }
 
         public ClickHouseClientBuilder setClusterClause(String clusterName) {
-            this.clusterClause = !clusterName.isEmpty() ? " ON CLUSTER '" + clusterName + "'" : "";
+            this.clusterClause = (clusterName == null || clusterName.isEmpty()) ? "" : " ON CLUSTER '" + clusterName + "'";
             return this;
         }
 
