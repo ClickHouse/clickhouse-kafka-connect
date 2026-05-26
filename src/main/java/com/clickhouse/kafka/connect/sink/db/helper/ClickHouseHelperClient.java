@@ -477,7 +477,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         String addClauses = columnDefs.stream()
                 .map(colDef -> "ADD COLUMN IF NOT EXISTS " + colDef)
                 .collect(Collectors.joining(", "));
-        String sql = String.format("ALTER TABLE `%s`.`%s`%s %s", database, tableName, clusterClause, addClauses);
+        String sql = String.format("ALTER TABLE `%s`.`%s`%s%s", database, tableName, clusterClause, addClauses);
         LOGGER.info("Executing DDL: {}", sql);
         if (useClientV2) {
             alterTableAddColumnV2(sql, clickhouseSettings);
@@ -622,7 +622,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         }
 
         public ClickHouseClientBuilder setClusterClause(String clusterName) {
-            this.clusterClause = (clusterName == null || clusterName.isEmpty()) ? "" : " ON CLUSTER '" + clusterName + "'";
+            this.clusterClause = (clusterName == null || clusterName.isEmpty()) ? "" : " ON CLUSTER '" + clusterName + "' ";
             return this;
         }
 
