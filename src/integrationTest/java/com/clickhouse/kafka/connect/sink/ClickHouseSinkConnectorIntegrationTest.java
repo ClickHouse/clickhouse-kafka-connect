@@ -22,7 +22,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -180,30 +179,26 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
-        int responseCode = confluentPlatform.createConnect(SinkConfigs.BASE.getJsonPayload(taskCount, topicName));
-        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.BASE.getJsonPayload(taskCount, topicName));
     }
 
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
-        int responseCode = confluentPlatform.createConnect(SinkConfigs.BASE_SCHEMALESS.getJsonPayload(taskCount, topicName));
-        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.BASE_SCHEMALESS.getJsonPayload(taskCount, topicName));
     }
 
     private void setupAvroConnector(String topicName) throws IOException, InterruptedException {
         LOGGER.info("Setting up Avro connector for topic {}...", topicName);
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        int responseCode = confluentPlatform.createConnect(SinkConfigs.AVRO.getJsonPayload(1, topicName));
-        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.AVRO.getJsonPayload(1, topicName));
     }
 
     private void setupProtobufConnector(String topicName) throws IOException, InterruptedException {
         LOGGER.info("Setting up Protobuf connector for topic {}...", topicName);
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-        int responseCode = confluentPlatform.createConnect(SinkConfigs.PROTOBUF.getJsonPayload(1, topicName));
-        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.PROTOBUF.getJsonPayload(1, topicName));
     }
 
     private void setupConnectorWithJdbcProperties(String topicName, int taskCount) throws IOException, InterruptedException {
@@ -211,8 +206,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
-        int responseCode = confluentPlatform.createConnect(SinkConfigs.JDBC_PROP.getJsonPayload(taskCount, topicName));
-        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.JDBC_PROP.getJsonPayload(taskCount, topicName));
     }
 
     private void checkInterruptTest(String topicName, int parCount) throws InterruptedException, IOException {

@@ -3,11 +3,14 @@ package com.clickhouse.kafka.connect.sink.helper;
 
 import okhttp3.*;
 import org.json.JSONObject;
+import org.junit.jupiter.api.Assertions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.shaded.org.awaitility.Awaitility;
+import org.testcontainers.shaded.org.awaitility.pollinterval.FixedPollInterval;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 
@@ -16,8 +19,11 @@ import org.json.JSONArray;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.StreamSupport;
 
 
 public class ConfluentPlatform {
@@ -58,6 +64,8 @@ public class ConfluentPlatform {
     private static int REST_PROXY_INTERNAL_PORT = 8082;
     private static int CONNECT_INTERNAL_PORT = 8083;
     private static int KSQL_INTERNAL_PORT = 8088;
+    private static final long CONNECTOR_RUNNING_TIMEOUT_MINS = 5L;
+    private static final long CONNECTOR_STATUS_POLL_INTERVAL_SECONDS = 5L;
     private String clusterId = null;
     private String controlCenterEndpoint = null;
     private String restProxyEndpoint = null;
@@ -332,7 +340,7 @@ public class ConfluentPlatform {
         return false;
     }
 
-    public int createConnect(String payload) throws IOException {
+    public void createConnectorAndWaitUntilRunning(String connectorName, String payload) throws IOException {
         String connectRestEndpoint = getConnectRestEndPoint();
         OkHttpClient client = new OkHttpClient();
         String connectorsEndpoint = String.format("%s/connectors", connectRestEndpoint);
@@ -348,8 +356,16 @@ public class ConfluentPlatform {
             int code = response.code();
             LOGGER.info("Create connectors response code: {}", code);
             LOGGER.debug("Create connectors response body: {}", responseBodyString);
-            return code;
+            Assertions.assertTrue(code >= 200 && code < 300);
         }
+        Awaitility.await("connector running")
+                .atMost(Duration.ofMinutes(CONNECTOR_RUNNING_TIMEOUT_MINS))
+                .pollDelay(Duration.ofSeconds(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS))
+                .pollInterval(FixedPollInterval.fixed(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
+                .until(() -> {
+                    Optional<Object> taskObj = StreamSupport.stream(getConnectorTasksStatus(connectorName).spliterator(), false).findFirst();
+                    return taskObj.filter(o -> "RUNNING".equals(String.valueOf(((JSONObject) o).get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY)))).isPresent();
+                });
     }
 
 
@@ -459,7 +475,7 @@ public class ConfluentPlatform {
         int totalWorkers = numberOfPartitions * 10;
 
         String payloadDataGen = String.join("", Files.readAllLines(Paths.get(templateFileName)));
-        createConnect(String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
+        createConnectorAndWaitUntilRunning(connectorName, String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
         String currentState = "";
         int loopCount = 0;
         do {
@@ -560,32 +576,36 @@ public class ConfluentPlatform {
         return produceRecordsViaRest(topicName, PROTOBUF_V2_APPLICATION_TYPE,  protoSchema, records);
     }
 
+    public JSONArray getConnectorTasksStatus(String connectorName) throws IOException {
+        String connectRestEndpoint = getConnectRestEndPoint();
+        OkHttpClient client = new OkHttpClient();
+        String statusEndpoint = String.format("%s/connectors/%s/status", connectRestEndpoint, connectorName);
+        Request request = new Request.Builder()
+                .url(statusEndpoint)
+                .get()
+                .build();
+        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
+            if (response.code() != 200) {
+                throw new IOException(String.format("Request failed - endpoint: '%s', response: '%s'", statusEndpoint, response.code()));
+            }
+            return new JSONObject(responseBody.string()).getJSONArray(CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY);
+        }
+    }
+
     /**
      * Check if a connector's tasks are all running (not FAILED).
      * Returns the FIRST error trace encountered if any task has failed, or empty optional if all tasks are running.
      */
     public Optional<String> getFirstTaskFailureOpt(String connectorName) throws IOException {
-        String connectRestEndpoint = getConnectRestEndPoint();
-        OkHttpClient client = new OkHttpClient();
-        String connectorsEndpoint = String.format("%s/connectors/%s/status", connectRestEndpoint, connectorName);
-        Request request = new Request.Builder()
-                .url(connectorsEndpoint)
-                .get()
-                .build();
-        try (Response response = client.newCall(request).execute(); ResponseBody responseBody = response.body()) {
-            if (response.code() != 200) {
-                throw new IOException(String.format("Request failed - endpoint: '%s', response: '%s'", connectorsEndpoint, response.code()));
-            }
-            JSONArray tasks = new JSONObject(responseBody.string()).getJSONArray(CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY);
-            if (tasks == null || tasks.isEmpty()) {
-                return Optional.empty();
-            }
-            for (Object task : tasks) {
-                JSONObject jsonTaskObj = (JSONObject) task;
-                String state = String.valueOf(jsonTaskObj.get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY));
-                if ("FAILED".equalsIgnoreCase(state)) {
-                    return Optional.of(jsonTaskObj.has("trace") ? String.valueOf(jsonTaskObj.get("trace")) : "No trace available");
-                }
+        JSONArray tasks = getConnectorTasksStatus(connectorName);
+        if (tasks == null || tasks.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Object task : tasks) {
+            JSONObject jsonTaskObj = (JSONObject) task;
+            String state = String.valueOf(jsonTaskObj.get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY));
+            if ("FAILED".equalsIgnoreCase(state)) {
+                return Optional.of(jsonTaskObj.has("trace") ? String.valueOf(jsonTaskObj.get("trace")) : "No trace available");
             }
         }
 

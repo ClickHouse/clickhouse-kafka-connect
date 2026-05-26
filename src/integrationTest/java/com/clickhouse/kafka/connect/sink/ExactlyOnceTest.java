@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
@@ -128,8 +127,7 @@ public class ExactlyOnceTest {
                 properties.getProperty(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP),
                 true);
 
-        int responseCode = confluentPlatform.createConnect(jsonString);
-        Assertions.assertTrue(responseCode >= 200 && responseCode < 300);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, jsonString);
     }
 
 
