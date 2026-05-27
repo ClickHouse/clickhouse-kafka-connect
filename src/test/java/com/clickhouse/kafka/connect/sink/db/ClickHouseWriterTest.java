@@ -331,7 +331,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             // (which refreshes the in-memory Table schema to [extra, id, name]), and retries.
 
             // migrate schema backwards compatibly while writer is running
-            ClickHouseTestHelpers.executeQueryIgnoreResult(chc, "ALTER TABLE `" + topic + "` ADD COLUMN extra String DEFAULT '' FIRST");
+            ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `" + topic + "`%s ADD COLUMN extra String DEFAULT '' FIRST", ClickHouseTestHelpers.getClusterClauseOrEmpty()));
 
             Schema oldSchema = SchemaBuilder.struct()
                     .field("id", Schema.INT32_SCHEMA)
