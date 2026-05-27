@@ -199,6 +199,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             RuntimeException ex = assertThrows(RuntimeException.class, () -> chw.getTable(chc.getDatabase(), topic));
             assertTrue(ex.getMessage().contains("does not exist"));
         });
+        ClickHouseTestHelpers.dropTable(chc, topic);
     }
 
     @Test
@@ -214,6 +215,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             Table table = chw.getTable(chc.getDatabase(), topic);
             assertNull(table);
         });
+        ClickHouseTestHelpers.dropTable(chc, topic);
     }
 
     @Test

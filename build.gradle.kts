@@ -185,7 +185,7 @@ tasks.withType<JavaCompile> {
 }
 
 tasks.withType<Test> {
-    if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
+    if (System.getenv("CLICKHOUSE_CLUSTER_NAME") != null) {
         maxParallelForks = 1
     } else {
         maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1

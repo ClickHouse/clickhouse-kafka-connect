@@ -7,24 +7,32 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
+@SuppressWarnings({"OptionalUsedAsFieldOrParameterType"})
 public class CreateTableStatement {
     private String tableName;
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
     private String engine;
-    private String orderByColumn;
+    private Optional<String> orderByColumnOpt = Optional.empty();
     private Map<String, Serializable> settings;
     private boolean ifNotExists = false;
+    private Optional<String> clusterClauseOpt = Optional.empty();
 
-    public CreateTableStatement() {}
+    public CreateTableStatement() {
+        if (ClickHouseTestHelpers.isCluster()) {
+            this.clusterClauseOpt = Optional.of("ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'");
+        }
+    }
 
     public CreateTableStatement(CreateTableStatement template) {
         this.tableName = template.tableName;
         this.schema = new LinkedHashMap<>(template.schema);
         this.engine = template.engine;
-        this.orderByColumn = template.orderByColumn;
+        this.orderByColumnOpt = template.orderByColumnOpt;
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
+        this.clusterClauseOpt = template.clusterClauseOpt;
     }
 
     public CreateTableStatement tableName(String tableName) {
@@ -38,12 +46,15 @@ public class CreateTableStatement {
     }
 
     public CreateTableStatement engine(String engine) {
+        if (ClickHouseTestHelpers.isCluster() && "MergeTree".equals(engine)) {
+            engine = ClickHouseCluster.getClusterFromEnvVarOrThrow().getMergeTreeEngine();
+        }
         this.engine = engine;
         return this;
     }
 
     public CreateTableStatement orderByColumn(String orderByColumn) {
-        this.orderByColumn = orderByColumn;
+        this.orderByColumnOpt = Optional.of(orderByColumn);
         return this;
     }
 
@@ -64,15 +75,15 @@ public class CreateTableStatement {
                 columns.append(", ");
             columns.append("`").append(entry.getKey()).append("` ").append(entry.getValue());
         }
+
         var sql = new StringBuilder();
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
-                .append("`").append(tableName).append("`").append(" ")
-                .append("(").append(columns).append(")").append(" ")
-                .append("Engine = ").append(engine);
-        if (orderByColumn != null) {
-            sql.append(" ORDER BY ").append(orderByColumn);
-        }
+                .append("`").append(tableName).append("`");
+        clusterClauseOpt.ifPresent(s -> sql.append(" ").append(s));
+        sql.append(" ").append("(").append(columns).append(")").append(" ");
+        sql.append("Engine = ").append(engine);
+        orderByColumnOpt.ifPresent(s -> sql.append(" ORDER BY ").append(s));
 
         try {
             if (settings != null && !settings.isEmpty()) {

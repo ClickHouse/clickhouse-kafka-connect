@@ -1,9 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.*;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.Records;
-import com.clickhouse.data.ClickHouseRecord;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -20,10 +18,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import org.junit.jupiter.api.Assumptions;
 
+/**
+ * This test does NOT run against cluster or standalone ClickHouse.
+ */
 public class ClickHouseCloudTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseCloudTest.class);
     private static final Properties properties = System.getProperties();
+    private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
 
     private Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
@@ -58,6 +61,7 @@ public class ClickHouseCloudTest {
 
     @BeforeAll
     public static void checkPropsExist() {
+        Assumptions.assumeFalse(isCluster, "Cloud tests are not supported in cluster mode");
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
@@ -75,7 +79,7 @@ public class ClickHouseCloudTest {
                 .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
                 .column("p_int64", "Int64").column("p_float32", "Float32")
                 .column("p_float64", "Float64").column("p_bool", "Bool")
-                .engine("ReplicatedMergeTree").orderByColumn("off16").execute(chc);
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         Collection<SinkRecord> firstBatch = new ArrayList<>();
         Collection<SinkRecord> secondBatch = new ArrayList<>();
