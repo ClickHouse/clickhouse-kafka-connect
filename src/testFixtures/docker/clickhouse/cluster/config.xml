@@ -7,6 +7,9 @@
         <replica from_env="REPLICA_NUM" />
         <server_index from_env="SERVER_INDEX" />
     </macros>
+    <access_control_improvements>
+        <on_cluster_queries_require_cluster_grant>false</on_cluster_queries_require_cluster_grant>
+    </access_control_improvements>
     <remote_servers replace="1">
         <three_shards_one_replica_each>
             <shard>

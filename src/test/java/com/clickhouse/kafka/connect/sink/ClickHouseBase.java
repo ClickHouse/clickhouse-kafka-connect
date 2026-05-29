@@ -2,10 +2,11 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
-import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestInstance;
 import org.slf4j.Logger;
@@ -22,12 +23,18 @@ import java.util.Map;
 public class ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
     protected ClickHouseContainer db;
-    protected boolean isCloud = ClickHouseTestHelpers.isCloud();
+    protected ClickHouseCluster cluster;
+    protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
+    protected static boolean isCluster = ClickHouseTestHelpers.isCluster();
     protected String database = ClickHouseTestHelpers.DATABASE_DEFAULT;
 
     @BeforeAll
     public void setup() throws IOException {
-        if (!isCloud) {
+        Assertions.assertFalse(isCluster && isCloud, String.format("Invalid configuration: both %s=<> and %s=cloud are set. Please set only one or the other.", ClickHouseTestHelpers.CLICKHOUSE_CLUSTER_NAME, ClickHouseTestHelpers.CLICKHOUSE_VERSION));
+        if (isCluster) {
+            cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
+            cluster.start();
+        } else if (!isCloud) {
             setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         }
 
@@ -60,7 +67,9 @@ public class ClickHouseBase {
 
     @AfterAll
     protected void tearDown() {
-        if (!isCloud) {
+        if (isCluster) {
+            cluster.stop();
+        } else if (!isCloud) {
             ClickHouseContainer ch = getDb();
             if (ch != null) {
                 LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
@@ -85,19 +94,9 @@ public class ClickHouseBase {
         this.database = database;
     }
 
-    public static String extractClientVersion() {
-        String clientVersion = System.getenv(ClickHouseTestHelpers.CLIENT_VERSION);
-        if (clientVersion != null && clientVersion.equals("V1")) {
-            return "V1";
-        } else {
-            return "V2";
-        }
-    }
-
     protected Map<String, String> getBaseProps() {
         Map<String, String> props = new HashMap<>();
-        String clientVersion = extractClientVersion();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, ClickHouseTestHelpers.extractClientVersion());
         if (isCloud) {
             props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);
@@ -106,7 +105,9 @@ public class ClickHouseBase {
             props.put(ClickHouseSinkConnector.PASSWORD, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD));
             props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
             props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
-            props.put("clickhouseSettings", "insert_quorum=3");
+            props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "insert_quorum=3");
+        } else if (isCluster) {
+            props.putAll(cluster.getClusterProps(database));
         } else {
             props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
             props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());

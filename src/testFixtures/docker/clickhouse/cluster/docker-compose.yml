@@ -26,6 +26,12 @@ services:
       - "10723:8123"
       - "10743:8443"
       - "10900:9000"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --spider http://localhost:8123/ping || exit 1" ]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
     <<: *ch-common
   ch1:
     image: clickhouse/clickhouse-server:${CH_VERSION:-latest}
@@ -38,6 +44,12 @@ services:
       - "10724:8123"
       - "10744:8443"
       - "10901:9000"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --spider http://localhost:8123/ping || exit 1" ]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
     <<: *ch-common
   ch2:
     image: clickhouse/clickhouse-server:${CH_VERSION:-latest}
@@ -50,6 +62,12 @@ services:
       - "10725:8123"
       - "10745:8443"
       - "10902:9000"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --spider http://localhost:8123/ping || exit 1" ]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
     <<: *ch-common
 
   # Use Nginx as a cluster entrypoint and a round-robin load balancer for client requests
@@ -57,8 +75,13 @@ services:
   nginx:
     image: 'nginx:1.30.0'
     hostname: nginx
-    ports:
-      - '10726:8123'
+    expose:
+      - '8123'
     volumes:
-      - ${DOCKER_ROOT:-.}/nginx/local.conf:/etc/nginx/conf.d/local.conf
-    container_name: clickhouse-nginx
+      - type: bind
+        source: ${DOCKER_ROOT:-.}/nginx/local.conf
+        target: /etc/nginx/conf.d/local.conf
+    depends_on:
+      ch0: { condition: service_healthy }
+      ch1: { condition: service_healthy }
+      ch2: { condition: service_healthy }

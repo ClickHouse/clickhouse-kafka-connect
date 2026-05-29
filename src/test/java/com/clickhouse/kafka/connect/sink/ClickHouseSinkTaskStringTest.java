@@ -1,6 +1,5 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -17,7 +16,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -58,25 +56,6 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("map_int64_string", "Map(Int64, String)")
             .engine("MergeTree")
             .orderByColumn("off16");
-
-    private int countRowsWithEmojis(ClickHouseHelperClient chc, String topic) {
-        String queryCount = "select count(*) from " + topic + " where str LIKE '%\uD83D\uDE00%' SETTINGS select_sequential_consistency = 1";
-        try (Records records = chc.getClient().queryRecords(queryCount).get()) {
-            String value = records.iterator().next().getString(1);
-            return Integer.parseInt(value);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-    private int countRows(ClickHouseHelperClient chc, String topic) {
-        String queryCount = String.format("select count(*) from `%s` SETTINGS select_sequential_consistency = 1", topic);
-        try (Records records = chc.getClient().queryRecords(queryCount).get()) {
-            String value = records.iterator().next().getString(1);
-            return Integer.parseInt(value);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
         Gson gson = new Gson();
@@ -390,6 +369,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         });
         return array;
     }
+
     @Test
     public void primitiveTypesTest() {
         Map<String, String> props = getBaseProps();
@@ -406,7 +386,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -425,7 +405,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRows(chc, topic));
+        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -456,7 +436,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -476,7 +456,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -496,7 +476,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -517,7 +497,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -540,7 +520,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size() / 2, countRowsWithEmojis(chc, topic));
+        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRowsWithEmojis(chc, topic));
     }
 
 
@@ -562,7 +542,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, tableName));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, tableName));
     }
 
     @Test
@@ -582,7 +562,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
 
     @Test
@@ -602,8 +582,9 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
         chst.start(props);
         chst.put(sr);
         chst.stop();
-        assertEquals(sr.size(), countRows(chc, topic));
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
     }
+
     @Test
     public void clickHouseErrorCode25() {
         InMemoryDLQ er = new InMemoryDLQ();
