@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
@@ -553,6 +554,12 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
         props.put(ClickHouseSinkConfig.BUFFER_FLUSH_TIME, "0");
         props.put(ClickHouseSinkConfig.EXACTLY_ONCE, "true");
         props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, "false");
+        if (isCluster) {
+            // KeeperMap state table must be created ON CLUSTER, otherwise it lands on a
+            // single node and the LB-routed SELECT may hit a node without it (UNKNOWN_TABLE).
+            props.put(ClickHouseSinkConfig.KEEPER_ON_CLUSTER,
+                    ClickHouseCluster.getClusterFromEnvVarOrThrow().getName());
+        }
         return props;
     }
 
