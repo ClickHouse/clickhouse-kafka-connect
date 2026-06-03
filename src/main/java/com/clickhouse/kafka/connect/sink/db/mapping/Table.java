@@ -22,6 +22,10 @@ import java.util.regex.Pattern;
 public class Table {
     private static final Logger LOGGER = LoggerFactory.getLogger(Table.class);
     private static final Predicate<String> SIZE_FIELD_MATCHER = Pattern.compile(".+\\.size[0-9]+$").asMatchPredicate();
+    // Recent ClickHouse versions (25.x+) expose a ".size" byte-size subcolumn on the String type. Unlike the
+    // array length subcolumns ".size0"/".size1", it has no trailing digit. It is metadata we don't map, so we
+    // skip it instead of warning. See https://github.com/ClickHouse/clickhouse-kafka-connect for context.
+    private static final Predicate<String> STRING_SIZE_FIELD_MATCHER = Pattern.compile(".+\\.size$").asMatchPredicate();
     private static final Pattern MULTIPLE_MAP_VALUES_PATTERN = Pattern.compile("(\\.values)(?=((\\.values)+$))");
 
     private final String name;
@@ -129,6 +133,11 @@ public class Table {
                     case VARIANT:
                         return;
                     default:
+                        if (parentArrayType.getType() == Type.STRING && STRING_SIZE_FIELD_MATCHER.test(childName)) {
+                            // The ".size" byte-size subcolumn of a String element inside an array.
+                            LOGGER.debug("Ignoring String size subcolumn: {}", childName);
+                            return;
+                        }
                         LOGGER.warn("Unhandled complex type '{}' as a child of an array or unexpected subcolumn (parent name: '{}', child name: '{}').",
                                 parentArrayType.getType(), parent.getName(), child.getName() );
                         return;
@@ -190,6 +199,9 @@ public class Table {
             default:
                 if (child.getName().endsWith(".null")) {
                     LOGGER.debug("Ignoring complex column: {}", child);
+                } else if (parent.getType() == Type.STRING && STRING_SIZE_FIELD_MATCHER.test(child.getName())) {
+                    // The ".size" byte-size subcolumn of a String column.
+                    LOGGER.debug("Ignoring String size subcolumn: {}", child.getName());
                 } else {
                     LOGGER.warn("Unsupported complex parent type: {} (parent name: '{}')",
                             parent.getType(), parent.getName());
