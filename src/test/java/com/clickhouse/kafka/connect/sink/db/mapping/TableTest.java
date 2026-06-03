@@ -49,8 +49,8 @@ class TableTest extends ClickHouseBase {
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
-        assertEquals(table.getRootColumnsList().size(), 2);
-        assertEquals(table.getAllColumnsList().size(), 3);
+        assertEquals(2, table.getRootColumnsList().size());
+        assertEquals(3, table.getAllColumnsList().size());
         ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 
@@ -66,11 +66,11 @@ class TableTest extends ClickHouseBase {
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")
-                .engine("MergeTree()").orderByColumn("tuple()").execute(chc);
+                .engine("MergeTree").orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
-        assertEquals(table.getRootColumnsList().size(), 2);
+        assertEquals(2, table.getRootColumnsList().size());
         ClickHouseTestHelpers.dropTable(chc, tableName);
     }
 

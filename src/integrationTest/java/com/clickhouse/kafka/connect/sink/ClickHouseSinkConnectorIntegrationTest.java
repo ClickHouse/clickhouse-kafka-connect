@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
@@ -27,14 +28,28 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * <pre>
+ * NOTE 1: this test does NOT run against ClickHouse cloud
+ * </pre>
+ * <pre>
+ * NOTE 2: this test explicitly connects to the proxy endpoint and avoids setting PROXY_HOST/PROXY_PORT
+ * because the client makes requests with absolute URI's to the server when the proxy config is set.
+ * TODO: Once <a href="https://github.com/ClickHouse/ClickHouse/issues/58828">this issue</a> is fixed, we can revert this test to use the client proxy config.
+ * </pre>
+ */
 public class ClickHouseSinkConnectorIntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnectorIntegrationTest.class);
     public static ConfluentPlatform confluentPlatform;
     private static ClickHouseContainer db;
+    private static ClickHouseCluster cluster;
     private static ClickHouseHelperClient chcNoProxy;
     public static ToxiproxyContainer toxiproxy;
     public static Proxy clickhouseProxy;
+    private static final int PROXY_PORT = 8666;
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
+    private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
+    private static final boolean isCloud = ClickHouseTestHelpers.isCloud();
     private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
             .column("side", "String")
             .column("quantity", "Int32")
@@ -48,37 +63,58 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static final Path RESOURCES_ROOT = Path.of("src", "integrationTest", "resources");
 
     @BeforeAll
-    public static void setup() {
+    public static void setup() throws IOException {
+        Assumptions.assumeFalse(isCloud, "ClickHouseSinkConnectorIntegrationTest is not supported against cloud");
         Network network = Network.newNetwork();
         List<String> connectorPath = new LinkedList<>();
         String confluentArchive = new File(Path.of("build", "confluentArchive").toString()).getAbsolutePath();
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
 
-        db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE).withNetwork(network).withNetworkAliases(ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS);
-        db.start();
+        if (isCluster) {
+            cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
+            cluster.start();
+        } else {
+            db = new ClickHouseContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE)
+                    .withNetwork(network)
+                    .withNetworkAliases(ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS);
+            db.start();
+        }
 
-        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(network).withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
+        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME)
+                .withNetwork(network)
+                .withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
+        if (isCluster) {
+            toxiproxy = toxiproxy.withExtraHost("host.docker.internal", "host-gateway");
+        }
         toxiproxy.start();
 
-        chcNoProxy = createClientNoProxy(getTestProperties());
+        LOGGER.info("Started proxy container: {}", toxiproxy.getControlPort());
+        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
+
+        String upstream;
+        if (isCluster) {
+            upstream = String.format("host.docker.internal:%d", cluster.getPort());
+        } else {
+            upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
+        }
+        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
+        LOGGER.info("Proxy configured {}", clickhouseProxy.getListen());
+        chcNoProxy = ClickHouseTestHelpers.createClient(getTestProperties());
     }
 
     @BeforeEach
     public void beforeEach() throws IOException {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
-
-        if (clickhouseProxy != null) {
-            clickhouseProxy.delete();
-        }
-
-        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-        clickhouseProxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:8666", String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
     }
 
     @AfterAll
     public static void tearDown() {
-        db.stop();
+        if (isCluster) {
+            cluster.stop();
+        } else {
+            db.stop();
+        }
         toxiproxy.stop();
         confluentPlatform.close();
     }
@@ -149,21 +185,20 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
     private static Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
-        props.put(ClickHouseSinkConnector.PORT, String.valueOf(db.getMappedPort(ClickHouseProtocol.HTTP.getDefaultPort())));
-        props.put(ClickHouseSinkConnector.DATABASE, "default");
-        props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
-        props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
-        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-        props.put(ClickHouseSinkConfig.PROXY_TYPE, "HTTP");
-        props.put(ClickHouseSinkConfig.PROXY_HOST, toxiproxy.getHost());
-        props.put(ClickHouseSinkConfig.PROXY_PORT, String.valueOf(toxiproxy.getMappedPort(8666)));
-        return props;
-    }
-
-    private static ClickHouseHelperClient createClientNoProxy(Map<String, String> props) {
         props.put(ClickHouseSinkConfig.PROXY_TYPE, "IGNORE");
-        return ClickHouseTestHelpers.createClient(props);
+        props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, ClickHouseTestHelpers.extractClientVersion());
+        if (isCluster) {
+            props.putAll(cluster.getClusterProps(ClickHouseTestHelpers.DATABASE_DEFAULT));
+        } else {
+            // standalone
+            props.put(ClickHouseSinkConnector.HOSTNAME, db.getHost());
+            props.put(ClickHouseSinkConnector.PORT, String.valueOf(db.getMappedPort(ClickHouseProtocol.HTTP.getDefaultPort())));
+            props.put(ClickHouseSinkConnector.DATABASE, ClickHouseTestHelpers.DATABASE_DEFAULT);
+            props.put(ClickHouseSinkConnector.USERNAME, db.getUsername());
+            props.put(ClickHouseSinkConnector.PASSWORD, db.getPassword());
+        }
+        return props;
     }
 
     private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
@@ -244,7 +279,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
         Assertions.assertTrue(schemaDir.exists());
         return Stream.of(Objects.requireNonNull(schemaDir.listFiles())).map(file -> Path.of(schemaDir.toPath().toString(), file.getName()));
     }
-
 
     /*
         Test sinking Avro records with various schemas that the connector currently supports.

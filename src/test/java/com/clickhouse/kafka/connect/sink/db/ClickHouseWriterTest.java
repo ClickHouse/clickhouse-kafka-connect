@@ -199,6 +199,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             RuntimeException ex = assertThrows(RuntimeException.class, () -> chw.getTable(chc.getDatabase(), topic));
             assertTrue(ex.getMessage().contains("does not exist"));
         });
+        ClickHouseTestHelpers.dropTable(chc, topic);
     }
 
     @Test
@@ -214,6 +215,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             Table table = chw.getTable(chc.getDatabase(), topic);
             assertNull(table);
         });
+        ClickHouseTestHelpers.dropTable(chc, topic);
     }
 
     @Test
@@ -329,7 +331,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             // (which refreshes the in-memory Table schema to [extra, id, name]), and retries.
 
             // migrate schema backwards compatibly while writer is running
-            ClickHouseTestHelpers.runQuery(chc, "ALTER TABLE `" + topic + "` ADD COLUMN extra String DEFAULT '' FIRST");
+            ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `" + topic + "`%s ADD COLUMN extra String DEFAULT '' FIRST", ClickHouseTestHelpers.getClusterClauseOrEmpty()));
 
             Schema oldSchema = SchemaBuilder.struct()
                     .field("id", Schema.INT32_SCHEMA)

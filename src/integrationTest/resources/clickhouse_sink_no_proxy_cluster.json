@@ -1,8 +1,6 @@
 {
   "name": "%s",
   "config": {
-    "value.converter.schemas.enable": "false",
-    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "name": "%s",
     "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
     "tasks.max": "%d",
@@ -13,6 +11,7 @@
     "username": "%s",
     "password": "%s",
     "ssl": "%b",
-    "exactlyOnce" : "%b"
+    "exactlyOnce" : "%b",
+    "keeperOnCluster" : "%s"
   }
 }

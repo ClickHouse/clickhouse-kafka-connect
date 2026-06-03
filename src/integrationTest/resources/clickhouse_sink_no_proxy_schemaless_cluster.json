@@ -13,6 +13,7 @@
     "username": "%s",
     "password": "%s",
     "ssl": "%b",
-    "exactlyOnce" : "%b"
+    "exactlyOnce" : "%b",
+    "keeperOnCluster" : "%s"
   }
 }

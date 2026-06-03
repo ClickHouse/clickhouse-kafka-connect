@@ -93,8 +93,8 @@ dependencies {
     implementation("org.apache.httpcomponents.client5:httpclient5:${project.extra["httpclient"]}")
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
-    compileOnly("org.projectlombok:lombok:1.18.38")
-    annotationProcessor("org.projectlombok:lombok:1.18.38")
+    compileOnly("org.projectlombok:lombok:1.18.46")
+    annotationProcessor("org.projectlombok:lombok:1.18.46")
 
     // To parse JSON response from ClickHouse to parse complex data types correctly
     implementation("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
@@ -127,7 +127,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp:${project.extra["okhttp"]}")
     testImplementation("org.json:json:${project.extra["org.json"]}")
     testImplementation("org.testcontainers:testcontainers-toxiproxy:${project.extra["testcontainers"]}")
-    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.6.1")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
@@ -185,7 +185,7 @@ tasks.withType<JavaCompile> {
 }
 
 tasks.withType<Test> {
-    if (System.getenv("CLICKHOUSE_CLUSTER_MODE") == "true") {
+    if (System.getenv("CLICKHOUSE_CLUSTER_NAME") != null) {
         maxParallelForks = 1
     } else {
         maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).takeIf { it > 0 } ?: 1

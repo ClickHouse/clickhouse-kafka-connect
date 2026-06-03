@@ -114,6 +114,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
                 .setSslSocketSni(csc.getSslSocketSni())
+                .setClusterClause(csc.getClusterName())
                 .build();
 
         if (!chc.ping()) {
@@ -1436,6 +1437,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .setSslSocketSni(csc.getSslSocketSni())
+                .setClusterClause(csc.getClusterName())
                 .build();
 
         ClickHouseNode server = chcTmp.getServer();
