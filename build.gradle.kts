@@ -93,8 +93,8 @@ dependencies {
     implementation("org.apache.httpcomponents.client5:httpclient5:${project.extra["httpclient"]}")
 
     // Avoid telescoping constructors problem with the builder pattern using Lombok
-    compileOnly("org.projectlombok:lombok:1.18.38")
-    annotationProcessor("org.projectlombok:lombok:1.18.38")
+    compileOnly("org.projectlombok:lombok:1.18.46")
+    annotationProcessor("org.projectlombok:lombok:1.18.46")
 
     // To parse JSON response from ClickHouse to parse complex data types correctly
     implementation("com.fasterxml.jackson.core:jackson-core:${project.extra["jackson"]}")
