@@ -127,7 +127,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp:${project.extra["okhttp"]}")
     testImplementation("org.json:json:${project.extra["org.json"]}")
     testImplementation("org.testcontainers:testcontainers-toxiproxy:${project.extra["testcontainers"]}")
-    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.6.1")
     testImplementation("com.clickhouse:clickhouse-jdbc:${project.extra["clickHouseDriverVersion"]}:all")
     testImplementation("com.clickhouse:clickhouse-client:${project.extra["clickHouseDriverVersion"]}")
     testImplementation("com.clickhouse:client-v2:${project.extra["clickHouseDriverVersion"]}")
