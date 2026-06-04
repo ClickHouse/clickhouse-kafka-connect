@@ -16,9 +16,7 @@ import org.slf4j.LoggerFactory;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -69,14 +67,10 @@ public class DebeziumRecordConvertor extends RecordConvertor {
     private static final String COL_IS_DELETED = "is_deleted";
 
     // Debezium logical type names
-    private static final String LOGICAL_ZONED_TIMESTAMP  = "io.debezium.time.ZonedTimestamp";
     private static final String LOGICAL_MICRO_TIMESTAMP  = "io.debezium.time.MicroTimestamp";
     private static final String LOGICAL_TIMESTAMP        = "org.apache.kafka.connect.data.Timestamp";
     private static final String LOGICAL_DATE             = "io.debezium.time.Date";
     private static final String LOGICAL_DECIMAL          = "org.apache.kafka.connect.data.Decimal";
-
-    private static final DateTimeFormatter DATETIME_FMT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS").withZone(ZoneOffset.UTC);
 
     @Override
     public Record doConvert(SinkRecord sinkRecord, String topic, String database) {
@@ -181,18 +175,18 @@ public class DebeziumRecordConvertor extends RecordConvertor {
                 return raw;
 
             case INT64:
-                // Microseconds since epoch → datetime string
+                // doWriteDates handles Date natively in the INT64 branch.
+                // For MicroTimestamp, normalize to microseconds Long so DateTime64(6) gets the right unit.
                 if (LOGICAL_MICRO_TIMESTAMP.equals(logicalName)) {
-                    long micros = ((Number) raw).longValue();
-                    Instant instant = Instant.ofEpochSecond(
-                            micros / 1_000_000L,
-                            (micros % 1_000_000L) * 1_000L);
-                    return DATETIME_FMT.format(instant);
+                    if (raw instanceof java.util.Date) {
+                        return ((java.util.Date) raw).getTime() * 1_000L;
+                    }
+                    return raw; // already Long microseconds
                 }
-                // Milliseconds since epoch → datetime string
+                // For Timestamp, normalize to Date so doWriteDates uses doWriteDate(stream, date, precision).
                 if (LOGICAL_TIMESTAMP.equals(logicalName)) {
-                    long millis = ((Number) raw).longValue();
-                    return DATETIME_FMT.format(Instant.ofEpochMilli(millis));
+                    if (raw instanceof java.util.Date) return raw;
+                    return new java.util.Date(((Number) raw).longValue());
                 }
                 return raw;
 
