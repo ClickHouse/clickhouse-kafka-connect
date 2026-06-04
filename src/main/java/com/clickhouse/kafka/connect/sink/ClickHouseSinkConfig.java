@@ -55,6 +55,7 @@ public class ClickHouseSinkConfig {
     public static final String BUFFER_COUNT = "bufferCount";
     public static final String BUFFER_FLUSH_TIME = "bufferFlushTime";
     public static final String REPORT_INSERTED_OFFSETS = "reportInsertedOffsets";
+    public static final String DEBEZIUM_CDC_ENABLED = "debeziumCDCEnabled";
     public static final String ERROR_TOLERANCE_ALL = "all";
     public static final String ERROR_TOLERANCE_NONE = "none";
     public static final String AUTO_EVOLVE = "auto.evolve";
@@ -113,6 +114,7 @@ public class ClickHouseSinkConfig {
     private final int bufferCount;
     private final long bufferFlushTime;
     private final boolean reportInsertedOffsets;
+    private final boolean debeziumCDCEnabled;
     private final boolean autoEvolve;
     private final int autoEvolveDdlRefreshRetries;
     private final boolean autoEvolveStructToJson;
@@ -296,6 +298,7 @@ public class ClickHouseSinkConfig {
         this.bufferCount = Integer.parseInt(props.getOrDefault(BUFFER_COUNT, bufferCountDefault.toString()));
         this.bufferFlushTime = Long.parseLong(props.getOrDefault(BUFFER_FLUSH_TIME, bufferFlushTimeDefault.toString()));
         this.reportInsertedOffsets = Boolean.parseBoolean(props.getOrDefault(REPORT_INSERTED_OFFSETS, reportInsertedOffsetsDefault.toString()));
+        this.debeziumCDCEnabled = Boolean.parseBoolean(props.getOrDefault(DEBEZIUM_CDC_ENABLED, "false"));
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
 
         if (this.bufferCount > 0) {
@@ -645,6 +648,19 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Bypass field cleanup."
+        );
+        configDef.define(DEBEZIUM_CDC_ENABLED,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.MEDIUM,
+                "Enable Debezium CDC envelope processing. When true, records whose schema name ends with"
+                        + " '.Envelope' are routed through DebeziumRecordConvertor, which extracts op/before/after,"
+                        + " injects _version (from source.lsn / gtid / change_lsn) and is_deleted columns."
+                        + " Requires a ReplacingMergeTree(_version, is_deleted) target table. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Enable Debezium CDC envelope processing."
         );
         configDef.define(IGNORE_PARTITIONS_WHEN_BATCHING,
                 ConfigDef.Type.BOOLEAN,

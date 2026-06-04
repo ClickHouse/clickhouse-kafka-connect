@@ -262,7 +262,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 0,
                 System.currentTimeMillis(),
                 TimestampType.CREATE_TIME);
-        Record record = Record.convert(sinkRecord, false, ".", chc.getDatabase());
+        Record record = Record.convert(sinkRecord, false, ".", chc.getDatabase(), false);
 
         runWithWriter(props, (chw) -> {
             try {
