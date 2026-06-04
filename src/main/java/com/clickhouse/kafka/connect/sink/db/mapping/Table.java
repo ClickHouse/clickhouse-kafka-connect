@@ -129,8 +129,7 @@ public class Table {
                     case VARIANT:
                         return;
                     default:
-                        LOGGER.warn("Unhandled complex type '{}' as a child of an array or unexpected subcolumn (parent name: '{}', child name: '{}').",
-                                parentArrayType.getType(), parent.getName(), child.getName() );
+                        // nothing to do here. Only complex types require update of parent record with element types.
                         return;
                 }
             case MAP:
@@ -188,10 +187,11 @@ public class Table {
                 parent.getTupleFields().add(child);
                 return;
             default:
+                // Log for troubleshooting what types were reached this point. Most of them should be ignored.
                 if (child.getName().endsWith(".null")) {
                     LOGGER.debug("Ignoring complex column: {}", child);
                 } else {
-                    LOGGER.warn("Unsupported complex parent type: {} (parent name: '{}')",
+                    LOGGER.debug("Ignoring complex parent type: {} (parent name: '{}')",
                             parent.getType(), parent.getName());
                 }
         }
