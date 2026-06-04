@@ -66,9 +66,27 @@ public class ProtobufIngestTest extends ClickHouseBase {
                 .map(file -> Path.of(schemaDir.toPath().toString(), file.getName()));
     }
 
+    private static Stream<Path> getComplexProtoSchemaPaths() {
+        final File schemaDir =
+                new File(Path.of("src", "testFixtures", "proto", "schemas", "complex_nested").toString());
+        assertTrue(schemaDir.exists(), "Missing complex_nested proto schema fixtures directory: " + schemaDir);
+        return Stream.of(Objects.requireNonNull(schemaDir.listFiles((dir, name) -> name.endsWith(".json"))))
+                .map(file -> Path.of(schemaDir.toPath().toString(), file.getName()));
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("getCompatibleProtoSchemaPaths")
     public void protoIngestTest(Path jsonPath) throws Exception {
+        runProtoIngestTest(jsonPath);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getComplexProtoSchemaPaths")
+    public void complexProtoIngestTest(Path jsonPath) throws Exception {
+        runProtoIngestTest(jsonPath);
+    }
+
+    private void runProtoIngestTest(Path jsonPath) throws Exception {
         JSONObject fixture = new JSONObject(String.join("", Files.readAllLines(jsonPath)));
 
         int expectedRowCount = fixture.getInt(EXPECTED_ROW_COUNT_KEY);
