@@ -226,7 +226,9 @@ public class DebeziumRecordConvertor extends RecordConvertor {
         try {
             Object lsn = source.get(FIELD_LSN);
             if (lsn instanceof Long) return (Long) lsn;
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            LOGGER.debug("Could not read source.lsn — not a PostgreSQL source or field absent: {}", e.getMessage());
+        }
 
         // MySQL: gtid = "uuid:N" — extract the sequence number N
         try {
@@ -235,13 +237,17 @@ public class DebeziumRecordConvertor extends RecordConvertor {
                 String[] parts = ((String) gtid).split(":");
                 if (parts.length == 2) return Long.parseLong(parts[1].trim());
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            LOGGER.debug("Could not parse source.gtid — not a MySQL source or unexpected format: {}", e.getMessage());
+        }
 
         // MySQL fallback: binlog position
         try {
             Object pos = source.get(FIELD_POS);
             if (pos instanceof Long) return (Long) pos;
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            LOGGER.debug("Could not read source.pos — not a MySQL source or field absent: {}", e.getMessage());
+        }
 
         // SQL Server: change_lsn = "00085734:000fd88d:0003" (VLF:block:entry)
         // Pack into 64 bits: 24 bits VLF | 32 bits block | 8 bits entry
@@ -257,7 +263,11 @@ public class DebeziumRecordConvertor extends RecordConvertor {
                     return (p1 << 40) | (p2 << 8) | p3;
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            LOGGER.debug(
+                    "Could not parse source.change_lsn — not a SQL Server source or unexpected format: {}",
+                    e.getMessage());
+        }
 
         LOGGER.warn("Could not extract version from Debezium source struct — defaulting to 0");
         return 0L;
