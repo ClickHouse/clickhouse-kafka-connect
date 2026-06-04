@@ -54,12 +54,12 @@ public class Record {
     private static final RecordConvertor emptyRecordConvertor = new EmptyRecordConvertor();
     private static final RecordConvertor stringRecordConvertor = new StringRecordConvertor();
     private static final RecordConvertor debeziumRecordConvertor = new DebeziumRecordConvertor();
-    private static RecordConvertor getConvertor(Schema schema, Object data) {
-        if (data == null ) {
+    private static RecordConvertor getConvertor(Schema schema, Object data, boolean debeziumCDCEnabled) {
+        if (data == null) {
             return emptyRecordConvertor;
         }
         if (schema != null && data instanceof Struct) {
-            if (schema.name() != null && schema.name().endsWith(".Envelope")) {
+            if (debeziumCDCEnabled && schema.name() != null && schema.name().endsWith(".Envelope")) {
                 return debeziumRecordConvertor;
             }
             return schemaRecordConvertor;
@@ -70,11 +70,18 @@ public class Record {
         if (data instanceof String) {
             return stringRecordConvertor;
         }
-        throw new DataException(String.format("No converter was found due to unexpected object type %s", data.getClass().getName()));
+        throw new DataException(
+                String.format("No converter was found due to unexpected object type %s", data.getClass().getName()));
     }
 
-    public static Record convert(SinkRecord sinkRecord, boolean splitDBTopic, String dbTopicSeparatorChar,String database) {
-        RecordConvertor recordConvertor = getConvertor(sinkRecord.valueSchema(), sinkRecord.value());
+    public static Record convert(
+            SinkRecord sinkRecord,
+            boolean splitDBTopic,
+            String dbTopicSeparatorChar,
+            String database,
+            boolean debeziumCDCEnabled) {
+        RecordConvertor recordConvertor =
+                getConvertor(sinkRecord.valueSchema(), sinkRecord.value(), debeziumCDCEnabled);
         return recordConvertor.convert(sinkRecord, splitDBTopic, dbTopicSeparatorChar, database);
     }
 
