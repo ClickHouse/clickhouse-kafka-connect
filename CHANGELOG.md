@@ -2,6 +2,9 @@
 ## New Features
 * Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0` and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
 
+## Internal Changes
+* Refactored `ClickHouseSinkTask` to delegate to a `DeliveryStrategy` per delivery semantic (`DirectDeliveryStrategy`, `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`), with a shared `ChunkFlusher` for the insert + offset-tracking path. The buffering and non-buffering flows now live in separate, cohesive units instead of interleaved branches on the task. Behavior is unchanged.
+
 # 1.3.9, 2026-05-21
 
 ## Bug Fixes

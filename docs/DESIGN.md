@@ -110,4 +110,16 @@ Two flush strategies coexist:
 - **At-least-once buffered** (`exactlyOnce = false` AND `bufferCount > 0`): a single flat buffer triggers a whole-buffer flush when total record count exceeds `bufferCount` or `bufferFlushTime` elapses since the last flush. Original behavior shipped in PR #658.
 - **Exactly-once buffered** (`exactlyOnce = true` AND `bufferCount > 0`): records are bucketed per `(topic, partition)`. Each bucket is drained in fixed `bufferCount`-sized chunks; tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past the threshold. Each flush therefore spans a deterministic offset range, which is the precondition for ClickHouse `insert_deduplication_token` reuse and the state-machine reconciliation described above. The configuration validator rejects `bufferFlushTime > 0` and `ignorePartitionsWhenBatching = true` in this mode because both break batch-boundary determinism on retry.
 
+#### Implementation
+
+Each delivery semantic is a separate `DeliveryStrategy` implementation (`DirectDeliveryStrategy`, `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`). `ClickHouseSinkTask` selects one at `start()` from the config flag matrix and delegates `put`/`preCommit`/`close`/`stop` to it; it holds no buffering state itself. The two buffered strategies share a `ChunkFlusher` that performs the insert and tracks the highest written offset per partition.
+
+#### Flush failure semantics
+
+A chunk is removed from its buffer *before* the insert, and `ChunkFlusher` records its offset only on the success path:
+
+- **Insert throws (no error tolerance):** the exception propagates and the chunk's offset is *not* recorded, so `preCommit()` returns no offset for it. The Kafka consumer-group offset does not advance and the records are redelivered on restart (at-least-once). In exactly-once mode the dedup token plus the state machine absorb the redelivery — the retry either no-ops via the token or hits the `AFTER_PROCESSING` branch.
+- **Records routed to DLQ (error tolerance on):** the chunk is considered handled; its offset advances on the next `preCommit()`.
+- **JVM crash between buffer `clear()` and the insert:** the records never reached ClickHouse and their offset was never committed, so Kafka redelivers and the buffer is rebuilt from the same offsets.
+
 For the full design rationale, see [PR #736](https://github.com/ClickHouse/clickhouse-kafka-connect/pull/736).
