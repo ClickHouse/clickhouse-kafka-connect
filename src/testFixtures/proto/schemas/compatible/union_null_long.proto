@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message NullableLong {
+  int32 id = 1;
+  optional int64 big_value = 2;
+}

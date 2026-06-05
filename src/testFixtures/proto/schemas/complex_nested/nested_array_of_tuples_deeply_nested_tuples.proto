@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message DeeplyNestedTuples {
+  int32 id = 1;
+  repeated Level1 items = 2;
+
+  message Level3 {
+    int32 l3_int = 1;
+    string l3_str = 2;
+  }
+
+  message Level2 {
+    double l2_double = 1;
+    Level3 l3_tuple = 2;
+  }
+
+  message Level1 {
+    string l1_str = 1;
+    Level2 l2_tuple = 2;
+    int32 l1_int = 3;
+  }
+}

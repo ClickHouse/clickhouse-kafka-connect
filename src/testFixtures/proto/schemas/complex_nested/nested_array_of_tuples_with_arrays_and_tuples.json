@@ -1,0 +1,38 @@
+{
+  "description": "Nested: array of tuples containing arrays and other tuples",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "items": "Array(Tuple(l1_long Int64, l2_tuple Tuple(l3_array Array(Tuple(value Int32)), name String), tags Array(String)))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {
+      "id": 1,
+      "items": [
+        {
+          "l1_long": 1000,
+          "l2_tuple": {
+            "l3_array": [{"value": 10}, {"value": 20}],
+            "name": "foo"
+          },
+          "tags": ["tag1", "tag2"]
+        }
+      ]
+    },
+    {"id": 2, "items": []},
+    {
+      "id": 3,
+      "items": [
+        {
+          "l1_long": 3000,
+          "l2_tuple": {
+            "l3_array": [],
+            "name": "bar"
+          },
+          "tags": []
+        }
+      ]
+    }
+  ],
+  "expected_row_count": 3
+}

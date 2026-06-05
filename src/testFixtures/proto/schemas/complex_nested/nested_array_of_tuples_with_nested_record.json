@@ -1,0 +1,14 @@
+{
+  "description": "Nested: array of tuples with a nested record inside",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "items": "Array(Tuple(name String, sub_item Tuple(inner_id Int32, inner_value Float64)))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "items": [{"name": "a", "sub_item": {"inner_id": 10, "inner_value": 1.1}}, {"name": "b", "sub_item": {"inner_id": 20, "inner_value": 2.2}}]},
+    {"id": 2, "items": []},
+    {"id": 3, "items": [{"name": "c", "sub_item": {"inner_id": 30, "inner_value": 3.3}}]}
+  ],
+  "expected_row_count": 3
+}

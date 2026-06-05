@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message ArrayWithArrayInTuple {
+  int32 id = 1;
+  repeated OuterItem items = 2;
+
+  message OuterItem {
+    int32 item_id = 1;
+    repeated string tags = 2;
+  }
+}

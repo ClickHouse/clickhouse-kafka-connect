@@ -1,0 +1,35 @@
+{
+  "description": "Baseline: all proto3 scalar types plus all google.protobuf wrapper types",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "name": "String",
+    "amount": "Int64",
+    "rate": "Float32",
+    "score": "Float64",
+    "active": "Bool",
+    "serialized": "String",
+    "wrapped_int32": "Nullable(Int32)",
+    "wrapped_int64": "Nullable(Int64)",
+    "wrapped_uint32": "Nullable(UInt32)",
+    "wrapped_uint64": "Nullable(UInt64)",
+    "wrapped_float": "Nullable(Float32)",
+    "wrapped_double": "Nullable(Float64)",
+    "wrapped_bool": "Nullable(Bool)",
+    "wrapped_string": "Nullable(String)",
+    "wrapped_bytes": "Nullable(String)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "name": "Alice",   "amount": 1000,  "rate": 1.5,  "score": 99.99, "active": true,  "serialized": "AA==", "wrapped_int32": 100,  "wrapped_int64": 1000,  "wrapped_uint32": 10,  "wrapped_uint64": 10000,  "wrapped_float": 1.1,  "wrapped_double": 11.11, "wrapped_bool": true,  "wrapped_string": "alpha",   "wrapped_bytes": "AQ=="},
+    {"id": 2, "name": "Bob",     "amount": 2000,  "rate": 2.5,  "score": 88.88, "active": false, "serialized": "AQ==", "wrapped_int32": 200,  "wrapped_int64": 2000,  "wrapped_uint32": 20,  "wrapped_uint64": 20000,  "wrapped_float": 2.2,  "wrapped_double": 22.22, "wrapped_bool": false, "wrapped_string": "beta",    "wrapped_bytes": "Ag=="},
+    {"id": 3, "name": "Charlie", "amount": 3000,  "rate": 3.5,  "score": 77.77, "active": true,  "serialized": "Ag==", "wrapped_int32": 300,  "wrapped_int64": 3000,  "wrapped_uint32": 30,  "wrapped_uint64": 30000,  "wrapped_float": 3.3,  "wrapped_double": 33.33, "wrapped_bool": true,  "wrapped_string": "gamma",   "wrapped_bytes": "Aw=="},
+    {"id": 4, "name": "Diana",   "amount": 4000,  "rate": 4.5,  "score": 66.66, "active": false, "serialized": "Aw==", "wrapped_int32": 400,  "wrapped_int64": 4000,  "wrapped_uint32": 40,  "wrapped_uint64": 40000,  "wrapped_float": 4.4,  "wrapped_double": 44.44, "wrapped_bool": false, "wrapped_string": "delta",   "wrapped_bytes": "BA=="},
+    {"id": 5, "name": "Eve",     "amount": 5000,  "rate": 5.5,  "score": 55.55, "active": true,  "serialized": "BA==", "wrapped_int32": 500,  "wrapped_int64": 5000,  "wrapped_uint32": 50,  "wrapped_uint64": 50000,  "wrapped_float": 5.5,  "wrapped_double": 55.55, "wrapped_bool": true,  "wrapped_string": "epsilon", "wrapped_bytes": "BQ=="},
+    {"id": 6, "name": "Frank",   "amount": 6000,  "rate": 6.5,  "score": 44.44, "active": false, "serialized": "BQ==", "wrapped_int32": 600,  "wrapped_int64": 6000,  "wrapped_uint32": 60,  "wrapped_uint64": 60000,  "wrapped_float": 6.6,  "wrapped_double": 66.66, "wrapped_bool": false, "wrapped_string": "zeta",    "wrapped_bytes": "Bg=="},
+    {"id": 7, "name": "Grace",   "amount": 7000,  "rate": 7.5,  "score": 33.33, "active": true,  "serialized": "Bg==", "wrapped_int32": 700,  "wrapped_int64": 7000,  "wrapped_uint32": 70,  "wrapped_uint64": 70000,  "wrapped_float": 7.7,  "wrapped_double": 77.77, "wrapped_bool": true,  "wrapped_string": "eta",     "wrapped_bytes": "Bw=="},
+    {"id": 8, "name": "Hank",    "amount": 8000,  "rate": 8.5,  "score": 22.22, "active": false, "serialized": "Bw==", "wrapped_int32": 800,  "wrapped_int64": 8000,  "wrapped_uint32": 80,  "wrapped_uint64": 80000,  "wrapped_float": 8.8,  "wrapped_double": 88.88, "wrapped_bool": false, "wrapped_string": "theta",   "wrapped_bytes": "CA=="},
+    {"id": 9, "name": "Ivy",     "amount": 9000,  "rate": 9.5,  "score": 11.11, "active": true,  "serialized": "CA==", "wrapped_int32": 900,  "wrapped_int64": 9000,  "wrapped_uint32": 90,  "wrapped_uint64": 90000,  "wrapped_float": 9.9,  "wrapped_double": 99.99, "wrapped_bool": true,  "wrapped_string": "iota",    "wrapped_bytes": "CQ=="},
+    {"id": 10, "name": "Jack",   "amount": 10000, "rate": 10.5, "score": 0.01,  "active": false, "serialized": "CQ==", "wrapped_int32": 1000, "wrapped_int64": 10000, "wrapped_uint32": 100, "wrapped_uint64": 100000, "wrapped_float": 10.1, "wrapped_double": 101.1, "wrapped_bool": false, "wrapped_string": "kappa",   "wrapped_bytes": "Cg=="}
+  ],
+  "expected_row_count": 10
+}

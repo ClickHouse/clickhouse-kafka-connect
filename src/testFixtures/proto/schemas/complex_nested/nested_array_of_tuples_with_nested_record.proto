@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message ArrayWithNestedRecord {
+  int32 id = 1;
+  repeated OuterItem items = 2;
+
+  message InnerItem {
+    int32 inner_id = 1;
+    double inner_value = 2;
+  }
+
+  message OuterItem {
+    string name = 1;
+    InnerItem sub_item = 2;
+  }
+}

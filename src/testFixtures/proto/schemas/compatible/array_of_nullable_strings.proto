@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+import "google/protobuf/wrappers.proto";
+
+message ArrayNullableStrings {
+  int32 id = 1;
+  repeated google.protobuf.StringValue tags = 2;
+}
