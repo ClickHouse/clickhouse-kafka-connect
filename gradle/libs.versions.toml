@@ -9,27 +9,22 @@ httpclientTest = "5.6.1"
 lombok = "1.18.46"
 
 # Testing
-junitJupiter = "5.9.2"
-junitPlatform = "1.8.1"
+junitJupiter = "5.14.4"
 apiguardian = "1.1.2"
 hamcrest = "2.2"
-mockito = "4.0.0"
+mockito = "5.23.0"
 
 # Integration test
-confluent = "6.0.1"
-scala = "2.13"
-curator = "2.9.0"
-connectUtils = "0.4+"
-okhttp = "5.3.0"
+okhttp = "5.3.2"
 
 # Test fixtures and extra
 kafkaPlatformSchemaRegistry = "7.9.1"
 kafkaPlatformProtobuf = "7.9.1"
-testcontainers = "2.0.3"
+testcontainers = "2.0.5"
 orgJson = "20250517"
-libprotobuf = "3.25.8"
-commonsLang3 = "3.19.0"
-slf4j = "2.0.17"
+libprotobuf = "3.25.9"
+commonsLang3 = "3.20.0"
+slf4j = "2.0.18"
 
 # Plugins
 spotless = "8.6.0"
