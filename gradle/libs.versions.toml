@@ -18,7 +18,7 @@ mockito = "5.23.0"
 okhttp = "5.3.2"
 
 # Test fixtures and extra
-kafkaPlatformSchemaRegistry = "7.9.1"
+kafkaPlatformSchemaRegistry = "8.2.1"
 kafkaPlatformProtobuf = "7.9.1"
 testcontainers = "2.0.5"
 orgJson = "20250517"
