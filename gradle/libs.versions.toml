@@ -1,0 +1,88 @@
+[versions]
+clickHouseDriver = "0.9.5"
+kafka = "2.7.0"
+gson = "2.13.1"
+jackson = "2.21.2"
+jacksonAnnotations = "2.21"
+httpclient = "5.5.1"
+httpclientTest = "5.6.1"
+lombok = "1.18.46"
+
+# Testing
+junitJupiter = "5.14.4"
+apiguardian = "1.1.2"
+hamcrest = "2.2"
+mockito = "5.23.0"
+
+# Integration test
+okhttp = "5.3.2"
+
+# Test fixtures and extra
+kafkaPlatformSchemaRegistry = "7.9.1"
+kafkaPlatformProtobuf = "7.9.1"
+testcontainers = "2.0.5"
+orgJson = "20250517"
+libprotobuf = "3.25.9"
+commonsLang3 = "3.20.0"
+slf4j = "2.0.18"
+
+# Plugins
+spotless = "8.6.0"
+shadow = "8.3.5"
+protobufPlugin = "0.9.5"
+
+[libraries]
+# Core dependencies
+kafka-connect-api = { module = "org.apache.kafka:connect-api", version.ref = "kafka" }
+clickhouse-client = { module = "com.clickhouse:clickhouse-client", version.ref = "clickHouseDriver" }
+clickhouse-http-client = { module = "com.clickhouse:clickhouse-http-client", version.ref = "clickHouseDriver" }
+clickhouse-data = { module = "com.clickhouse:clickhouse-data", version.ref = "clickHouseDriver" }
+clickhouse-client-v2 = { module = "com.clickhouse:client-v2", version.ref = "clickHouseDriver" }
+clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "clickHouseDriver" }
+
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5", version.ref = "httpclient" }
+httpclient5-test = { module = "org.apache.httpcomponents.client5:httpclient5", version.ref = "httpclientTest" }
+
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jacksonAnnotations" }
+
+# Unit Testing
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junitJupiter" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-runner = { module = "org.junit.platform:junit-platform-runner" }
+apiguardian-api = { module = "org.apiguardian:apiguardian-api", version.ref = "apiguardian" }
+hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
+mockito-junit-jupiter = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito" }
+
+# Integration Testing
+testcontainers-clickhouse = { module = "org.testcontainers:testcontainers-clickhouse", version.ref = "testcontainers" }
+testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka", version.ref = "testcontainers" }
+testcontainers-toxiproxy = { module = "org.testcontainers:testcontainers-toxiproxy", version.ref = "testcontainers" }
+testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+json = { module = "org.json:json", version.ref = "orgJson" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+
+# Schema Registry
+kafka-schema-registry-client = { module = "io.confluent:kafka-schema-registry-client", version.ref = "kafkaPlatformSchemaRegistry" }
+kafka-schema-registry = { module = "io.confluent:kafka-schema-registry", version.ref = "kafkaPlatformSchemaRegistry" }
+kafka-schema-serializer = { module = "io.confluent:kafka-schema-serializer", version.ref = "kafkaPlatformSchemaRegistry" }
+kafka-connect-avro-converter = { module = "io.confluent:kafka-connect-avro-converter", version.ref = "kafkaPlatformSchemaRegistry" }
+kafka-avro-serializer = { module = "io.confluent:kafka-avro-serializer", version.ref = "kafkaPlatformSchemaRegistry" }
+
+# Protobuf
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "libprotobuf" }
+kafka-protobuf-serializer = { module = "io.confluent:kafka-protobuf-serializer", version.ref = "kafkaPlatformProtobuf" }
+kafka-connect-protobuf-converter = { module = "io.confluent:kafka-connect-protobuf-converter", version.ref = "kafkaPlatformProtobuf" }
+
+commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commonsLang3" }
+
+[plugins]
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
