@@ -91,6 +91,7 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
     @Test
     public void testExceptionHandling() {
         ClickHouseSinkTask task = new ClickHouseSinkTask();
+        task.start(getBaseProps());
         assertThrows(RuntimeException.class, () -> task.put(null));
         try {
             task.put(null);

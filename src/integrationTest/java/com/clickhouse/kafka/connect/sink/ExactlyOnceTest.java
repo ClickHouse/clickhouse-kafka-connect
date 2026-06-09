@@ -10,6 +10,8 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -111,53 +113,113 @@ public class ExactlyOnceTest {
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
     }
 
-    @Test
-    public void checkTotalsEqual() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1));
+    /**
+     * Schemaless config pair: existing EO config + buffering variant from PR #736.
+     */
+    private static Stream<String> schemalessConfigs() {
+        return Stream.of(
+                "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json",
+                "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless_buffer.json"
+        );
     }
 
-    @Test
-    public void checkTotalsEqualMulti() throws InterruptedException, IOException {
-        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3));
+    /**
+     * Schema (Avro) config pair: existing EO config + buffering variant from PR #736.
+     */
+    private static Stream<String> schemaConfigs() {
+        return Stream.of(
+                "src/integrationTest/resources/clickhouse_sink_no_proxy.json",
+                "src/integrationTest/resources/clickhouse_sink_no_proxy_buffer.json"
+        );
     }
 
-    @Test
-    public void checkSpottyNetwork() throws InterruptedException, IOException, URISyntaxException {
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemalessConfigs")
+    public void checkTotalsEqual(String configPath) throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("singlePartitionTopic", 1, configPath));
+    }
+
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemalessConfigs")
+    public void checkTotalsEqualMulti(String configPath) throws InterruptedException, IOException {
+        assertTrue(compareSchemalessCounts("multiPartitionTopic", 3, configPath));
+    }
+
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemalessConfigs")
+    public void checkSpottyNetwork(String configPath) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetwork requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
-        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1);
+        checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1, configPath);
     }
 
-    @Test
-    public void checkSpottyNetworkMulti() throws InterruptedException, IOException, URISyntaxException {
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemalessConfigs")
+    public void checkSpottyNetworkMulti(String configPath) throws InterruptedException, IOException, URISyntaxException {
         Assumptions.assumeFalse(isCluster,
                 "checkSpottyNetworkMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
-        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3);
+        checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3, configPath);
     }
 
-    private static void setupSchemaConnector(String topicName, int taskCount) throws IOException, InterruptedException {
-        LOGGER.info("Setting up connector...");
-        setupConnector(topicName, taskCount, false);
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemaConfigs")
+    public void checkTotalsEqualSchema(String configPath) throws InterruptedException, IOException {
+        assertTrue(compareSchemaCounts("singlePartitionTopicSchema", 1, configPath));
+    }
+
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemaConfigs")
+    public void checkTotalsEqualSchemaMulti(String configPath) throws InterruptedException, IOException {
+        assertTrue(compareSchemaCounts("multiPartitionTopicSchema", 3, configPath));
+    }
+
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemaConfigs")
+    public void checkSpottyNetworkSchema(String configPath) throws InterruptedException, IOException, URISyntaxException {
+        Assumptions.assumeFalse(isCluster,
+                "checkSpottyNetworkSchema requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
+        runSpottyNetworkSchema("checkSpottyNetworkSinglePartitionSchema", 1, configPath);
+    }
+
+    @ParameterizedTest(name = "config={0}")
+    @MethodSource("schemaConfigs")
+    public void checkSpottyNetworkSchemaMulti(String configPath) throws InterruptedException, IOException, URISyntaxException {
+        Assumptions.assumeFalse(isCluster,
+                "checkSpottyNetworkSchemaMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
+        runSpottyNetworkSchema("checkSpottyNetworkMultiPartitionsSchema", 3, configPath);
+    }
+
+    private static void setupSchemaConnector(String topicName, int taskCount, String configPath)
+            throws IOException, InterruptedException {
+        LOGGER.info("Setting schema up connector with config {}", configPath);
+        setupConnector(topicName, taskCount, false, configPath);
         Thread.sleep(5 * 1000);
     }
 
-    private static void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
-        LOGGER.info("Setting schemaless up connector...");
-        setupConnector(topicName, taskCount, true);
+    private static void setupSchemalessConnector(String topicName, int taskCount, String configPath)
+            throws IOException, InterruptedException {
+        LOGGER.info("Setting schemaless up connector with config {}", configPath);
+        setupConnector(topicName, taskCount, true, configPath);
         Thread.sleep(5 * 1000);
     }
 
     private static void setupConnector(String topicName, int taskCount, boolean schemaless) throws IOException {
+        setupConnector(topicName, taskCount, schemaless, null);
+    }
+
+    private static void setupConnector(String topicName, int taskCount, boolean schemaless, String configOverride) throws IOException {
         System.out.println("Setting up connector...");
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         new CreateTableStatement(STOCK_TABLE)
                 .tableName(topicName).execute(chcNoProxy);
 
         String fileName;
-        if (isCloud) {
-            fileName = schemaless ? SCHEMALESS_SINK_CONFIG : SCHEMA_SINK_CONFIG;
-        } else {
+        if (isCluster) {
             fileName = schemaless ? SCHEMALESS_SINK_CONFIG_CLUSTER : SCHEMA_SINK_CONFIG_CLUSTER;
+        } else if (configOverride != null) {
+            fileName = configOverride;
+        } else {
+            fileName = schemaless ? SCHEMALESS_SINK_CONFIG : SCHEMA_SINK_CONFIG;
         }
 
         String payloadClickHouseSink = String.join("", Files.readAllLines(Paths.get(fileName)));
@@ -192,11 +254,30 @@ public class ExactlyOnceTest {
         return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
     }
 
-    private boolean compareSchemalessCounts(String topicName, int partitions) throws InterruptedException, IOException {
+    private boolean compareSchemalessCounts(String topicName, int partitions, String configPath)
+            throws InterruptedException, IOException {
+        return compareCounts(topicName, partitions, configPath, /* schema */ false);
+    }
+
+    private boolean compareSchemaCounts(String topicName, int partitions, String configPath)
+            throws InterruptedException, IOException {
+        return compareCounts(topicName, partitions, configPath, /* schema */ true);
+    }
+
+    private boolean compareCounts(String topicName, int partitions, String configPath, boolean schema)
+            throws InterruptedException, IOException {
+        new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
+                .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
+        ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
-        int count = generateSchemalessData(topicName, partitions, 250);
+        int count = schema ? generateData(topicName, partitions, 250)
+                : generateSchemalessData(topicName, partitions, 250);
         LOGGER.info("Expected Total: {}", count);
-        setupSchemalessConnector(topicName, partitions);
+        if (schema) {
+            setupSchemaConnector(topicName, partitions, configPath);
+        } else {
+            setupSchemalessConnector(topicName, partitions, configPath);
+        }
         ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 5);
 
         int[] databaseCounts = getCounts(chcNoProxy, topicName);
@@ -204,15 +285,31 @@ public class ExactlyOnceTest {
         return databaseCounts[2] == 0 && databaseCounts[1] == count;
     }
 
-    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions) throws InterruptedException, IOException, URISyntaxException {
+    private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions, String configPath)
+            throws InterruptedException, IOException, URISyntaxException {
+        runSpottyNetwork(topicName, numberOfPartitions, configPath, /* schema */ false);
+    }
+
+    private void runSpottyNetworkSchema(String topicName, int numberOfPartitions, String configPath)
+            throws InterruptedException, IOException, URISyntaxException {
+        runSpottyNetwork(topicName, numberOfPartitions, configPath, /* schema */ true);
+    }
+
+    private void runSpottyNetwork(String topicName, int numberOfPartitions, String configPath, boolean schema)
+            throws InterruptedException, IOException, URISyntaxException {
         boolean allSuccess = true;
         int runCount = 1;
         do {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
 
-            int count = generateSchemalessData(topicName, numberOfPartitions, 1500);
-            setupSchemalessConnector(topicName, numberOfPartitions);
+            int count = schema ? generateData(topicName, numberOfPartitions, 1500)
+                    : generateSchemalessData(topicName, numberOfPartitions, 1500);
+            if (schema) {
+                setupSchemaConnector(topicName, numberOfPartitions, configPath);
+            } else {
+                setupSchemalessConnector(topicName, numberOfPartitions, configPath);
+            }
 
             clickhouseCloudAPI.restartService();
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
