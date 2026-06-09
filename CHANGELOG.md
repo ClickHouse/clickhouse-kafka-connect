@@ -1,3 +1,8 @@
+# 1.3.10, 2026-05-26
+
+## Bug Fixes
+* Inserts now time out instead of blocking forever when ClickHouse becomes unresponsive (network partition, server hang, long GC pause). Previously a stuck insert could hold the task past `consumer.override.max.poll.interval.ms`, causing Kafka to rebalance the partitions mid-insert. The new `clickhouseClientInsertTimeoutMs` setting (default `240000`) bounds the wait; on timeout a retriable exception is thrown so the Connect framework retries the batch. Set this below `consumer.override.max.poll.interval.ms`.
+
 # 1.3.9, 2026-05-21
 
 ## Bug Fixes
