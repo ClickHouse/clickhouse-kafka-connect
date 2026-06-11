@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+import "google/protobuf/duration.proto";
+
+message DurationLogical {
+  int32 id = 1;
+  google.protobuf.Duration duration = 2;
+}

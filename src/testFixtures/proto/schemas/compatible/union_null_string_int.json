@@ -1,0 +1,22 @@
+{
+  "description": "Oneof { string | int32 } with absent case for null",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "mixed_string": "Nullable(String)",
+    "mixed_int": "Nullable(Int32)"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "mixed_string": "hello"},
+    {"id": 2},
+    {"id": 3, "mixed_int": 42},
+    {"id": 4},
+    {"id": 5, "mixed_string": "world"},
+    {"id": 6, "mixed_int": 99},
+    {"id": 7},
+    {"id": 8, "mixed_string": "test"},
+    {"id": 9, "mixed_int": 7},
+    {"id": 10}
+  ],
+  "expected_row_count": 10
+}

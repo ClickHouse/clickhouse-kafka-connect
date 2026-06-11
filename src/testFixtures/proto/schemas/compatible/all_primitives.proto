@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+import "google/protobuf/wrappers.proto";
+
+message AllPrimitives {
+  int32 id = 1;
+  string name = 2;
+  int64 amount = 3;
+  float rate = 4;
+  double score = 5;
+  bool active = 6;
+  bytes serialized = 7;
+
+  google.protobuf.Int32Value wrapped_int32 = 8;
+  google.protobuf.Int64Value wrapped_int64 = 9;
+  google.protobuf.UInt32Value wrapped_uint32 = 10;
+  google.protobuf.UInt64Value wrapped_uint64 = 11;
+  google.protobuf.FloatValue wrapped_float = 12;
+  google.protobuf.DoubleValue wrapped_double = 13;
+  google.protobuf.BoolValue wrapped_bool = 14;
+  google.protobuf.StringValue wrapped_string = 15;
+  google.protobuf.BytesValue wrapped_bytes = 16;
+}

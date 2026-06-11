@@ -1,0 +1,46 @@
+{
+  "description": "Nested: array of tuples containing a tuple which contains a tuple, with mixed primitives",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "items": "Array(Tuple(l1_str String, l2_tuple Tuple(l2_double Float64, l3_tuple Tuple(l3_int Int32, l3_str String)), l1_int Int32))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {
+      "id": 1,
+      "items": [
+        {
+          "l1_str": "a",
+          "l2_tuple": {
+            "l2_double": 1.1,
+            "l3_tuple": {"l3_int": 10, "l3_str": "z"}
+          },
+          "l1_int": 100
+        },
+        {
+          "l1_str": "b",
+          "l2_tuple": {
+            "l2_double": 2.2,
+            "l3_tuple": {"l3_int": 20, "l3_str": "y"}
+          },
+          "l1_int": 200
+        }
+      ]
+    },
+    {"id": 2, "items": []},
+    {
+      "id": 3,
+      "items": [
+        {
+          "l1_str": "c",
+          "l2_tuple": {
+            "l2_double": 3.3,
+            "l3_tuple": {"l3_int": 30, "l3_str": "x"}
+          },
+          "l1_int": 300
+        }
+      ]
+    }
+  ],
+  "expected_row_count": 3
+}
