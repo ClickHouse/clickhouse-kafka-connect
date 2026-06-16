@@ -63,9 +63,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -1031,7 +1033,7 @@ public class ClickHouseWriter implements DBWriter {
             format = ClickHouseFormat.RowBinaryWithDefaults;
         }
 
-        try (InsertResponse insertResponse = client.insert(table.getName(), data, format, insertSettings).get()) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), data, format, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
@@ -1246,7 +1248,7 @@ public class ClickHouseWriter implements DBWriter {
 
         InputStream data = new ByteArrayInputStream(stream.toByteArray());
         long s2 = System.currentTimeMillis();
-        try (InsertResponse insertResponse = client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings).get()) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
@@ -1410,7 +1412,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         long s2 = System.currentTimeMillis();
-        try (InsertResponse insertResponse = client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), clickHouseFormat, insertSettings).get()) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), clickHouseFormat, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
@@ -1425,6 +1427,28 @@ public class ClickHouseWriter implements DBWriter {
                 .options(chc.getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
+    }
+
+    /**
+     * Awaits an in-flight V2 insert with a bounded timeout.
+     *
+     * <p>An unbounded wait can stall the SinkTask thread past {@code consumer.override.max.poll.interval.ms}
+     * and trigger a Kafka consumer rebalance when ClickHouse hangs. On timeout we cancel the future and
+     * throw a {@link RetriableException} so the Connect framework retries the batch (consistent with how
+     * socket timeouts are treated in {@link com.clickhouse.kafka.connect.util.Utils#handleException}).
+     * In exactly-once mode the retry reconstructs the same block (deterministic offsets +
+     * insert_deduplication_token), so ClickHouse drops duplicates.
+     */
+    private InsertResponse awaitInsertResponse(Future<InsertResponse> future, QueryIdentifier queryId)
+            throws ExecutionException, InterruptedException {
+        long timeoutMs = csc.getClickhouseClientInsertTimeoutMs();
+        try {
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw new RetriableException("ClickHouse insert timed out after " + timeoutMs
+                    + " ms (QueryId: [" + queryId.getQueryId() + "])", e);
+        }
     }
     private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String database, QueryIdentifier queryId) {
 
