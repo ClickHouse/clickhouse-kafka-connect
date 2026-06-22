@@ -58,7 +58,8 @@ public class DebeziumRecordConvertor extends RecordConvertor {
     private static final String FIELD_LSN        = "lsn";
     private static final String FIELD_GTID       = "gtid";
     private static final String FIELD_POS        = "pos";
-    private static final String FIELD_CHANGE_LSN = "change_lsn";   // SQL Server
+    private static final String FIELD_CHANGE_LSN  = "change_lsn";   // SQL Server streaming
+    private static final String FIELD_COMMIT_LSN  = "commit_lsn";   // SQL Server snapshot + streaming fallback
 
     private static final String OP_DELETE   = "d";
     private static final String OP_TRUNCATE = "t";
@@ -208,6 +209,15 @@ public class DebeziumRecordConvertor extends RecordConvertor {
         }
     }
 
+    private static long packSqlServerLsn(String lsn) {
+        String[] parts = lsn.split(":");
+        if (parts.length != 3) return 0L;
+        long p1 = Long.parseLong(parts[0].trim(), 16) & 0xFFFFFFL;     // 24 bits
+        long p2 = Long.parseLong(parts[1].trim(), 16) & 0xFFFFFFFFL;   // 32 bits
+        long p3 = Long.parseLong(parts[2].trim(), 16) & 0xFFL;         //  8 bits
+        return (p1 << 40) | (p2 << 8) | p3;
+    }
+
     private static String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);
         for (byte b : bytes) sb.append(String.format("%02x", b));
@@ -250,22 +260,31 @@ public class DebeziumRecordConvertor extends RecordConvertor {
         }
 
         // SQL Server: change_lsn = "00085734:000fd88d:0003" (VLF:block:entry)
+        // Null during snapshot (op=r); commit_lsn is used as fallback in that case.
         // Pack into 64 bits: 24 bits VLF | 32 bits block | 8 bits entry
         // Preserves correct LSN ordering within the 64-bit space.
         try {
             Object changeLsn = source.get(FIELD_CHANGE_LSN);
             if (changeLsn instanceof String) {
-                String[] parts = ((String) changeLsn).split(":");
-                if (parts.length == 3) {
-                    long p1 = Long.parseLong(parts[0].trim(), 16) & 0xFFFFFFL;     // 24 bits
-                    long p2 = Long.parseLong(parts[1].trim(), 16) & 0xFFFFFFFFL;   // 32 bits
-                    long p3 = Long.parseLong(parts[2].trim(), 16) & 0xFFL;         //  8 bits
-                    return (p1 << 40) | (p2 << 8) | p3;
-                }
+                long packed = packSqlServerLsn((String) changeLsn);
+                if (packed > 0) return packed;
             }
         } catch (Exception e) {
             LOGGER.debug(
                     "Could not parse source.change_lsn — not a SQL Server source or unexpected format: {}",
+                    e.getMessage());
+        }
+
+        // SQL Server fallback: commit_lsn is always present (streaming + snapshot).
+        try {
+            Object commitLsn = source.get(FIELD_COMMIT_LSN);
+            if (commitLsn instanceof String) {
+                long packed = packSqlServerLsn((String) commitLsn);
+                if (packed > 0) return packed;
+            }
+        } catch (Exception e) {
+            LOGGER.debug(
+                    "Could not parse source.commit_lsn — not a SQL Server source or unexpected format: {}",
                     e.getMessage());
         }
 

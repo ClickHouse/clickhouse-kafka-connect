@@ -250,6 +250,36 @@ public class DebeziumRecordConvertorTest {
     }
 
     @Test
+    @DisplayName("SQL Server snapshot: change_lsn=null falls back to commit_lsn for _version")
+    void version_sqlServerSnapshot_commitLsnFallback() {
+        Schema sqlServerSource = SchemaBuilder.struct().optional()
+                .field("change_lsn", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("commit_lsn", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+        Schema row = rowSchema(SchemaBuilder.int32().name("id"));
+        Schema env = SchemaBuilder.struct().name("server.db.orders.Envelope")
+                .field("op", Schema.STRING_SCHEMA)
+                .field("before", row)
+                .field("after", row)
+                .field("source", sqlServerSource)
+                .build();
+        Struct source = new Struct(sqlServerSource)
+                .put("change_lsn", null)
+                .put("commit_lsn", "0000006f:00000ab7:0003");
+        Struct after = new Struct(row).put("id", 1);
+        Struct envelope = new Struct(env)
+                .put("op", "r")
+                .put("after", after)
+                .put("source", source);
+
+        Record record = convert(envelope);
+
+        // p1=0x6f<<40 | p2=0xab7<<8 | p3=0x03
+        long expected = (0x6fL << 40) | (0xab7L << 8) | 0x03L;
+        assertEquals(expected, record.getJsonMap().get("_version").getObject());
+    }
+
+    @Test
     @DisplayName("null source struct defaults _version to 0")
     void version_noSource_defaultsToZero() {
         Schema row = rowSchema(SchemaBuilder.int32().name("id"));
