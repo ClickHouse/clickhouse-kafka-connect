@@ -14,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.Map;
@@ -45,6 +46,7 @@ public class DebeziumRecordConvertorTest {
                 .field("gtid", Schema.OPTIONAL_STRING_SCHEMA)
                 .field("pos", Schema.OPTIONAL_INT64_SCHEMA)
                 .field("change_lsn", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("commit_lsn", Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
     }
 
@@ -194,7 +196,7 @@ public class DebeziumRecordConvertorTest {
 
         Record record = convert(envelope);
 
-        assertEquals(12345L, record.getJsonMap().get("_version").getObject());
+        assertEquals(BigInteger.valueOf(12345L), record.getJsonMap().get("_version").getObject());
     }
 
     @Test
@@ -219,13 +221,14 @@ public class DebeziumRecordConvertorTest {
 
         Record record = convert(envelope);
 
-        assertEquals(100L, record.getJsonMap().get("_version").getObject());
+        assertEquals(BigInteger.valueOf(100L), record.getJsonMap().get("_version").getObject());
     }
 
     @Test
     @DisplayName("SQL Server change_lsn is bit-packed into _version")
     void version_sqlServerChangeLsn() {
         Schema sourceWithChangeLsn = SchemaBuilder.struct().optional()
+                .field("commit_lsn", Schema.OPTIONAL_STRING_SCHEMA)
                 .field("change_lsn", Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
         Schema row = rowSchema(SchemaBuilder.int32().name("id"));
@@ -235,7 +238,9 @@ public class DebeziumRecordConvertorTest {
                 .field("after", row)
                 .field("source", sourceWithChangeLsn)
                 .build();
-        Struct source = new Struct(sourceWithChangeLsn).put("change_lsn", "00000001:00000002:0003");
+        Struct source = new Struct(sourceWithChangeLsn)
+                .put("commit_lsn", null)
+                .put("change_lsn", "00000001:00000002:0003");
         Struct after = new Struct(row).put("id", 1);
         Struct envelope = new Struct(env)
                 .put("op", "c")
@@ -244,8 +249,9 @@ public class DebeziumRecordConvertorTest {
 
         Record record = convert(envelope);
 
-        // p1=0x000001 (24bits) << 40 | p2=0x00000002 (32bits) << 8 | p3=0x03 (8bits)
-        long expected = (1L << 40) | (2L << 8) | 3L;
+        // commit_lsn absent → commitPacked=0; change_lsn packed into low 64 bits
+        long changePacked = (1L << 40) | (2L << 8) | 3L;
+        BigInteger expected = BigInteger.ZERO.shiftLeft(64).or(BigInteger.valueOf(changePacked));
         assertEquals(expected, record.getJsonMap().get("_version").getObject());
     }
 
@@ -274,8 +280,9 @@ public class DebeziumRecordConvertorTest {
 
         Record record = convert(envelope);
 
-        // p1=0x6f<<40 | p2=0xab7<<8 | p3=0x03
-        long expected = (0x6fL << 40) | (0xab7L << 8) | 0x03L;
+        // commit_lsn="0000006f:00000ab7:0003" packed into high 64 bits; change_lsn=null → 0 in low 64 bits
+        long commitPacked = (0x6fL << 40) | (0xab7L << 8) | 0x03L;
+        BigInteger expected = BigInteger.valueOf(commitPacked).shiftLeft(64);
         assertEquals(expected, record.getJsonMap().get("_version").getObject());
     }
 
@@ -296,7 +303,7 @@ public class DebeziumRecordConvertorTest {
 
         Record record = convert(envelope);
 
-        assertEquals(0L, record.getJsonMap().get("_version").getObject());
+        assertEquals(BigInteger.ZERO, record.getJsonMap().get("_version").getObject());
     }
 
     // ===========================================================================
@@ -465,7 +472,7 @@ public class DebeziumRecordConvertorTest {
 
         assertTrue(fieldsByName.containsKey("_version"));
         assertTrue(fieldsByName.containsKey("is_deleted"));
-        assertEquals(Schema.Type.INT64, fieldsByName.get("_version").schema().type());
+        assertEquals(Schema.Type.BYTES, fieldsByName.get("_version").schema().type());
         assertEquals(Schema.Type.INT8, fieldsByName.get("is_deleted").schema().type());
     }
 

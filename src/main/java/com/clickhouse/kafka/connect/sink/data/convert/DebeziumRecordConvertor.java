@@ -3,8 +3,6 @@ package com.clickhouse.kafka.connect.sink.data.convert;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.data.SchemaType;
-import com.clickhouse.kafka.connect.sink.kafka.OffsetContainer;
-import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -100,13 +98,13 @@ public class DebeziumRecordConvertor extends RecordConvertor {
 
         Map<String, Data> jsonMap = toDebeziumJsonMap(dataStruct);
 
-        long version = extractVersion(envelope);
-        jsonMap.put(COL_VERSION,    new Data(Schema.INT64_SCHEMA, version));
+        BigInteger version = extractVersion(envelope);
+        jsonMap.put(COL_VERSION,    new Data(Schema.BYTES_SCHEMA, version));
         jsonMap.put(COL_IS_DELETED, new Data(Schema.INT8_SCHEMA, isDelete ? (byte) 1 : (byte) 0));
 
         // Include synthetic fields in the fields list so validateDataSchema() can look them up.
         List<Field> fields = new ArrayList<>(dataStruct.schema().fields());
-        fields.add(new Field(COL_VERSION,    fields.size(), SchemaBuilder.int64().build()));
+        fields.add(new Field(COL_VERSION,    fields.size(), SchemaBuilder.bytes().build()));
         fields.add(new Field(COL_IS_DELETED, fields.size(), SchemaBuilder.int8().build()));
 
         return Record.newRecord(SchemaType.DEBEZIUM_CDC,
@@ -228,14 +226,14 @@ public class DebeziumRecordConvertor extends RecordConvertor {
      * Extracts the replication position from the Debezium source struct.
      * Priority: PostgreSQL LSN → MySQL GTID sequence number → MySQL binlog pos.
      */
-    private long extractVersion(Struct envelope) {
+    private BigInteger extractVersion(Struct envelope) {
         Struct source = envelope.getStruct(FIELD_SOURCE);
-        if (source == null) return 0L;
+        if (source == null) return BigInteger.ZERO;
 
         // PostgreSQL: lsn is a Long
         try {
             Object lsn = source.get(FIELD_LSN);
-            if (lsn instanceof Long) return (Long) lsn;
+            if (lsn instanceof Long) return BigInteger.valueOf((Long) lsn);
         } catch (Exception e) {
             LOGGER.debug("Could not read source.lsn — not a PostgreSQL source or field absent: {}", e.getMessage());
         }
@@ -245,7 +243,7 @@ public class DebeziumRecordConvertor extends RecordConvertor {
             Object gtid = source.get(FIELD_GTID);
             if (gtid instanceof String) {
                 String[] parts = ((String) gtid).split(":");
-                if (parts.length == 2) return Long.parseLong(parts[1].trim());
+                if (parts.length == 2) return BigInteger.valueOf(Long.parseLong(parts[1].trim()));
             }
         } catch (Exception e) {
             LOGGER.debug("Could not parse source.gtid — not a MySQL source or unexpected format: {}", e.getMessage());
@@ -254,41 +252,38 @@ public class DebeziumRecordConvertor extends RecordConvertor {
         // MySQL fallback: binlog position
         try {
             Object pos = source.get(FIELD_POS);
-            if (pos instanceof Long) return (Long) pos;
+            if (pos instanceof Long) return BigInteger.valueOf((Long) pos);
         } catch (Exception e) {
             LOGGER.debug("Could not read source.pos — not a MySQL source or field absent: {}", e.getMessage());
         }
 
-        // SQL Server: change_lsn = "00085734:000fd88d:0003" (VLF:block:entry)
-        // Null during snapshot (op=r); commit_lsn is used as fallback in that case.
-        // Pack into 64 bits: 24 bits VLF | 32 bits block | 8 bits entry
-        // Preserves correct LSN ordering within the 64-bit space.
+        // SQL Server: composite version = (commit_lsn << 64) | change_lsn
+        // commit_lsn is always present; change_lsn is null during snapshot (op=r).
+        // Higher commit_lsn always wins; within same commit, higher change_lsn wins.
         try {
-            Object changeLsn = source.get(FIELD_CHANGE_LSN);
-            if (changeLsn instanceof String) {
-                long packed = packSqlServerLsn((String) changeLsn);
-                if (packed > 0) return packed;
-            }
-        } catch (Exception e) {
-            LOGGER.debug(
-                    "Could not parse source.change_lsn — not a SQL Server source or unexpected format: {}",
-                    e.getMessage());
-        }
-
-        // SQL Server fallback: commit_lsn is always present (streaming + snapshot).
-        try {
+            long commitPacked = 0L;
             Object commitLsn = source.get(FIELD_COMMIT_LSN);
             if (commitLsn instanceof String) {
-                long packed = packSqlServerLsn((String) commitLsn);
-                if (packed > 0) return packed;
+                commitPacked = packSqlServerLsn((String) commitLsn);
+            }
+
+            long changePacked = 0L;
+            Object changeLsn = source.get(FIELD_CHANGE_LSN);
+            if (changeLsn instanceof String) {
+                changePacked = packSqlServerLsn((String) changeLsn);
+            }
+
+            if (commitPacked > 0 || changePacked > 0) {
+                BigInteger high = BigInteger.valueOf(commitPacked).shiftLeft(64);
+                BigInteger low  = BigInteger.valueOf(changePacked).and(
+                        BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE));
+                return high.or(low);
             }
         } catch (Exception e) {
-            LOGGER.debug(
-                    "Could not parse source.commit_lsn — not a SQL Server source or unexpected format: {}",
-                    e.getMessage());
+            LOGGER.debug("Could not parse SQL Server LSN fields: {}", e.getMessage());
         }
 
         LOGGER.warn("Could not extract version from Debezium source struct — defaulting to 0");
-        return 0L;
+        return BigInteger.ZERO;
     }
 }

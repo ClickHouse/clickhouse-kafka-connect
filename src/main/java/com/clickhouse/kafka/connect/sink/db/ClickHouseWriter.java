@@ -494,10 +494,12 @@ public class ClickHouseWriter implements DBWriter {
                 case INT16:
                 case INT32:
                 case INT64:
+                case INT128:
                 case UINT8:
                 case UINT16:
                 case UINT32:
                 case UINT64:
+                case UINT128:
                 case FLOAT32:
                 case FLOAT64:
                 case BOOLEAN:
@@ -788,6 +790,12 @@ public class ClickHouseWriter implements DBWriter {
                     break;
                 case Enum16:
                     BinaryStreamUtils.writeEnum16(stream, col.convertEnumValues((String) value).intValue());
+                    break;
+                case INT128:
+                    BinaryStreamUtils.writeInt128(stream, (java.math.BigInteger) value);
+                    break;
+                case UINT128:
+                    BinaryStreamUtils.writeUnsignedInt128(stream, (java.math.BigInteger) value);
                     break;
             }
         }
