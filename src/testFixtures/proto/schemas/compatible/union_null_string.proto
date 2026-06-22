@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message NullableString {
+  int32 id = 1;
+  optional string name = 2;
+}

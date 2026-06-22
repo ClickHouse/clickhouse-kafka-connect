@@ -1,0 +1,14 @@
+{
+  "description": "Nested: array of tuples with an array inside",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "items": "Array(Tuple(item_id Int32, tags Array(String)))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "items": [{"item_id": 100, "tags": ["t1", "t2"]}, {"item_id": 200, "tags": []}]},
+    {"id": 2, "items": []},
+    {"id": 3, "items": [{"item_id": 300, "tags": ["t3"]}]}
+  ],
+  "expected_row_count": 3
+}

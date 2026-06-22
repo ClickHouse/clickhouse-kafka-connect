@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message NestedDeep {
+  int32 id = 1;
+  Level1 level1 = 2;
+
+  message Level1 {
+    string name = 1;
+    Level2 level2 = 2;
+
+    message Level2 {
+      int32 value = 1;
+      Level3 level3 = 2;
+
+      message Level3 {
+        string tag = 1;
+      }
+    }
+  }
+}

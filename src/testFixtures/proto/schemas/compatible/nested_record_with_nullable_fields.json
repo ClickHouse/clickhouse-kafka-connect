@@ -1,0 +1,21 @@
+{
+  "description": "Nested: message with optional inner fields",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "details": "Tuple(name Nullable(String), age Nullable(Int32))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "details": {"name": "Alice", "age": 30}},
+    {"id": 2, "details": {"age": 25}},
+    {"id": 3, "details": {"name": "Charlie"}},
+    {"id": 4, "details": {}},
+    {"id": 5, "details": {"name": "Eve", "age": 40}},
+    {"id": 6, "details": {"age": 35}},
+    {"id": 7, "details": {"name": "Grace"}},
+    {"id": 8, "details": {}},
+    {"id": 9, "details": {"name": "Ivy", "age": 50}},
+    {"id": 10, "details": {"name": "Jack", "age": 55}}
+  ],
+  "expected_row_count": 10
+}

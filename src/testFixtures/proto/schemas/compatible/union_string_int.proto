@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message StringIntUnion {
+  int32 id = 1;
+  oneof mixed {
+    string mixed_string = 2;
+    int32 mixed_int = 3;
+  }
+}
