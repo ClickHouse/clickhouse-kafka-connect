@@ -792,10 +792,14 @@ public class ClickHouseWriter implements DBWriter {
                     BinaryStreamUtils.writeEnum16(stream, col.convertEnumValues((String) value).intValue());
                     break;
                 case INT128:
-                    BinaryStreamUtils.writeInt128(stream, (java.math.BigInteger) value);
+                    BinaryStreamUtils.writeInt128(stream, value instanceof java.math.BigInteger
+                            ? (java.math.BigInteger) value
+                            : new java.math.BigInteger(value.toString()));
                     break;
                 case UINT128:
-                    BinaryStreamUtils.writeUnsignedInt128(stream, (java.math.BigInteger) value);
+                    BinaryStreamUtils.writeUnsignedInt128(stream, value instanceof java.math.BigInteger
+                            ? (java.math.BigInteger) value
+                            : new java.math.BigInteger(value.toString()));
                     break;
             }
         }
