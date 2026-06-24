@@ -340,7 +340,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             Struct value = new Struct(oldSchema).put("id", -1).put("name", "XXXXXXXX");
             SinkRecord sr = new SinkRecord(topic, 0, null, null, oldSchema, value, 0,
                     System.currentTimeMillis(), TimestampType.CREATE_TIME);
-            Record record = Record.convert(sr, false, ".", chc.getDatabase());
+            Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
 
             // Verify the server actually returns code 131
             Exception thrown = assertThrows(Exception.class, () ->
@@ -368,7 +368,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             Struct newValue = new Struct(newSchema).put("id", -1).put("name", "XXXXXXXX").put("extra", "XXXXXXXX");
             SinkRecord sr2 = new SinkRecord(topic, 0, null, null, newSchema, newValue, 1,
                     System.currentTimeMillis(), TimestampType.CREATE_TIME);
-            Record record2 = Record.convert(sr2, false, ".", chc.getDatabase());
+            Record record2 = Record.convert(sr2, false, ".", chc.getDatabase(), false);
             writer.doInsert(List.of(record2), new QueryIdentifier(topic, "code131-new-schema-" + System.nanoTime()));
 
             assertEquals(2, ClickHouseTestHelpers.countRows(chc, topic));
