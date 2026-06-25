@@ -620,6 +620,10 @@ public class ClickHouseWriter implements DBWriter {
                     }
                     break;
                 case JSON:
+                    if (value.getObject() == null) {
+                        BinaryStreamUtils.writeNull(stream);
+                        break;
+                    }
                     if (csc.isBinaryFormatWrtiteJsonAsString()) {
                         if (value.getFieldType() == Schema.Type.STRUCT) {
                             byte[] jsonBytes = OBJECT_MAPPER.writeValueAsBytes(value);

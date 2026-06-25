@@ -1526,6 +1526,48 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     @Test
     @SinceClickHouseVersion("24.10")
+    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/562
+    public void testWritingNullIntoNullableJsonAsStringWithRowBinary() {
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
+        String topic = createTopicName("schema_nullable_json_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        Map<String, Serializable> clientSettings = new HashMap<>();
+        clientSettings.put(ClientConfigProperties.serverSetting("allow_experimental_json_type"), "1");
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("off16", "Int16")
+                .column("struct_content", "JSON")
+                .column("json_as_str", "Nullable(JSON)")
+                .engine("MergeTree")
+                .orderByColumn("off16")
+                .settings(clientSettings)
+                .execute(chc);
+
+        Collection<SinkRecord> sr = SchemaTestData.createJSONTypeWithNullableStringJson(topic, 1, 10);
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        rows.sort((a, b) -> Integer.compare(a.getInt("off16"), b.getInt("off16")));
+        for (JSONObject row : rows) {
+            if (row.getInt("off16") % 2 == 0) {
+                JSONObject jsonAsStr = row.getJSONObject("json_as_str");
+                assertEquals("v3", jsonAsStr.getString("k3"));
+                assertEquals("v4", jsonAsStr.getString("k4"));
+            } else {
+                assertTrue(row.isNull("json_as_str"));
+            }
+        }
+    }
+
+    @Test
+    @SinceClickHouseVersion("24.10")
     public void testWritingProtoMessageWithRowBinary() throws Exception {
 
         Map<String, String> props = getBaseProps();
