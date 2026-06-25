@@ -1,7 +1,31 @@
-# 1.3.10, 2026-05-26
+# 1.3.10, 2026-06-24
+
+## New Features
+* Added `clusterName` configuration option. When set, the connector includes an `ON CLUSTER '<name>'`
+clause in the distributed DDL it runs (e.g. the `ALTER TABLE ... ADD COLUMN` statements issued by
+`auto.evolve`), so schema evolution propagates across all replicas in a clustered deployment. Empty by
+default. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/716, https://github.com/ClickHouse/clickhouse-kafka-connect/issues/738)
 
 ## Bug Fixes
-* Inserts now time out instead of blocking forever when ClickHouse becomes unresponsive (network partition, server hang, long GC pause). Previously a stuck insert could hold the task past `consumer.override.max.poll.interval.ms`, causing Kafka to rebalance the partitions mid-insert. The new `clickhouseClientInsertTimeoutMs` setting (default `240000`) bounds the wait; on timeout a retriable exception is thrown so the Connect framework retries the batch. Set this below `consumer.override.max.poll.interval.ms`.
+* Inserts now time out instead of blocking forever when ClickHouse becomes unresponsive (network partition,
+server hang, long GC pause). Previously a stuck insert could hold the task past
+`consumer.override.max.poll.interval.ms`, causing Kafka to rebalance the partitions mid-insert. The new
+`clickhouseClientInsertTimeoutMs` setting (default `240000`) bounds the wait; on timeout a retriable
+exception is thrown so the Connect framework retries the batch. Set this below
+`consumer.override.max.poll.interval.ms`. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/756)
+
+## Improvements
+* Reduced log noise: messages about unhandled complex sub-types encountered while building table mappings
+are now logged at `DEBUG` instead of `WARN`, since they are expected and not errors.
+(https://github.com/ClickHouse/clickhouse-kafka-connect/pull/767)
+
+## Dependencies
+* Bumped `org.projectlombok:lombok` from `1.18.38` to `1.18.46`.
+* Bumped `org.apache.httpcomponents.client5:httpclient5` (test scope) from `5.5` to `5.6.1`.
+
+## Build
+* Upgraded Gradle from `7.4.2` to `9.5.1` and migrated dependency management to a Gradle version catalog
+(`gradle/libs.versions.toml`) and the `jvm-test-suite` plugin.
 
 # 1.3.9, 2026-05-21
 
