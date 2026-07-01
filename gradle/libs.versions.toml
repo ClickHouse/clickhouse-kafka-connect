@@ -1,5 +1,5 @@
 [versions]
-clickHouseDriver = "0.9.5"
+clickHouseDriver = "0.9.8"
 kafka = "2.7.0"
 gson = "2.13.1"
 jackson = "2.21.2"
