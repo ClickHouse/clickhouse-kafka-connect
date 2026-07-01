@@ -233,7 +233,7 @@ public class DebeziumRecordConvertor extends RecordConvertor {
         // PostgreSQL: lsn is a Long
         try {
             Object lsn = source.get(FIELD_LSN);
-            if (lsn instanceof Long) return BigInteger.valueOf((Long) lsn);
+            if (lsn instanceof Number) return BigInteger.valueOf(((Number) lsn).longValue());
         } catch (Exception e) {
             LOGGER.debug("Could not read source.lsn — not a PostgreSQL source or field absent: {}", e.getMessage());
         }
@@ -252,7 +252,7 @@ public class DebeziumRecordConvertor extends RecordConvertor {
         // MySQL fallback: binlog position
         try {
             Object pos = source.get(FIELD_POS);
-            if (pos instanceof Long) return BigInteger.valueOf((Long) pos);
+            if (pos instanceof Number) return BigInteger.valueOf(((Number) pos).longValue());
         } catch (Exception e) {
             LOGGER.debug("Could not read source.pos — not a MySQL source or field absent: {}", e.getMessage());
         }
