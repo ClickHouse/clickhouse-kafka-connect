@@ -83,7 +83,8 @@ public final class ProxySinkTask {
                 .map(v -> Record.convert(v,
                         clickHouseSinkConfig.isEnableDbTopicSplit(),
                         clickHouseSinkConfig.getDbTopicSplitChar(),
-                        clickHouseSinkConfig.getDatabase() ))
+                        clickHouseSinkConfig.getDatabase(),
+                        clickHouseSinkConfig.isDebeziumCDCEnabled()))
                 .collect(Collectors.groupingBy(!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()
                         ? Record::getTopic : Record::getTopicAndPartition));
 
