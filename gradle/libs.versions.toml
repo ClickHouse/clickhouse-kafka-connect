@@ -1,6 +1,6 @@
 [versions]
 clickHouseDriver = "0.9.5"
-kafka = "2.7.0"
+kafka = "4.3.1"
 gson = "2.13.1"
 jackson = "2.21.2"
 jacksonAnnotations = "2.21"
