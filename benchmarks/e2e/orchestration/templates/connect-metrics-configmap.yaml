@@ -1,0 +1,124 @@
+# Benchmark v2 — JMX Prometheus exporter rules ConfigMap for the KafkaConnect CR
+# (task 31). Referenced by kafkaconnect.yaml.tmpl spec.metricsConfig via a
+# ConfigMapKeyRef on key `metrics-config.yml`, exported on the standard port 9404.
+#
+# CONTENT = the repo's stock jmx-export-connector.yml rule set (see the repo root
+# `jmx-export-connector.yml`) PLUS the extra `-rate` rule the poller README
+# (benchmarks/e2e/poller/README.md, prerequisite 1a) makes MANDATORY for
+# `records_consumed_rate`. The stock rules match no `-rate` attribute suffix, so
+# without the appended rule that metric is simply never emitted.
+#
+# The default jvm_* series (jvm_memory_bytes_used{area="heap"},
+# jvm_gc_collection_seconds_sum) are emitted by the jmx_exporter agent by default
+# — this rule set does not disable them, satisfying poller prerequisite 1.
+#
+# NOTE: this file is a COPY of the stock rules with one rule appended. It is not
+# a symlink because a Strimzi ConfigMap key must carry the literal YAML. If the
+# stock jmx-export-connector.yml changes, re-sync the rules below (the appended
+# -rate rule is the only benchmark-owned addition, marked clearly).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: connect-metrics
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+data:
+  metrics-config.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    rules:
+      - pattern: "com.clickhouse<type=ClickHouseKafkaConnector, name=SinkTask(.*), version=(.*)><>(.*): (.*)"
+        name: clickhouse_kafka_connect
+        labels:
+          sinktask: "$1"
+          version: "$2"
+          attribute: "$3"
+        help: "ClickHouseKafkaConnector metrics version $2"
+        type: COUNTER
+      - pattern: 'kafka.(.+)<type=app-info, client-id=(.+)><>start-time-ms'
+        name: kafka_$1_start_time_seconds
+        labels:
+          clientId: "$2"
+        help: "Kafka $1 JMX metric start time seconds"
+        type: GAUGE
+        valueFactor: 0.001
+      - pattern: 'kafka.(.+)<type=app-info, client-id=(.+)><>(commit-id|version): (.+)'
+        name: kafka_$1_$3_info
+        value: 1
+        labels:
+          clientId: "$2"
+          $3: "$4"
+        help: "Kafka $1 JMX metric info version and commit-id"
+        type: GAUGE
+      - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.+), topic=(.+), partition=(.+)><>(.+-total|compression-rate|.+-avg|.+-replica|.+-lag|.+-lead)
+        name: kafka_$2_$6
+        labels:
+          clientId: "$3"
+          topic: "$4"
+          partition: "$5"
+        help: "Kafka $1 JMX metric type $2"
+        type: GAUGE
+      - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.+), topic=(.+)><>(.+-total|compression-rate|.+-avg)
+        name: kafka_$2_$5
+        labels:
+          clientId: "$3"
+          topic: "$4"
+        help: "Kafka $1 JMX metric type $2"
+        type: GAUGE
+      - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.+), node-id=(.+)><>(.+-total|.+-avg)
+        name: kafka_$2_$5
+        labels:
+          clientId: "$3"
+          nodeId: "$4"
+        help: "Kafka $1 JMX metric type $2"
+        type: UNTYPED
+      - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.*)><>(.+-total|.+-avg|.+-bytes|.+-count|.+-ratio|.+-age|.+-flight|.+-threads|.+-connectors|.+-tasks|.+-ago)
+        name: kafka_$2_$4
+        labels:
+          clientId: "$3"
+        help: "Kafka $1 JMX metric type $2"
+        type: GAUGE
+      - pattern: 'kafka.connect<type=connector-task-metrics, connector=(.+), task=(.+)><>status: ([a-z-]+)'
+        name: kafka_connect_connector_status
+        value: 1
+        labels:
+          connector: "$1"
+          task: "$2"
+          status: "$3"
+        help: "Kafka Connect JMX Connector status"
+        type: GAUGE
+      - pattern: kafka.connect<type=(.+)-metrics, connector=(.+), task=(.+)><>(.+-total|.+-count|.+-ms|.+-ratio|.+-avg|.+-failures|.+-requests|.+-timestamp|.+-logged|.+-errors|.+-retries|.+-skipped)
+        name: kafka_connect_$1_$4
+        labels:
+          connector: "$2"
+          task: "$3"
+        help: "Kafka Connect JMX metric type $1"
+        type: GAUGE
+      - pattern: kafka.connect<type=connect-worker-metrics, connector=(.+)><>([a-z-]+)
+        name: kafka_connect_worker_$2
+        labels:
+          connector: "$1"
+        help: "Kafka Connect JMX metric $1"
+        type: GAUGE
+      - pattern: kafka.connect<type=connect-worker-metrics><>([a-z-]+)
+        name: kafka_connect_worker_$1
+        help: "Kafka Connect JMX metric worker"
+        type: GAUGE
+      - pattern: kafka.connect<type=connect-worker-rebalance-metrics><>([a-z-]+)
+        name: kafka_connect_worker_rebalance_$1
+        help: "Kafka Connect JMX metric rebalance information"
+        type: GAUGE
+      # --- BENCHMARK-OWNED ADDITION (poller README prerequisite 1a) -----------
+      # consumer-fetch-manager rate attributes (records-consumed-rate, ...) —
+      # REQUIRED by the benchmark poller (task 29). The stock rules above match
+      # no `-rate` suffix, so `records_consumed_rate` is not emitted without this.
+      # With sanitization it surfaces as
+      # kafka_consumer_fetch_manager_records_consumed_rate{clientid="..."} which
+      # the poller matches by the records_consumed_rate substring.
+      - pattern: kafka.consumer<type=consumer-fetch-manager-metrics, client-id=(.*)><>(.+-rate)
+        name: kafka_consumer_fetch_manager_$2
+        labels:
+          clientId: "$1"
+        help: "Kafka consumer fetch-manager rate metric"
+        type: GAUGE

@@ -1,0 +1,106 @@
+# Benchmark v2 — Strimzi KafkaConnect CR template (task 31).
+#
+# One single-worker Connect cluster per arm, using THAT arm's pre-baked image
+# (the ClickHouse sink plugin is unzipped into /opt/kafka/plugins in the image —
+# see benchmarks/e2e/docker/Dockerfile), so `spec.image` points at the arm image
+# and NO Strimzi build/plugins section is needed. The orchestrator deploys this
+# per arm, waits Ready, deploys the connector (KafkaConnector CR from
+# kafkaconnector.json.tmpl -> a KafkaConnector or REST PUT), waits all tasks
+# RUNNING, then starts the poller (poller README prerequisite 5).
+#
+# Placeholders (${VAR}) are substituted by run_pair.sh via envsubst:
+#   ARM_IMAGE   full image ref for this arm (from benchmark-images.yml outputs)
+#   CONNECT_HEAP  JVM heap (m6i.large sizing) e.g. 2048m
+#
+# metricsConfig: jmxPrometheusExporter on the standard port 9404, referencing the
+# connect-metrics ConfigMap (connect-metrics-configmap.yaml) which carries the
+# stock jmx-export-connector.yml rules PLUS the mandatory -rate rule (poller
+# README prerequisite 1a). This satisfies poller prerequisite 1 + 1a.
+#
+# use-connector-resources=true lets us manage the connector as a KafkaConnector
+# CR (declarative), which the orchestrator applies after the CR is Ready.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnect
+metadata:
+  name: bench-connect
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  # Single worker (plan decision 8 substrate: the broker/worker are minimal; the
+  # 3 tasks all run in this one worker). tasks.max=3 is set on the connector.
+  replicas: 1
+  # The arm's pre-baked image (plugin already in /opt/kafka/plugins).
+  image: ${ARM_IMAGE}
+  bootstrapServers: bench-kafka-bootstrap.kafka-bench.svc:9092
+  # Connect's own internal topics — RF1 to match the single-broker cluster
+  # (plan decision 8); Strimzi would otherwise default them to 3 and they would
+  # never create on an RF1 broker.
+  config:
+    group.id: bench-connect-cluster
+    offset.storage.topic: bench-connect-offsets
+    config.storage.topic: bench-connect-configs
+    status.storage.topic: bench-connect-status
+    config.storage.replication.factor: 1
+    offset.storage.replication.factor: 1
+    status.storage.replication.factor: 1
+    # Confluent Avro converters (plan §6: Avro + Schema Registry). Key is not
+    # used by the sink (records keyed null by the producer) but must be set.
+    key.converter: io.confluent.connect.avro.AvroConverter
+    value.converter: io.confluent.connect.avro.AvroConverter
+    key.converter.schema.registry.url: http://schema-registry.kafka-bench.svc:8081
+    value.converter.schema.registry.url: http://schema-registry.kafka-bench.svc:8081
+  jvmOptions:
+    -Xms: ${CONNECT_HEAP}
+    -Xmx: ${CONNECT_HEAP}
+  resources:
+    # m6i.large node (2 vCPU / 8 GiB). Give the single worker the bulk of a node.
+    requests:
+      cpu: "1"
+      memory: 3Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  # Poller prerequisite 1 + 1a: JMX Prometheus exporter on port 9404 using the
+  # connect-metrics ConfigMap rules (stock + the -rate rule).
+  metricsConfig:
+    type: jmxPrometheusExporter
+    valueFrom:
+      configMapKeyRef:
+        name: connect-metrics
+        key: metrics-config.yml
+  # Expose the JMX exporter (9404) and REST (8083) via the Strimzi-managed
+  # services; the poller reaches them at
+  #   http://bench-connect-connect-api.kafka-bench.svc:8083   (REST /status)
+  #   http://<connect-pod>:9404/metrics                        (JMX prometheus)
+  template:
+    connectContainer:
+      # No extra env needed; CH creds are on the KafkaConnector config via the
+      # externalized secret (kafkaconnector.json.tmpl), never here.
+      env: []
+    pod:
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+  # externalConfiguration wires the runtime CH-creds Secret (created by the
+  # orchestrator from CI secrets) into the worker as env vars, so the connector
+  # config can reference them via ${env:...} — creds never appear in any file.
+  externalConfiguration:
+    env:
+      - name: CH_HOSTNAME
+        valueFrom:
+          secretKeyRef:
+            name: bench-ch-creds
+            key: hostname
+      - name: CH_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: bench-ch-creds
+            key: password
+      - name: CH_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: bench-ch-creds
+            key: username
