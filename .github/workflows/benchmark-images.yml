@@ -1,0 +1,106 @@
+name: Benchmark v2 Connect images
+
+# Builds BOTH benchmark arm images (plan section 3, phase 2):
+#   - arm H (head)   : plugin built from the checked-out sha
+#   - arm P (pinned) : the immutable RELEASED plugin artifact for the tag in
+#                      benchmarks/e2e/docker/PINNED_REF (downloaded + sha256-verified,
+#                      never rebuilt)
+# and pushes them to GHCR. The nightly orchestrator (task 31) calls this via
+# workflow_call; it can also be run by hand via workflow_dispatch.
+#
+# No new secrets: pushes use the built-in GITHUB_TOKEN.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      head_image:
+        description: "Full ref of the pushed head-arm image"
+        value: ${{ jobs.build.outputs.head_image }}
+      pinned_image:
+        description: "Full ref of the pushed pinned-arm image"
+        value: ${{ jobs.build.outputs.pinned_image }}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: build-arm-images
+    runs-on: ubuntu-latest
+    outputs:
+      head_image: ${{ steps.export.outputs.head_image }}
+      pinned_image: ${{ steps.export.outputs.pinned_image }}
+    steps:
+      - name: Checkout (full history + tags so the pinned tag sha resolves)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase repository owner
+        id: repo
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build head arm image
+        id: head
+        env:
+          IMAGE_BASE: ${{ env.REGISTRY }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          SHA_SHORT="${GITHUB_SHA:0:12}"
+          IMAGE_TAG="${IMAGE_BASE,,}:benchmark-head-${SHA_SHORT}"
+          ./benchmarks/e2e/docker/build-arm.sh --arm head --image-tag "${IMAGE_TAG}" | tee head.out
+          echo "image=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build pinned arm image
+        id: pinned
+        env:
+          IMAGE_BASE: ${{ env.REGISTRY }}/${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PINNED_REF="$(grep -v '^[[:space:]]*#' benchmarks/e2e/docker/PINNED_REF | grep -v '^[[:space:]]*$' | head -1 | tr -d '[:space:]')"
+          IMAGE_TAG="${IMAGE_BASE,,}:benchmark-pinned-${PINNED_REF}"
+          ./benchmarks/e2e/docker/build-arm.sh --arm pinned --image-tag "${IMAGE_TAG}" | tee pinned.out
+          echo "image=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Push images
+        run: |
+          set -euo pipefail
+          docker push "${{ steps.head.outputs.image }}"
+          docker push "${{ steps.pinned.outputs.image }}"
+
+      - name: Export image refs + provenance summary
+        id: export
+        run: |
+          set -euo pipefail
+          echo "head_image=${{ steps.head.outputs.image }}" >> "$GITHUB_OUTPUT"
+          echo "pinned_image=${{ steps.pinned.outputs.image }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Benchmark v2 arm images"
+            echo ""
+            echo "| arm | image |"
+            echo "|-----|-------|"
+            echo "| head | \`${{ steps.head.outputs.image }}\` |"
+            echo "| pinned | \`${{ steps.pinned.outputs.image }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
