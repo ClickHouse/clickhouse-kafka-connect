@@ -27,7 +27,10 @@ metadata:
   region: us-east-2
   # Pin the control-plane Kubernetes version so a silent EKS default bump is
   # never mistaken for a connector regression. Bump deliberately.
-  version: "1.31"
+  # 1.33: standard support (1.31 was already in EXTENDED support = $0.60/hr
+  # control plane, 6x the $0.10/hr the plan budgets — caught in console
+  # 2026-07-07 during first provision; cluster recreated at 1.33).
+  version: "1.33"
   tags:
     Project: clickbench-benchmark
     Component: kafka-connect-benchmark-v2
