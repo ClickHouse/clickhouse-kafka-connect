@@ -1,7 +1,16 @@
--- Kafka Connect sink benchmark v2 — perf.ch_inserts (per-insert raw stats).
--- Ported from the Spark benchmark (spark-clickhouse-connector/benchmarks/sql/perf/04_create_ch_inserts.sql).
--- MUST stay schema-identical with the Spark benchmark: drain/lag curves are derived
--- from these per-insert event_time rows at query time (plan §9).
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--     https://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+--
 -- Per-insert raw stats for distribution analysis (batch-size / duration
 -- histograms) without re-querying CH after the fact.
 CREATE TABLE IF NOT EXISTS perf.ch_inserts (

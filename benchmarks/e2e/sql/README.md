@@ -56,6 +56,32 @@ The `perf/` files here are only the `0*_create_*` bootstrap tables. The capture 
 insert queries (`10*..17*` in the Spark benchmark) are **task 30's** job and are not
 ported here.
 
+## `perf/` DDL ownership & sync (byte-identical vendored copy)
+
+`spark-clickhouse-connector` **OWNS** the `perf.*` DDL
+(`benchmarks/sql/perf/0*_create_*.sql`) and the Benchmark v2 naming/semantics
+contract (`docs/benchmark-v2-contract.md`). The four `perf/0*_create_*.sql` files
+here — and the vendored `docs/benchmark-v2-contract.md` — are **vendored
+byte-identical** from that repo, Apache license header and all. They carry **no**
+local provenance edits: the byte-for-byte rule in the contract (§5) forbids even a
+changed comment, because the perf.* DDL uses `CREATE ... IF NOT EXISTS` and a
+drifted copy would silently no-op against the already-created shared tables and
+hide the drift indefinitely.
+
+A **CI sync check enforces it**: `benchmarks/e2e/scripts/check_contract_sync.sh`
+(workflow `.github/workflows/benchmark-contract-sync.yml`) verifies the sha256 of
+the five vendored files against the pinned manifest
+`benchmarks/e2e/scripts/contract-sync.sha256`, and — when run locally with
+`UPSTREAM_SPARK_REPO` pointing at a `spark-clickhouse-connector` checkout — also
+byte-diffs each file against the canonical source (the true §5 check).
+
+**Structural changes land in the Spark repo FIRST**: any change to the contract or
+the `perf.*` DDL must be made in `spark-clickhouse-connector`, acked by the Kafka
+side, then re-vendored byte-identical here and the manifest regenerated (see the
+update procedure in the header of `check_contract_sync.sh`). Never edit these
+vendored files in place, and never regenerate the manifest just to match a local
+edit.
+
 ## CI secrets
 
 The Spark benchmark uses `CLICKBENCH_TARGET_CH_*` for its target and
