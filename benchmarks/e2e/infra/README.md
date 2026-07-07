@@ -109,8 +109,12 @@ registry : http://schema-registry.kafka-bench.svc:8081
 ```
 
 Best-effort deletes the per-run Kafka CR (cascading its 70Gi PVC/EBS),
-Schema Registry, and any stray PVCs, then scales the node group to 0. **Exits
-non-zero if the node group did not reach 0** so CI can alert on a cost leak.
+Schema Registry, and any stray PVCs, then **waits (bounded, default 300s via
+`PVC_DELETE_TIMEOUT_SECONDS`) for PVC deletion to finish before dropping
+nodes** — the EBS CSI controller runs on the nodes, so scaling to 0 with a
+PVC still Terminating would strand the EBS volume until the next scale-up.
+Then scales the node group to 0. **Exits non-zero if the node group did not
+reach 0** so CI can alert on a cost leak.
 
 ### 4. Teardown (stop ALL cost, including control plane)
 
@@ -145,7 +149,14 @@ volume) running:
    sweeps leftover PVCs in the namespace to close that leak. **Broker data is
    not meant to survive a run** — the topic is re-produced fresh each run
    (plan section 5), so nothing of value is lost.
-3. **Exit code reflects whether the node group reached 0.** Best-effort K8s
+3. **Waits for PVC deletion before dropping nodes (bounded).** The EBS CSI
+   controller lives on the nodes; if the group hits 0 while a PVC is still
+   Terminating, nothing can detach/delete the volume and the 70Gi EBS lingers,
+   billed, until the next scale-up. scale-down waits up to
+   `PVC_DELETE_TIMEOUT_SECONDS` (default 300) for the namespace's PVCs to be
+   gone; on timeout it warns loudly and proceeds (reaching node-zero still
+   wins — see the cost note below).
+4. **Exit code reflects whether the node group reached 0.** Best-effort K8s
    cleanup failures are warnings and never block reaching zero; only failing
    to reach desired-0 is a hard non-zero exit, which CI should alert on.
 
@@ -157,7 +168,12 @@ volume) running:
   runs by `scale-down.sh`.
 - **Broker EBS** (70Gi gp3) exists **only while a run's Kafka CR exists**
   (`deleteClaim: true`); `scale-down.sh` removes it every run, including after
-  failures — so no standing EBS cost between runs.
+  failures — so normally no standing EBS cost between runs. **Caveat:** after
+  an abnormal teardown, if PVC deletion does not complete within the bounded
+  wait (`PVC_DELETE_TIMEOUT_SECONDS`, default 300s), the volume can persist
+  (billed, ~$5.60/mo for 70Gi gp3) until the next scale-up finishes the
+  deletion — the timeout warning in the scale-down log flags this; check
+  `kubectl -n kafka-bench get pvc` / the EC2 volumes console.
 - **Full stop:** `teardown.sh` deletes everything including the control plane.
 
 ## CI secrets / roles (mirrors the Spark ClickBench CI OIDC pattern)

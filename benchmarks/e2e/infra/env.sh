@@ -3,8 +3,10 @@
 # Sourced by provision.sh / scale-up.sh / scale-down.sh / teardown.sh /
 # install-strimzi.sh. Contains NO credentials — the operator supplies AWS auth
 # via their own profile / OIDC role before invoking any script.
-
-set -euo pipefail
+#
+# Deliberately sets NO shell flags: each script owns its own `set` line
+# (scale-down.sh runs without -e by design; a `set -e` here would silently
+# re-enable it in the sourcing shell and break that invariant).
 
 # --- Cluster identity (keep in sync with cluster.yaml) ----------------------
 export CLUSTER_NAME="${CLUSTER_NAME:-kafka-bench}"

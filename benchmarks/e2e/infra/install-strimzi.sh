@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Install the pinned Strimzi operator (cluster-wide, watching the benchmark
-# namespace) and apply the namespace + gp3 StorageClass. Idempotent: re-running
-# re-applies the same pinned manifests.
+# Install the pinned Strimzi operator (namespace-scoped: deployed into and
+# watching the benchmark namespace) and apply the namespace + gp3 StorageClass.
+# Idempotent: re-running re-applies the same pinned manifests.
 #
 # This step does NOT require nodes to be up — the operator Deployment schedules
 # once nodes exist (scale-up.sh brings them up and waits for the Kafka CR).
@@ -20,10 +20,16 @@ log "creating namespace ${K8S_NAMESPACE}"
 kubectl apply -f "${INFRA_DIR}/namespace.yaml"
 
 log "installing Strimzi operator ${STRIMZI_VERSION} (watching ${K8S_NAMESPACE})"
-# Pinned per-namespace install bundle. The URL encodes the operator version so
-# the CRDs and operator image are exactly the pinned release.
-STRIMZI_URL="https://strimzi.io/install/${STRIMZI_VERSION}?namespace=${K8S_NAMESPACE}"
-kubectl apply -n "${K8S_NAMESPACE}" -f "${STRIMZI_URL}"
+# Pinned GitHub release bundle (the strimzi.io/install/<version> shortcut does
+# NOT exist — only install/latest — and returns 404 for pinned versions). The
+# bundle hardcodes `namespace: myproject`; rewrite every occurrence to our
+# namespace before applying (this covers both metadata.namespace and the
+# RoleBinding subject namespaces, all of which mean "the deploy namespace").
+STRIMZI_URL="https://github.com/strimzi/strimzi-kafka-operator/releases/download/${STRIMZI_VERSION}/strimzi-cluster-operator-${STRIMZI_VERSION}.yaml"
+require curl
+curl -fsSL "${STRIMZI_URL}" \
+  | sed "s/namespace: myproject/namespace: ${K8S_NAMESPACE}/g" \
+  | kubectl apply -n "${K8S_NAMESPACE}" -f -
 
 log "applying gp3 StorageClass"
 kubectl apply -f "${INFRA_DIR}/storageclass-gp3.yaml"

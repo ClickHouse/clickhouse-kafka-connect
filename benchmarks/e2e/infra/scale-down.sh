@@ -63,16 +63,54 @@ cleanup_transient() {
 cleanup_transient
 
 # ---------------------------------------------------------------------------
+# Wait (bounded) for PVC deletion BEFORE dropping nodes. The EBS CSI
+# controller runs on the nodes: if we scale to 0 while a PVC is still
+# Terminating, nothing detaches/deletes the 70Gi EBS volume and it lingers
+# (billed) until the next scale-up. Best-effort with a hard timeout — a
+# timeout is a loud warning, never a scale-down blocker.
+# ---------------------------------------------------------------------------
+wait_for_pvc_deletion() {
+  command -v kubectl >/dev/null 2>&1 || return 0
+  kubectl get ns "${K8S_NAMESPACE}" >/dev/null 2>&1 || return 0
+
+  local timeout="${PVC_DELETE_TIMEOUT_SECONDS:-300}"
+  local deadline=$(( $(date +%s) + timeout ))
+  local remaining
+  log "waiting up to ${timeout}s for PVCs in ${K8S_NAMESPACE} to finish deleting (EBS CSI needs nodes to detach/delete volumes)"
+  while :; do
+    remaining="$(kubectl -n "${K8S_NAMESPACE}" get pvc --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+    remaining="${remaining:-0}"
+    if [ "${remaining}" = "0" ]; then
+      log "all PVCs gone — EBS volumes released"
+      return 0
+    fi
+    if [ "$(date +%s)" -ge "${deadline}" ]; then
+      warn "TIMEOUT: ${remaining} PVC(s) still present after ${timeout}s. Scaling down anyway —"
+      warn "the backing EBS volume(s) (~70Gi gp3) may persist, billed, until the next scale-up"
+      warn "finishes the deletion. Check 'kubectl -n ${K8S_NAMESPACE} get pvc' / the EC2 volumes console."
+      return 0
+    fi
+    log "  ${remaining} PVC(s) still Terminating; waiting..."
+    sleep 10
+  done
+}
+
+wait_for_pvc_deletion
+
+# ---------------------------------------------------------------------------
 # Scale the node group to zero. This is the step whose success CI depends on.
 # ---------------------------------------------------------------------------
 log "scaling node group ${NODEGROUP_NAME} to 0"
+# NOTE: EKS NodegroupScalingConfig.maxSize has an API minimum of 1, so
+# --nodes-max 0 would be rejected. desired=0 / min=0 / max=1 is the lowest
+# valid scaled-to-zero shape (scale-up.sh raises max again when scaling up).
 if ! eksctl scale nodegroup \
       --cluster "${CLUSTER_NAME}" \
       --region "${AWS_REGION}" \
       --name "${NODEGROUP_NAME}" \
       --nodes 0 \
       --nodes-min 0 \
-      --nodes-max 0 2>/dev/null; then
+      --nodes-max 1 2>/dev/null; then
   warn "eksctl scale returned non-zero (nodegroup may already be at 0 or mid-transition); verifying actual state"
 fi
 
