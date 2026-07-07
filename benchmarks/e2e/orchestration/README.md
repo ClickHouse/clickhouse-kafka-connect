@@ -32,22 +32,53 @@ poller, capture, sql) into ONE nightly end-to-end two-arm pair, per
 | Plan §5 | run_pair.sh |
 |---------|-------------|
 | 1. Scale up | `phase_scale_up` → `infra/scale-up.sh` |
-| 2. Pre-load | `phase_preload` → KafkaTopic CR (assert 3 partitions) → producer Job → parse `rows_expected` |
-| 3. Per arm (day-parity order) | `phase_arm` × 2, Tier 0 then Tier 1 each |
+| 2. Pre-load | `phase_preload` → KafkaTopic CR (broker-verified 3-partition assert) → producer Job → parse `rows_expected`; then `phase_poller_host` (in-cluster sampler pod) |
+| 3. Per arm (alternating order) | `phase_arm` × 2, Tier 0 then Tier 1 each |
 | 3c. Delete connector + group | `delete_connector` |
-| 4. Capture | `capture_and_record` (poller finalize+insert, then gated CH-side capture) |
+| 4. Capture | `finalize_and_insert_metrics` (poller scalars → METRICS service) then `capture_and_record` (gated CH-side capture SQL → runs row) |
 | 5. Export | `capture_and_record` → `export_metrics_to_dwh.py` (gated on runs insert) |
+| — Pair cost | `phase_pair_cost` (end-of-pair; see below) |
 | 6. Teardown | `phase_teardown_topic` + `phase_scale_down` (also CI `if: always()`) |
 
-**Arm order (directive g):** UTC day-of-year parity — **even → head first, odd →
-pinned first**. The workflow's image-slot resolver uses the identical parity
-expression; a unit test pins the one-liner so the two cannot drift.
+**Arm order (directive g, single-source — review F10):** the workflow computes
+the UTC day-of-year parity **once** (even → head first, odd → pinned first) and
+passes it to `run_pair.sh` as `ARM_ORDER_SPEC` together with the matching
+`ARM0_IMAGE`/`ARM1_IMAGE` slots; the script never re-derives it in CI (a second
+derivation straddling UTC midnight would mislabel arms vs images). The parity
+fallback inside `run_pair.sh` is standalone-only; unit tests pin both paths.
+
+**Poller placement (review F4):** the broker bootstrap (9092), Connect REST
+(8083) and the JMX exporter (9404) are internal-only by design (plan decision
+8), so the sampler runs **in-cluster** in a dedicated pod (`bench-poller`,
+producer image + the poller package `kubectl cp`-ed in; deps verified, pip
+fallback). Samples JSONL is copied back per drain (flushed per tick, so even a
+dropped exec leaves an archivable partial). `finalize` (pure math + the
+perf.metrics insert over the Cloud HTTPS endpoint) runs on the runner — with
+the env remapped so the poller's inserter lands on the **METRICS** service,
+the same landing capture/rollback/export use (review F5).
 
 **Gating discipline (capture/README, BINDING):** capture SQL runs in numeric
-order; any failure → `rollback_run_metrics.py` + abort; `insert_run_record.py`
-only after full capture; runs-insert failure → rollback; export only after runs
-insert; integrity verdict LAST (Tier 1 mismatch **FAILS** the run after evidence
-is exported, contract §3).
+order; any failure → `rollback_run_metrics.py` + abort — and early per-run
+failures after the pre-run covariates landed (truncate/deploy/poller/finalize)
+also roll back first (`fail_run`, review F13); `insert_run_record.py` only
+after full capture; runs-insert failure → rollback; export only after runs
+insert; integrity verdict LAST.
+
+**Integrity semantics (contract §3/§1.3 — review F7):**
+- **Tier 0:** integrity is *not applicable* (Null engine delivers no countable
+  rows) — SQL 20 is not run, nothing is flagged, nothing fails.
+- **Tier 1, computation failure** (SQL 20 errors / constants missing): run is
+  **FLAGGED** `integrity_unverified`, not rolled back, not failed.
+- **Tier 1, mismatch:** run **FAILS** — after the runs row is inserted and the
+  evidence exported (flagged/failed runs are still fully captured).
+
+**Pair cost (contract §2.1 — review F6):** `run_cost_usd` is computed at
+**end of pair** (the window must cover both arms; charging mid-pair would halve
+the node-hours) and attached to the **first-run arm's tier-1** run_id. This one
+metric deliberately sits **outside the capture gate**: the target runs row is
+already complete and exported, the insert is idempotent (pre-delete + insert),
+and rolling back a completed run over a failed cost write would destroy good
+evidence — a failure there is a warn, not a rollback.
 
 ## Manual-validation runbook (the first e2e pair)
 
@@ -93,8 +124,11 @@ aws eks update-kubeconfig --name kafka-bench --region us-east-2
 
 ```bash
 export AWS_REGION=us-east-2 COMPUTE_REGION=us-east-2 K8S_NAMESPACE=kafka-bench
-export ARM0_IMAGE=<first-run arm image for today's parity>
-export ARM1_IMAGE=<second-run arm image>
+# RECOMMENDED: pin the order explicitly so the image slots cannot disagree with
+# a parity re-derivation (this is what CI does — review F10):
+export ARM_ORDER_SPEC="head pinned"        # or "pinned head"
+export ARM0_IMAGE=<image of ARM_ORDER_SPEC's FIRST arm>
+export ARM1_IMAGE=<image of the second arm>
 export PRODUCER_IMAGE=<producer image>  PRODUCER_SA=hits-producer
 export PARQUET_SOURCE=s3://<staging>/clickbench/hits/
 export TARGET_CH_HOST=... TARGET_CH_USER=... TARGET_CH_PASSWORD=...
@@ -191,16 +225,24 @@ cancel-in-progress: false }`. This serialises runs of **this workflow file**.
 
 ## Self-verification performed (offline only)
 
-- `bash -n` on `run_pair.sh`, `delete_consumer_group.sh` — pass.
+- `bash -n` on `run_pair.sh`, `delete_consumer_group.sh`, `docker/build-arm.sh`
+  — pass.
 - `py_compile` on all `.py` — pass.
 - `yaml.safe_load` on every template + the workflow — pass (CR templates parsed
   after substituting dummy placeholders).
-- `run_pair.sh --plan` for **both** parities — correct arm order + cost attribution.
+- `run_pair.sh --plan` for both `ARM_ORDER_SPEC` orders **and** the standalone
+  parity fallback — correct arm order, poller-host phase, end-of-pair cost.
 - `render_connector.py` / `render_producer_job.py` smoke — correct substitution,
   doc-keys stripped, `${env:CH_*}` creds left untouched.
-- `pytest tests/` — **18 passed** (arm parity vs shell, run_id form, runtime-map
-  scope/config keys, `warm_up` omitted, empty-provenance drop, producer parse,
-  §6 cross-check template↔echo + insert-timeout-<-poll-interval margin).
+- `pytest tests/` — **32 passed** (arm parity vs shell, `ARM_ORDER_SPEC`
+  override + invalid-spec rejection + fallback, run_id form, runtime-map
+  scope/config keys, mandatory-key fail-on-empty, `warm_up` omitted,
+  empty-provenance drop, producer parse, §6 cross-check template↔echo,
+  insert-timeout-<-poll-interval margin, partition_scheme = Tier-1 DDL,
+  run_cost end-of-pair placement, `config.providers` wiring, `-rate` rule
+  over-match guard).
+- Confluent Avro converter archive (7.7.1) downloaded from the Hub and its
+  sha256 pinned in `docker/build-arm.sh` (verified against the real download).
 - Every path/secret/workflow referenced by `benchmark-nightly.yml` verified to
   exist (workflow_call target, scripts, capture SQL 11-22, requirements.txt).
 
@@ -210,24 +252,36 @@ cancel-in-progress: false }`. This serialises runs of **this workflow file**.
    below is exercised for the first time by the runbook above.
 2. **Poller live paths** (`sampler.build_sources`, real Kafka admin/REST/JMX/
    cadvisor HTTP) — never hit; poller README flags this too.
-3. **Capture query_log filter** (`has(tables) [+ user=kafka_benchmark]`),
+3. **In-cluster sampler transport** — the drain-long `kubectl exec` into the
+   `bench-poller` pod holds one API-server connection for up to `POLL_TIMEOUT`.
+   The JSONL is flushed per tick and copied back even on failure, so a dropped
+   exec loses the live rc but not the samples; if drops prove common, promote
+   the sampler to a K8s Job + PVC. Also: the poller pod verifies
+   `confluent_kafka`+`requests` and falls back to `pip install` (needs PyPI
+   egress) — confirm on first run.
+4. **Capture query_log filter** (`has(tables) [+ user=kafka_benchmark]`),
    `remoteSecure()` reachability on 9440, and the bootstrap grants — validated
    for the first time here (capture/README defers this to task 31).
-4. **JMX `-rate` rule** — the exporter output name
+5. **JMX `-rate` rule** — the exporter output name
    (`kafka_consumer_fetch_manager_records_consumed_rate`) is asserted by the
    poller README but not confirmed against a live exporter.
-5. **Connect REST service DNS** — `bench-connect-connect-api.kafka-bench.svc:8083`
-   and the pod exec path assume Strimzi's default service naming; confirm on the
-   first Ready CR.
-6. **Producer IRSA IAM role** — only the SA name is wired; the role + trust
+6. **Connect REST service DNS + pod labels** —
+   `bench-connect-connect-api.kafka-bench.svc:8083` and the StrimziPodSet pod
+   labels (`strimzi.io/cluster` + `strimzi.io/kind=KafkaConnect`) assume
+   Strimzi 0.46 defaults; confirm on the first Ready CR.
+7. **Producer IRSA IAM role** — only the SA name is wired; the role + trust
    policy + SA annotation are a provisioning TODO (runbook step 0.4).
-7. **cadvisor RBAC / metrics-server** — poller prerequisite 2; the CPU metric is
+8. **cadvisor RBAC / metrics-server** — poller prerequisite 2; the CPU metric is
    simply absent until wired (open decision 1 keeps `null_drain_rows_per_sec` the
    sole Tier-0 gate meanwhile).
-8. **run_cost pricing** — the m6i.large us-east-2 rate is a hardcoded table
+9. **run_cost pricing** — the m6i.large us-east-2 rate is a hardcoded table
    value; verify against the current on-demand price and bump if drifted.
-9. **Broker pod name** (`bench-combined-0`) in `delete_consumer_group.sh` assumes
-   the Strimzi node-pool naming; confirm and parameterize if it differs.
+10. **Broker pod name** (`bench-combined-0`) used by `delete_consumer_group.sh`
+    and the broker-side partition assert assumes the Strimzi node-pool naming;
+    confirm and parameterize if it differs.
+11. **Confluent Hub download URL** (`hub-downloads.confluent.io/...`) — the
+    archive + sha256 were fetched and pinned offline-of-cluster; the URL shape
+    is re-exercised on every image build (a 404 fails the build loudly).
 
 ## Interface gaps found in other components (not patched — reported)
 
@@ -238,6 +292,12 @@ cancel-in-progress: false }`. This serialises runs of **this workflow file**.
   capture scripts that consume them) and uses `KAFKA_BENCH_AWS_ROLE_ARN` for the
   AWS role (only infra/README documents it). One of the two component READMEs
   should be reconciled; not patched here (not this task's territory).
+- **Poller README's example `-rate` exporter rule over-matches.** Its
+  `client-id=(.*)` capture also matches the per-topic fetch-manager MBean
+  (`client-id=..., topic=...`), which would emit `records_consumed_rate` twice
+  and ~double the poller's summed value. The ConfigMap in this territory uses
+  `client-id=([^,]+)` instead (review F12); the poller README example itself is
+  not edited (not this task's territory) — it should be corrected to match.
 - **Consumer-group deletion needs the broker pod name.** No component exposes a
   helper to run `kafka-consumer-groups.sh`; `delete_consumer_group.sh` assumes
   the pod `bench-combined-0`. A small infra-provided exec helper would be more

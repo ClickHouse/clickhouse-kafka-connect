@@ -40,6 +40,13 @@ spec:
   # never create on an RF1 broker.
   config:
     group.id: bench-connect-cluster
+    # Config providers (task 31 review F1): Strimzi's externalConfiguration
+    # injects the Secret as worker env vars, but Connect only RESOLVES the
+    # ${env:CH_*} placeholders in the connector config if the
+    # EnvVarConfigProvider is registered. Without these two lines the literal
+    # string "${env:CH_HOSTNAME}" would be handed to the sink as the hostname.
+    config.providers: env
+    config.providers.env.class: org.apache.kafka.common.config.provider.EnvVarConfigProvider
     offset.storage.topic: bench-connect-offsets
     config.storage.topic: bench-connect-configs
     status.storage.topic: bench-connect-status

@@ -42,6 +42,23 @@ STRIMZI_IMAGE="${STRIMZI_IMAGE:-quay.io/strimzi/kafka:0.46.0-kafka-3.9.0}"
 STRIMZI_VERSION="${STRIMZI_VERSION:-0.46.0}"
 KAFKA_VERSION="${KAFKA_VERSION:-3.9.0}"
 
+# Confluent Avro converter pin (task 31 review F2). The benchmark's insert path
+# is Avro + Schema Registry via io.confluent.connect.avro.AvroConverter (plan
+# §6), but that class ships in NEITHER the stock Strimzi base image NOR the
+# connector plugin zip — without baking it in, the worker throws
+# ClassNotFoundException on the first connector deploy. We bake the Confluent
+# Hub archive (a self-contained plugin dir: converter + avro +
+# schema-registry-client + all transitive deps) into BOTH arm images; both arms
+# get the SAME pinned converter, so it cancels in the H/P ratio exactly like
+# the shared base-image layers. Version pinned to match the deployed Schema
+# Registry (infra/schema-registry.yaml: cp-schema-registry:7.7.1). The sha256
+# below was computed from the Confluent Hub download at pin time and every
+# build verifies against it (a mismatch FAILS the build). Bump version+sha
+# together, deliberately.
+AVRO_CONVERTER_VERSION="${AVRO_CONVERTER_VERSION:-7.7.1}"
+AVRO_CONVERTER_SHA256="${AVRO_CONVERTER_SHA256:-f62604f1da08c143ac9a09dc2a5c53c12f9969c8fc96a77d355626c7878faa95}"
+AVRO_CONVERTER_URL="https://hub-downloads.confluent.io/api/plugins/confluentinc/kafka-connect-avro-converter/versions/${AVRO_CONVERTER_VERSION}/confluentinc-kafka-connect-avro-converter-${AVRO_CONVERTER_VERSION}.zip"
+
 ARM=""
 IMAGE_TAG=""
 RUN_DOCKER=1
@@ -187,11 +204,33 @@ if [[ -z "${IMAGE_TAG}" ]]; then
   fi
 fi
 
-# docker build needs the zip inside the build context. Stage a copy next to the
-# Dockerfile and reference it relatively.
+# Confluent Avro converter (review F2): download the pinned Hub archive and
+# verify its sha256 against the pin — a mismatch fails the build (same
+# discipline as the pinned plugin). Downloaded fresh per invocation (~9 MB).
+fetch_avro_converter() {
+  AVRO_CONVERTER_STAGED="avro-converter-${AVRO_CONVERTER_VERSION}.zip"
+  echo ">> fetching Confluent Avro converter ${AVRO_CONVERTER_VERSION} (plan §6 insert path)" >&2
+  curl -fsSL -o "${SCRIPT_DIR}/${AVRO_CONVERTER_STAGED}" "${AVRO_CONVERTER_URL}"
+  local got
+  got="$(sha256_of "${SCRIPT_DIR}/${AVRO_CONVERTER_STAGED}")"
+  if [[ "${got}" != "${AVRO_CONVERTER_SHA256}" ]]; then
+    echo "error: Avro converter sha256 mismatch: pinned=${AVRO_CONVERTER_SHA256} downloaded=${got}" >&2
+    echo "       The fetched archive is not the pinned artifact. Bump the pin deliberately" >&2
+    echo "       (AVRO_CONVERTER_VERSION + AVRO_CONVERTER_SHA256 together) or investigate." >&2
+    rm -f "${SCRIPT_DIR}/${AVRO_CONVERTER_STAGED}"
+    exit 1
+  fi
+  echo ">> Avro converter sha256 verified: ${got}" >&2
+}
+fetch_avro_converter
+
+# docker build needs the zips inside the build context. Stage copies next to
+# the Dockerfile and reference them relatively.
 STAGED_ZIP_NAME="plugin-${ARM}.zip"
 cp "${PLUGIN_ZIP}" "${SCRIPT_DIR}/${STAGED_ZIP_NAME}"
-cleanup_staged() { rm -f "${SCRIPT_DIR}/${STAGED_ZIP_NAME}"; }
+cleanup_staged() {
+  rm -f "${SCRIPT_DIR}/${STAGED_ZIP_NAME}" "${SCRIPT_DIR}/${AVRO_CONVERTER_STAGED}"
+}
 
 emit() {
   echo "image_ref=${IMAGE_TAG}"
@@ -203,6 +242,8 @@ emit() {
   echo "kafka_version=${KAFKA_VERSION}"
   echo "plugin_zip=${PLUGIN_ZIP}"
   echo "plugin_sha256=${PLUGIN_SHA256}"
+  echo "avro_converter_version=${AVRO_CONVERTER_VERSION}"
+  echo "avro_converter_sha256=${AVRO_CONVERTER_SHA256}"
 }
 
 if [[ "${RUN_DOCKER}" -eq 0 ]]; then
@@ -217,6 +258,9 @@ docker build \
   --file "${SCRIPT_DIR}/Dockerfile" \
   --build-arg "STRIMZI_IMAGE=${STRIMZI_IMAGE}" \
   --build-arg "PLUGIN_ZIP=${STAGED_ZIP_NAME}" \
+  --build-arg "AVRO_CONVERTER_ZIP=${AVRO_CONVERTER_STAGED}" \
+  --build-arg "AVRO_CONVERTER_VERSION=${AVRO_CONVERTER_VERSION}" \
+  --build-arg "AVRO_CONVERTER_SHA256=${AVRO_CONVERTER_SHA256}" \
   --build-arg "ARM=${ARM}" \
   --build-arg "GIT_SHA=${GIT_SHA}" \
   --build-arg "CONNECTOR_VERSION=${CONNECTOR_VERSION}" \

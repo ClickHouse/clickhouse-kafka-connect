@@ -14,12 +14,17 @@
 """Offline unit tests for the task-31 orchestration pure logic.
 
 No cluster, no creds, no network. Covers:
-  * day-parity arm order (even->head first, odd->pinned first)
+  * day-parity arm order (even->head first, odd->pinned first) + the
+    ARM_ORDER_SPEC single-source override (review F10)
   * run_id construction (<pair_id>-<arm>-t<tier>, contract §1.2)
-  * config-echo runtime-map assembly (build_runtime_json, directive c; warm_up omitted)
+  * config-echo runtime-map assembly (build_runtime_json, directive c; warm_up
+    omitted; mandatory keys hard-fail when empty — review F9)
   * producer-summary JSON parsing (rows_expected)
   * §6 config cross-check: every §6 value present in BOTH the connector config
     template AND the runtime-map echo (overseer self-verification)
+  * run_cost_usd invocation point: end-of-pair, outside capture gating (F6)
+  * KafkaConnect CR config.providers wiring (F1) + the -rate exporter rule
+    over-match fix (F12)
 """
 import json
 import os
@@ -28,11 +33,16 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 HERE = os.path.dirname(__file__)
 ORCH = os.path.abspath(os.path.join(HERE, ".."))
 RUN_PAIR = os.path.join(ORCH, "run_pair.sh")
 CONNECTOR_TMPL = os.path.join(ORCH, "templates", "kafkaconnector.json.tmpl")
+KAFKACONNECT_TMPL = os.path.join(ORCH, "templates", "kafkaconnect.yaml.tmpl")
+METRICS_CM = os.path.join(ORCH, "templates", "connect-metrics-configmap.yaml")
+HITS_DDL = os.path.abspath(os.path.join(ORCH, "..", "sql", "clickbench",
+                                        "02_create_hits.sql"))
 
 
 # --------------------------------------------------------------------------- #
@@ -79,6 +89,49 @@ def test_arm_order_matches_shell():
 
 
 # --------------------------------------------------------------------------- #
+# ARM_ORDER_SPEC single-source override (review F10) — exercised via the real
+# script's --plan mode (no cluster/creds needed).
+# --------------------------------------------------------------------------- #
+def _run_plan(extra_env=None):
+    env = dict(os.environ)
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(["bash", RUN_PAIR, "--plan"],
+                          capture_output=True, text=True, env=env)
+
+
+@pytest.mark.parametrize("spec,first,second", [
+    ("head pinned", "head", "pinned"),
+    ("pinned head", "pinned", "head"),
+])
+def test_arm_order_spec_override_honored(spec, first, second):
+    """When CI passes ARM_ORDER_SPEC, run_pair.sh uses it verbatim (no second
+    parity derivation — the UTC-midnight-straddle mislabeling fix)."""
+    r = _run_plan({"ARM_ORDER_SPEC": spec})
+    assert r.returncode == 0, r.stderr
+    assert f"arm order       : {first} then {second}" in r.stdout
+    assert "ARM_ORDER_SPEC (workflow-resolved" in r.stdout
+
+
+def test_arm_order_spec_invalid_rejected():
+    r = _run_plan({"ARM_ORDER_SPEC": "head head"})
+    assert r.returncode != 0
+    assert "invalid arm order" in r.stderr
+
+
+def test_arm_order_fallback_without_spec():
+    """Standalone (no ARM_ORDER_SPEC): parity fallback still resolves a valid
+    order for whatever today is."""
+    env = {k: v for k, v in os.environ.items() if k != "ARM_ORDER_SPEC"}
+    r = subprocess.run(["bash", RUN_PAIR, "--plan"],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert ("arm order       : head then pinned" in r.stdout
+            or "arm order       : pinned then head" in r.stdout)
+    assert "standalone fallback" in r.stdout
+
+
+# --------------------------------------------------------------------------- #
 # run_id construction (contract §1.2)
 # --------------------------------------------------------------------------- #
 def _run_id(pair_id, arm, tier):
@@ -101,7 +154,8 @@ def test_run_id_four_distinct_per_night():
 # --------------------------------------------------------------------------- #
 # config-echo runtime-map assembly (build_runtime_json in run_pair.sh)
 # --------------------------------------------------------------------------- #
-def _build_runtime_json(arm, tier, extra_env=None):
+def _runtime_json_raw(arm, tier, extra_env=None):
+    """Run the extracted build_runtime_json python body; return the process."""
     env = dict(os.environ)
     env.update({
         "PAIR_ID": "2026-07-07T04-15-32Z-91ac2dd",
@@ -114,7 +168,7 @@ def _build_runtime_json(arm, tier, extra_env=None):
         "CFG_MAX_POLL_INTERVAL_MS": "600000",
         "CFG_INSERT_TIMEOUT_MS": "180000",
         "CFG_TASKS_MAX": "3",
-        "CFG_PARTITION_SCHEME": "toYYYYMM(EventDate)",
+        "CFG_PARTITION_SCHEME": "toYear(EventDate)",
         "KAFKA_CONNECT_VERSION": "3.9.0",
         "STRIMZI_VERSION": "0.46.0",
         "PLUGIN_SHA256": "abc123",
@@ -128,8 +182,12 @@ def _build_runtime_json(arm, tier, extra_env=None):
                   src, re.S)
     assert m, "could not extract build_runtime_json python body"
     body = m.group(1)
-    out = subprocess.run([sys.executable, "-c", body, arm, tier],
-                         capture_output=True, text=True, env=env)
+    return subprocess.run([sys.executable, "-c", body, arm, tier],
+                          capture_output=True, text=True, env=env)
+
+
+def _build_runtime_json(arm, tier, extra_env=None):
+    out = _runtime_json_raw(arm, tier, extra_env)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
 
@@ -157,12 +215,44 @@ def test_runtime_map_shared_config_keys():
     assert rt["write_parallelism"] == "3"        # tasks.max
     assert rt["async_insert"] == "0"
     assert rt["dataset"] == "hits"
-    assert rt["partition_scheme"] == "toYYYYMM(EventDate)"
+    assert rt["partition_scheme"] == "toYear(EventDate)"  # = the Tier 1 DDL
 
 
 def test_runtime_map_drops_empty_provenance():
     rt = _build_runtime_json("head", "1", extra_env={"PLUGIN_SHA256": ""})
     assert "plugin_sha256" not in rt  # empty dropped, not stored as ""
+
+
+@pytest.mark.parametrize("missing", [
+    "PAIR_ID", "TARGET_REGION", "ENVIRONMENT_CLASS", "COMPUTE_REGION",
+])
+def test_runtime_map_fails_on_empty_mandatory_key(missing):
+    """Review F9: mandatory identity/scope keys HARD-FAIL when empty — they
+    must never silently vanish from a runs row."""
+    out = _runtime_json_raw("head", "1", extra_env={missing: ""})
+    assert out.returncode != 0, f"{missing}='' must fail, got: {out.stdout}"
+    assert "mandatory key" in out.stderr
+
+
+def test_runtime_map_fails_on_empty_arm():
+    out = _runtime_json_raw("", "1")
+    assert out.returncode != 0
+    assert "mandatory key" in out.stderr
+
+
+def test_partition_scheme_matches_tier1_ddl():
+    """The echoed partition_scheme must be the ACTUAL Tier 1 DDL partitioning
+    (sql/clickbench/02_create_hits.sql), and run_pair.sh's default must match."""
+    ddl = open(HITS_DDL).read()
+    # ^-anchored so the header comment mentioning "PARTITION BY" is not matched.
+    m = re.search(r"^PARTITION BY\s+(\S+)", ddl, re.M)
+    assert m, "no PARTITION BY in the hits DDL"
+    ddl_scheme = m.group(1)
+    src = open(RUN_PAIR).read()
+    m2 = re.search(r'CFG_PARTITION_SCHEME:-([^}]+)\}', src)
+    assert m2, "no CFG_PARTITION_SCHEME default in run_pair.sh"
+    assert m2.group(1) == ddl_scheme, (
+        f"run_pair.sh default '{m2.group(1)}' != DDL '{ddl_scheme}'")
 
 
 # --------------------------------------------------------------------------- #
@@ -253,3 +343,63 @@ def test_section6_values_agree_between_template_and_echo():
     assert cfg["clickhouseClientInsertTimeoutMs"] == rt["clickhouse_client_insert_timeout_ms"]
     assert str(spec["tasksMax"]) == rt["write_parallelism"]
     assert cfg["exactlyOnce"] == rt["exactlyOnce"]
+
+
+# --------------------------------------------------------------------------- #
+# run_cost_usd invocation point (review F6): once, end-of-pair, OUTSIDE the
+# capture gate — never inside capture_and_record (which would charge ~half the
+# node-hours mid-pair).
+# --------------------------------------------------------------------------- #
+def _extract_function(src, name):
+    m = re.search(rf"^{re.escape(name)}\(\) \{{\n(.*?)^\}}", src, re.S | re.M)
+    assert m, f"could not extract function {name} from run_pair.sh"
+    return m.group(1)
+
+
+def test_run_cost_not_in_capture_and_record():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "capture_and_record")
+    assert "emit_run_cost" not in body, \
+        "run_cost must not be charged inside the per-run capture gate (F6)"
+
+
+def test_run_cost_emitted_end_of_pair_on_first_arm_tier1():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_pair_cost")
+    assert "emit_run_cost.py" in body
+    assert '-t1"' in body, "pair cost must land on the first-run arm's TIER-1 row"
+    # main() order: both phase_arm calls precede phase_pair_cost.
+    main_body = _extract_function(src, "main")
+    arm1 = main_body.index('phase_arm "${ARM_ORDER[0]}"')
+    arm2 = main_body.index('phase_arm "${ARM_ORDER[1]}"')
+    cost = main_body.index("phase_pair_cost")
+    assert arm1 < arm2 < cost, "pair cost must be emitted AFTER both arms (F6)"
+
+
+# --------------------------------------------------------------------------- #
+# KafkaConnect CR wiring (review F1) + exporter -rate rule (review F12)
+# --------------------------------------------------------------------------- #
+def test_kafkaconnect_cr_registers_env_config_provider():
+    """F1: without config.providers=env the worker never resolves ${env:CH_*}
+    and the sink would receive the literal placeholder as its hostname."""
+    tmpl = open(KAFKACONNECT_TMPL).read()
+    doc = yaml.safe_load(tmpl.replace("${ARM_IMAGE}", "img")
+                             .replace("${CONNECT_HEAP}", "2048m"))
+    cfg = doc["spec"]["config"]
+    assert cfg.get("config.providers") == "env"
+    assert (cfg.get("config.providers.env.class")
+            == "org.apache.kafka.common.config.provider.EnvVarConfigProvider")
+
+
+def test_rate_exporter_rule_not_overmatching():
+    """F12: client-id must be ([^,]+), not (.*) — the greedy form also matches
+    the per-topic MBean and ~doubles the summed records_consumed_rate."""
+    cm = yaml.safe_load(open(METRICS_CM))
+    rules = yaml.safe_load(cm["data"]["metrics-config.yml"])["rules"]
+    # The benchmark-owned rule is the one whose ATTRIBUTE capture is (.+-rate);
+    # the stock rules only mention compression-rate inside alternations.
+    rate_rules = [r for r in rules if "(.+-rate)" in r.get("pattern", "")]
+    assert len(rate_rules) == 1, "expected exactly one (.+-rate) rule"
+    pat = rate_rules[0]["pattern"]
+    assert "client-id=([^,]+)" in pat, pat
+    assert "client-id=(.*)" not in pat, "over-matching client-id capture (F12)"

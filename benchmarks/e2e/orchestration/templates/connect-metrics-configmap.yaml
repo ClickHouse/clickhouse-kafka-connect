@@ -116,7 +116,12 @@ data:
       # With sanitization it surfaces as
       # kafka_consumer_fetch_manager_records_consumed_rate{clientid="..."} which
       # the poller matches by the records_consumed_rate substring.
-      - pattern: kafka.consumer<type=consumer-fetch-manager-metrics, client-id=(.*)><>(.+-rate)
+      # client-id=([^,]+) (NOT (.*), review F12): the greedy form also matches
+      # the per-topic MBean (client-id=..., topic=...), emitting the rate twice
+      # and ~doubling the poller's summed records_consumed_rate. [^,]+ pins the
+      # rule to the aggregate (no-topic) MBean only. (The poller README's example
+      # rule has the same over-match — noted in ../README.md, not edited there.)
+      - pattern: kafka.consumer<type=consumer-fetch-manager-metrics, client-id=([^,]+)><>(.+-rate)
         name: kafka_consumer_fetch_manager_$2
         labels:
           clientId: "$1"

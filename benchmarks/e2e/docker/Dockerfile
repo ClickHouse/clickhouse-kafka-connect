@@ -11,9 +11,20 @@
 # single top-level directory <name>-<version>/ with lib/, manifest.json, assets/,
 # doc/ — exactly the layout Connect's plugin.path loader expects.
 #
+# The Confluent Avro converter (io.confluent.connect.avro.AvroConverter — plan
+# §6 insert path) ships in NEITHER the Strimzi base NOR the connector plugin
+# zip, so it is baked in as a second plugin dir (task 31 review F2). The Hub
+# archive is self-contained (converter + avro + schema-registry-client + all
+# transitive deps) and is downloaded + sha256-verified by build-arm.sh against
+# a pinned digest. Both arms carry the SAME pinned converter, so it cancels in
+# the H/P ratio like the shared base layers.
+#
 # Build args (all provenance-carrying; see build-arm.sh which sets them):
 #   STRIMZI_IMAGE      full pinned base image ref (also recorded as provenance)
 #   PLUGIN_ZIP         build-context-relative path to the plugin zip to bake in
+#   AVRO_CONVERTER_ZIP build-context-relative path to the verified Confluent
+#                      Avro converter Hub archive (review F2)
+#   AVRO_CONVERTER_VERSION / AVRO_CONVERTER_SHA256   its pin (provenance)
 #   ARM               head | pinned
 #   GIT_SHA           git sha the plugin was built from
 #   CONNECTOR_VERSION connector version (VERSION file / tag) of the plugin
@@ -28,6 +39,9 @@ FROM ${STRIMZI_IMAGE}
 # below (an ARG before FROM only scopes the FROM line itself).
 ARG STRIMZI_IMAGE
 ARG PLUGIN_ZIP
+ARG AVRO_CONVERTER_ZIP
+ARG AVRO_CONVERTER_VERSION=unknown
+ARG AVRO_CONVERTER_SHA256=unknown
 ARG ARM=head
 ARG GIT_SHA=unknown
 ARG CONNECTOR_VERSION=unknown
@@ -47,6 +61,14 @@ RUN mkdir -p ${PLUGIN_PATH}/clickhouse-kafka-connect \
     && unzip -q /tmp/clickhouse-connector-plugin.zip -d ${PLUGIN_PATH}/clickhouse-kafka-connect \
     && rm -f /tmp/clickhouse-connector-plugin.zip
 
+# Bake the Confluent Avro converter in (review F2): the Hub archive already
+# contains a single top-level plugin dir (confluentinc-kafka-connect-avro-
+# converter-<ver>/lib/...), so unzip straight into the plugin path. Connect
+# discovers converters from plugin.path like any other plugin.
+COPY ${AVRO_CONVERTER_ZIP} /tmp/avro-converter.zip
+RUN unzip -q /tmp/avro-converter.zip -d ${PLUGIN_PATH} \
+    && rm -f /tmp/avro-converter.zip
+
 # Provenance the orchestrator reads into the runtime map (plan section 3, phase 2).
 RUN mkdir -p /opt/benchmark && cat > /opt/benchmark/provenance.json <<EOF
 {
@@ -54,6 +76,8 @@ RUN mkdir -p /opt/benchmark && cat > /opt/benchmark/provenance.json <<EOF
   "git_sha": "${GIT_SHA}",
   "connector_version": "${CONNECTOR_VERSION}",
   "plugin_sha256": "${PLUGIN_SHA256}",
+  "avro_converter_version": "${AVRO_CONVERTER_VERSION}",
+  "avro_converter_sha256": "${AVRO_CONVERTER_SHA256}",
   "kafka_version": "${KAFKA_VERSION}",
   "strimzi_version": "${STRIMZI_VERSION}",
   "strimzi_image": "${STRIMZI_IMAGE}",
@@ -75,6 +99,7 @@ LABEL org.opencontainers.image.title="clickhouse-kafka-connect-benchmark" \
       com.clickhouse.benchmark.git_sha="${GIT_SHA}" \
       com.clickhouse.benchmark.connector_version="${CONNECTOR_VERSION}" \
       com.clickhouse.benchmark.plugin_sha256="${PLUGIN_SHA256}" \
+      com.clickhouse.benchmark.avro_converter_version="${AVRO_CONVERTER_VERSION}" \
       com.clickhouse.benchmark.kafka_version="${KAFKA_VERSION}" \
       com.clickhouse.benchmark.strimzi_version="${STRIMZI_VERSION}" \
       com.clickhouse.benchmark.strimzi_image="${STRIMZI_IMAGE}"

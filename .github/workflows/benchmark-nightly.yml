@@ -104,24 +104,27 @@ jobs:
       - name: Update kubeconfig for the kafka-bench cluster
         run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 
-      - name: Resolve arm-order image slots
-        # run_pair.sh consumes ARM0_IMAGE/ARM1_IMAGE (first-run/second-run arm).
-        # It resolves the arm ORDER itself by UTC day parity; here we map that
-        # same parity onto the head/pinned image refs so ARM0_IMAGE is the
-        # first-run arm's image. Kept in lockstep with resolve_arm_order().
+      - name: Resolve arm order + image slots (SINGLE parity computation)
+        # Review F10: the day parity is computed ONCE, here, and passed to
+        # run_pair.sh as ARM_ORDER_SPEC together with the matching
+        # ARM0_IMAGE/ARM1_IMAGE slots. run_pair.sh never re-derives the parity
+        # in CI — a second derivation straddling UTC midnight would silently
+        # mislabel the arms vs the image slots. Even day -> head first.
         run: |
           set -euo pipefail
           DOY=$(date -u +%j)
           if [ $((10#$DOY % 2)) -eq 0 ]; then
             # even -> head first
+            echo "ARM_ORDER_SPEC=head pinned" >> "$GITHUB_ENV"
             echo "ARM0_IMAGE=$HEAD_IMAGE"   >> "$GITHUB_ENV"
             echo "ARM1_IMAGE=$PINNED_IMAGE" >> "$GITHUB_ENV"
           else
             # odd -> pinned first
+            echo "ARM_ORDER_SPEC=pinned head" >> "$GITHUB_ENV"
             echo "ARM0_IMAGE=$PINNED_IMAGE" >> "$GITHUB_ENV"
             echo "ARM1_IMAGE=$HEAD_IMAGE"   >> "$GITHUB_ENV"
           fi
-          echo "day-of-year=$DOY parity resolves ARM0/ARM1 image slots"
+          echo "day-of-year=$DOY -> ARM_ORDER_SPEC + ARM0/ARM1 image slots resolved once"
 
       - name: Phase plan (dry-run, for the run log)
         run: benchmarks/e2e/orchestration/run_pair.sh --plan
@@ -131,10 +134,16 @@ jobs:
 
       # --- always() cleanup (overseer directive b) --------------------------
       # These duplicate run_pair.sh's own trap so cleanup survives even a hard
-      # kill of the script (e.g. a cancelled job). Both are idempotent.
-      - name: Delete topic (always)
+      # kill of the script (e.g. a cancelled job). All idempotent. The CR
+      # deletes matter (review F11): a KafkaConnector CR that survives the
+      # night would revive on the next scale-up and pre-consume the fresh topic.
+      - name: Delete benchmark CRs + topic (always)
         if: always()
         run: |
+          kubectl -n "$K8S_NAMESPACE" delete kafkaconnector bench-clickhouse-sink --ignore-not-found --wait=false || true
+          kubectl -n "$K8S_NAMESPACE" delete kafkaconnect bench-connect --ignore-not-found --wait=false || true
+          kubectl -n "$K8S_NAMESPACE" delete secret bench-ch-creds --ignore-not-found || true
+          kubectl -n "$K8S_NAMESPACE" delete pod bench-poller --ignore-not-found --wait=false || true
           kubectl -n "$K8S_NAMESPACE" delete kafkatopic hits --ignore-not-found --wait=false || true
 
       - name: Scale EKS node group to zero (always)
