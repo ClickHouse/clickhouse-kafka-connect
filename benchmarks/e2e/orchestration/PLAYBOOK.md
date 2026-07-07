@@ -23,7 +23,7 @@ auth on the node.
 
 ---
 
-## READ-FIRST: three findings that shape this playbook
+## READ-FIRST: four findings that shape this playbook
 
 1. **ROW_LIMIT is UNSUPPORTED end-to-end (S5).** `producer.py` accepts a
    `--limit` / `ROW_LIMIT` env, but `orchestration/render_producer_job.py` only
@@ -43,7 +43,31 @@ auth on the node.
    `s3://shimons/clickbench-kafka-bench/hits-10m/` (us-east-2)** first (one-time),
    then point `PARQUET_SOURCE` there.
 
-3. **DWH export writes to bucket-ROOT prefixes, NOT `clickbench-kafka-bench/perf-export/`.**
+3. **`SOURCE_UNIQUE_EXPECTED` MUST be set or the pair dies as a FALSE integrity
+   mismatch.** SQL 20 binds `{unique_expected}`; `capture/run_metrics_sql.py
+   resolve_expected()` takes it from the `SOURCE_UNIQUE_EXPECTED` env constant —
+   and **nothing sets it**: `run_pair.sh` exports only `SOURCE_ROWS_EXPECTED`
+   (line 323), and neither the workflow nor `config.env` sets the unique
+   constant. Grounded failure mode (resolve_expected, lines 75-86): with
+   `SOURCE_UNIQUE_EXPECTED` unset and no `INPUT_PARQUET_GLOB`, it prints
+   `WARNING: no INPUT_PARQUET_GLOB and SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED
+   are not both set — integrity source ground truth is 0/0 and the check will FAIL.`
+   and returns **`0.0, 0.0` for BOTH** (discarding even the valid rows constant).
+   SQL 20 then *succeeds* — no error, no rollback — landing `rows_expected=0`,
+   `unique_expected=0`, `duplicate_rows=+10000000`, `integrity_ok=0`. The runs row
+   inserts, the export runs, and then `check_integrity.py` (the LAST gated step)
+   `die`s with `TIER 1 INTEGRITY MISMATCH … run FAILS` on the **first arm's t1**,
+   firing the cleanup trap so **the second arm never runs** — a full drain wasted
+   on a false mismatch. Fix: pin `SOURCE_UNIQUE_EXPECTED=10000000` in S0 (the
+   value is computed once from the staged subset — see the S5 staging gate).
+   Why not the `INPUT_PARQUET_GLOB` fallback: the re-derivation query is
+   `s3({glob}, NOSIGN, 'Parquet')` — **unauthenticated**, so it cannot read the
+   private staged `s3://shimons/...` prefix at all; pointed at the public bucket
+   it would `uniqExact`-scan the source **on every capture invocation**, on the
+   memory-capped metrics service. The pinned constant costs one offline
+   computation, ever.
+
+4. **DWH export writes to bucket-ROOT prefixes, NOT `clickbench-kafka-bench/perf-export/`.**
    `export_metrics_to_dwh.py` writes `s3://$DWH_BUCKET/<table>/<run_id>.parquet`
    for `<table>` in `runs`, `metrics`, `ch_inserts`. There is **no**
    `clickbench-kafka-bench/perf-export/` prefix anywhere in the code. If you set
@@ -98,6 +122,17 @@ PARQUET_SOURCE="s3://shimons/clickbench-kafka-bench/hits-10m/"
 # ALTERNATIVE (full ~100M, cross-region eu-central-1 read; NOT validation size):
 #   PARQUET_SOURCE="s3://clickhouse-public-datasets/hits_compatible/hits.parquet"
 
+# --- Integrity ground truth (READ-FIRST #3 — MANDATORY or the pair false-fails) ---
+# SOURCE_UNIQUE_EXPECTED = uniqExact(WatchID) of the STAGED SUBSET. Computed once
+# via clickhouse-local over exactly hits_0..hits_9 (S5 staging gate):
+#   count()=10,000,000  uniqExact(WatchID)=10,000,000  (WatchID happens to be
+#   fully unique within this 10-file subset; uniqExact is exact, not approximate).
+# THIS CONSTANT IS TIED TO THE SUBSET: change the staged files (more/fewer/other
+# hits_N, or the full dataset) and this value is WRONG — recompute it (S5 command)
+# before running. (SOURCE_ROWS_EXPECTED is NOT set here: run_pair.sh derives it
+# from the producer's committed offsets, line 323.)
+SOURCE_UNIQUE_EXPECTED=10000000
+
 # --- ClickHouse: drain TARGET (the dedicated us-east-2 staging service) ---
 TARGET_CH_HOST="<service>.us-east-2.aws.clickhouse-staging.com"
 TARGET_CH_USER=kafka_benchmark
@@ -116,7 +151,7 @@ METRICS_CH_PASSWORD="${TARGET_CH_PASSWORD}"
 # --- DWH export ---
 # DWH_BUCKET is a bare bucket NAME (no s3:// prefix, no path). shimons is us-east-1;
 # cross-region export from a us-east-2 CH service is fine (HTTPS PutObject).
-# Exports land at s3://shimons/{runs,metrics,ch_inserts}/<run_id>.parquet (READ-FIRST #3).
+# Exports land at s3://shimons/{runs,metrics,ch_inserts}/<run_id>.parquet (READ-FIRST #4).
 DWH_BUCKET=shimons
 DWH_BUCKET_REGION=us-east-1                 # avoids the HEAD region-probe round trip
 DWH_ROLE_ARN="<write-only-DWH-role-arn>"    # sts:AssumeRole-able by your admin identity;
@@ -147,6 +182,8 @@ one aborts mid-run):**
 | `METRICS_CH_HOST/USER/PASSWORD` | **yes** | `finalize_and_insert_metrics` (`:?`), capture/export | hard `die` |
 | `COMPUTE_REGION` | defaulted to `us-east-2` | `main`, `build_runtime_json` (mandatory) | default applied |
 | `DWH_ROLE_ARN` / `DWH_BUCKET` | **yes for export** | `export_metrics_to_dwh.py` | export WARN (metrics still land) |
+| `SOURCE_UNIQUE_EXPECTED` | **yes (tier-1 integrity)** | `run_metrics_sql.py resolve_expected()` via SQL 20 | resolve_expected returns 0/0 for BOTH constants → SQL 20 lands `integrity_ok=0` → `check_integrity.py` FALSE-fails the first arm's t1 and kills the pair (READ-FIRST #3) |
+| `SOURCE_ROWS_EXPECTED` | auto | exported by `run_pair.sh` line 323 from the producer's committed-offset count | do NOT set manually |
 | `K8S_NAMESPACE` | no (default `kafka-bench`) | top of script | default |
 | `SCALE_UP_NODES` | no (default 2) | `phase_scale_up`, `phase_pair_cost` | default |
 | `CFG_*` (`MAX_POLL_RECORDS`, `TASKS_MAX`, `PARTITION_SCHEME`, …) | no (plan §6 defaults) | `main` | defaults |
@@ -385,6 +422,33 @@ done
 # Gate: 10 objects, ~1.2 GB total
 aws s3 ls s3://shimons/clickbench-kafka-bench/hits-10m/ | grep -c hits_    # expect 10
 ```
+
+**ONE-TIME INTEGRITY CONSTANT (SOURCE_UNIQUE_EXPECTED — READ-FIRST #3):** compute
+`uniqExact(WatchID)` of the staged subset with `clickhouse-local` on the operator
+machine, reading the staged files with your env AWS creds (the `s3()` 4-cred-arg
+form, same shape `export_metrics_to_dwh.py` uses):
+
+```bash
+clickhouse local --query "
+SELECT count() AS rows, uniqExact(WatchID) AS unique_watchid
+FROM s3('https://shimons.s3.us-east-1.amazonaws.com/clickbench-kafka-bench/hits-10m/hits_{0..9}.parquet',
+        '$AWS_ACCESS_KEY_ID', '$AWS_SECRET_ACCESS_KEY', '$AWS_SESSION_TOKEN', 'Parquet')"
+# EXPECTED (staged files are byte-identical copies of public hits_0..hits_9):
+#   10000000	10000000
+```
+> If your creds are a long-lived key pair with no session token, drop the
+> `'$AWS_SESSION_TOKEN'` argument (3-arg form). Query shape + expected output
+> were **verified live** against the identical public files (NOSIGN, no
+> mutation): `clickhouse local --query "SELECT count(), uniqExact(WatchID) FROM
+> s3('https://clickhouse-public-datasets.s3.eu-central-1.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..9}.parquet', NOSIGN, 'Parquet')"`
+> → `10000000	10000000` (clickhouse-local 25.12.1.649; the `hits_{0..9}.parquet`
+> glob cannot over-match `hits_10..99` because of the `.parquet` suffix).
+> Set the S0 `SOURCE_UNIQUE_EXPECTED` to the printed `unique_watchid`. If it is
+> not `10000000`, the staged subset is NOT hits_0..hits_9 — stop and re-stage.
+> Do NOT use the `INPUT_PARQUET_GLOB` fallback instead: its re-derivation is
+> `s3(glob, NOSIGN, …)` (cannot read the private staged bucket) and would rescan
+> the source per capture run on the memory-capped target (READ-FIRST #3).
+
 Then `PARQUET_SOURCE="s3://shimons/clickbench-kafka-bench/hits-10m/"` (already the
 S0 default). **Producer IRSA prereq:** the `hits-producer` ServiceAccount in
 `kafka-bench` must be annotated with an IAM role that can
@@ -536,11 +600,15 @@ in-cluster poller finalize and the CH-side capture SQL landed under the same run
 ```bash
 chq "SELECT run_id, metric_name, value FROM perf.metrics
      WHERE run_id LIKE '${PAIR_ID}%-t1'
-       AND metric_name IN ('integrity_ok','rows_delivered','rows_expected','duplicate_rows')
+       AND metric_name IN ('integrity_ok','rows_delivered','rows_expected',
+                           'unique_delivered','unique_expected','duplicate_rows')
      ORDER BY run_id, metric_name"
 ```
 Expected: for each `-t1` run, `rows_expected=10000000`, `rows_delivered=10000000`,
-`duplicate_rows=0`, `integrity_ok=1`.
+`unique_expected=10000000`, `unique_delivered=10000000`, `duplicate_rows=0`,
+`integrity_ok=1`. If `rows_expected=0` AND `unique_expected=0`,
+`SOURCE_UNIQUE_EXPECTED` was unset (READ-FIRST #3 — false mismatch, see the
+failure table).
 
 **4. `ch_insert_cpu_share_tier0` present on TIER-0 rows (new requirement) — and
 NOT on tier-1 (it is tier-0-only, run_pair.sh line 563-565):**
@@ -566,7 +634,7 @@ chq "SELECT run_id, value FROM perf.metrics
 ```
 Expected: both `-t1` values `>= 50000`. Below → task 32 tunes poll size (not a code defect).
 
-**7. S3 export objects landed (READ-FIRST #3 — bucket-root prefixes, keyed by run_id):**
+**7. S3 export objects landed (READ-FIRST #4 — bucket-root prefixes, keyed by run_id):**
 ```bash
 for r in "${PAIR_ID}-${FIRST_ARM}-t1"; do
   for t in runs metrics ch_inserts; do
@@ -673,6 +741,7 @@ recreate topic + fresh Job (never let K8s retry the producer — `backoffLimit 0
 | S5 truncate | `tier1 truncate failed` (fail_run) | needs clean re-run | target unreachable on 9440/`remoteSecure`; rolled back |
 | S5 capture | `capture <NN> failed -> rollback` then `capture aborted` | needs clean re-run | a capture SQL erred (grants/query_log filter); rows rolled back; fix grants then re-run pair |
 | S5 capture 20 | `capture 20 (integrity) computation failed -> FLAG integrity_unverified` | continues | run FLAGGED, not failed; row lands; investigate SOURCE_UNIQUE/count constants after |
+| S5 capture 20 | stderr `WARNING: no INPUT_PARQUET_GLOB and SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED are not both set — integrity source ground truth is 0/0 and the check will FAIL.` then later `TIER 1 INTEGRITY MISMATCH` with `rows_expected=0`/`unique_expected=0` in perf.metrics | needs clean pair re-run | NOT a data-loss mismatch — `SOURCE_UNIQUE_EXPECTED` was unset (READ-FIRST #3). SQL 20 succeeded with 0/0 ground truth, so no rollback fired and the false verdict is exported. Purge the pair's rows (S6 rollback loop), set `SOURCE_UNIQUE_EXPECTED=10000000` in the env, re-run the pair |
 | S5 integrity | `TIER 1 INTEGRITY MISMATCH … run FAILS` | run failed by design | evidence already exported; STOP-AND-REPORT (real data loss/dupes) — do not retry blindly |
 | S5 run record | `insert_run_record failed -> rollback` | needs clean re-run | metrics landing down / GIT_SHA empty (provenance.json unreadable); rolled back |
 | S5 export | `DWH export failed (metrics persisted; export can be retried)` (WARN) | retry export only | fix `DWH_ROLE_ARN`; re-run `RUN_ID=<run> python3 export_metrics_to_dwh.py` per run (no full re-run) |
@@ -699,6 +768,11 @@ containing placeholders were checked for shell-syntax validity, not executed.
 - pyarrow row counts (anonymous S3, region eu-central-1): `hits_0/1/2/50 =
   1,000,000` each, `hits_99 = 997,497`, `hits.parquet = ~99,997,497`. ⇒ 10 files =
   exactly 10,000,000 rows.
+- clickhouse-local 25.12.1.649 live queries (read-only, NOSIGN, no mutation):
+  `SELECT count(), uniqExact(WatchID) FROM s3('…athena_partitioned/hits_0.parquet', NOSIGN, 'Parquet')`
+  → `1000000 1000000`; same over `hits_{0..9}.parquet` → `10000000 10000000`.
+  Grounds `SOURCE_UNIQUE_EXPECTED=10000000` for the exact staged subset and the
+  S5 computation command's query shape.
 
 **Grounding greps run against the scripts:**
 - `run_pair.sh` — env reads: `ARM0_IMAGE`/`ARM1_IMAGE`/`PRODUCER_IMAGE`/
@@ -725,6 +799,13 @@ containing placeholders were checked for shell-syntax validity, not executed.
   run_pair.sh, per arm — not manual).
 - `insert_run_record.py` — reads `TARGET_CH_*` for `version()`, `METRICS_CH_*`
   for the INSERT; mandatory `TARGET_REGION`/`ENVIRONMENT_CLASS` from config.env.
+- `run_metrics_sql.py resolve_expected()` (lines 48-102) — constants path
+  requires BOTH `SOURCE_ROWS_EXPECTED` and `SOURCE_UNIQUE_EXPECTED`; with no
+  `INPUT_PARQUET_GLOB` and either constant missing it returns `0.0, 0.0` for
+  both (SQL 20 succeeds with 0/0 → false `integrity_ok=0`); the glob fallback
+  query is `s3({glob:String}, NOSIGN, 'Parquet')` (unauthenticated). `run_pair.sh`
+  line 323 exports `SOURCE_ROWS_EXPECTED` only — nothing in run_pair.sh /
+  benchmark-nightly.yml / config.env sets `SOURCE_UNIQUE_EXPECTED` (grep-verified).
 - `kafkaconnector.json.tmpl` — connector uses `port 8443 ssl true` (HTTPS);
   `run_metrics_sql.py`/`23_*.sql` use `remoteSecure(host:9440,...)` (native TLS)
   — two different but both-correct target ports.
