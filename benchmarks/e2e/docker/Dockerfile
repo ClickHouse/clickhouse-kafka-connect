@@ -21,7 +21,7 @@
 #   STRIMZI_VERSION   strimzi version of the base image (for provenance.json)
 #   BUILD_TIMESTAMP   ISO-8601 build time
 
-ARG STRIMZI_IMAGE=quay.io/strimzi/kafka:0.45.0-kafka-3.9.0
+ARG STRIMZI_IMAGE=quay.io/strimzi/kafka:0.46.0-kafka-3.9.0
 FROM ${STRIMZI_IMAGE}
 
 # Re-declare in the build stage so it is in scope for provenance.json / LABEL

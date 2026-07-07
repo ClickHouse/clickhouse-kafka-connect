@@ -35,10 +35,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 PINNED_REF_FILE="${SCRIPT_DIR}/PINNED_REF"
 
-# Strimzi/Kafka pin. Keep in sync with task 25's deployed Strimzi version; the
-# base image default also lives in the Dockerfile. Overridable via env.
-STRIMZI_IMAGE="${STRIMZI_IMAGE:-quay.io/strimzi/kafka:0.45.0-kafka-3.9.0}"
-STRIMZI_VERSION="${STRIMZI_VERSION:-0.45.0}"
+# Strimzi/Kafka pin. Keep in sync with task 25's deployed Strimzi operator
+# version (benchmarks/e2e/infra/env.sh: STRIMZI_VERSION); the base image default
+# also lives in the Dockerfile. Overridable via env.
+STRIMZI_IMAGE="${STRIMZI_IMAGE:-quay.io/strimzi/kafka:0.46.0-kafka-3.9.0}"
+STRIMZI_VERSION="${STRIMZI_VERSION:-0.46.0}"
 KAFKA_VERSION="${KAFKA_VERSION:-3.9.0}"
 
 ARM=""
@@ -132,6 +133,10 @@ fetch_pinned_plugin() {
     fi
     digest="$(gh release view "${ref}" --repo ClickHouse/clickhouse-kafka-connect \
       --json assets --jq ".assets[] | select(.name==\"${asset_name}\") | .digest" | head -1)"
+    # A release with no published digest makes jq emit the literal "null" —
+    # treat that as absent so we take the warn-and-record path, not a mismatch.
+    # (if-form, not `[[ ]] &&`: a false test would trip set -e.)
+    if [[ "${digest}" == "null" ]]; then digest=""; fi
     expected_sha="${digest#sha256:}"
     if [[ -z "${GIT_SHA}" ]]; then
       GIT_SHA="$(gh api "repos/ClickHouse/clickhouse-kafka-connect/git/refs/tags/${ref}" \
@@ -146,7 +151,7 @@ fetch_pinned_plugin() {
     PLUGIN_ZIP="${dl_dir}/clickhouse-kafka-connect-${ref}.zip"
     echo ">> gh not available; curl ${url}" >&2
     curl -fsSL -o "${PLUGIN_ZIP}" "${url}"
-    [[ -z "${GIT_SHA}" ]] && GIT_SHA="unknown"
+    if [[ -z "${GIT_SHA}" ]]; then GIT_SHA="unknown"; fi
   fi
 
   if [[ ! -f "${PLUGIN_ZIP}" ]]; then
