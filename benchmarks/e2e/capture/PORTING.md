@@ -58,8 +58,8 @@ Already conformant, ported as-is: `rows_delivered`, `rows_expected`,
 
 Plan §7 Kafka additions checked against the Spark 1x SQL: `ch_avg_rows_per_insert`
 (present, file 11), `parts_per_insert` + `merge_amplification` (present, file 13),
-`ch_insert_cpu_share_tier0` (Tier 0 — NOT in the ported SQL; see the Tier 0 note
-below), `bytes_on_wire_per_row` (present, file 18).
+`ch_insert_cpu_share_tier0` (Tier 0 — Kafka-native SQL 23, no Spark source; see
+the Tier 0 note below), `bytes_on_wire_per_row` (present, file 18).
 
 ## The query_log filter (Kafka-specific)
 
@@ -115,17 +115,22 @@ rows** (see the deferred-validation note in the report).
 | `20_insert_integrity.sql` | **ported** verbatim | target-vs-SOURCE deltas on BOTH count() and uniqExact(WatchID); source constants recorded as metrics; `ch_dedup_dropped_blocks` from ProfileEvents. The ClickBench-hits duplicate-WatchID semantics (do NOT use count()−uniqExact() on the target) are preserved exactly. For Kafka, `rows_expected` = the producer's committed-offset count. |
 | `21_pre_run_covariates.sql` | **ported** verbatim | pre-drain covariates; reads `system.asynchronous_metrics`, `system.parts`. |
 | `22_insert_settle_timed_out.sql` | **ported** verbatim | `settle_timed_out` flag (contract §1.3 token settle_timeout). |
+| `23_insert_tier0_cpu_share.sql` | **Kafka-native (no Spark source)** | `ch_insert_cpu_share_tier0` (unit `percent`); tier-0-only parse-watch, wired into run_pair.sh's capture loop on tier 0 ONLY (contract §2.1, amendment 3298da9b). |
 
 ### Tier 0 note
 
 `ch_insert_cpu_share_tier0` (plan §7 Tier 0 parse-watch; contract §2.1) is NOT
-emitted by any Spark capture SQL (Spark has no Tier 0 build on disk). It is a
-Docker-CH `query_log` insert-CPU / wall-clock share captured on the Tier 0 Null
-run; because the Kafka Tier 0 target is an `ENGINE=Null` table on the SAME Cloud
-service (plan decision 9), it can be derived from the same `system.query_log`
-capture window as `ch_insert_cpu_seconds`. Wiring it up is deferred to the Tier 0
-orchestration task (not part of this capture-SQL port); the pinned name is
-recorded here so it lands under the right spelling when it does.
+emitted by any Spark capture SQL (Spark has no Tier 0 build on disk); it is a
+Kafka-native capture file (`23_insert_tier0_cpu_share.sql`). It is a
+`query_log` insert-CPU / wall-clock share captured on the Tier 0 Null run;
+because the Kafka Tier 0 target is a **Cloud-hosted** `ENGINE=Null` table on the
+SAME Cloud service (plan decision 9), it is derived from the same
+`system.query_log` capture window as `ch_insert_cpu_seconds` (SQL 11) — the CPU
+numerator matches SQL 11's accounting exactly. Per the contract §1.1
+`tier0_ch_version` scoping note, Cloud-hosted Null tier-0 rows omit the pinned
+`tier0_ch_version` and this parse-watch metric is MANDATORY for them instead. It
+is emitted on TIER-0 runs ONLY (run_pair.sh's capture loop gates it by tier,
+mirroring how SQL 20 integrity is gated to tier 1).
 
 ## Drain window (Kafka adaptation)
 

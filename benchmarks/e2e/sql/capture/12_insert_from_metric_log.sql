@@ -14,10 +14,15 @@
 -- Parameters ({name:Type}) are bound by run_metrics_sql.py.
 --
 -- Ported from spark-clickhouse-connector benchmarks/sql/perf/12_insert_from_metric_log.sql.
--- All metric names already conformant with docs/benchmark-v2-contract.md §2.1
--- (these are ch_-namespaced diagnostics, not renamed by §7).
+-- Metric names are the PINNED spellings of docs/benchmark-v2-contract.md §2.1.
+-- connections_per_insert is the cross-connector shared metric (§2.1); it uses
+-- the same spelling on ALL tiers (Amendment 2026-07-07 / contract §7). The Tier-1
+-- rename ch_connections_per_insert -> connections_per_insert landed 2026-07-07;
+-- no Kafka history exists, so no legacy-name coalesce is needed here. The
+-- remaining ch_http_connections_created/preserved/peak names are connector-
+-- specific diagnostics (correctly NOT shared, not renamed by §7).
 --
--- Connection-churn metrics from system.metric_log: ch_connections_per_insert
+-- Connection-churn metrics from system.metric_log: connections_per_insert
 -- is ~1.0 when the sink opens one connection per insert; << 1.0 once an HTTP
 -- client is cached per task. The single query_log subquery (the insert-count
 -- denominator) carries the same Kafka query_user filter as file 11.
@@ -36,7 +41,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   UNION ALL
   -- Ratio: connections opened / inserts. 1.0 = one connection per insert;
   -- << 1.0 = one connection serves many inserts.
-  SELECT 'ch_connections_per_insert', 'ratio',
+  SELECT 'connections_per_insert', 'ratio',
          (SELECT toFloat64(max(ProfileEvent_HTTPConnectionsCreated) - min(ProfileEvent_HTTPConnectionsCreated))
           FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
           WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String}))

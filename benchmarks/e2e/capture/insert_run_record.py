@@ -21,10 +21,12 @@ incomplete, and the DWH export is gated on this insert succeeding.
 
 Kafka adaptations (contract §1, plan §3/§9):
   * CONNECTOR defaults to 'kafka-connect' (written to perf.runs.connector).
-  * The runtime map MUST carry the mandatory scope keys target_region and
-    environment_class. They are sourced from the repo config (config.env,
-    surfaced as TARGET_REGION / ENVIRONMENT_CLASS in the env) — NEVER hardcoded
-    inline here — and this script HARD-FAILS if either is missing/empty.
+  * The runtime map MUST carry the mandatory scope keys target_region,
+    environment_class and compute_region (contract §1.1; compute_region added by
+    the 2026-07-07 amendment). They are sourced from the repo config (config.env,
+    surfaced as TARGET_REGION / ENVIRONMENT_CLASS / COMPUTE_REGION in the env) —
+    NEVER hardcoded inline here — and this script HARD-FAILS if any is
+    missing/empty.
   * run_id / pair_id come from lib_runid.sh. Per contract §1.2 a '…-nogit'
     identifier is USELESS (does not pin the commit under test); this script
     HARD-FAILS (no emit) if RUN_ID or PAIR_ID ends in '-nogit' or is 'nogit'.
@@ -33,7 +35,7 @@ Kafka adaptations (contract §1, plan §3/§9):
 
 Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD,
               RUN_ID, RUN_START, RUN_END, GIT_SHA, CONNECTOR_VERSION,
-              TARGET_REGION, ENVIRONMENT_CLASS
+              TARGET_REGION, ENVIRONMENT_CLASS, COMPUTE_REGION
 Optional env: CONNECTOR (default 'kafka-connect'), RUN_PROFILE (default ''),
               PAIR_ID (checked for the nogit guard if set),
               RUNTIME (JSON object of connector/runtime attributes written
@@ -85,6 +87,7 @@ def main() -> None:
     # Mandatory scope keys (contract §1.1). Sourced from config, hard-checked.
     target_region = require_nonempty("TARGET_REGION")
     environment_class = require_nonempty("ENVIRONMENT_CLASS")
+    compute_region = require_nonempty("COMPUTE_REGION")
 
     # Connector-specific runtime attributes go into a generic Map column, so
     # adding a connector never needs a schema change.
@@ -94,6 +97,7 @@ def main() -> None:
     # can never be silently hardcoded to a wrong value in the passthrough.
     runtime.setdefault("target_region", target_region)
     runtime.setdefault("environment_class", environment_class)
+    runtime.setdefault("compute_region", compute_region)
 
     target = ch_common.get_client("TARGET_CH_HOST", "TARGET_CH_USER", "TARGET_CH_PASSWORD")
     clickhouse_version = target.query("SELECT version()").result_rows[0][0]

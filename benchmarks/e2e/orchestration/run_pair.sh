@@ -176,8 +176,9 @@ PHASE 3  per arm, in order [ ${order[0]} , ${order[1]} ]:
       wait connector + ${EXPECTED_TASKS} tasks RUNNING   (poller prereq 5; REST via poller pod)
       poller sample (in-cluster) -> lag 0 (RUN_END = lag-0 ts) -> copy samples back
       finalize --insert (run_id <pair_id>-<arm>-t0, tier 0; lands on METRICS service)
-      capture SQL [11..19,22] gated window ; on any fail -> rollback + abort
-      (tier 0: SQL 20 integrity NOT run — integrity is a tier-1 concept, contract §3)
+      capture SQL [11..19,22,23] gated window ; on any fail -> rollback + abort
+      (tier 0: SQL 20 integrity NOT run — integrity is a tier-1 concept, contract §3;
+       SQL 23 ch_insert_cpu_share_tier0 parse-watch runs on tier 0 ONLY, contract §2.1)
       insert_run_record (runs row AFTER metrics) ; on fail -> rollback + abort
       export (gated on runs insert)
       delete connector + consumer group
@@ -188,7 +189,8 @@ PHASE 3  per arm, in order [ ${order[0]} , ${order[1]} ]:
       poller sample (in-cluster) -> lag 0 (RUN_END = lag-0 ts)
       wait_for_settle -> SETTLE_END / settle_timed_out
       finalize --insert (run_id <pair_id>-<arm>-t1, tier 1; lands on METRICS service)
-      capture SQL [11..19,22] gated ; on any fail -> rollback + abort
+      capture SQL [11..20,22] gated ; on any fail -> rollback + abort
+      (tier 1: SQL 23 ch_insert_cpu_share_tier0 NOT run — tier-0-only, contract §2.1)
       SQL 20 integrity: computation failure -> FLAG integrity_unverified (not rollback)
       insert_run_record ; on fail -> rollback + abort
       export (gated) ; integrity check LAST (MISMATCH FAILS run, evidence already exported)
@@ -556,9 +558,12 @@ capture_and_record() {
 
   local integrity_unverified=0
   local f
-  for f in 11 12 13 14 15 16 17 18 19 20 22; do
+  for f in 11 12 13 14 15 16 17 18 19 20 22 23; do
     if [ "${f}" = "20" ] && [ "${tier}" = "0" ]; then
       continue   # tier 0: integrity not applicable (review F7)
+    fi
+    if [ "${f}" = "23" ] && [ "${tier}" != "0" ]; then
+      continue   # ch_insert_cpu_share_tier0: tier-0-only parse-watch (contract §2.1)
     fi
     local sqlfile
     sqlfile="$(ls "${E2E_DIR}"/sql/capture/${f}_*.sql 2>/dev/null | head -1)"

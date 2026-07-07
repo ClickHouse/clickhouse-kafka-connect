@@ -6,7 +6,8 @@ the Spark benchmark (`spark-clickhouse-connector/benchmarks/`). See
 pinned-name mapping, the query_log filter, and the gating/rollback discipline.
 
 - **Scripts** live here (`benchmarks/e2e/capture/`).
-- **Capture SQL** lives in `../sql/capture/` (files `11`–`22`).
+- **Capture SQL** lives in `../sql/capture/` (files `11`–`23`; `23` is
+  tier-0-only — see the order of operations below).
 - Bootstrap DDL + the byte-locked `perf.*` schema live in `../sql/` (see
   `../sql/README.md`).
 
@@ -14,7 +15,7 @@ pinned-name mapping, the query_log filter, and the gating/rollback discipline.
 
 | File | Role |
 |---|---|
-| `config.env` | Non-secret repo config. **`source` it first.** Carries the contract §1.1 mandatory scope keys (`TARGET_REGION=us-east-2`, `ENVIRONMENT_CLASS=staging`), `CONNECTOR=kafka-connect`, the `QUERY_LOG_USER` query_log filter user, and the default target db/table. |
+| `config.env` | Non-secret repo config. **`source` it first.** Carries the contract §1.1 mandatory scope keys (`TARGET_REGION=us-east-2`, `ENVIRONMENT_CLASS=staging`, `COMPUTE_REGION=us-east-2`), `CONNECTOR=kafka-connect`, the `QUERY_LOG_USER` query_log filter user, and the default target db/table. |
 | `lib_runid.sh` | Generates `RUN_ID`/`RUN_START`. HARD-FAILS on a `-nogit` id (contract §1.2). `source` it. |
 | `ch_common.py` | clickhouse-connect helper (host/user/password from env). |
 | `run_metrics_sql.py <file>` | Runs one parameterized capture SQL file against the perf.* service. |
@@ -40,7 +41,9 @@ python3 truncate_target.py                         # Tier 1 only
 SETTLE_END=$(python3 wait_for_settle.py)           # SETTLE_STATUS_FILE => timed-out flag
 
 # gated capture (numeric order; 15 before 19); on ANY failure -> rollback_run_metrics.py
-for f in 11 12 13 14 15 16 17 18 19 20 22 ; do
+# 20 (integrity) runs on tier 1 only; 23 (ch_insert_cpu_share_tier0 parse-watch)
+# runs on tier 0 only — the orchestrator (run_pair.sh) gates both by tier.
+for f in 11 12 13 14 15 16 17 18 19 20 22 23 ; do
   python3 run_metrics_sql.py ../sql/capture/${f}_*.sql || { python3 rollback_run_metrics.py; exit 1; }
 done
 
@@ -61,7 +64,7 @@ Secrets are **env-only** (never in any file). See `../sql/README.md` for the
 - `QUERY_LOG_USER` — query_log filter user (config.env).
 - `SOURCE_ROWS_EXPECTED` / `SOURCE_UNIQUE_EXPECTED` — integrity ground truth (producer committed-offset count + staged uniqExact(WatchID)).
 - `GIT_SHA` / `CONNECTOR_VERSION` / `RUNTIME` (JSON) — for the runs row.
-- `TARGET_REGION` / `ENVIRONMENT_CLASS` — mandatory scope keys (config.env).
+- `TARGET_REGION` / `ENVIRONMENT_CLASS` / `COMPUTE_REGION` — mandatory scope keys (config.env).
 - `DWH_ROLE_ARN` / `DWH_BUCKET` (+ optional `DWH_BUCKET_REGION`) — export.
 
 ## DWH bucket — pending decision (not hardcoded)

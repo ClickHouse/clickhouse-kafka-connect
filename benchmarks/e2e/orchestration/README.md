@@ -244,7 +244,7 @@ cancel-in-progress: false }`. This serialises runs of **this workflow file**.
 - Confluent Avro converter archive (7.7.1) downloaded from the Hub and its
   sha256 pinned in `docker/build-arm.sh` (verified against the real download).
 - Every path/secret/workflow referenced by `benchmark-nightly.yml` verified to
-  exist (workflow_call target, scripts, capture SQL 11-22, requirements.txt).
+  exist (workflow_call target, scripts, capture SQL 11-23, requirements.txt).
 
 ## Known gaps (everything unvalidated live)
 
