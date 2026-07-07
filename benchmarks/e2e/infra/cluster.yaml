@@ -1,0 +1,86 @@
+# eksctl cluster config for the Kafka Connect sink Benchmark v2 (task 25).
+#
+# Substrate for the nightly two-arm drain benchmark: a single-broker Strimzi
+# Kafka (KRaft, RF=1), Schema Registry, and a Kafka Connect worker. The broker
+# is deliberately minimal and NOT under test (plan decision 8); the cluster
+# exists only to host the connector being benchmarked.
+#
+# Cost model (plan decision 12): the EKS control plane (~$0.10/hr, ~$73/mo)
+# and this config persist; the managed node group scales to zero between runs
+# so compute is paid only for run hours. See README.md.
+#
+# Account/region context (NEVER hardcode credentials — see README.md):
+#   AWS account : 796575137974
+#   region      : us-east-2  (co-located with the dedicated ClickHouse Cloud
+#                             target, which lives in us-east-2)
+# A credentialed operator selects the account via their own AWS profile/OIDC
+# role before running eksctl; this file carries no secrets.
+#
+# apiVersion is pinned; bump deliberately (every bump is a substrate change).
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: kafka-bench
+  # us-east-2 co-locates the cluster with the dedicated ClickHouse Cloud target
+  # (plan: EKS co-located with the target to minimize cross-region latency).
+  region: us-east-2
+  # Pin the control-plane Kubernetes version so a silent EKS default bump is
+  # never mistaken for a connector regression. Bump deliberately.
+  version: "1.31"
+  tags:
+    Project: clickbench-benchmark
+    Component: kafka-connect-benchmark-v2
+    ManagedBy: eksctl
+
+# Pin availability zones so the broker's AZ-local EBS volume and the node group
+# land in a stable, known pair (avoids eksctl picking an AZ without capacity).
+availabilityZones:
+  - us-east-2a
+  - us-east-2b
+
+# Managed node group: single group, small instances, gp3 root volumes,
+# scale-to-zero capable (minSize 0). Scale-up/down is driven by scale-up.sh /
+# scale-down.sh, which set desiredCapacity at runtime.
+managedNodeGroups:
+  - name: bench-ng
+    # m6i.large = 2 vCPU / 8 GiB. Two nodes give headroom for the Strimzi
+    # broker pod (~2Gi heap), the Connect worker, Schema Registry, and the
+    # per-run producer Job on separate nodes.
+    instanceType: m6i.large
+    # scale-to-zero: minSize 0 so scale-down.sh can drop the group to no nodes.
+    # desiredCapacity starts at 0 — provision creates the group empty; a run
+    # scales it up. This means `provision.sh` never leaves paid compute running.
+    minSize: 0
+    maxSize: 2
+    desiredCapacity: 0
+    volumeSize: 40
+    volumeType: gp3
+    # gp3 baseline is plenty for node root; broker data uses a separate PVC.
+    privateNetworking: false
+    amiFamily: AmazonLinux2023
+    labels:
+      role: kafka-bench-worker
+    tags:
+      Project: clickbench-benchmark
+      Component: kafka-connect-benchmark-v2
+      nodegroup: bench-ng
+    # IAM: least-ish privilege. EBS CSI needed for the broker's gp3 PVC;
+    # CloudWatch optional for pod-log shipping during a run.
+    iam:
+      withAddonPolicies:
+        ebs: true
+        cloudWatch: true
+
+# The gp3 PersistentVolume for the broker is provisioned by the AWS EBS CSI
+# driver addon (see storageclass-gp3.yaml). Enable it as a managed addon so it
+# exists before the Strimzi Kafka CR requests its PVC.
+addons:
+  - name: aws-ebs-csi-driver
+    tags:
+      Project: clickbench-benchmark
+
+# CloudWatch container-insights / control-plane logging kept minimal (cost).
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["audit"]
