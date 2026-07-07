@@ -9,18 +9,32 @@ while never contending. The `clickbench.hits` DDL and the `perf.*` schema are po
 from the Spark benchmark and **must stay byte-for-byte schema-identical** — that is
 the cross-connector comparability contract.
 
-## Prerequisite (human, blocked)
+## Target service
 
-The Cloud service **cannot be created by CI or an agent** — it needs a human with
-ClickHouse Cloud console access. Before any of this SQL runs, a human must:
+A dedicated Cloud service has been provisioned (human step, done): **3 vCPU /
+12 GiB, 1 replica, region `us-east-2`** (co-located with the EKS cluster so the
+drain path is intra-region), on the `clickhouse-staging.com` Cloud environment.
 
-1. Create a dedicated Cloud service: **3 vCPU / 12 GiB, 1 replica, region `us-east-1`**
-   (same region as the EKS cluster, so the drain path is intra-region).
-2. Run the SQL below against it (see order).
-3. Store its identity + creds as CI secrets, mirroring the Spark target's secret
-   names with a `KAFKA_` prefix (see "CI secrets" below).
+Connection details are **env-only** — the host, user, and password must NEVER be
+written into any file (committed or not). Pass them via environment variables:
 
-Everything else in this directory is ready the moment the service exists.
+```
+TARGET_CH_HOST=...   # service hostname (port 8443, HTTPS)
+TARGET_CH_USER=...
+TARGET_CH_PASSWORD=...
+curl -sS --user "$TARGET_CH_USER:$TARGET_CH_PASSWORD" \
+  --data-binary "<one SQL statement>" "https://$TARGET_CH_HOST:8443"
+```
+
+The HTTP interface takes one statement per request, so apply the files below one
+at a time, in order.
+
+Remaining human follow-ups:
+
+1. Provision the CI secrets (`KAFKA_*` names below) with the service identity and
+   the benchmark user's credentials.
+2. Run `bootstrap/01_create_benchmark_user.sql` on the service with a real
+   password (it stays authored-only, placeholder in place, until then).
 
 ## Files & run order
 
