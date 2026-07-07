@@ -85,7 +85,11 @@ spec:
             # memory stays flat regardless of dataset size.
             requests:
               cpu: "1"
-              memory: 1Gi
+              # 4Gi/6Gi: the 1Gi/3Gi sizing OOMKilled at ~2m44s into a 10M-row
+              # pre-load (2026-07-07 live run) — the bounded-batch streaming
+              # assumption does not hold (suspect pyarrow fragment prefetch and/or
+              # rdkafka queue growth); needs a proper streaming fix, tracked.
+              memory: 4Gi
             limits:
               cpu: "2"
-              memory: 3Gi
+              memory: 6Gi
