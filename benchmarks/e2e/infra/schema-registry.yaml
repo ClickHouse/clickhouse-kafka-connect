@@ -32,6 +32,11 @@ spec:
         app: schema-registry
         app.kubernetes.io/part-of: kafka-connect-benchmark-v2
     spec:
+      # Kubernetes service-link env injection creates SCHEMA_REGISTRY_PORT=tcp://...
+      # (from the schema-registry Service), which the Confluent configure script
+      # parses as the deprecated `port` config and crash-loops ("PORT is
+      # deprecated"). Disable service links; discovery uses DNS anyway.
+      enableServiceLinks: false
       # Keep off the broker node when possible; not a hard requirement on a
       # 2-node group, so a soft anti-affinity rather than required.
       affinity:
