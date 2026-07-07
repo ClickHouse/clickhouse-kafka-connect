@@ -52,7 +52,7 @@ below are the pinned contract. Both pipelines **MUST** spell them identically.
 | `pair_id` | see §1.2 | — | Shared by the two runs of one nightly two-arm pair. |
 | `target_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the run's target service. **MUST** be set from repo config, never hardcoded per run. |
 | `compute_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the load generator (EMR / EKS). When it differs from `target_region` the connector→server path is cross-region — a structural bias that cross-connector comparisons **MUST** be able to compute. (Amendment 2026-07-07.) |
-| `environment_class` | `'staging'` \| `'production'` | — (MANDATORY) | Deployment class of the target service. |
+| `environment_class` | `'staging'` \| `'production'` \| `'self_hosted'` | — (MANDATORY) | Deployment class of the target service. `'self_hosted'` (Amendment 2026-07-07) is for Tier-0 instrument targets — the pinned Docker ClickHouse running on the load generator; Tier-0 rows MUST use it (a Cloud class on an ephemeral instrument would be misleading). On Tier-0 rows `target_region` equals the compute region (the instrument runs on the load generator). |
 
 `target_region`, `compute_region`, and `environment_class` are **MANDATORY on
 every `perf.runs` row in both pipelines**, from day one.
@@ -129,6 +129,7 @@ different keys and **MUST NOT** be conflated.
 
 | Key | Values | Meaning |
 |-----|--------|---------|
+| `outcome` | `'success'` \| `'failed'` | Outcome class of the run (Amendment 2026-07-07). `'failed'` = the ingest step failed; the run is still **fully captured and exported, marked** (plan §6.5 — no survivorship bias). Absent ⇒ `'success'` (legacy rows only ever landed on the success path). Dashboards **MUST** exclude failed-class runs from headlines/bands/ratios **by outcome, not by absence**. Orthogonal to `flagged` (a failed run is not merely non-comparable; a flagged run is not failed). Integrity on a failed-class run is `integrity_unverified` by definition. |
 | `flagged` | `'1'` | Present with value `'1'` iff the run tripped a validity guard (plan §6.10). Absent ⇒ not flagged. |
 | `flag_reason` | fixed vocabulary (below) | Token — or `\|`-joined tokens when several guards trip — naming the guard(s). Present iff `flagged='1'`. |
 
@@ -165,6 +166,7 @@ dashboard filter spans both pipelines. Connector-specific keys are allowed and
 | `partition_scheme` | target table partitioning under test (e.g. `'toYYYYMM(EventDate)'` or `'none'`) | DDL | DDL |
 | `dataset` | logical dataset shape (e.g. `'hits'`, `'pypi'`) | workload config | workload config |
 | `warm_up` | OPTIONAL — present iff a priming insert ran before the arm's truncate; value identifies the warm-up workload (e.g. `'hits_0'`). Absent ⇒ no warm-up. (Amendment 2026-07-07.) | warm-up step | warm-up step |
+| `tier0_ch_version` | MANDATORY on `tier='0'` rows, absent otherwise — the pinned version of the Tier-0 instrument ClickHouse (e.g. `'25.8.28'`); a version bump is an annotatable environment event. (Amendment 2026-07-07.) | tier0 bootstrap pin | tier0 bootstrap pin |
 
 **Connector-specific keys (allowed, MUST be namespaced):** e.g.
 `spark_version`, `scala_version`, `emr_release` (Spark); `kafka_connect_version`,
@@ -206,6 +208,7 @@ pipelines. Units are the string written to the `unit` column.
 | `ch_dedup_dropped_blocks` | `count` | `DuplicatedInsertedBlocks` ProfileEvent delta over the window (max−min). Retried batches the server absorbed as duplicate-drops — the benign counterpart to `duplicate_rows`. |
 | `bytes_on_wire_per_row` | `bytes/row` | Server `NetworkReceiveBytes` (post-compression ingress on Insert receipts) ÷ delivered rows. Wire efficiency; catches compression/encoding regressions. |
 | `ch_insert_cpu_share_tier0` | `percent` | (Tier 0 only) Docker-CH `query_log` insert CPU ÷ wall-clock, ×100. Instrument-health watch: if it camps near 100%, the Null target is parse-bound and Tier 0 is measuring the server, not the connector. |
+| `connections_per_insert` | `ratio` | New server connections created ÷ insert count over the run window (`metric_log` connection counters). Pool/keep-alive health. Same spelling on ALL tiers (Amendment 2026-07-07); the Tier-1 rename from `ch_connections_per_insert` landed 2026-07-07 (see §7 for the legacy-name coalesce). |
 | `settle_seconds` | `seconds` | Seconds from ingest-end until active parts stabilise (merge debt left behind). **MUST** be spelled `settle_seconds` (§7: Spark SQL currently emits `ch_settle_seconds`). |
 | `settle_timed_out` | `bool` | `1` iff settle hit the timeout cap (default 1800s), right-censoring `settle_seconds`. Feeds the `settle_timeout` flag (§1.3). |
 | `run_cost_usd` | `usd` | Instance-hours × price for the run. Makes cadence/tier decisions data-driven. Two-arm attribution (Amendment 2026-07-07): the shared infrastructure is provisioned once per pair, so the FULL pair cost is charged once, on the first-run arm's row; the other arm's row omits the metric. Per-pair sums stay correct; per-arm cost is undefined by design. Both pipelines MUST use this convention. |
@@ -339,6 +342,7 @@ as board task **#40**.
 
 | Pinned name (§2.1) | Currently emitted as | Emitting file (canonical, in `spark-clickhouse-connector`) |
 |--------------------|----------------------|------------------------------------------------------------|
+| `connections_per_insert` | `ch_connections_per_insert` | `benchmarks/sql/perf/12_insert_from_metric_log.sql` (Amendment 2026-07-07; rename lands with the Tier-0 work) |
 | `parts_per_insert` | `ch_parts_per_insert` | `benchmarks/sql/perf/13_insert_from_part_log.sql` |
 | `merge_amplification` | `ch_merge_amplification` | `benchmarks/sql/perf/13_insert_from_part_log.sql` |
 | `inserts_delayed_fraction` | `ch_inserts_delayed_fraction` | `benchmarks/sql/perf/16_insert_throttling.sql` |
