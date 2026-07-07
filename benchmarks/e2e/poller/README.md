@@ -44,7 +44,7 @@ are inserted by the orchestrator (task 30/31), not here.
 cd benchmarks/e2e/poller
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt pytest
-python -m pytest tests/ -q          # 54 tests, all pure/offline
+python -m pytest tests/ -q          # 64 tests, all pure/offline
 python -m py_compile *.py tests/*.py
 ```
 
@@ -112,14 +112,14 @@ MBeans.
 | `drain_seconds` | seconds | both | poller offsets | first-sample-after-connector-start → first lag-0 sample; clock-guarded ≥0 | plan §7 |
 | `drain_rate_stability` | ratio | both | poller offsets | CoV of per-interval delivered-rows rate; offset-regression deltas dropped | plan §7 |
 | `partition_skew` | count | both | poller offsets | peak of per-sample (max−min) per-partition committed-offset spread | plan §7 |
-| `connect_cpu_seconds_per_Mrows` | s/Mrows | both | kubelet cadvisor | Δ`container_cpu_usage_seconds_total` / (rows/1e6); None if source absent or counter reset | plan §7, contract §2.1 |
+| `connect_cpu_seconds_per_Mrows` | s/Mrows | both | kubelet cadvisor | Δ`container_cpu_usage_seconds_total` / (rows/1e6); None if source absent or counter reset. Without an explicit container filter, the pod-aggregate (`container=""`) and pause (`container="POD"`) series are excluded from the sum (double-count guard) | plan §7 (client-side; NOT the contract-§2.1 server-side `ch_insert_cpu_seconds_per_Mrows`) |
 | `connect_jvm_heap_peak` | bytes | both | Connect JMX | max `jvm_memory_bytes_used{area="heap"}` across samples | plan §7 |
 | `gc_time_share` | ratio | both | Connect JMX | Δ`jvm_gc_collection_seconds_sum` / wall-seconds; None on counter reset | plan §7 |
 | `put_batch_avg_time_ms` | ms | both | sink/Connect JMX | **time-weighted** average of the put-batch moving-average MBean across samples | plan §7 (never scrape once) |
 | `fetch_latency_avg` | ms | both | consumer JMX | time-weighted average of `fetch-latency-avg` | plan §7 |
-| `records_consumed_rate` | records/s | both | consumer JMX | time-weighted average of `records-consumed-rate` (summed across tasks) | plan §7 |
-| `rebalance_count` **[guard]** | count | both | Connect REST | count of REBALANCING states + task-count changes across samples | plan §7 guards |
-| `connect_task_restarts` **[guard]** | count | both | Connect REST | per-task worker-id change, or state FAILED/UNASSIGNED→RUNNING | plan §7 guards |
+| `records_consumed_rate` | records/s | both | consumer JMX | time-weighted average of `records-consumed-rate` (summed across tasks). **Requires the extra `-rate` exporter rule** (prerequisite #1a below) — the stock `jmx-export-connector.yml` has no rule matching `-rate` attributes, so without it this metric is simply not emitted | plan §7 |
+| `rebalance_count` **[guard]** | count | both | Connect REST | count of REBALANCING states (always) + post-startup task-count changes (startup grace: the initial 0→N ramp is not a rebalance) | plan §7 guards |
+| `connect_task_restarts` **[guard]** | count | both | Connect REST | post-startup: per-task worker-id change, or state FAILED/UNASSIGNED→RUNNING (initial UNASSIGNED→RUNNING is startup, not a restart) | plan §7 guards |
 | `task_failed_count` **[guard]** | count | both | Connect REST | distinct tasks ever observed FAILED | plan §7 guards |
 | `lag_reached_zero` **[guard]** | bool | both | poller offsets | 1 if total lag hit 0, else 0 | plan §7 guards |
 
@@ -132,6 +132,16 @@ with a single `|`):
 | `connect_task_restarts > 0` | `task_restart` |
 | `task_failed_count > 0` | `task_retries` |
 | `lag_reached_zero == 0` | `drain_incomplete` |
+
+**Startup grace (guards only):** a normal connector startup walks `0 → N` tasks
+and `UNASSIGNED → RUNNING`; counting that as a rebalance/restart would flag every
+clean run. Transition detection is therefore suppressed until the first sample
+where all tasks (≥ `--expected-tasks`, when given; otherwise the first
+all-RUNNING count) report RUNNING. Safe direction — never false-clean: FAILED
+tasks and explicit REBALANCING states count even during the grace window, and a
+startup that never completes cannot drain, so `drain_incomplete` flags the run
+regardless. The same idea protects `partition_skew`: samples where a partition
+has not committed yet are skipped instead of being treated as offset 0.
 
 ### Left out of the poller (documented, by design)
 
@@ -160,14 +170,39 @@ edit any `benchmarks/e2e/infra/` file. Task 31 must provide:
      `MessagesSentToDLQ` — **no distributions, no retry counters**, per plan §7
      JMX reality check; and they **reset on task restart** — the restart guard
      exists partly for this reason);
-   - Connect `sink-task-metrics` (put-batch time), consumer
-     `consumer-fetch-manager-metrics` (records-consumed-rate, fetch-latency-avg),
+   - Connect `sink-task-metrics` (put-batch time, via the `.+-avg` rule) and
+     consumer `consumer-fetch-manager-metrics` `fetch-latency-avg` (same rule),
      and worker/rebalance metrics.
+   It does **NOT** map `records-consumed-rate`: none of its attribute patterns
+   matches a `-rate` suffix. See 1a.
    Point the poller at it with `--jmx-url http://<connect-pod-or-svc>:9404/metrics`
    (or `JMX_METRICS_URL`). If absent, JMX scalars are simply not emitted.
    The default `jvm_*` series (`jvm_memory_bytes_used{area="heap"}`,
    `jvm_gc_collection_seconds_sum`) are emitted by the jmx_exporter agent by
    default — confirm the CR does not disable them.
+
+   **1a. Extra exporter rule for `-rate` attributes (REQUIRED for
+   `records_consumed_rate`).** The CR's `metricsConfig` rule list MUST include,
+   in addition to the `jmx-export-connector.yml` rules, a rule matching the
+   consumer fetch-manager rate attributes — paste-able:
+
+   ```yaml
+   # consumer-fetch-manager rate attributes (records-consumed-rate, ...) —
+   # required by the benchmark poller (task 29); the stock
+   # jmx-export-connector.yml rules match no `-rate` suffix.
+   - pattern: kafka.consumer<type=consumer-fetch-manager-metrics, client-id=(.*)><>(.+-rate)
+     name: kafka_consumer_fetch_manager_$2
+     labels:
+       clientId: "$1"
+     help: "Kafka consumer fetch-manager rate metric"
+     type: GAUGE
+   ```
+
+   With the exporter's name sanitization (dashes → underscores,
+   `lowercaseOutputName: true`) this surfaces as
+   `kafka_consumer_fetch_manager_records_consumed_rate{clientid="…"}`, which the
+   poller matches by the `records_consumed_rate` substring. Without this rule
+   the poller tolerates the absence and the metric is not emitted.
 
 2. **metrics-server + kubelet cadvisor scrape** (for
    `connect_cpu_seconds_per_Mrows`). The metric integrates the **cumulative**
@@ -188,24 +223,37 @@ edit any `benchmarks/e2e/infra/` file. Task 31 must provide:
    `TARGET_CH_PASSWORD` (never on the CLI, never logged). The inserter puts them
    in HTTP headers, never in the URL/body.
 
+5. **Poller start ordering.** Task 31 MUST start `poller.py sample` only AFTER
+   the connector is created and `/connectors/<name>/status` reports the
+   connector and all `tasks.max` tasks RUNNING. The guard startup grace (above)
+   makes the guards robust to observing the tail of the ramp anyway, but the
+   `drain_seconds` start anchor is the FIRST sample — polling long before the
+   connector exists would inflate the measured drain. Pass the configured
+   `tasks.max` to `finalize --expected-tasks` so the grace window is bounded by
+   the real expectation instead of inferred.
+
 ## Rollback discipline (mirrors the Spark pipeline)
 
-`insert_metrics` is idempotent + atomic: it (1) builds rows (skipping `None`
-scalars — a missing source is not a zero), (2) pre-deletes any existing rows for
-`(run_id, these metric names)` so a retry is clean, (3) does one batch `INSERT`,
-and (4) on insert failure issues a `DELETE`-by-`run_id` scoped to the names it
-owns, rolling back any partial landing before re-raising. It only ever touches
-its own metric names for the `run_id`, so a concurrent CH-side capture writing
-other names for the same `run_id` is untouched.
+`insert_metrics` is idempotent + atomic + verified: it (1) builds rows (skipping
+`None` scalars — a missing source is not a zero), (2) pre-deletes any existing
+rows for `(run_id, these metric names)` so a retry is clean, (3) does one batch
+`INSERT`, (4) **verifies** the landing (`SELECT count()` for the run_id + name
+set must equal the inserted row count), and (5) on insert **or verify** failure
+issues a `DELETE`-by-`run_id` scoped to the names it owns, rolling back any
+partial landing before raising. It only ever touches its own metric names for
+the `run_id`, so a concurrent CH-side capture writing other names for the same
+`run_id` is untouched.
 
 ## Testing gap (explicit)
 
 There is **no live Kafka / ClickHouse integration test** — no cluster and no
-credentials are available in this environment. All 54 tests are offline:
-finalizer math against synthetic streams with hand-computed answers, the
-contract metric-name-set assertion, the JSONL round-trip, the Prometheus parser,
-the sampling loop against injected fake sources + a fake clock, and the inserter
+credentials are available in this environment. All 64 tests are offline:
+finalizer math against synthetic streams with hand-computed answers (including
+the guard startup grace and the cadvisor double-count exclusion), the contract
+metric-name-set assertion, the JSONL round-trip, the Prometheus parser, the
+sampling loop against injected fake sources + a fake clock, and the inserter
 against a fake `requests` (row building, tier-ownership rejection, rollback
-sequence, credential hygiene). The live paths (`sampler.build_sources`,
+sequence, post-insert verify + verify-mismatch rollback, credential hygiene).
+The live paths (`sampler.build_sources`,
 `sampler.sample_offsets`, and the real HTTP calls) are exercised for the first
 time by task 31's end-to-end run.

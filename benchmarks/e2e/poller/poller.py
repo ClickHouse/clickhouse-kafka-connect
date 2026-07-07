@@ -73,7 +73,8 @@ def cmd_finalize(args) -> int:
     samples = sampler.load_samples(args.samples)
     _log(f"loaded {len(samples)} samples from {args.samples}")
     result = finalizer.finalize(samples, tier=args.tier,
-                                rows_expected=args.rows_expected)
+                                rows_expected=args.rows_expected,
+                                expected_tasks=args.expected_tasks)
 
     if args.insert:
         import ch_insert
@@ -139,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="benchmark tier (selects the headline metric name)")
     f.add_argument("--rows-expected", required=True, type=float,
                    dest="rows_expected", help="produced row count (rows_expected)")
+    f.add_argument("--expected-tasks", type=int, default=None,
+                   dest="expected_tasks",
+                   help="configured tasks.max; guards ignore startup transitions "
+                        "until this many tasks are RUNNING (default: infer from "
+                        "the first all-RUNNING sample)")
     f.add_argument("--insert", action="store_true",
                    help="land the scalars into perf.metrics (creds from env)")
     f.set_defaults(func=cmd_finalize)

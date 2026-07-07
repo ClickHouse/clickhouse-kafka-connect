@@ -22,8 +22,10 @@ Rollback discipline (mirrors the Spark pipeline): a single batch INSERT is
 atomic on the ClickHouse side; but to guarantee no orphaned rows if the process
 is interrupted between building and confirming the insert, the inserter first
 DELETEs any pre-existing rows for (run_id, <these metric names>) — so a retry is
-idempotent — then inserts. On any insert failure it issues a delete-by-run_id
-(scoped to the metric names it was inserting) to roll back a partial landing.
+idempotent — then inserts, then VERIFIES the landed count (SELECT count() for
+the run_id + name set must equal the inserted row count). On any insert or
+verify failure it issues a delete-by-run_id (scoped to the metric names it was
+inserting) to roll back a partial landing before raising.
 
 The poller does NOT write perf.runs rows (contract §1.2 / task brief); it only
 lands perf.metrics keyed by a run_id the orchestrator already created.
@@ -135,8 +137,10 @@ def _delete_by_run_id(requests_mod, cfg: CHConfig, run_id: str,
     """DELETE the given metric names for this run_id (idempotency + rollback).
 
     Scoped to the names we manage so a concurrent CH-side capture writing OTHER
-    metric names for the same run_id is never touched. Uses lightweight DELETE
-    (ALTER TABLE ... DELETE) which is fine for the tiny per-run row count."""
+    metric names for the same run_id is never touched. Uses a mutation delete
+    (ALTER TABLE ... DELETE — NOT the lightweight `DELETE FROM` form), run
+    synchronously via mutations_sync=1; heavyweight per byte but fine for the
+    tiny per-run row count, and uniform across server versions."""
     if not names:
         return
     name_list = ", ".join(f"'{_ch_escape(n)}'" for n in sorted(set(names)))
@@ -146,6 +150,17 @@ def _delete_by_run_id(requests_mod, cfg: CHConfig, run_id: str,
     _exec(requests_mod, cfg, sql)
 
 
+def _count_rows(requests_mod, cfg: CHConfig, run_id: str,
+                names: List[str]) -> int:
+    """Landed row count for (run_id, our metric names) — the verify probe."""
+    name_list = ", ".join(f"'{_ch_escape(n)}'" for n in sorted(set(names)))
+    sql = (f"SELECT count() FROM {cfg.database}.metrics "
+           f"WHERE run_id = '{_ch_escape(run_id)}' "
+           f"AND metric_name IN ({name_list}) FORMAT TabSeparated")
+    r = _exec(requests_mod, cfg, sql)
+    return int(r.text.strip())
+
+
 def insert_metrics(
     run_id: str,
     tier: int,
@@ -153,14 +168,16 @@ def insert_metrics(
     cfg: Optional[CHConfig] = None,
     requests_mod=None,
 ) -> Dict[str, object]:
-    """Land the scalars into perf.metrics atomically with rollback.
+    """Land the scalars into perf.metrics atomically with rollback + verify.
 
-    Steps:
+    Steps (the Spark pipeline's gated-insert discipline):
       1. Build rows (skips None, validates tier ownership).
       2. Pre-delete any existing rows for (run_id, these names) -> idempotent retry.
       3. Single batch INSERT.
-      4. On INSERT failure: delete-by-run_id (scoped to these names) to roll
-         back any partial landing, then re-raise.
+      4. Post-insert VERIFY: count() for (run_id, these names) must equal
+         exactly the number of rows inserted.
+      5. On INSERT or VERIFY failure: delete-by-run_id (scoped to these names)
+         to roll back any partial landing, then raise.
 
     Returns {"inserted": <n>, "names": [...]}. Never logs credentials.
     """
@@ -177,15 +194,20 @@ def insert_metrics(
     # 2. idempotent pre-clean (also the rollback target).
     _delete_by_run_id(requests_mod, cfg, run_id, names)
 
-    # 3. batch insert.
+    # 3. batch insert + 4. verify; 5. rollback on either failing.
     insert_sql = (
         f"INSERT INTO {cfg.database}.metrics "
         f"(run_id, metric_name, unit, value) VALUES "
         + _rows_to_values_sql(rows))
     try:
         _exec(requests_mod, cfg, insert_sql)
+        landed = _count_rows(requests_mod, cfg, run_id, names)
+        if landed != len(rows):
+            raise RuntimeError(
+                f"post-insert verify failed for run_id {run_id!r}: "
+                f"expected {len(rows)} perf.metrics rows, found {landed}")
     except Exception:
-        # 4. rollback: remove any partial landing for the names we own.
+        # rollback: remove any partial landing for the names we own.
         try:
             _delete_by_run_id(requests_mod, cfg, run_id, names)
         except Exception as rollback_err:

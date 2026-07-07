@@ -196,6 +196,18 @@ def test_partition_skew_single_partition_none():
     assert F.compute_partition_skew(samples) is None
 
 
+def test_partition_skew_skips_startup_none_committed():
+    # partition 0 has not committed at t=0; treating it as 0 would fabricate a
+    # 400 spread. The sample is skipped; only the post-startup spread counts.
+    samples = [
+        mk_sample(0, {"0": {"committed": None, "end": 500},
+                      "1": {"committed": 400, "end": 500}}),
+        mk_sample(10, {"0": {"committed": 100, "end": 500},
+                       "1": {"committed": 120, "end": 500}}),
+    ]
+    assert F.compute_partition_skew(samples) == pytest.approx(20.0)
+
+
 # --------------------------------------------------------------------------- #
 # jvm heap / gc / cpu-per-Mrows
 # --------------------------------------------------------------------------- #
@@ -321,3 +333,84 @@ def test_guards_unavailable_connect_does_not_fabricate_trips():
     ]
     g = F.compute_guards(samples, lag_reached_zero=True)
     assert g["flagged"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# guard startup grace (review follow-up 3)
+# --------------------------------------------------------------------------- #
+def _connect(tasks, state="RUNNING"):
+    return {"connector_state": state, "tasks": tasks, "unavailable": False}
+
+
+def _task(tid, state, worker="wA"):
+    return {"id": tid, "state": state, "worker_id": worker}
+
+
+def test_guards_normal_startup_is_not_flagged():
+    # 0 tasks -> 3 UNASSIGNED -> 3 RUNNING -> steady drain: no rebalance, no
+    # restart — the classic false-flag pattern the grace exists for.
+    samples = [
+        mk_sample(0, off(None, 100), connect=_connect([])),
+        mk_sample(10, off(None, 100), connect=_connect(
+            [_task(0, "UNASSIGNED"), _task(1, "UNASSIGNED"), _task(2, "UNASSIGNED")])),
+        mk_sample(20, off(30, 100), connect=_connect(
+            [_task(0, "RUNNING"), _task(1, "RUNNING"), _task(2, "RUNNING")])),
+        mk_sample(30, off(100, 100), connect=_connect(
+            [_task(0, "RUNNING"), _task(1, "RUNNING"), _task(2, "RUNNING")])),
+    ]
+    g = F.compute_guards(samples, lag_reached_zero=True)
+    assert g["flagged"] == 0
+    assert g["flag_reason"] == ""
+    assert g["counts"][mn.REBALANCE_COUNT] == 0.0
+    assert g["counts"][mn.CONNECT_TASK_RESTARTS] == 0.0
+
+
+def test_guards_post_startup_task_count_change_is_rebalance():
+    samples = [
+        mk_sample(0, off(0, 100), connect=_connect(
+            [_task(0, "RUNNING"), _task(1, "RUNNING"), _task(2, "RUNNING")])),
+        mk_sample(10, off(50, 100), connect=_connect(
+            [_task(0, "RUNNING"), _task(1, "RUNNING")])),  # a task vanished
+    ]
+    g = F.compute_guards(samples, lag_reached_zero=True)
+    assert g["counts"][mn.REBALANCE_COUNT] == 1.0
+    assert "rebalance" in g["flag_reason"].split("|")
+
+
+def test_guards_post_startup_downstate_to_running_is_restart():
+    samples = [
+        mk_sample(0, off(0, 100), connect=_connect([_task(0, "RUNNING")])),
+        mk_sample(10, off(40, 100), connect=_connect([_task(0, "UNASSIGNED")])),
+        mk_sample(20, off(80, 100), connect=_connect([_task(0, "RUNNING")])),
+    ]
+    g = F.compute_guards(samples, lag_reached_zero=True)
+    assert g["counts"][mn.CONNECT_TASK_RESTARTS] == 1.0
+    assert "task_restart" in g["flag_reason"].split("|")
+
+
+def test_guards_expected_tasks_extends_grace_over_partial_startup():
+    # with expected_tasks=3, the 1-RUNNING sample is still startup, so the
+    # 1 -> 3 count change is NOT a rebalance; a post-grace worker move IS a
+    # restart.
+    samples = [
+        mk_sample(0, off(None, 100), connect=_connect([_task(0, "RUNNING")])),
+        mk_sample(10, off(0, 100), connect=_connect(
+            [_task(0, "RUNNING"), _task(1, "RUNNING"), _task(2, "RUNNING")])),
+        mk_sample(20, off(60, 100), connect=_connect(
+            [_task(0, "RUNNING", worker="wB"), _task(1, "RUNNING"), _task(2, "RUNNING")])),
+    ]
+    g = F.compute_guards(samples, lag_reached_zero=True, expected_tasks=3)
+    assert g["counts"][mn.REBALANCE_COUNT] == 0.0
+    assert g["counts"][mn.CONNECT_TASK_RESTARTS] == 1.0
+
+
+def test_guards_failed_during_startup_still_counts():
+    # never false-clean: a FAILED task inside the grace window still trips
+    # task_retries.
+    samples = [
+        mk_sample(0, off(None, 100), connect=_connect(
+            [_task(0, "FAILED"), _task(1, "UNASSIGNED")])),
+    ]
+    g = F.compute_guards(samples, lag_reached_zero=False)
+    assert g["counts"][mn.TASK_FAILED_COUNT] == 1.0
+    assert "task_retries" in g["flag_reason"].split("|")

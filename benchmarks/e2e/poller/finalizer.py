@@ -86,8 +86,9 @@ def _time_weighted_average(
     the interval to the NEXT sample (left-Riemann over the drain), so a value
     that held for longer counts more — the correct way to integrate a moving
     average that is scraped at intervals rather than once. Samples whose value
-    is None (source unavailable that tick) are skipped and their interval is not
-    credited. A single valid sample returns that sample's value.
+    is None (source unavailable that tick) are skipped; the previous valid
+    value's weight then extends across the gap to the next valid sample. A
+    single valid sample returns that sample's value.
     """
     valid = [(t, v) for (t, v) in pairs if v is not None]
     if not valid:
@@ -142,13 +143,19 @@ def _delivered_position(sample: Dict[str, Any]) -> Optional[int]:
     return total
 
 
-def _per_partition_progress(sample: Dict[str, Any]) -> Dict[str, int]:
-    """committed offset per partition (progress); missing -> 0."""
+def _per_partition_progress(sample: Dict[str, Any]) -> Optional[Dict[str, int]]:
+    """committed offset per partition (progress). Returns None if ANY partition
+    has no committed offset yet (consumer group still starting): treating a
+    not-yet-committed partition as 0 would fabricate a huge max-min spread and
+    inflate partition_skew during startup — the same startup-grace idea as
+    compute_guards."""
     offs = sample.get("offsets") or {}
     out = {}
     for p, po in offs.items():
         c = po.get("committed")
-        out[p] = c if c is not None else 0
+        if c is None:
+            return None
+        out[p] = c
     return out
 
 
@@ -210,11 +217,12 @@ def compute_partition_skew(samples: List[Dict[str, Any]]) -> Optional[float]:
     (plan §7: "max-min per-partition offset progress ... aggregated"). We take
     the PEAK spread across the drain — the worst straggler gap — because a
     single idle task is a parallelism defect even if the average hides it.
-    None if no sample had >= 2 partitions with progress."""
+    Samples where any partition has not committed yet (startup) are skipped —
+    see _per_partition_progress. None if no usable sample had >= 2 partitions."""
     peak = None
     for s in samples:
         prog = _per_partition_progress(s)
-        if len(prog) < 2:
+        if prog is None or len(prog) < 2:
             continue
         spread = max(prog.values()) - min(prog.values())
         if peak is None or spread > peak:
@@ -312,21 +320,37 @@ def compute_connect_cpu_seconds_per_Mrows(
 # validity guards -> counts + contract §1.3 flag tokens
 # --------------------------------------------------------------------------- #
 def compute_guards(
-    samples: List[Dict[str, Any]], lag_reached_zero: bool
+    samples: List[Dict[str, Any]],
+    lag_reached_zero: bool,
+    expected_tasks: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Guard counters + the contract §1.3 flag tokens they map to.
 
     Sources:
-      * rebalance_count       — count of samples whose connector/task set shows a
-                                worker_id change or task-count change vs the prior
-                                sample (a rebalance reassigns partitions). Also
+      * rebalance_count       — post-startup task-count changes vs the prior
+                                sample (a rebalance reassigns partitions), plus
                                 any explicit REBALANCING connector state.
-      * connect_task_restarts — a task's state transitioned through
-                                UNASSIGNED/FAILED->RUNNING, or the worker_id for a
-                                task changed (MBean per-task counter resets on
-                                restart — plan §7 JMX reality check).
-      * task_failed_count     — count of tasks ever observed in state FAILED.
+      * connect_task_restarts — post-startup: a task's state transitioned through
+                                UNASSIGNED/FAILED/RESTARTING->RUNNING, or the
+                                worker_id for a task changed (MBean per-task
+                                counter resets on restart — plan §7 JMX reality
+                                check).
+      * task_failed_count     — count of tasks ever observed in state FAILED
+                                (counted ALWAYS, startup included — never
+                                false-clean).
       * lag_reached_zero      — 0/1 passed in from compute_drain_seconds.
+
+    Startup grace: a normal connector startup walks 0 -> N tasks and
+    UNASSIGNED -> RUNNING, which is not a rebalance or a restart. Transition
+    detection (task-count changes, down-state->RUNNING, worker-id churn) is
+    therefore suppressed until startup completes: the first sample where the
+    task set is non-empty, every task is RUNNING, and the count is >=
+    ``expected_tasks`` (when given; when None, the first all-RUNNING count IS
+    the expected count — "first-stable-count"). That sample seeds the baseline;
+    every change after it counts. Safe direction (never false-clean): FAILED
+    tasks and explicit REBALANCING states count even during the grace window,
+    and if startup never completes the drain cannot finish, so the run is
+    flagged ``drain_incomplete`` anyway.
 
     Token mapping (contract §1.3):
       rebalance_count       > 0 -> 'rebalance'
@@ -338,6 +362,7 @@ def compute_guards(
     connect_task_restarts = 0
     failed_tasks = set()
 
+    startup_complete = False
     prev_worker_by_task: Dict[int, str] = {}
     prev_state_by_task: Dict[int, str] = {}
     prev_task_count: Optional[int] = None
@@ -347,9 +372,33 @@ def compute_guards(
         if not c or c.get("unavailable"):
             # cannot observe -> do not fabricate a guard trip; skip.
             continue
+        # explicit rebalancing state counts always (not a startup pattern).
         if (c.get("connector_state") or "").upper() == "REBALANCING":
             rebalance_count += 1
         tasks = c.get("tasks") or []
+
+        # FAILED counts always — startup included (never false-clean).
+        for t in tasks:
+            if (t.get("state") or "").upper() == "FAILED":
+                failed_tasks.add(t.get("id"))
+
+        if not startup_complete:
+            all_running = bool(tasks) and all(
+                (t.get("state") or "").upper() == "RUNNING" for t in tasks)
+            count_ok = (expected_tasks is None
+                        or len(tasks) >= expected_tasks)
+            if all_running and count_ok:
+                # startup done: seed the baseline from THIS sample; the
+                # transition into it is startup, not a restart/rebalance.
+                startup_complete = True
+                prev_task_count = len(tasks)
+                for t in tasks:
+                    tid = t.get("id")
+                    prev_worker_by_task[tid] = t.get("worker_id") or ""
+                    prev_state_by_task[tid] = (t.get("state") or "").upper()
+            continue
+
+        # ---- post-startup: full transition detection -----------------------
         this_task_count = len(tasks)
         if prev_task_count is not None and this_task_count != prev_task_count:
             rebalance_count += 1
@@ -359,8 +408,6 @@ def compute_guards(
             tid = t.get("id")
             state = (t.get("state") or "").upper()
             worker = t.get("worker_id") or ""
-            if state == "FAILED":
-                failed_tasks.add(tid)
             # restart: worker id for a task changed, or state came back to
             # RUNNING from a down state.
             prev_worker = prev_worker_by_task.get(tid)
@@ -405,9 +452,15 @@ def compute_guards(
 # top-level finalize
 # --------------------------------------------------------------------------- #
 def finalize(
-    samples: List[Dict[str, Any]], tier: int, rows_expected: float
+    samples: List[Dict[str, Any]],
+    tier: int,
+    rows_expected: float,
+    expected_tasks: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Compute the full per-run scalar set + guards for one (arm, tier) run.
+
+    ``expected_tasks``: the configured tasks.max, used by the guard startup
+    grace (see compute_guards); None = infer from the first all-RUNNING sample.
 
     Returns:
       {
@@ -444,7 +497,8 @@ def finalize(
     scalars[mn.FETCH_LATENCY_AVG] = compute_fetch_latency_avg(samples)
     scalars[mn.RECORDS_CONSUMED_RATE] = compute_records_consumed_rate(samples)
 
-    guards = compute_guards(samples, lag_reached_zero)
+    guards = compute_guards(samples, lag_reached_zero,
+                            expected_tasks=expected_tasks)
     # the guard counters are metrics too
     for name, val in guards["counts"].items():
         scalars[name] = val

@@ -143,12 +143,25 @@ def sample_jmx(requests_mod, metrics_url: str) -> Dict[str, Any]:
 
     Extracted (all best-effort; a missing series -> None for that field):
       * put_batch_avg_time_ms   — Connect sink-task-metrics put-batch-avg-time-ms
-                                  (moving average; averaged across the tasks seen)
-      * records_consumed_rate   — consumer-fetch-manager-metrics records-consumed-rate
+                                  (moving average; averaged across the tasks seen).
+                                  Covered by the repo's jmx-export-connector.yml
+                                  (`.+-avg` rule).
+      * records_consumed_rate   — consumer-fetch-manager-metrics
+                                  records-consumed-rate. NOT covered by the
+                                  repo's jmx-export-connector.yml as-is: none of
+                                  its rules matches a `-rate`-suffixed attribute.
+                                  The KafkaConnect CR (task 31) MUST add the
+                                  extra `-rate` exporter rule documented in the
+                                  README prerequisites, or this field stays None.
       * fetch_latency_avg_ms    — consumer-fetch-manager-metrics fetch-latency-avg
+                                  (covered by the `.+-avg` rule).
       * jvm_heap_used_bytes / jvm_heap_max_bytes — JVM heap (jmx_exporter default
                                   jvm_memory_bytes_used{area="heap"})
       * gc_collection_seconds_sum — cumulative GC seconds (jvm_gc_collection_seconds_sum)
+
+    Name forms: the exporter sanitizes MBean attribute names into prometheus
+    names (dashes -> underscores, lowercased), so only underscore forms can
+    appear on the wire — there is no dash-form fallback to look for.
 
     Never raises; on scrape failure returns {"unavailable": True}."""
     try:
@@ -163,16 +176,12 @@ def sample_jmx(requests_mod, metrics_url: str) -> Dict[str, Any]:
 
     # put-batch-avg-time-ms: exporter emits kafka_connect_sink_task_<metric>.
     put_batch = _avg_matching(series, name_has("put_batch_avg_time_ms"))
-    if put_batch is None:
-        put_batch = _avg_matching(series, name_has("put-batch-avg-time-ms"))
 
+    # requires the extra `-rate` exporter rule (README prerequisite #1a);
+    # None until task 31 wires it.
     consumed = _sum_matching(series, name_has("records_consumed_rate"))
-    if consumed is None:
-        consumed = _sum_matching(series, name_has("records-consumed-rate"))
 
     fetch_lat = _avg_matching(series, name_has("fetch_latency_avg"))
-    if fetch_lat is None:
-        fetch_lat = _avg_matching(series, name_has("fetch-latency-avg"))
 
     heap_used = _sum_matching(
         series, name_has("jvm_memory_bytes_used"),
@@ -223,6 +232,12 @@ def sample_pod_cadvisor(requests_mod, cadvisor_url: str, pod: str, container: st
     counter + working set. cadvisor exposes:
       container_cpu_usage_seconds_total{pod="...",container="..."}  (cumulative)
       container_memory_working_set_bytes{pod="...",container="..."}
+    Label hygiene: for one pod, cadvisor emits a POD-AGGREGATE series
+    (container="") PLUS the pause container (container="POD") PLUS the real
+    per-container series. Summing all of them silently DOUBLE-COUNTS the CPU.
+    With an explicit ``container`` filter we take exactly that container;
+    without one we sum the real containers only, excluding container in
+    ("", "POD").
     Never raises; unavailable on failure."""
     try:
         r = requests_mod.get(cadvisor_url, timeout=10)
@@ -231,16 +246,22 @@ def sample_pod_cadvisor(requests_mod, cadvisor_url: str, pod: str, container: st
     except Exception:
         return {"unavailable": True}
 
-    def match(name):
-        return lambda l: (l.get("pod") == pod
-                          and (not container or l.get("container") == container))
+    def label_match(labels):
+        if labels.get("pod") != pod:
+            return False
+        c = labels.get("container", "")
+        if container:
+            return c == container
+        # no explicit filter: real containers only — never the pod-aggregate
+        # ("") or the pause container ("POD"), which would double-count.
+        return c not in ("", "POD")
 
     cpu = _sum_matching(series,
                         lambda n: n == "container_cpu_usage_seconds_total",
-                        match("cpu"))
+                        label_match)
     mem = _sum_matching(series,
                         lambda n: n == "container_memory_working_set_bytes",
-                        match("mem"))
+                        label_match)
     if cpu is None and mem is None:
         return {"unavailable": True}
     return {

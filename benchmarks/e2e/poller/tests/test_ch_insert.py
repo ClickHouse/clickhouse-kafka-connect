@@ -26,18 +26,33 @@ class FakeResponse:
 
 
 class FakeRequests:
-    """Records POSTs; can be told to fail INSERTs to exercise rollback."""
+    """Records POSTs; simulates a tiny perf.metrics: INSERT lands rows (counted
+    from the VALUES tuples), ALTER..DELETE clears them, SELECT count() reports
+    them — so the post-insert verify path is exercised for real. Can be told to
+    fail INSERTs (rollback path) or lie about the count (verify-mismatch path)."""
 
-    def __init__(self, fail_on_insert=False):
+    def __init__(self, fail_on_insert=False, verify_count=None):
         self.calls = []
         self.fail_on_insert = fail_on_insert
+        self.verify_count = verify_count  # None = report the truly landed count
+        self._landed = 0
 
     def post(self, url, params=None, headers=None, data=None, timeout=None):
         body = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data
         self.calls.append({"url": url, "params": params, "headers": headers,
                            "body": body})
-        if self.fail_on_insert and body.strip().upper().startswith("INSERT"):
-            return FakeResponse(500, "boom: insert failed")
+        b = body.strip().upper()
+        if b.startswith("INSERT"):
+            if self.fail_on_insert:
+                return FakeResponse(500, "boom: insert failed")
+            self._landed = body.count("('")  # one "('" per VALUES tuple
+            return FakeResponse(200, "")
+        if b.startswith("ALTER TABLE"):
+            self._landed = 0
+            return FakeResponse(200, "")
+        if b.startswith("SELECT"):
+            n = self._landed if self.verify_count is None else self.verify_count
+            return FakeResponse(200, f"{n}\n")
         return FakeResponse(200, "")
 
 
@@ -80,14 +95,18 @@ def test_build_rows_rejects_wrong_tier_headline():
         ch_insert.build_rows("rid", 1, bad)
 
 
-def test_insert_happy_path_predeletes_then_inserts():
+def test_insert_happy_path_predeletes_inserts_verifies():
     fr = FakeRequests()
     res = ch_insert.insert_metrics("rid", 1, scalars_tier1(), cfg=cfg(),
                                    requests_mod=fr)
     bodies = [c["body"].strip().upper() for c in fr.calls]
-    # first a DELETE (idempotent pre-clean), then the INSERT
+    # DELETE (idempotent pre-clean), INSERT, then the verify SELECT
     assert bodies[0].startswith("ALTER TABLE") and "DELETE" in bodies[0]
     assert bodies[1].startswith("INSERT")
+    assert bodies[2].startswith("SELECT COUNT()")
+    # verify probe is scoped to the run_id AND our metric names
+    assert "RUN_ID = 'RID'" in bodies[2]
+    assert "METRIC_NAME IN" in bodies[2]
     assert res["inserted"] == len([v for v in scalars_tier1().values() if v is not None])
 
 
@@ -97,11 +116,26 @@ def test_insert_rollback_on_failure():
         ch_insert.insert_metrics("rid", 1, scalars_tier1(), cfg=cfg(),
                                  requests_mod=fr)
     bodies = [c["body"].strip().upper() for c in fr.calls]
-    # sequence: pre-delete, insert (fails), rollback-delete
+    # sequence: pre-delete, insert (fails), rollback-delete (no verify SELECT)
     assert bodies[0].startswith("ALTER TABLE")   # pre-clean
     assert bodies[1].startswith("INSERT")         # the failing insert
     assert bodies[2].startswith("ALTER TABLE")    # rollback delete
     assert "DELETE" in bodies[2]
+
+
+def test_insert_verify_mismatch_rolls_back_and_raises():
+    # server "lands" a different row count than we inserted -> verify fails,
+    # rollback delete is issued, and the error names the mismatch.
+    fr = FakeRequests(verify_count=1)  # lie: only 1 row visible
+    with pytest.raises(RuntimeError, match="post-insert verify failed"):
+        ch_insert.insert_metrics("rid", 1, scalars_tier1(), cfg=cfg(),
+                                 requests_mod=fr)
+    bodies = [c["body"].strip().upper() for c in fr.calls]
+    # sequence: pre-delete, insert (ok), verify SELECT (mismatch), rollback
+    assert bodies[0].startswith("ALTER TABLE")
+    assert bodies[1].startswith("INSERT")
+    assert bodies[2].startswith("SELECT COUNT()")
+    assert bodies[3].startswith("ALTER TABLE") and "DELETE" in bodies[3]
 
 
 def test_credentials_only_in_headers_never_in_url_or_body():

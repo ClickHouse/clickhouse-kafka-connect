@@ -162,3 +162,62 @@ kafka_connect_sink_task_put_batch_avg_time_ms{connector="ch",task="0"} 4.2
     assert heap == pytest.approx(1.23e8)
     gc = sampler._sum_matching(series, lambda n: "jvm_gc_collection_seconds_sum" in n)
     assert gc == pytest.approx(3.5)
+
+
+# --------------------------------------------------------------------------- #
+# cadvisor scrape label hygiene (review follow-up 1)
+# --------------------------------------------------------------------------- #
+class _FakeResp:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        pass
+
+
+class _FakeReq:
+    def __init__(self, text):
+        self._text = text
+
+    def get(self, url, timeout=None):
+        return _FakeResp(self._text)
+
+
+# For one pod cadvisor emits the pod-aggregate (container=""), the pause
+# container ("POD"), AND the per-container series. 60+40 = the aggregate 100,
+# so summing everything would report 201 (double-count) instead of 100.
+_CADVISOR_TEXT = """
+container_cpu_usage_seconds_total{pod="connect-0",container=""} 100.0
+container_cpu_usage_seconds_total{pod="connect-0",container="POD"} 1.0
+container_cpu_usage_seconds_total{pod="connect-0",container="connect"} 60.0
+container_cpu_usage_seconds_total{pod="connect-0",container="sidecar"} 40.0
+container_cpu_usage_seconds_total{pod="other",container="connect"} 999.0
+container_memory_working_set_bytes{pod="connect-0",container=""} 500.0
+container_memory_working_set_bytes{pod="connect-0",container="POD"} 5.0
+container_memory_working_set_bytes{pod="connect-0",container="connect"} 300.0
+container_memory_working_set_bytes{pod="connect-0",container="sidecar"} 200.0
+"""
+
+
+def test_cadvisor_no_container_filter_excludes_aggregate_and_pause():
+    res = sampler.sample_pod_cadvisor(
+        _FakeReq(_CADVISOR_TEXT), "http://kubelet/metrics/cadvisor",
+        pod="connect-0", container="")
+    assert res["unavailable"] is False
+    assert res["cpu_seconds_total"] == pytest.approx(100.0)   # 60+40, NOT 201
+    assert res["memory_working_set_bytes"] == pytest.approx(500.0)  # 300+200
+
+
+def test_cadvisor_explicit_container_filter_takes_exactly_that_container():
+    res = sampler.sample_pod_cadvisor(
+        _FakeReq(_CADVISOR_TEXT), "http://kubelet/metrics/cadvisor",
+        pod="connect-0", container="connect")
+    assert res["cpu_seconds_total"] == pytest.approx(60.0)
+    assert res["memory_working_set_bytes"] == pytest.approx(300.0)
+
+
+def test_cadvisor_other_pod_never_included():
+    res = sampler.sample_pod_cadvisor(
+        _FakeReq(_CADVISOR_TEXT), "http://kubelet/metrics/cadvisor",
+        pod="does-not-exist", container="")
+    assert res["unavailable"] is True
