@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""Benchmark v2 producer — ClickBench hits parquet -> Avro -> Kafka topic.
+
+Reads the ClickBench ``hits`` parquet (canonical single file or partitioned
+variants), maps every one of the 105 columns to the Avro types declared in
+``benchmarks/e2e/schema/hits.avsc``, and publishes each row to a Kafka topic
+using the Confluent Schema Registry wire format (magic byte + 4-byte schema id)
+so the sink's Confluent ``AvroConverter`` can decode it.
+
+Backlog-drain precondition (plan §5 step 2, decision 6): this Job runs to
+completion BEFORE any measured drain. Its single job is to leave the topic
+pre-loaded with EXACTLY the dataset, and to report an authoritative
+``rows_expected`` derived from committed topic END OFFSETS — never from
+producer-side send counts (overseer directive 2).
+
+Design decisions baked in (non-negotiable, see README):
+  * enable.idempotence=true (=> acks=all): producer retries never write
+    duplicate records into the topic. Without it the sink would be blamed for
+    producer-side dupes (overseer directive 1).
+  * rows_expected = sum over partitions of (end_offset - beginning_offset),
+    read via the consumer API after flush. rows_sent (delivery-callback count)
+    is emitted alongside; a mismatch FAILS the Job (the pre-load is invalid).
+  * PARQUET_SOURCE is a parameter (overseer directive 3), defaulting to a
+    us-east-2 staging placeholder (see README for the staging TBD note).
+
+Latency profile / produce_ts is DEFERRED (plan Appendix A) — not implemented.
+
+Output: a single machine-readable JSON object on stdout (the last stdout line
+is always the summary; all human logging goes to stderr) for the orchestrator
+(task 31) to parse. Non-zero exit on any failure or count mismatch.
+"""
+
+import argparse
+import datetime
+import json
+import os
+import sys
+import time
+
+import pyarrow.dataset as ds
+from confluent_kafka import Producer
+from confluent_kafka.admin import AdminClient
+from confluent_kafka import Consumer, TopicPartition
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroSerializer
+from confluent_kafka.serialization import SerializationContext, MessageField
+
+# --- constants ---------------------------------------------------------------
+
+# Placeholder default for the parquet source (overseer directive 3). The real
+# staging location in us-east-2 is a pending decision (cross-region egress from
+# the us-east-1 public ClickBench bucket is a known cost issue). See README.
+DEFAULT_PARQUET_SOURCE = "s3://TBD-us-east-2-staging/clickbench/hits/"
+
+# CH DateTime is UInt32 seconds; these 3 columns are bare epoch-SECONDS longs.
+DATETIME_COLS = ("EventTime", "ClientEventTime", "LocalEventTime")
+# CH Date is UInt16 days-since-epoch; Avro logical "date".
+DATE_COL = "EventDate"
+_EPOCH = datetime.date(1970, 1, 1)
+
+# The 48 CH Int16 columns (Avro int + connect.type=int16). Kept as an explicit
+# guard set so an out-of-Short-range parquet value is caught here rather than at
+# 200k rows/s in the sink's (Short) cast. Derived from hits.avsc at load time,
+# but we also assert Short range on these while mapping.
+_SHORT_MIN, _SHORT_MAX = -(2 ** 15), 2 ** 15 - 1
+
+
+def log(msg):
+    print(f"[producer] {msg}", file=sys.stderr, flush=True)
+
+
+def die(msg, code=1):
+    print(f"[producer:error] {msg}", file=sys.stderr, flush=True)
+    sys.exit(code)
+
+
+# --- schema handling ---------------------------------------------------------
+
+def load_avro_schema(path):
+    with open(path, "r") as f:
+        schema_str = f.read()
+    schema = json.loads(schema_str)
+    fields = [f["name"] for f in schema["fields"]]
+    if len(fields) != 105:
+        die(f"hits.avsc must have 105 fields, found {len(fields)}")
+    # Classify each field by its target CH width so mapping is data-driven and
+    # stays in sync with the schema file (single source of truth).
+    int16_fields = set()
+    for f in schema["fields"]:
+        t = f["type"]
+        if isinstance(t, dict) and t.get("connect.type") == "int16":
+            int16_fields.add(f["name"])
+    return schema_str, fields, int16_fields
+
+
+# --- row mapping -------------------------------------------------------------
+
+def make_row_mapper(field_order, int16_fields):
+    """Return f(dict_from_parquet) -> dict conforming to hits.avsc.
+
+    * DateTime cols -> bare epoch seconds (int). Accepts either an already-int
+      epoch-seconds value or a datetime/Timestamp (converted to epoch seconds).
+    * EventDate -> datetime.date (confluent AvroSerializer encodes the "date"
+      logicalType as days-since-epoch int). Accepts an int (already days) too.
+    * Int16 cols -> int, asserted within signed 16-bit range.
+    * Everything else passes through (int/long/string) as-is.
+    """
+    datetime_set = set(DATETIME_COLS)
+
+    def to_epoch_seconds(v):
+        if isinstance(v, bool):
+            return int(v)
+        if isinstance(v, (int,)):
+            return v
+        if isinstance(v, datetime.datetime):
+            # Treat naive datetimes as UTC (ClickBench parquet stores UTC).
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=datetime.timezone.utc)
+            return int(v.timestamp())
+        if isinstance(v, datetime.date):
+            return int(datetime.datetime(v.year, v.month, v.day,
+                                         tzinfo=datetime.timezone.utc).timestamp())
+        # numpy / pyarrow scalars -> int
+        return int(v)
+
+    def to_date(v):
+        if isinstance(v, datetime.datetime):
+            return v.date()
+        if isinstance(v, datetime.date):
+            return v
+        if isinstance(v, (int,)):
+            return _EPOCH + datetime.timedelta(days=int(v))
+        return _EPOCH + datetime.timedelta(days=int(v))
+
+    def mapper(row):
+        out = {}
+        for name in field_order:
+            v = row[name]
+            if name in datetime_set:
+                out[name] = to_epoch_seconds(v)
+            elif name == DATE_COL:
+                out[name] = to_date(v)
+            elif name in int16_fields:
+                iv = int(v)
+                if iv < _SHORT_MIN or iv > _SHORT_MAX:
+                    raise ValueError(
+                        f"column {name}={iv} out of Int16 range "
+                        f"[{_SHORT_MIN},{_SHORT_MAX}] (would fail the sink's "
+                        f"(Short) cast)")
+                out[name] = iv
+            elif isinstance(v, datetime.datetime):
+                # Any stray timestamp on a non-datetime column: normalise to int
+                # seconds so Avro long encoding never sees a datetime.
+                out[name] = to_epoch_seconds(v)
+            else:
+                out[name] = v
+        return out
+
+    return mapper
+
+
+# --- offset accounting -------------------------------------------------------
+
+def committed_offsets(bootstrap, topic, timeout=30.0):
+    """Return (rows_expected, per_partition) from committed topic offsets.
+
+    rows_expected = sum over partitions of (high_watermark - low_watermark),
+    read via the consumer API. This is the authoritative pre-load count
+    (overseer directive 2), independent of producer send counts.
+    """
+    consumer = Consumer({
+        "bootstrap.servers": bootstrap,
+        "group.id": f"__producer_offset_probe_{int(time.time())}",
+        "enable.auto.commit": False,
+    })
+    try:
+        md = consumer.list_topics(topic, timeout=timeout)
+        if topic not in md.topics or md.topics[topic].error is not None:
+            die(f"topic {topic!r} not found when reading end offsets")
+        parts = sorted(md.topics[topic].partitions.keys())
+        per_partition = {}
+        total = 0
+        for p in parts:
+            low, high = consumer.get_watermark_offsets(
+                TopicPartition(topic, p), timeout=timeout, cached=False)
+            count = high - low
+            per_partition[p] = {"low": low, "high": high, "count": count}
+            total += count
+        return total, per_partition
+    finally:
+        consumer.close()
+
+
+# --- schema registration -----------------------------------------------------
+
+def ensure_subject(sr_client, subject, schema_str):
+    """Register hits.avsc under <topic>-value if the subject is absent.
+
+    The AvroSerializer auto-registers on first serialize, but doing it up front
+    gives a clear failure if the registry is unreachable and lets us log the id.
+    """
+    from confluent_kafka.schema_registry import Schema
+    try:
+        existing = sr_client.get_latest_version(subject)
+        log(f"schema registry: subject {subject!r} already present "
+            f"(schema id {existing.schema_id}, version {existing.version})")
+        return existing.schema_id
+    except Exception:
+        schema = Schema(schema_str, schema_type="AVRO")
+        schema_id = sr_client.register_schema(subject, schema)
+        log(f"schema registry: registered {subject!r} -> schema id {schema_id}")
+        return schema_id
+
+
+# --- main --------------------------------------------------------------------
+
+def parse_args():
+    p = argparse.ArgumentParser(description="ClickBench hits parquet -> Avro -> Kafka")
+    p.add_argument("--bootstrap", default=os.environ.get(
+        "BOOTSTRAP", "bench-kafka-bootstrap.kafka-bench.svc:9092"))
+    p.add_argument("--registry-url", default=os.environ.get(
+        "REGISTRY_URL", "http://schema-registry.kafka-bench.svc:8081"))
+    p.add_argument("--topic", default=os.environ.get("TOPIC", "hits"))
+    p.add_argument("--partitions", type=int,
+                   default=int(os.environ.get("PARTITIONS", "3")))
+    p.add_argument("--parquet-source", default=os.environ.get(
+        "PARQUET_SOURCE", DEFAULT_PARQUET_SOURCE))
+    p.add_argument("--schema", default=os.environ.get(
+        "SCHEMA_PATH",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "..", "schema", "hits.avsc")))
+    p.add_argument("--create-topic", action="store_true",
+                   default=os.environ.get("CREATE_TOPIC", "false").lower() == "true",
+                   help="Create the topic if absent (RF=1). The orchestrator "
+                        "normally creates the topic; this is for local runs.")
+    p.add_argument("--batch-size", type=int,
+                   default=int(os.environ.get("PARQUET_BATCH_ROWS", "65536")),
+                   help="Parquet read batch size (rows) — memory bound, not the "
+                        "Kafka batch.")
+    p.add_argument("--limit", type=int,
+                   default=int(os.environ.get("ROW_LIMIT", "0")),
+                   help="Stop after N rows (0 = all). For smoke tests only.")
+    return p.parse_args()
+
+
+def maybe_create_topic(bootstrap, topic, partitions):
+    from confluent_kafka.admin import NewTopic
+    admin = AdminClient({"bootstrap.servers": bootstrap})
+    md = admin.list_topics(timeout=30)
+    if topic in md.topics and md.topics[topic].error is None \
+            and len(md.topics[topic].partitions) > 0:
+        existing = len(md.topics[topic].partitions)
+        if existing != partitions:
+            die(f"topic {topic!r} exists with {existing} partitions, "
+                f"expected {partitions}")
+        log(f"topic {topic!r} already exists ({existing} partitions)")
+        return
+    fs = admin.create_topics([NewTopic(topic, num_partitions=partitions,
+                                       replication_factor=1)])
+    for t, f in fs.items():
+        try:
+            f.result()
+            log(f"created topic {t!r} ({partitions} partitions, RF=1)")
+        except Exception as e:
+            die(f"failed to create topic {t!r}: {e}")
+
+
+def main():
+    args = parse_args()
+    schema_path = os.path.abspath(args.schema)
+    if not os.path.exists(schema_path):
+        die(f"schema not found: {schema_path}")
+
+    log(f"bootstrap={args.bootstrap} registry={args.registry_url} "
+        f"topic={args.topic} partitions={args.partitions}")
+    log(f"parquet_source={args.parquet_source}")
+    if args.parquet_source.startswith("s3://TBD"):
+        log("WARNING: PARQUET_SOURCE is the staging placeholder — set it "
+            "explicitly (see README, parquet staging TBD note).")
+
+    schema_str, field_order, int16_fields = load_avro_schema(schema_path)
+    log(f"loaded hits.avsc: 105 fields, {len(int16_fields)} Int16 columns")
+
+    if args.create_topic:
+        maybe_create_topic(args.bootstrap, args.topic, args.partitions)
+
+    # Schema Registry + Avro serializer (Confluent wire format).
+    sr_client = SchemaRegistryClient({"url": args.registry_url})
+    subject = f"{args.topic}-value"
+    ensure_subject(sr_client, subject, schema_str)
+    avro_serializer = AvroSerializer(
+        sr_client, schema_str,
+        conf={"auto.register.schemas": True})
+    ser_ctx = SerializationContext(args.topic, MessageField.VALUE)
+
+    # Idempotent producer (overseer directive 1). acks=all is implied by
+    # enable.idempotence but set explicitly for provenance.
+    producer = Producer({
+        "bootstrap.servers": args.bootstrap,
+        "enable.idempotence": True,
+        "acks": "all",
+        "compression.type": "lz4",
+        "linger.ms": 50,
+        "batch.num.messages": 100000,
+        "queue.buffering.max.messages": 1000000,
+        "queue.buffering.max.kbytes": 1048576,
+        "message.max.bytes": 10485760,
+    })
+
+    mapper = make_row_mapper(field_order, int16_fields)
+
+    sent = {"ok": 0, "err": 0}
+    first_err = [None]
+
+    def on_delivery(err, msg):
+        if err is not None:
+            sent["err"] += 1
+            if first_err[0] is None:
+                first_err[0] = str(err)
+        else:
+            sent["ok"] += 1
+
+    dataset = ds.dataset(args.parquet_source, format="parquet")
+    # Validate the parquet schema covers every Avro field before we stream.
+    parquet_cols = set(dataset.schema.names)
+    missing = [f for f in field_order if f not in parquet_cols]
+    if missing:
+        die(f"parquet source is missing {len(missing)} required columns: "
+            f"{missing[:10]}{'...' if len(missing) > 10 else ''}")
+
+    t0 = time.time()
+    read = 0
+    limit = args.limit
+    stop = False
+    for batch in dataset.to_batches(columns=field_order,
+                                    batch_size=args.batch_size):
+        rows = batch.to_pylist()
+        for row in rows:
+            mapped = mapper(row)
+            payload = avro_serializer(mapped, ser_ctx)
+            # Retry on local queue-full backpressure (BufferError) — this is not
+            # a send failure, just flow control. Idempotence keeps retries safe.
+            while True:
+                try:
+                    producer.produce(args.topic, value=payload,
+                                     on_delivery=on_delivery)
+                    break
+                except BufferError:
+                    producer.poll(0.5)
+            read += 1
+            if limit and read >= limit:
+                stop = True
+                break
+        producer.poll(0)
+        if read % 500000 < args.batch_size:
+            log(f"produced {read} rows "
+                f"({read / max(time.time() - t0, 1e-9):.0f} rows/s)")
+        if stop:
+            break
+
+    log(f"finished reading {read} rows; flushing...")
+    remaining = producer.flush(300)
+    if remaining > 0:
+        die(f"flush timed out with {remaining} messages still in queue")
+    duration = time.time() - t0
+
+    if first_err[0] is not None:
+        die(f"delivery failures: {sent['err']} messages; first error: "
+            f"{first_err[0]}")
+
+    rows_sent = sent["ok"]
+    log(f"delivery-callback confirmed rows_sent={rows_sent} in {duration:.1f}s")
+
+    # Authoritative count from committed END OFFSETS (overseer directive 2).
+    rows_expected, per_partition = committed_offsets(args.bootstrap, args.topic)
+    log(f"committed offsets: rows_expected={rows_expected} "
+        f"across {len(per_partition)} partitions")
+
+    rate = rows_expected / duration if duration > 0 else 0.0
+    summary = {
+        "topic": args.topic,
+        "partitions": len(per_partition),
+        "rows_sent": rows_sent,
+        "rows_expected": rows_expected,
+        "per_partition": {str(k): v for k, v in per_partition.items()},
+        "duration_seconds": round(duration, 3),
+        "rate_rows_per_sec": round(rate, 1),
+        "idempotence": True,
+        "acks": "all",
+        "parquet_source": args.parquet_source,
+        "match": rows_sent == rows_expected,
+    }
+    # The summary is ALWAYS the last stdout line, machine-readable JSON.
+    print(json.dumps(summary), flush=True)
+
+    if rows_sent != rows_expected:
+        die(f"COUNT MISMATCH: rows_sent={rows_sent} != "
+            f"rows_expected(offsets)={rows_expected}. Idempotence should make "
+            f"these equal; a mismatch means the pre-load is INVALID.", code=2)
+
+    if rows_expected == 0:
+        die("rows_expected == 0: produced nothing (empty/wrong parquet source?)",
+            code=3)
+
+    log("OK: rows_sent == rows_expected; pre-load is valid.")
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
