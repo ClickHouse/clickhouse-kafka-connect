@@ -39,6 +39,17 @@ availabilityZones:
   - us-east-2a
   - us-east-2b
 
+# No NAT gateway: the node group runs in PUBLIC subnets (privateNetworking:
+# false below) with public IPs, so egress goes via the internet gateway and no
+# NAT/EIP is needed. This (a) avoids the account's us-east-2 EIP quota (full as
+# of 2026-07-07 — first provision attempt failed allocating the NAT EIP) and
+# (b) saves the ~$32/mo standing NAT-gateway cost, per the plan's cost
+# discipline. Acceptable for a benchmark: nodes are protected by their SGs;
+# nothing listens publicly except what K8s exposes (nothing, by default).
+vpc:
+  nat:
+    gateway: Disable
+
 # Managed node group: single group, small instances, gp3 root volumes,
 # scale-to-zero capable (minSize 0). Scale-up/down is driven by scale-up.sh /
 # scale-down.sh, which set desiredCapacity at runtime.
