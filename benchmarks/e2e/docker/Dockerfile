@@ -70,20 +70,19 @@ RUN unzip -q /tmp/avro-converter.zip -d ${PLUGIN_PATH} \
     && rm -f /tmp/avro-converter.zip
 
 # Provenance the orchestrator reads into the runtime map (plan section 3, phase 2).
-RUN mkdir -p /opt/benchmark && cat > /opt/benchmark/provenance.json <<EOF
-{
-  "arm": "${ARM}",
-  "git_sha": "${GIT_SHA}",
-  "connector_version": "${CONNECTOR_VERSION}",
-  "plugin_sha256": "${PLUGIN_SHA256}",
-  "avro_converter_version": "${AVRO_CONVERTER_VERSION}",
-  "avro_converter_sha256": "${AVRO_CONVERTER_SHA256}",
-  "kafka_version": "${KAFKA_VERSION}",
-  "strimzi_version": "${STRIMZI_VERSION}",
-  "strimzi_image": "${STRIMZI_IMAGE}",
-  "build_timestamp": "${BUILD_TIMESTAMP}"
-}
-EOF
+# Written with printf, NOT a RUN heredoc: heredocs need BuildKit (dockerfile
+# syntax >= 1.4); the legacy builder silently writes an EMPTY file instead
+# (live-gate finding). The same RUN then validates the file — non-empty AND
+# parseable JSON with a git_sha — so a bad write fails the BUILD loudly on any
+# builder (python3 is present in the Strimzi/UBI9 base).
+RUN mkdir -p /opt/benchmark \
+    && printf '{\n  "arm": "%s",\n  "git_sha": "%s",\n  "connector_version": "%s",\n  "plugin_sha256": "%s",\n  "avro_converter_version": "%s",\n  "avro_converter_sha256": "%s",\n  "kafka_version": "%s",\n  "strimzi_version": "%s",\n  "strimzi_image": "%s",\n  "build_timestamp": "%s"\n}\n' \
+        "${ARM}" "${GIT_SHA}" "${CONNECTOR_VERSION}" "${PLUGIN_SHA256}" \
+        "${AVRO_CONVERTER_VERSION}" "${AVRO_CONVERTER_SHA256}" \
+        "${KAFKA_VERSION}" "${STRIMZI_VERSION}" "${STRIMZI_IMAGE}" "${BUILD_TIMESTAMP}" \
+        > /opt/benchmark/provenance.json \
+    && test -s /opt/benchmark/provenance.json \
+    && python3 -c 'import json,sys; d=json.load(open("/opt/benchmark/provenance.json")); sys.exit(0 if d.get("git_sha") else 1)'
 
 USER 1001
 
