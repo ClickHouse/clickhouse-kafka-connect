@@ -344,7 +344,11 @@ phase_preload() {
   # rows_expected from the producer's JSON summary (last stdout line; exit 0 only).
   local plog; plog="$(kubectl -n "${NS}" logs job/hits-producer --tail=-1 2>/dev/null)"
   echo "${plog}" > "${ARTIFACT_DIR}/producer.log"
-  ROWS_EXPECTED="$(echo "${plog}" | tail -1 | python3 -c 'import sys,json; print(json.load(sys.stdin)["rows_expected"])' 2>/dev/null)"
+  # Take the LAST JSON line, not the last line: the producer prints a final
+  # human-readable "[producer] OK: ..." line AFTER the JSON summary (live-run
+  # finding 2026-07-08 — tail -1 grabbed it and the parse died on a PERFECT
+  # 10M/10M pre-load).
+  ROWS_EXPECTED="$(echo "${plog}" | grep '^{' | tail -1 | python3 -c 'import sys,json; print(json.load(sys.stdin)["rows_expected"])' 2>/dev/null)"
   [ -n "${ROWS_EXPECTED}" ] && [ "${ROWS_EXPECTED}" != "None" ] \
     || die "could not parse rows_expected from producer summary"
   export ROWS_EXPECTED
