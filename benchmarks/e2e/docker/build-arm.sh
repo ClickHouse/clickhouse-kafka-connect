@@ -20,6 +20,17 @@
 #                         image provenance.
 #   --image-tag  full image ref to tag/build (default: local
 #                clickhouse-kafka-connect-benchmark:<arm>-<sha|version>).
+#   --push       after `docker build`, `docker push` the tag and resolve the
+#                registry DIGEST. Digest-pinning is the benchmark default (a
+#                mutable tag is served STALE by node/registry caches — the
+#                stale-tag failure class): callers must consume the digest ref
+#                (repo@sha256:...), never the tag, after a push. Without --push
+#                the digest cannot be resolved (a local image has no RepoDigest),
+#                so the emitted image_digest_ref is empty and a machine-readable
+#                warning is printed.
+#   --digest-out write the resolved digest ref (repo@sha256:...) to this file
+#                (single line, no trailing marker) so a caller can capture it
+#                without parsing stdout. Requires --push.
 #   --no-docker  build the plugin zip and print the provenance/build args only;
 #                skip `docker build` (used when docker is unavailable).
 #
@@ -28,6 +39,9 @@
 #
 # Emits, on success, KEY=VALUE lines on stdout (image_ref, git_sha, arm,
 # connector_version, strimzi/kafka versions, plugin_zip) for the caller/orchestrator.
+# After a --push, ALSO emits the machine-readable digest line
+#   IMAGE_DIGEST=<repo>@sha256:...
+# plus image_digest_ref=<same> — callers must pin on THIS, not the tag.
 
 set -euo pipefail
 
@@ -62,16 +76,25 @@ AVRO_CONVERTER_URL="https://hub-downloads.confluent.io/api/plugins/confluentinc/
 ARM=""
 IMAGE_TAG=""
 RUN_DOCKER=1
+DO_PUSH=0
+DIGEST_OUT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --arm) ARM="$2"; shift 2 ;;
     --image-tag) IMAGE_TAG="$2"; shift 2 ;;
+    --push) DO_PUSH=1; shift ;;
+    --digest-out) DIGEST_OUT="$2"; shift 2 ;;
     --no-docker) RUN_DOCKER=0; shift ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+if [[ -n "${DIGEST_OUT}" && "${DO_PUSH}" -ne 1 ]]; then
+  echo "error: --digest-out requires --push (a local image has no registry digest)" >&2
+  exit 2
+fi
 
 if [[ "${ARM}" != "head" && "${ARM}" != "pinned" ]]; then
   echo "error: --arm must be 'head' or 'pinned'" >&2
@@ -224,6 +247,34 @@ fetch_avro_converter() {
 }
 fetch_avro_converter
 
+# IMAGE_DIGEST_REF is the immutable digest reference (repo@sha256:...) resolved
+# AFTER a successful push. Digest-pinning is the benchmark default (mutable tags
+# get served stale by node/registry caches). Empty until resolved.
+IMAGE_DIGEST_REF=""
+
+# Resolve the pushed image's registry digest and build the immutable
+# repo@sha256:... reference. Works for BOTH ECR and ghcr: once an image is
+# pushed, `docker inspect .RepoDigests` carries the registry-computed digest for
+# the repo it was pushed to. We match the digest to THIS tag's repo (strip the
+# ":tag" suffix) so a multi-repo local daemon can't hand back the wrong entry.
+# On failure this returns non-zero and leaves IMAGE_DIGEST_REF empty; the caller
+# decides whether that is fatal (it is, for the push path — a benchmark must not
+# fall back to the mutable tag).
+resolve_image_digest() {
+  local tag="$1"
+  local repo="${tag%%:*}"     # drop the ":tag"; leaves registry/host/path repo
+  local digests line
+  digests="$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "${tag}" 2>/dev/null)"
+  while IFS= read -r line; do
+    [[ -z "${line}" ]] && continue
+    if [[ "${line}" == "${repo}@sha256:"* ]]; then
+      IMAGE_DIGEST_REF="${line}"
+      return 0
+    fi
+  done <<< "${digests}"
+  return 1
+}
+
 # docker build needs the zips inside the build context. Stage copies next to
 # the Dockerfile and reference them relatively.
 STAGED_ZIP_NAME="plugin-${ARM}.zip"
@@ -244,10 +295,21 @@ emit() {
   echo "plugin_sha256=${PLUGIN_SHA256}"
   echo "avro_converter_version=${AVRO_CONVERTER_VERSION}"
   echo "avro_converter_sha256=${AVRO_CONVERTER_SHA256}"
+  # Digest line: the machine-readable, immutable reference callers must pin on.
+  # Present only after a --push that resolved a registry digest.
+  echo "image_digest_ref=${IMAGE_DIGEST_REF}"
+  if [[ -n "${IMAGE_DIGEST_REF}" ]]; then
+    echo "IMAGE_DIGEST=${IMAGE_DIGEST_REF}"
+  fi
 }
 
 if [[ "${RUN_DOCKER}" -eq 0 ]]; then
   echo ">> --no-docker: skipping docker build" >&2
+  if [[ "${DO_PUSH}" -eq 1 ]]; then
+    echo "error: --push requires a docker build (cannot push under --no-docker)" >&2
+    cleanup_staged
+    exit 2
+  fi
   cleanup_staged
   emit
   exit 0
@@ -270,6 +332,27 @@ docker build \
   --build-arg "BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" \
   --tag "${IMAGE_TAG}" \
   "${SCRIPT_DIR}"
+
+# Push + resolve digest (digest-pinning is the default; see header). A benchmark
+# arm must be deployed by digest so node/registry caches cannot serve a stale
+# image behind a reused tag. If the push succeeds but the digest cannot be
+# resolved, FAIL LOUDLY rather than let the caller fall back to the mutable tag.
+if [[ "${DO_PUSH}" -eq 1 ]]; then
+  echo ">> docker push ${IMAGE_TAG}" >&2
+  docker push "${IMAGE_TAG}" >&2
+  if ! resolve_image_digest "${IMAGE_TAG}"; then
+    echo "error: pushed ${IMAGE_TAG} but could not resolve its registry digest" >&2
+    echo "       (docker inspect .RepoDigests had no ${IMAGE_TAG%%:*}@sha256: entry)." >&2
+    echo "       Refusing to emit a tag-only ref — the stale-tag failure class is" >&2
+    echo "       exactly what digest pinning prevents." >&2
+    cleanup_staged
+    exit 1
+  fi
+  echo ">> resolved image digest: ${IMAGE_DIGEST_REF}" >&2
+  if [[ -n "${DIGEST_OUT}" ]]; then
+    printf '%s\n' "${IMAGE_DIGEST_REF}" > "${DIGEST_OUT}"
+  fi
+fi
 
 cleanup_staged
 emit

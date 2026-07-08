@@ -120,6 +120,18 @@ docker build -f benchmarks/e2e/producer/Dockerfile \
              benchmarks/e2e
 ```
 
+**Deploy by DIGEST, not the tag (stale-tag class fix).** The orchestrator
+(`run_pair.sh`) validates `PRODUCER_IMAGE` and **rejects a mutable tag by
+default** — a reused tag (`:latest`) can be served stale by node/registry
+caches, which once made a benchmark pair run the wrong image twice. After
+pushing, resolve and export the digest:
+
+```bash
+docker push <registry>/producer-bench:latest
+PRODUCER_IMAGE="$(docker inspect --format='{{index .RepoDigests 0}}' <registry>/producer-bench:latest)"
+export PRODUCER_IMAGE       # repo@sha256:...  (KAFKA_ALLOW_TAG=1 bypasses, local only)
+```
+
 ## How the Job is invoked per run
 
 [`job.yaml`](job.yaml) is a `batch/v1` Job in namespace `kafka-bench`:

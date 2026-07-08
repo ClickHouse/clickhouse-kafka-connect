@@ -57,6 +57,19 @@ perf.metrics insert over the Cloud HTTPS endpoint) runs on the runner — with
 the env remapped so the poller's inserter lands on the **METRICS** service,
 the same landing capture/rollback/export use (review F5).
 
+**Image pinning (digest by default — stale-tag class fix):** every image the
+pair deploys (both arm images + the producer/poller image) is pinned by
+**digest** (`repo@sha256:...`), never a mutable tag. A live pair once ran the
+wrong image *twice* because a reused tag was served stale by a node/registry
+cache; the operator recovered by hand-pinning digests, and that is now the
+default. `build-arm.sh --push` resolves and emits the registry digest
+(`IMAGE_DIGEST=...`); `benchmark-images.yml`'s `workflow_call` outputs are
+digests, not tags; and `run_pair.sh` re-validates every image ref up front
+(`validate_image_ref`) — a digest is accepted, a bare tag is resolved to a
+digest (ECR via `aws ecr describe-images`, ghcr via `gh api`) or **hard-fails**,
+unless `KAFKA_ALLOW_TAG=1` / `--allow-tag` (a local-hacking escape hatch, strict
+by default).
+
 **Wait audit (live fix):** every wait has a *failure-side* exit, not just a
 success condition plus a long timeout. The first live run exposed the trap: the
 producer Job failed (backoffLimit=0 → first failure is terminal) but the
@@ -128,10 +141,19 @@ Confirm the arm order and the 4 run rows match today's parity.
 ```bash
 export AWS_PROFILE=...            # or assume the KAFKA_BENCH_AWS_ROLE_ARN role
 aws eks update-kubeconfig --name kafka-bench --region us-east-2
-# Build both arm images (or let the workflow do it):
-./benchmarks/e2e/docker/build-arm.sh --arm head   --image-tag ghcr.io/<owner>/clickhouse-kafka-connect:benchmark-head-<sha>
-./benchmarks/e2e/docker/build-arm.sh --arm pinned  --image-tag ghcr.io/<owner>/clickhouse-kafka-connect:benchmark-pinned-<ref>
-# (push both to a registry the cluster can pull)
+# Build BOTH arm images, push, and CAPTURE THE DIGEST (or let the workflow do
+# it — its outputs are already digests). Digest-pinning is the default: the tag
+# is a build handle, the digest (repo@sha256:...) is what you deploy — a mutable
+# tag can be served stale by node/registry caches (the first pair ran the wrong
+# image twice from a reused tag).
+./benchmarks/e2e/docker/build-arm.sh --arm head \
+  --image-tag ghcr.io/<owner>/clickhouse-kafka-connect:benchmark-head-<sha> \
+  --push --digest-out /tmp/head.digest
+HEAD_IMAGE="$(cat /tmp/head.digest)"     # repo@sha256:...
+./benchmarks/e2e/docker/build-arm.sh --arm pinned \
+  --image-tag ghcr.io/<owner>/clickhouse-kafka-connect:benchmark-pinned-<ref> \
+  --push --digest-out /tmp/pinned.digest
+PINNED_IMAGE="$(cat /tmp/pinned.digest)" # repo@sha256:...
 ```
 
 ### 3. Run one pair by hand
@@ -141,9 +163,12 @@ export AWS_REGION=us-east-2 COMPUTE_REGION=us-east-2 K8S_NAMESPACE=kafka-bench
 # RECOMMENDED: pin the order explicitly so the image slots cannot disagree with
 # a parity re-derivation (this is what CI does — review F10):
 export ARM_ORDER_SPEC="head pinned"        # or "pinned head"
-export ARM0_IMAGE=<image of ARM_ORDER_SPEC's FIRST arm>
-export ARM1_IMAGE=<image of the second arm>
-export PRODUCER_IMAGE=<producer image>  PRODUCER_SA=hits-producer
+# ARM0/ARM1/PRODUCER MUST be DIGEST refs (repo@sha256:...) — run_pair.sh
+# validates and rejects a bare tag by default (KAFKA_ALLOW_TAG=1/--allow-tag is
+# the local-hacking escape hatch). Use the digests captured above.
+export ARM0_IMAGE="$HEAD_IMAGE"            # digest of ARM_ORDER_SPEC's FIRST arm
+export ARM1_IMAGE="$PINNED_IMAGE"          # digest of the second arm
+export PRODUCER_IMAGE=<producer image DIGEST>  PRODUCER_SA=hits-producer
 export PARQUET_SOURCE=s3://<staging>/clickbench/hits/
 export TARGET_CH_HOST=... TARGET_CH_USER=... TARGET_CH_PASSWORD=...
 export METRICS_CH_HOST=... METRICS_CH_USER=... METRICS_CH_PASSWORD=...
@@ -262,13 +287,16 @@ cancel-in-progress: false }`. This serialises runs of **this workflow file**.
   parity fallback — correct arm order, poller-host phase, end-of-pair cost.
 - `render_connector.py` / `render_producer_job.py` smoke — correct substitution,
   doc-keys stripped, `${env:CH_*}` creds left untouched.
-- `pytest tests/` — **32 passed** (arm parity vs shell, `ARM_ORDER_SPEC`
+- `pytest tests/` — **43 passed** (arm parity vs shell, `ARM_ORDER_SPEC`
   override + invalid-spec rejection + fallback, run_id form, runtime-map
   scope/config keys, mandatory-key fail-on-empty, `warm_up` omitted,
   empty-provenance drop, producer parse, §6 cross-check template↔echo,
   insert-timeout-<-poll-interval margin, partition_scheme = Tier-1 DDL,
   run_cost end-of-pair placement, `config.providers` wiring, `-rate` rule
-  over-match guard).
+  over-match guard, **digest-pinned image validation** — digest accepted / tag
+  rejected by default / `KAFKA_ALLOW_TAG` escape hatch / all three images
+  validated before any phase / workflow outputs are digests / build-arm.sh
+  `--push` emits `IMAGE_DIGEST`).
 - Confluent Avro converter archive (7.7.1) downloaded from the Hub and its
   sha256 pinned in `docker/build-arm.sh` (verified against the real download).
 - Every path/secret/workflow referenced by `benchmark-nightly.yml` verified to

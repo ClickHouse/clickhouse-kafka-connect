@@ -68,7 +68,7 @@
 
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 E2E_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INFRA_DIR="${E2E_DIR}/infra"
 CAPTURE_DIR="${E2E_DIR}/capture"
@@ -113,6 +113,121 @@ CONNECT_NODES="${CONNECT_NODES:-1}"
 log()  { printf '\033[1;34m[run_pair]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[run_pair:warn]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[run_pair:error]\033[0m %s\n' "$*" >&2; exit 1; }
+
+# --------------------------------------------------------------------------- #
+# Image reference validation — DIGEST-PINNED BY DEFAULT (stale-tag class fix).
+#
+# Live-diagnosed failure: mutable tags (benchmark-head-<sha>, :latest) were
+# served STALE twice during the first pair because a node/registry cache kept an
+# older image behind a reused tag — the two arms silently ran the wrong bits.
+# The operator recovered by hand-pinning digests; that is now the default.
+#
+# Every image the pair deploys (both arm images + the producer/poller image)
+# MUST be a digest reference (repo@sha256:...). validate_image_ref:
+#   * digest ref (contains @sha256:)   -> accept, echo unchanged
+#   * mutable tag + KAFKA_ALLOW_TAG=1  -> WARN (local-hacking escape hatch),
+#                                         echo unchanged (a laptop daemon may not
+#                                         have registry access to resolve)
+#   * mutable tag, strict (default)    -> try to RESOLVE the tag to a digest:
+#         - ECR  (*.dkr.ecr.*.amazonaws.com/...) via `aws ecr describe-images`
+#         - ghcr (ghcr.io/...)                    via `gh api` (packages)
+#       resolved -> echo the digest ref; unresolvable -> FAIL LOUD with the
+#       stale-tag explanation. (kubectl/docker cannot resolve a remote tag to a
+#       digest without pulling; the registry APIs above are the reliable path.)
+#
+# Emits the (possibly resolved) digest ref on stdout; diagnostics on stderr.
+# Returns non-zero on a hard failure. Self-contained (env + external CLIs only)
+# so tests can exercise it directly.
+#
+# Args: <var-name-for-messages> <ref>
+# Env : KAFKA_ALLOW_TAG (escape hatch, default strict).
+# --------------------------------------------------------------------------- #
+_ref_is_digest() { case "$1" in *@sha256:*) return 0 ;; *) return 1 ;; esac; }
+
+# Resolve a mutable tag to repo@sha256:... using the registry API. Echoes the
+# digest ref on success; returns non-zero (no output) when it cannot resolve.
+resolve_tag_to_digest() {
+  local ref="$1" repo tag registry digest
+  repo="${ref%:*}"; tag="${ref##*:}"
+  # A ref with no ":tag" (e.g. bare repo) has repo==ref; treat tag as "latest".
+  [ "${repo}" = "${ref}" ] && { repo="${ref}"; tag="latest"; }
+  registry="${ref%%/*}"
+  case "${registry}" in
+    *.dkr.ecr.*.amazonaws.com)
+      command -v aws >/dev/null 2>&1 || return 1
+      local region ecr_repo
+      # registry = <acct>.dkr.ecr.<region>.amazonaws.com ; ecr repo = path after host.
+      region="$(printf '%s' "${registry}" | sed -n 's/.*\.dkr\.ecr\.\([^.]*\)\.amazonaws\.com/\1/p')"
+      ecr_repo="${repo#*/}"
+      [ -n "${region}" ] && [ -n "${ecr_repo}" ] || return 1
+      digest="$(aws ecr describe-images --region "${region}" \
+                  --repository-name "${ecr_repo}" \
+                  --image-ids imageTag="${tag}" \
+                  --query 'imageDetails[0].imageDigest' --output text 2>/dev/null)"
+      ;;
+    ghcr.io)
+      command -v gh >/dev/null 2>&1 || return 1
+      # ghcr path = ghcr.io/<owner>/<package...>. The container package "name"
+      # is everything after the owner (URL-encode the '/' as %2F for the API).
+      local owner pkg
+      owner="$(printf '%s' "${repo}" | cut -d/ -f2)"
+      pkg="$(printf '%s' "${repo}" | cut -d/ -f3- | sed 's#/#%2F#g')"
+      [ -n "${owner}" ] && [ -n "${pkg}" ] || return 1
+      # Find the version whose tags contain ${tag}; take its digest name.
+      digest="$(gh api --paginate \
+                  "/users/${owner}/packages/container/${pkg}/versions" \
+                  --jq ".[] | select(.metadata.container.tags[]? == \"${tag}\") | .name" \
+                  2>/dev/null | head -1)"
+      # Org packages live under /orgs/...; retry there if the user path was empty.
+      if [ -z "${digest}" ]; then
+        digest="$(gh api --paginate \
+                    "/orgs/${owner}/packages/container/${pkg}/versions" \
+                    --jq ".[] | select(.metadata.container.tags[]? == \"${tag}\") | .name" \
+                    2>/dev/null | head -1)"
+      fi
+      ;;
+    *)
+      return 1 ;;
+  esac
+  case "${digest}" in
+    sha256:*) printf '%s@%s\n' "${repo}" "${digest}"; return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+validate_image_ref() {
+  local name="$1" ref="$2"
+  if [ -z "${ref}" ]; then
+    echo "[validate_image_ref] ${name} is empty" >&2
+    return 1
+  fi
+  if _ref_is_digest "${ref}"; then
+    printf '%s\n' "${ref}"
+    return 0
+  fi
+  if [ "${KAFKA_ALLOW_TAG:-0}" = "1" ]; then
+    echo "[validate_image_ref:warn] ${name}='${ref}' is a MUTABLE TAG; accepted only" \
+         "because KAFKA_ALLOW_TAG=1 (local-hacking escape hatch). Node/registry" \
+         "caches can serve this stale — never use a tag for a real benchmark pair." >&2
+    printf '%s\n' "${ref}"
+    return 0
+  fi
+  # Strict (default): try to resolve to a digest before giving up.
+  local resolved
+  if resolved="$(resolve_tag_to_digest "${ref}")" && _ref_is_digest "${resolved}"; then
+    echo "[validate_image_ref] resolved ${name} tag '${ref}' -> '${resolved}'" >&2
+    printf '%s\n' "${resolved}"
+    return 0
+  fi
+  echo "[validate_image_ref:error] ${name}='${ref}' is a MUTABLE TAG and could not" \
+       "be resolved to a digest (repo@sha256:...)." >&2
+  echo "  The benchmark pins images by DIGEST by default: a mutable tag can be" >&2
+  echo "  served STALE by node/registry caches (the stale-tag failure class that" >&2
+  echo "  made the first pair run the wrong image twice)." >&2
+  echo "  Fix: pass the digest ref (build-arm.sh --push prints IMAGE_DIGEST=...)," >&2
+  echo "  or set KAFKA_ALLOW_TAG=1 to bypass for LOCAL hacking only." >&2
+  return 1
+}
 
 # Rollback-then-die (review F13): for failures that occur AFTER this run_id has
 # started landing rows (SQL 21 pre-run covariates onward), roll the run's
@@ -793,6 +908,10 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --plan|-n) plan_only=1; shift ;;
+      # --allow-tag: local-hacking escape hatch (equivalent to KAFKA_ALLOW_TAG=1)
+      # that lets a mutable tag through image validation. Default is STRICT
+      # (digest-pinned): never use this for a real benchmark pair.
+      --allow-tag) export KAFKA_ALLOW_TAG=1; shift ;;
       -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
       *) die "unknown arg: $1" ;;
     esac
@@ -815,6 +934,21 @@ main() {
   # ---- live execution from here ----
   command -v kubectl >/dev/null 2>&1 || die "kubectl required"
   command -v envsubst >/dev/null 2>&1 || die "envsubst required (gettext)"
+
+  # Image validation FIRST (before any cluster mutation): every deployed image
+  # must be a DIGEST ref (stale-tag class fix). A mutable tag is either resolved
+  # to a digest here or hard-fails — unless KAFKA_ALLOW_TAG=1 / --allow-tag
+  # (local-hacking only). Resolve in place so every downstream deploy pins the
+  # digest. ARM0/ARM1 are validated here; ARM_IMAGE in kafkaconnect.yaml.tmpl is
+  # fed from these. The producer image is the poller pod's image too.
+  ARM0_IMAGE="$(validate_image_ref ARM0_IMAGE "${ARM0_IMAGE:?ARM0_IMAGE required}")" \
+    || die "ARM0_IMAGE failed digest validation"
+  ARM1_IMAGE="$(validate_image_ref ARM1_IMAGE "${ARM1_IMAGE:?ARM1_IMAGE required}")" \
+    || die "ARM1_IMAGE failed digest validation"
+  PRODUCER_IMAGE="$(validate_image_ref PRODUCER_IMAGE "${PRODUCER_IMAGE:?PRODUCER_IMAGE required}")" \
+    || die "PRODUCER_IMAGE failed digest validation"
+  export ARM0_IMAGE ARM1_IMAGE PRODUCER_IMAGE
+  log "images validated (digest-pinned): arm0=${ARM0_IMAGE} arm1=${ARM1_IMAGE} producer=${PRODUCER_IMAGE}"
 
   # pair_id = RUN_ID from lib_runid.sh (contract §1.2); nogit MUST fail.
   # shellcheck source=/dev/null
@@ -872,4 +1006,9 @@ main() {
   log "pair complete: ${PAIR_ID}"
 }
 
-main "$@"
+# Run main() only when executed directly, not when sourced (tests source this
+# file to unit-test validate_image_ref / resolve_tag_to_digest in isolation).
+# BASH_SOURCE[0] != $0 under `source`; equal under direct execution.
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+  main "$@"
+fi

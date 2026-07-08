@@ -449,3 +449,118 @@ def test_no_unbounded_wait_true_deletes():
         if "kubectl" in line and " delete " in line and "--wait=true" in line:
             assert "--timeout=" in line, \
                 f"run_pair.sh:{i}: --wait=true delete without --timeout: {line.strip()}"
+
+
+# --------------------------------------------------------------------------- #
+# DIGEST-PINNED image deployment by default (stale-tag class fix).
+#
+# The live failure: mutable tags were served STALE twice during the first pair
+# (node/registry cache), so the two arms silently ran the wrong image. run_pair.sh
+# now validates every deployed image ref is a digest (repo@sha256:...): a digest
+# is accepted; a mutable tag is either resolved to a digest or hard-fails, unless
+# KAFKA_ALLOW_TAG=1 / --allow-tag (local-hacking escape hatch).
+#
+# validate_image_ref / resolve_tag_to_digest are sourced from run_pair.sh (its
+# `main` runs only under direct execution, not `source`) and exercised directly.
+# A registry that is neither ECR nor ghcr cannot be resolved offline, so it is
+# the clean way to test the STRICT-reject path with no network.
+# --------------------------------------------------------------------------- #
+def _validate_image_ref(ref, allow_tag=False, extra_env=None):
+    """Source run_pair.sh and call validate_image_ref; return (rc, stdout, stderr)."""
+    env = dict(os.environ)
+    env["KAFKA_ALLOW_TAG"] = "1" if allow_tag else "0"
+    if extra_env:
+        env.update(extra_env)
+    # Use a non-ECR/non-ghcr registry so the strict path cannot resolve via a
+    # network call — it must reject on shape alone (deterministic, offline).
+    script = f'source "{RUN_PAIR}"; validate_image_ref TESTVAR "{ref}"'
+    r = subprocess.run(["bash", "-c", script],
+                       capture_output=True, text=True, env=env)
+    return r.returncode, r.stdout.strip(), r.stderr
+
+
+def test_digest_ref_accepted_strict():
+    """A digest reference is accepted unchanged in strict (default) mode."""
+    ref = "ghcr.io/clickhouse/clickhouse-kafka-connect@sha256:" + "a" * 64
+    rc, out, _ = _validate_image_ref(ref, allow_tag=False)
+    assert rc == 0
+    assert out == ref  # echoed unchanged
+
+
+def test_mutable_tag_rejected_by_default():
+    """A mutable tag on an unresolvable registry HARD-FAILS in strict mode —
+    the stale-tag class must never silently deploy a tag."""
+    rc, out, err = _validate_image_ref(
+        "registry.example.com/team/connect-bench:benchmark-head-abc123",
+        allow_tag=False)
+    assert rc != 0, f"expected reject, got rc={rc} out={out!r}"
+    assert "MUTABLE TAG" in err
+    assert "stale-tag" in err.lower()
+    assert out == ""  # nothing echoed on failure
+
+
+def test_mutable_tag_accepted_with_escape_hatch():
+    """KAFKA_ALLOW_TAG=1 (== --allow-tag) lets a mutable tag through for local
+    hacking, but WARNS loudly and echoes the tag unchanged."""
+    ref = "registry.example.com/team/connect-bench:benchmark-head-abc123"
+    rc, out, err = _validate_image_ref(ref, allow_tag=True)
+    assert rc == 0
+    assert out == ref
+    assert "KAFKA_ALLOW_TAG=1" in err
+    assert "escape hatch" in err.lower()
+
+
+def test_empty_ref_rejected():
+    rc, out, err = _validate_image_ref("", allow_tag=False)
+    assert rc != 0
+    assert "empty" in err
+
+
+def test_allow_tag_flag_sets_escape_hatch():
+    """--allow-tag must map to KAFKA_ALLOW_TAG=1 (the escape hatch) in main()."""
+    src = open(RUN_PAIR).read()
+    assert "--allow-tag) export KAFKA_ALLOW_TAG=1" in src
+
+
+def test_run_pair_validates_all_three_images_before_phases():
+    """run_pair.sh must validate ARM0/ARM1/PRODUCER images and it must happen
+    BEFORE any cluster-mutating phase (no stale image ever reaches a deploy)."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "main")
+    for var in ("ARM0_IMAGE", "ARM1_IMAGE", "PRODUCER_IMAGE"):
+        assert f"validate_image_ref {var}" in body, f"{var} not validated in main()"
+    v = body.index("validate_image_ref ARM0_IMAGE")
+    up = body.index("phase_scale_up")
+    assert v < up, "images must be validated before phase_scale_up"
+
+
+def test_workflow_outputs_are_digest_refs():
+    """benchmark-images.yml workflow_call outputs must be the resolved DIGESTS,
+    not the mutable tags (the stale-tag class fix at the source)."""
+    wf = os.path.abspath(os.path.join(ORCH, "..", "..", "..",
+                                      ".github", "workflows", "benchmark-images.yml"))
+    doc = yaml.safe_load(open(wf))
+    # YAML 1.1 parses the bare `on:` key as boolean True (the well-known gotcha).
+    on = doc.get("on", doc.get(True))
+    outs = on["workflow_call"]["outputs"]
+    assert "head_image" in outs and "pinned_image" in outs
+    text = open(wf).read()
+    # export step sets outputs from the per-step .digest outputs, and each build
+    # step passes --push --digest-out and asserts the @sha256: shape.
+    assert "head_image=${{ steps.head.outputs.digest }}" in text
+    assert "pinned_image=${{ steps.pinned.outputs.digest }}" in text
+    assert "--push --digest-out" in text
+    assert text.count("*@sha256:*)") >= 2  # both build steps assert digest shape
+
+
+def test_build_arm_push_resolves_and_emits_digest():
+    """build-arm.sh --push must resolve the registry digest and emit the
+    machine-readable IMAGE_DIGEST=... line (and fail if it cannot resolve)."""
+    ba = os.path.abspath(os.path.join(ORCH, "..", "docker", "build-arm.sh"))
+    src = open(ba).read()
+    assert "--push)" in src and "--digest-out)" in src
+    assert "resolve_image_digest" in src
+    assert 'echo "IMAGE_DIGEST=${IMAGE_DIGEST_REF}"' in src
+    assert "RepoDigests" in src  # docker inspect digest resolution
+    # push path must FAIL LOUD (exit 1) if the digest cannot be resolved.
+    assert "could not resolve its registry digest" in src

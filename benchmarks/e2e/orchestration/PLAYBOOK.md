@@ -105,10 +105,15 @@ AWS_ACCOUNT_ID=796575137974        # env.sh default; used to build the ECR regis
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
 # --- Image refs (populated in S2 after build; slotted by arm order in S5) ---
-# HEAD_IMAGE / PINNED_IMAGE are the two arm images; PRODUCER_IMAGE the producer.
-HEAD_IMAGE="${ECR_REGISTRY}/connect-bench:head-<SHORT_SHA>"       # set exactly in S2
-PINNED_IMAGE="${ECR_REGISTRY}/connect-bench:pinned-v1.3.10"       # PINNED_REF = v1.3.10
-PRODUCER_IMAGE="${ECR_REGISTRY}/producer-bench:latest"
+# DIGEST-PINNED BY DEFAULT (stale-tag class fix): HEAD_IMAGE / PINNED_IMAGE /
+# PRODUCER_IMAGE MUST be DIGEST references (repo@sha256:...), NOT tags. A mutable
+# tag can be served STALE by node/registry caches (that made the first pair run
+# the wrong image TWICE). S2 builds+pushes and CAPTURES each digest; the values
+# below are placeholders overwritten in S2. run_pair.sh re-validates: it rejects
+# a bare tag (unless KAFKA_ALLOW_TAG=1 / --allow-tag, local hacking only).
+HEAD_IMAGE="<repo>@sha256:<...>"     # captured in S2 from build-arm.sh IMAGE_DIGEST=
+PINNED_IMAGE="<repo>@sha256:<...>"   # captured in S2 (PINNED_REF = v1.3.10)
+PRODUCER_IMAGE="<repo>@sha256:<...>" # captured in S2 (producer image digest)
 
 # --- Arm order (S5 computes ARM_ORDER_SPEC; ARM0/ARM1 slotted from it) ---
 # Leave ARM_ORDER_SPEC UNSET here — S5 sets it explicitly so image slots match.
@@ -266,48 +271,64 @@ docker buildx version && docker login "$ECR_REGISTRY" >/dev/null 2>&1 && echo ok
 ```
 
 > `build-arm.sh` interface (grounded): flags are `--arm head|pinned`,
-> `--image-tag <full ref>`, `--no-docker`. It does **not** take an `IMAGE_BASE`.
-> Env overrides: `STRIMZI_IMAGE`, `STRIMZI_VERSION`, `KAFKA_VERSION`,
-> `AVRO_CONVERTER_VERSION/SHA256`. Its docker **build context is the docker/
-> directory itself** (`"${SCRIPT_DIR}"` = `benchmarks/e2e/docker/`), not
-> `benchmarks/e2e/`. The producer image, by contrast, builds with context
-> `benchmarks/e2e/` (its Dockerfile pulls in `../schema/`).
+> `--image-tag <full ref>`, `--push`, `--digest-out <file>`, `--no-docker`. It
+> does **not** take an `IMAGE_BASE`. Env overrides: `STRIMZI_IMAGE`,
+> `STRIMZI_VERSION`, `KAFKA_VERSION`, `AVRO_CONVERTER_VERSION/SHA256`. Its docker
+> **build context is the docker/ directory itself** (`"${SCRIPT_DIR}"` =
+> `benchmarks/e2e/docker/`), not `benchmarks/e2e/`. The producer image, by
+> contrast, builds with context `benchmarks/e2e/` (its Dockerfile pulls in
+> `../schema/`). **`--push` builds, pushes, AND resolves the registry digest**,
+> emitting `IMAGE_DIGEST=<repo>@sha256:...` on stdout and (with `--digest-out`)
+> writing it to a file. DIGEST-PINNING IS THE DEFAULT: capture the digest and
+> export `*_IMAGE` with it — the tag is only a build handle.
 
 **COMMANDS (verbatim):**
 ```bash
 cd /path/to/clickhouse-kafka-connect     # repo root; branch benchmark-v2
 
-# --- HEAD arm: builds the plugin from the current working tree. Capture the sha
-#     it prints so the image tag pins the commit under test. ---
+# --- HEAD arm: builds the plugin from the current working tree, pushes, and
+#     resolves the DIGEST. The tag pins the commit under test (build handle);
+#     the digest is what we deploy. ---
 HEAD_SHORT_SHA=$(git rev-parse --short=12 HEAD)
-HEAD_IMAGE="${ECR_REGISTRY}/connect-bench:head-${HEAD_SHORT_SHA}"
-./benchmarks/e2e/docker/build-arm.sh --arm head --image-tag "$HEAD_IMAGE"
+HEAD_TAG="${ECR_REGISTRY}/connect-bench:head-${HEAD_SHORT_SHA}"
+./benchmarks/e2e/docker/build-arm.sh --arm head --image-tag "$HEAD_TAG" \
+  --push --digest-out /tmp/head.digest
+HEAD_IMAGE="$(cat /tmp/head.digest)"        # repo@sha256:...  (the deployed ref)
 
 # --- PINNED arm: bakes the released v1.3.10 plugin zip (PINNED_REF), sha-verified. ---
-PINNED_IMAGE="${ECR_REGISTRY}/connect-bench:pinned-v1.3.10"
-./benchmarks/e2e/docker/build-arm.sh --arm pinned --image-tag "$PINNED_IMAGE"
+PINNED_TAG="${ECR_REGISTRY}/connect-bench:pinned-v1.3.10"
+./benchmarks/e2e/docker/build-arm.sh --arm pinned --image-tag "$PINNED_TAG" \
+  --push --digest-out /tmp/pinned.digest
+PINNED_IMAGE="$(cat /tmp/pinned.digest)"    # repo@sha256:...
 
-# --- Producer image (context = benchmarks/e2e/; Dockerfile references ../schema/). ---
-PRODUCER_IMAGE="${ECR_REGISTRY}/producer-bench:latest"
-docker build -f benchmarks/e2e/producer/Dockerfile -t "$PRODUCER_IMAGE" benchmarks/e2e
+# --- Producer image (context = benchmarks/e2e/; Dockerfile references ../schema/).
+#     No build-arm.sh here, so push then resolve the digest by hand. ---
+PRODUCER_TAG="${ECR_REGISTRY}/producer-bench:latest"
+docker build -f benchmarks/e2e/producer/Dockerfile -t "$PRODUCER_TAG" benchmarks/e2e
+docker push "$PRODUCER_TAG"
+# Resolve the pushed digest (same mechanism build-arm.sh uses: RepoDigests):
+PRODUCER_IMAGE="$(docker inspect --format='{{index .RepoDigests 0}}' "$PRODUCER_TAG")"
 
-# --- Push all three ---
-docker push "$HEAD_IMAGE"
-docker push "$PINNED_IMAGE"
-docker push "$PRODUCER_IMAGE"
-
-# Re-export the resolved refs into the env (overwrites the S0 placeholders).
+# Re-export the resolved DIGEST refs into the env (overwrites the S0 placeholders).
 export HEAD_IMAGE PINNED_IMAGE PRODUCER_IMAGE
+echo "HEAD_IMAGE=$HEAD_IMAGE"; echo "PINNED_IMAGE=$PINNED_IMAGE"; echo "PRODUCER_IMAGE=$PRODUCER_IMAGE"
 ```
 
-**VERIFICATION GATE (S2):**
+**VERIFICATION GATE (S2)** — every `*_IMAGE` MUST be a digest ref, and the digest
+must exist in ECR:
 ```bash
+# 1. Shape: all three are repo@sha256:... (never a bare tag).
+for v in "$HEAD_IMAGE" "$PINNED_IMAGE" "$PRODUCER_IMAGE"; do
+  case "$v" in *@sha256:*) echo "OK digest: $v" ;; *) echo "NOT A DIGEST: $v" ; false ;; esac
+done
+# 2. The digest exists in ECR (S2 gate — pinned by digest, verified server-side):
 aws ecr describe-images --repository-name connect-bench --region "$AWS_REGION" \
-  --query 'imageDetails[].imageTags[]' --output text
-# expect BOTH:  head-<sha>   pinned-v1.3.10
+  --image-ids imageDigest="${HEAD_IMAGE##*@}"   --query 'imageDetails[0].imageDigest' --output text
+aws ecr describe-images --repository-name connect-bench --region "$AWS_REGION" \
+  --image-ids imageDigest="${PINNED_IMAGE##*@}" --query 'imageDetails[0].imageDigest' --output text
 aws ecr describe-images --repository-name producer-bench --region "$AWS_REGION" \
-  --query 'imageDetails[].imageTags[]' --output text
-# expect:  latest
+  --image-ids imageDigest="${PRODUCER_IMAGE##*@}" --query 'imageDetails[0].imageDigest' --output text
+# (each prints back the same sha256:... — proves the digest is present)
 # Provenance sanity (the arm image must carry /opt/benchmark/provenance.json):
 docker run --rm --entrypoint cat "$HEAD_IMAGE" /opt/benchmark/provenance.json | python3 -m json.tool
 # expect git_sha == $HEAD_SHORT_SHA (12-char prefix), connector_version from VERSION.
@@ -316,9 +337,9 @@ docker run --rm --entrypoint cat "$HEAD_IMAGE" /opt/benchmark/provenance.json | 
 **ABORT/ROLLBACK (S2):**
 ```bash
 aws ecr batch-delete-image --repository-name connect-bench --region "$AWS_REGION" \
-  --image-ids imageTag=head-${HEAD_SHORT_SHA} imageTag=pinned-v1.3.10
+  --image-ids imageDigest="${HEAD_IMAGE##*@}" imageDigest="${PINNED_IMAGE##*@}"
 aws ecr batch-delete-image --repository-name producer-bench --region "$AWS_REGION" \
-  --image-ids imageTag=latest
+  --image-ids imageDigest="${PRODUCER_IMAGE##*@}"
 ```
 
 ---
@@ -696,8 +717,9 @@ out — delete it manually:
 **What INTENTIONALLY persists (do not delete):**
 - **EKS control plane** — ~$0.10/hr (~$73/mo). Deliberate: keeps run spin-up to
   2-5 min. Only `teardown.sh` removes it (do NOT run it here).
-- **ECR images** (`connect-bench:head-<sha>`, `:pinned-v1.3.10`,
-  `producer-bench:latest`). Storage cost estimate: the two arm images are Strimzi
+- **ECR images** (build-handle tags `connect-bench:head-<sha>`, `:pinned-v1.3.10`,
+  `producer-bench:latest` — and the immutable digests they resolve to, which are
+  the refs the pair actually deployed). Storage cost estimate: the two arm images are Strimzi
   Connect base (~500-700 MB compressed each) + producer (~200-400 MB) ≈ **~1.5-2 GB**
   total → ECR storage $0.10/GB-mo ≈ **~$0.15-0.20/mo**. Negligible; keep for the
   next pair.
@@ -728,6 +750,7 @@ recreate topic + fresh Job (never let K8s retry the producer — `backoffLimit 0
 | S2 head build | `plugin zip not found under .../build/confluent/` | yes | ensure JDK+gradle; re-run `build-arm.sh --arm head` |
 | S2 pinned | `pinned artifact sha256 mismatch: release=… downloaded=…` | no | STOP-AND-REPORT: PINNED_REF release digest changed — do not benchmark a drifted pinned jar |
 | S2 avro | `Avro converter sha256 mismatch` | no | STOP-AND-REPORT: Hub archive changed; bump pin deliberately (not in a run) |
+| S5 image validation | `ARM0_IMAGE='...:tag' is a MUTABLE TAG and could not be resolved to a digest` (run_pair.sh, before any phase) | fix env | you exported a `*_IMAGE` as a bare tag. Set it to the DIGEST (S2 `IMAGE_DIGEST=`), or `KAFKA_ALLOW_TAG=1`/`--allow-tag` for LOCAL hacking only. Deploying a tag is the stale-tag class the pin prevents |
 | S3 scale-up | `timed out waiting for N Ready node(s)` | yes | check EC2 capacity / node role; re-run `scale-up.sh` (idempotent) |
 | S3 scale-up | `Kafka CR bench did not become Ready` (wait timeout) | maybe | `kubectl -n kafka-bench describe kafka bench`; if PVC/EBS CSI stuck, scale-down + up |
 | S5 preload | `broker reports partition count 'X' for hits, expected 3` | needs clean re-run | delete topic, re-run pair (one-task-per-partition invariant broken) |
@@ -787,8 +810,12 @@ containing placeholders were checked for shell-syntax validity, not executed.
   --parquet-source --out`; patches only image/SA/PARQUET_SOURCE. **No ROW_LIMIT.**
 - `producer.py` — `--limit`/`ROW_LIMIT` exist but the orchestrator never sets
   them; `ds.dataset(source, format="parquet")` accepts dir or file.
-- `build-arm.sh` — flags `--arm`/`--image-tag`/`--no-docker`; docker context
-  `"${SCRIPT_DIR}"` (docker/ dir). `PINNED_REF` = `v1.3.10`.
+- `build-arm.sh` — flags `--arm`/`--image-tag`/`--push`/`--digest-out`/
+  `--no-docker`; docker context `"${SCRIPT_DIR}"` (docker/ dir). `PINNED_REF` =
+  `v1.3.10`. `--push` resolves the registry digest (docker inspect
+  `.RepoDigests`) and emits `IMAGE_DIGEST=<repo>@sha256:...` — deploy by DIGEST,
+  never the tag (stale-tag class fix). run_pair.sh re-validates and rejects a
+  bare tag unless `KAFKA_ALLOW_TAG=1`/`--allow-tag`.
 - `producer/README.md` + `producer/Dockerfile` — build context `benchmarks/e2e/`.
 - `export_metrics_to_dwh.py` — `TABLES=["runs","metrics","ch_inserts"]`, key
   `f"{table}/{tag}.parquet"`, `tag = run_id`; requires `DWH_BUCKET`+`DWH_ROLE_ARN`;
