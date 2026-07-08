@@ -113,6 +113,16 @@ managedNodeGroups:
     amiFamily: AmazonLinux2023
     labels:
       role: connect
+    # Taint: NOTHING schedules here unless it tolerates dedicated=connect
+    # (review F1). The worker's nodeAffinity alone is one-directional — it pins
+    # the worker TO this node but lets the scheduler put anything else (broker
+    # on a fresh scale-up, Strimzi operator, future pods) BESIDE it, silently
+    # recreating the CPU contention this nodegroup exists to eliminate. The
+    # matching toleration lives in kafkaconnect.yaml.tmpl (template.pod).
+    taints:
+      - key: dedicated
+        value: connect
+        effect: NoSchedule
     tags:
       Project: clickbench-benchmark
       Component: kafka-connect-benchmark-v2

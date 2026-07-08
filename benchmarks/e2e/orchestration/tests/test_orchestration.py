@@ -162,7 +162,7 @@ def _runtime_json_raw(arm, tier, extra_env=None):
         "TARGET_REGION": "us-east-2",
         "ENVIRONMENT_CLASS": "staging",
         "COMPUTE_REGION": "us-east-2",
-        "CFG_MAX_POLL_RECORDS": "100000",
+        "CFG_MAX_POLL_RECORDS": "25000",
         "CFG_MAX_PARTITION_FETCH_BYTES": "104857600",
         "CFG_FETCH_MAX_BYTES": "209715200",
         "CFG_MAX_POLL_INTERVAL_MS": "600000",
@@ -211,7 +211,7 @@ def test_runtime_map_omits_warm_up():
 def test_runtime_map_shared_config_keys():
     rt = _build_runtime_json("head", "1")
     # contract §1.4 shared keys
-    assert rt["batch_size"] == "100000"          # sink flush size = max.poll.records
+    assert rt["batch_size"] == "25000"           # sink flush size = max.poll.records
     assert rt["write_parallelism"] == "3"        # tasks.max
     assert rt["async_insert"] == "0"
     assert rt["dataset"] == "hits"
@@ -285,7 +285,9 @@ def _connector_config():
 SECTION6 = {
     # (human name, value, connector-config assertion, runtime-key)
     "exactlyOnce": "false",
-    "max.poll.records": "100000",
+    # 25000 (was 100000, review F2): only live-proven pairing with 4096m heap;
+    # TODO(#32) co-tunes poll+heap upward on the connect-ng m6i.xlarge.
+    "max.poll.records": "25000",
     "max.partition.fetch.bytes": "104857600",
     "fetch.max.bytes": "209715200",
     "max.poll.interval.ms": "600000",
@@ -297,7 +299,7 @@ SECTION6 = {
 def test_section6_in_connector_template():
     cfg, spec = _connector_config()
     assert cfg["exactlyOnce"] == "false"
-    assert cfg["consumer.override.max.poll.records"] == "100000"
+    assert cfg["consumer.override.max.poll.records"] == "25000"
     assert cfg["consumer.override.max.partition.fetch.bytes"] == "104857600"
     assert cfg["consumer.override.fetch.max.bytes"] == "209715200"
     assert cfg["consumer.override.max.poll.interval.ms"] == "600000"
@@ -320,7 +322,7 @@ def test_insert_timeout_below_poll_interval_with_margin():
 def test_section6_in_runtime_echo():
     rt = _build_runtime_json("head", "1")
     assert rt["exactlyOnce"] == "false"
-    assert rt["consumer_max_poll_records"] == "100000"
+    assert rt["consumer_max_poll_records"] == "25000"
     assert rt["consumer_max_partition_fetch_bytes"] == "104857600"
     assert rt["consumer_fetch_max_bytes"] == "209715200"
     assert rt["consumer_max_poll_interval_ms"] == "600000"

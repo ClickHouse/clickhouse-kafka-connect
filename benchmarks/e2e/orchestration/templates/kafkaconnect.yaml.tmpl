@@ -10,7 +10,7 @@
 #
 # Placeholders (${VAR}) are substituted by run_pair.sh via envsubst:
 #   ARM_IMAGE   full image ref for this arm (from benchmark-images.yml outputs)
-#   CONNECT_HEAP  JVM heap (m6i.large sizing) e.g. 2048m
+#   CONNECT_HEAP  JVM heap (connect-ng m6i.xlarge sizing) e.g. 4096m
 #
 # metricsConfig: jmxPrometheusExporter on the standard port 9404, referencing the
 # connect-metrics ConfigMap (connect-metrics-configmap.yaml) which carries the
@@ -119,6 +119,16 @@ spec:
                     operator: In
                     values:
                       - connect
+      # connect-ng is tainted dedicated=connect:NoSchedule (cluster.yaml, review
+      # F1) so nothing else can land beside the worker; this toleration is the
+      # worker's half of that contract. Plain YAML — run_pair.sh's envsubst list
+      # is '${ARM_IMAGE} ${CONNECT_HEAP}' only, so this block passes through
+      # untouched.
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: connect
+          effect: NoSchedule
   # externalConfiguration wires the runtime CH-creds Secret (created by the
   # orchestrator from CI secrets) into the worker as env vars, so the connector
   # config can reference them via ${env:...} — creds never appear in any file.

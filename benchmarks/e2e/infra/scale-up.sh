@@ -46,15 +46,28 @@ eksctl scale nodegroup \
   --nodes-min 0 \
   --nodes-max "${CONNECT_NODES}"
 
-log "waiting for ${TOTAL_NODES} node(s) to reach Ready (${NODES} bench + ${CONNECT_NODES} connect)"
-# Wait until at least TOTAL_NODES nodes are Ready. kubectl wait needs objects to
-# exist, so poll until the count is present, then wait on readiness.
+# Count Ready, schedulable nodes matching a label selector. A cordoned node
+# shows "Ready,SchedulingDisabled" — it must NOT satisfy the wait (pods cannot
+# land on it), so exclude it. Empty/failed kubectl -> 0.
+count_ready_nodes() {
+  local n
+  n=$(kubectl get nodes -l "$1" --no-headers 2>/dev/null \
+        | grep -w Ready | grep -cv SchedulingDisabled || true)
+  echo "${n:-0}"
+}
+
+log "waiting for ${TOTAL_NODES} node(s) to reach Ready (${NODES} role=bench + ${CONNECT_NODES} role=connect)"
+# Per-nodegroup label-filtered counts (not a single total): a total of N+1 could
+# be satisfied by N+1 bench nodes while connect-ng is still coming up, letting
+# the Kafka apply race ahead of the node the worker requires. kubectl wait needs
+# objects to exist, so poll counts first, then wait on readiness.
 deadline=$(( $(date +%s) + 600 ))
 while :; do
-  ready=$(kubectl get nodes --no-headers 2>/dev/null | grep -cw Ready || true)
-  [ "${ready}" -ge "${TOTAL_NODES}" ] && break
-  [ "$(date +%s)" -ge "${deadline}" ] && die "timed out waiting for ${TOTAL_NODES} Ready node(s) (have ${ready})"
-  log "  ${ready}/${TOTAL_NODES} nodes Ready; waiting..."
+  bench_ready=$(count_ready_nodes "role=bench")
+  connect_ready=$(count_ready_nodes "role=connect")
+  [ "${bench_ready}" -ge "${NODES}" ] && [ "${connect_ready}" -ge "${CONNECT_NODES}" ] && break
+  [ "$(date +%s)" -ge "${deadline}" ] && die "timed out waiting for nodes Ready (bench ${bench_ready}/${NODES}, connect ${connect_ready}/${CONNECT_NODES})"
+  log "  bench ${bench_ready}/${NODES}, connect ${connect_ready}/${CONNECT_NODES} nodes Ready; waiting..."
   sleep 10
 done
 kubectl wait --for=condition=Ready nodes --all --timeout=300s

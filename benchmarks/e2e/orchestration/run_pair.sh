@@ -829,7 +829,13 @@ main() {
   # Config-echo env for build_runtime_json (single source of truth = the §6
   # values below; cross-checked against kafkaconnector.json.tmpl by the tests
   # in tests/test_orchestration.py).
-  export CFG_MAX_POLL_RECORDS="${CFG_MAX_POLL_RECORDS:-100000}"
+  # CFG_MAX_POLL_RECORDS is a REAL knob (review F2): render_connector.py writes
+  # this same env var into consumer.override.max.poll.records, so the deployed
+  # connector and the runtime echo agree by construction. Baseline 25000, the
+  # only live-proven pairing with CONNECT_HEAP=4096m (100k GC-spiraled the 2G
+  # heap — e140231). TODO(#32): co-tune poll+heap upward on the xlarge toward
+  # the >=50k rows/insert milestone.
+  export CFG_MAX_POLL_RECORDS="${CFG_MAX_POLL_RECORDS:-25000}"
   export CFG_MAX_PARTITION_FETCH_BYTES="${CFG_MAX_PARTITION_FETCH_BYTES:-104857600}"
   export CFG_FETCH_MAX_BYTES="${CFG_FETCH_MAX_BYTES:-209715200}"
   export CFG_MAX_POLL_INTERVAL_MS="${CFG_MAX_POLL_INTERVAL_MS:-600000}"

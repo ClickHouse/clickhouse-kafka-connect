@@ -19,6 +19,13 @@ sets the per-(arm,tier) consumer group. The ${env:CH_*} placeholders are left
 UNTOUCHED — they are resolved by the Connect worker from the externalConfiguration
 Secret at runtime, so credentials never appear in the rendered file or any log.
 
+CFG_MAX_POLL_RECORDS (env, review F2): when set, overrides the template's
+consumer.override.max.poll.records. run_pair.sh exports the SAME env var into
+the runtime echo (build_runtime_json), so the deployed connector and the
+recorded provenance agree BY CONSTRUCTION — previously the env var was
+echo-only, so setting it wrote one value into perf.runs while the connector
+silently ran the template's (false provenance). Unset => template value.
+
 The template carries `//`-prefixed documentation keys; those are stripped from
 the emitted CR (Connect would ignore them, but a clean CR is easier to review).
 
@@ -26,6 +33,7 @@ Output is a KafkaConnector CR (YAML/JSON both accepted by kubectl apply).
 """
 import argparse
 import json
+import os
 import sys
 
 
@@ -61,6 +69,17 @@ def main() -> int:
     # default; override it explicitly so a fresh group means a fresh offset-0
     # drain even if the connector name is reused across tiers.
     cfg["consumer.override.group.id"] = args.group
+
+    # Poll-size knob (review F2): the SAME env var run_pair.sh echoes into the
+    # runtime map drives the deployed value, so provenance cannot lie. Validate
+    # it is a positive integer — a typo here must fail the render, not deploy.
+    max_poll = os.environ.get("CFG_MAX_POLL_RECORDS")
+    if max_poll:
+        if not max_poll.isdigit() or int(max_poll) <= 0:
+            print(f"CFG_MAX_POLL_RECORDS must be a positive integer, got {max_poll!r}",
+                  file=sys.stderr)
+            return 1
+        cfg["consumer.override.max.poll.records"] = max_poll
 
     out = json.dumps(doc, indent=2, sort_keys=False)
     if args.out == "-":

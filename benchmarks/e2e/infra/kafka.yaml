@@ -42,6 +42,24 @@ spec:
     # page cache, which is what actually serves sequential fetches.
     -Xms: 2048m
     -Xmx: 2048m
+  # Pin the broker to bench-ng (review F1): on a fresh scale-up the scheduler
+  # could otherwise place this pod on the empty connect-ng m6i.xlarge, and the
+  # Connect worker's REQUIRED affinity would then land it beside the broker
+  # (2 + 3.5 = 5.5 CPU limits on 4 vCPU) — silently recreating the contention
+  # the dedicated nodegroup eliminates. Belt #2 alongside the connect-ng taint.
+  # Grounding: Strimzi 0.46 KafkaNodePool CRD (045-Crd-kafkanodepool.yaml)
+  # spec.template.pod is a PodTemplate with .affinity.
+  template:
+    pod:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: role
+                    operator: In
+                    values:
+                      - bench
 ---
 # ---------------------------------------------------------------------------
 # Kafka: KRaft cluster referencing the node pool above. RF=1 on every
@@ -90,3 +108,18 @@ spec:
   entityOperator:
     topicOperator: {}
     userOperator: {}
+    # Pin to bench-ng (review F1) — same rationale as the node pool above: the
+    # dedicated connect-ng node runs ONLY the Connect worker. Grounding:
+    # Strimzi 0.46 appendix_crds.adoc EntityOperatorTemplate has .pod
+    # (PodTemplate) with .affinity.
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: role
+                      operator: In
+                      values:
+                        - bench

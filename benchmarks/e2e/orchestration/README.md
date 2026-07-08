@@ -151,15 +151,19 @@ export DWH_ROLE_ARN=... DWH_BUCKET=...
 benchmarks/e2e/orchestration/run_pair.sh
 ```
 
-**Baseline tuning knobs (first-baseline pair).** The clean reference run uses
-`CFG_MAX_POLL_RECORDS=25000` and `CONNECT_HEAP=4096m` — a *co-sized* pair (a 100k
-first poll GC-spiraled the 2G-heap worker; heap and poll size must move together,
-commit e140231). These are the documented first-baseline values, co-sized on the
-dedicated `connect-ng` m6i.xlarge. `CONNECT_HEAP` already defaults to `4096m` in
-`run_pair.sh`; set `CFG_MAX_POLL_RECORDS=25000` explicitly to run the baseline
-(the connector template's §6 value is the higher-throughput target, not the
-first-baseline). **#32** tunes both knobs *upward together* on the xlarge; worker
-`replicas` stays 1 here (scale-out is the **#37** sweep's variable).
+**Baseline tuning knobs (first-baseline pair).** The baseline runs
+`CFG_MAX_POLL_RECORDS=25000` + `CONNECT_HEAP=4096m` — a *co-sized* pair (a 100k
+first poll GC-spiraled the 2G-heap worker: 17 restarts, zero commits; heap and
+poll size must move together — commit e140231), and the only live-proven
+pairing. Both are the DEFAULTS: `run_pair.sh` defaults `CONNECT_HEAP=4096m` and
+`CFG_MAX_POLL_RECORDS=25000`, and the connector template
+(`kafkaconnector.json.tmpl`) carries `25000`. `CFG_MAX_POLL_RECORDS` is a real
+knob: `render_connector.py` writes the same env var into
+`consumer.override.max.poll.records`, so the deployed connector and the runtime
+echo (provenance) agree by construction. **TODO(#32):** 25k is *knowingly below*
+the plan-§6 `>=50k ch_avg_rows_per_insert` milestone; #32 co-tunes poll+heap
+*upward together* on the `connect-ng` m6i.xlarge. Worker `replicas` stays 1 here
+(scale-out is the **#37** sweep's variable).
 
 ### 4. Verify the run landed (the acceptance evidence)
 
