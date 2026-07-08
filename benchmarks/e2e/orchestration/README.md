@@ -32,7 +32,7 @@ poller, capture, sql) into ONE nightly end-to-end two-arm pair, per
 | Plan §5 | run_pair.sh |
 |---------|-------------|
 | 1. Scale up | `phase_scale_up` → `infra/scale-up.sh` |
-| 2. Pre-load | `phase_preload` → KafkaTopic CR (broker-verified 3-partition assert) → producer Job → parse `rows_expected`; then `phase_poller_host` (in-cluster sampler pod) |
+| 2. Pre-load | `phase_preload` → KafkaTopic CR (broker-verified 3-partition assert) → producer Job (**terminal watch: Complete OR Failed** — Failed dies fast with the pod's last logs) → parse `rows_expected`; then `phase_poller_host` (in-cluster sampler pod) |
 | 3. Per arm (alternating order) | `phase_arm` × 2, Tier 0 then Tier 1 each |
 | 3c. Delete connector + group | `delete_connector` |
 | 4. Capture | `finalize_and_insert_metrics` (poller scalars → METRICS service) then `capture_and_record` (gated CH-side capture SQL → runs row) |
@@ -56,6 +56,20 @@ dropped exec leaves an archivable partial). `finalize` (pure math + the
 perf.metrics insert over the Cloud HTTPS endpoint) runs on the runner — with
 the env remapped so the poller's inserter lands on the **METRICS** service,
 the same landing capture/rollback/export use (review F5).
+
+**Wait audit (live fix):** every wait has a *failure-side* exit, not just a
+success condition plus a long timeout. The first live run exposed the trap: the
+producer Job failed (backoffLimit=0 → first failure is terminal) but the
+one-sided `kubectl wait --for=condition=complete` kept waiting toward the 6h
+`PRODUCER_TIMEOUT`, burning cluster-hours. Now: the producer wait polls **both**
+Job conditions (`Complete`/`Failed`) and dies fast on Failed, dumping the pod's
+last log lines; `wait_tasks_running` fast-fails (`fail_run` + status dump) on a
+FAILED connector or task instead of burning its 600s timeout (Connect never
+auto-restarts FAILED tasks, and `errors.tolerance=none` fails on the first bad
+record); and every `kubectl delete --wait=true` carries a `--timeout` so a
+stuck finalizer cannot block forever. Structural tests pin all three shapes.
+Remaining bounded-but-slow waits (topic Ready 120s, poller pod Ready 300s,
+KafkaConnect Ready 600s, settle 1800s cap) all die/flag on timeout by design.
 
 **Gating discipline (capture/README, BINDING):** capture SQL runs in numeric
 order; any failure → `rollback_run_metrics.py` + abort — and early per-run

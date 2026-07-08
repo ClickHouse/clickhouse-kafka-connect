@@ -164,7 +164,9 @@ run_cost_usd    : FULL pair cost, computed at END of pair, charged ONCE on the
 PHASE 1  scale up          eksctl node group 0->${SCALE_UP_NODES}; Kafka CR + Schema Registry Ready
 PHASE 2  pre-load          create topic (${EXPECTED_PARTITIONS} partitions RF1)
                            -> ASSERT broker-reported partition count==${EXPECTED_PARTITIONS} (kafka-topics.sh --describe)
-                           -> producer Job -> capture rows_expected from JSON summary (fail on exit!=0)
+                           -> producer Job -> watch BOTH terminal conditions (Complete|Failed;
+                              Failed dies fast + dumps last logs — backoffLimit=0 is terminal)
+                           -> capture rows_expected from JSON summary
 PHASE 2b poller host       in-cluster poller pod (${POLLER_POD}) — broker/REST/JMX are internal-only
 PHASE 3  per arm, in order [ ${order[0]} , ${order[1]} ]:
   for arm in ${order[0]} ${order[1]}:
@@ -173,7 +175,7 @@ PHASE 3  per arm, in order [ ${order[0]} , ${order[1]} ]:
     --- Tier 0 (hits_null) ---
       pre-run covariates (21) ; NO truncate (Null engine)
       deploy connector (topic2TableMap=hits=hits_null, group ch-sink-<arm>-t0)
-      wait connector + ${EXPECTED_TASKS} tasks RUNNING   (poller prereq 5; REST via poller pod)
+      wait connector + ${EXPECTED_TASKS} tasks RUNNING (fast-fail on FAILED; REST via poller pod)
       poller sample (in-cluster) -> lag 0 (RUN_END = lag-0 ts) -> copy samples back
       finalize --insert (run_id <pair_id>-<arm>-t0, tier 0; lands on METRICS service)
       capture SQL [11..19,22,23] gated window ; on any fail -> rollback + abort
@@ -280,7 +282,9 @@ phase_scale_up() {
 phase_preload() {
   log "PHASE 2: pre-load topic + producer"
   # Fresh topic (3 partitions RF1) via the KafkaTopic CR (topicOperator).
-  kubectl delete kafkatopic "${TOPIC}" -n "${NS}" --ignore-not-found --wait=true 2>/dev/null || true
+  # --timeout bounds the deletion wait (wait-audit: a stuck finalizer would
+  # otherwise block forever); on timeout the subsequent apply fails loudly.
+  kubectl delete kafkatopic "${TOPIC}" -n "${NS}" --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
   envsubst < "${TEMPLATES_DIR}/kafkatopic.yaml.tmpl" | kubectl apply -f - || die "topic apply failed"
   kubectl -n "${NS}" wait kafkatopic/"${TOPIC}" --for=condition=Ready --timeout=120s \
     || die "topic did not become Ready"
@@ -299,7 +303,7 @@ phase_preload() {
   # Producer Job (fresh; backoffLimit 0). Overseer directive e: parameterize an
   # IRSA serviceAccountName for S3 read (PRODUCER_SA). IAM role is a provisioning
   # TODO (see README). Image ref + parquet source come from the workflow env.
-  kubectl -n "${NS}" delete job hits-producer --ignore-not-found --wait=true 2>/dev/null || true
+  kubectl -n "${NS}" delete job hits-producer --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
   local job_yaml="${ARTIFACT_DIR}/producer-job.yaml"
   mkdir -p "${ARTIFACT_DIR}"
   # Patch image + serviceAccountName + PARQUET_SOURCE into a copy of job.yaml.
@@ -311,9 +315,31 @@ phase_preload() {
       --out "${job_yaml}" || die "producer job render failed"
   kubectl apply -f "${job_yaml}" || die "producer job apply failed"
 
-  log "  waiting for producer Job to complete"
-  kubectl -n "${NS}" wait --for=condition=complete job/hits-producer --timeout="${PRODUCER_TIMEOUT:-21600}s" \
-    || die "producer Job did not complete (see logs)"
+  # Wait for a TERMINAL state — Complete OR Failed (live fix). The previous
+  # one-sided `kubectl wait --for=condition=complete` could not see Failed:
+  # with backoffLimit=0 the FIRST failure is terminal by design, and waiting
+  # out the full PRODUCER_TIMEOUT (6h default) on an already-failed pre-load
+  # burns cluster-hours for nothing. Poll both Job conditions and die fast on
+  # Failed, dumping the producer pod's last log lines for diagnosis.
+  log "  waiting for producer Job (terminal: Complete OR Failed; timeout ${PRODUCER_TIMEOUT:-21600}s)"
+  local jdeadline=$(( $(date +%s) + ${PRODUCER_TIMEOUT:-21600} ))
+  while :; do
+    local jconds
+    jconds="$(kubectl -n "${NS}" get job hits-producer \
+                -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}' 2>/dev/null)"
+    case " ${jconds}" in
+      *" Complete=True"*)
+        log "  producer Job Complete"
+        break ;;
+      *" Failed=True"*)
+        warn "producer Job FAILED (backoffLimit=0: first failure is terminal). Last log lines:"
+        kubectl -n "${NS}" logs job/hits-producer --tail=40 2>/dev/null | sed 's/^/    | /' >&2 || true
+        die "producer Job failed — pre-load invalid, aborting the pair before any measured drain" ;;
+    esac
+    [ "$(date +%s)" -ge "${jdeadline}" ] \
+      && die "producer Job reached neither Complete nor Failed within ${PRODUCER_TIMEOUT:-21600}s"
+    sleep 15
+  done
 
   # rows_expected from the producer's JSON summary (last stdout line; exit 0 only).
   local plog; plog="$(kubectl -n "${NS}" logs job/hits-producer --tail=-1 2>/dev/null)"
@@ -337,7 +363,7 @@ phase_preload() {
 # --------------------------------------------------------------------------- #
 phase_poller_host() {
   log "PHASE 2b: in-cluster poller host pod (${POLLER_POD})"
-  kubectl -n "${NS}" delete pod "${POLLER_POD}" --ignore-not-found --wait=true 2>/dev/null || true
+  kubectl -n "${NS}" delete pod "${POLLER_POD}" --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
   kubectl -n "${NS}" run "${POLLER_POD}" --image="${PRODUCER_IMAGE:?PRODUCER_IMAGE required}" \
     --restart=Never --command \
     --labels="app.kubernetes.io/part-of=kafka-connect-benchmark-v2" \
@@ -418,7 +444,7 @@ deploy_connect() {
 }
 
 delete_connect() {
-  kubectl -n "${NS}" delete kafkaconnect "${CONNECT_NAME}" --ignore-not-found --wait=true 2>/dev/null || true
+  kubectl -n "${NS}" delete kafkaconnect "${CONNECT_NAME}" --ignore-not-found --wait=true --timeout=300s 2>/dev/null || true
   kubectl -n "${NS}" delete secret bench-ch-creds --ignore-not-found 2>/dev/null || true
 }
 
@@ -433,7 +459,7 @@ deploy_connector() {
 
 delete_connector() {
   local group="$1"
-  kubectl -n "${NS}" delete kafkaconnector "${CONNECTOR_NAME}" --ignore-not-found --wait=true 2>/dev/null || true
+  kubectl -n "${NS}" delete kafkaconnector "${CONNECTOR_NAME}" --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
   # Delete the consumer group so the next drain starts fresh at offset 0
   # (plan §5 step 3c). Best-effort via the broker pod.
   "${SCRIPT_DIR}/delete_consumer_group.sh" "${group}" 2>/dev/null || warn "consumer-group delete best-effort failed for ${group}"
@@ -446,20 +472,33 @@ wait_tasks_running() {
   # Poller prerequisite 5: start the sampler only AFTER connector + all tasks
   # report RUNNING.
   local deadline=$(( $(date +%s) + ${TASKS_RUNNING_TIMEOUT:-600} ))
-  log "  waiting for connector + ${EXPECTED_TASKS} tasks RUNNING"
+  log "  waiting for connector + ${EXPECTED_TASKS} tasks RUNNING (fast-fails on FAILED)"
   while :; do
-    local out conn_state running
+    local out conn_state running failed
     out="$(kubectl -n "${NS}" exec "${POLLER_POD}" -- python -c "
 import requests, sys
 try:
     d = requests.get('${CONNECT_REST}/connectors/${CONNECTOR_NAME}/status', timeout=10).json()
+    tasks = d.get('tasks', [])
     print(d['connector']['state'],
-          sum(1 for t in d.get('tasks', []) if t['state'] == 'RUNNING'))
+          sum(1 for t in tasks if t['state'] == 'RUNNING'),
+          sum(1 for t in tasks if t['state'] == 'FAILED'))
 except Exception:
-    print('UNAVAILABLE 0')
-" 2>/dev/null || echo 'UNAVAILABLE 0')"
-    conn_state="${out%% *}"
-    running="${out##* }"
+    print('UNAVAILABLE 0 0')
+" 2>/dev/null || echo 'UNAVAILABLE 0 0')"
+    read -r conn_state running failed <<< "${out}"
+    # Wait-audit (live-fix class): FAILED is TERMINAL here — Connect does not
+    # auto-restart FAILED tasks, and errors.tolerance=none fails the task on
+    # the first bad record — so waiting out the timeout would only burn
+    # cluster-time. Die fast with the status dump.
+    if [ "${conn_state}" = "FAILED" ] || [ "${failed:-0}" -gt 0 ] 2>/dev/null; then
+      warn "connector/task FAILED — /status dump:"
+      kubectl -n "${NS}" exec "${POLLER_POD}" -- python -c "
+import requests
+print(requests.get('${CONNECT_REST}/connectors/${CONNECTOR_NAME}/status', timeout=10).text)
+" 2>/dev/null | sed 's/^/    | /' >&2 || true
+      fail_run "connector state=${conn_state}, failed_tasks=${failed:-?} (terminal — not waiting for the ${TASKS_RUNNING_TIMEOUT:-600}s timeout)"
+    fi
     if [ "${conn_state}" = "RUNNING" ] && [ "${running}" -ge "${EXPECTED_TASKS}" ] 2>/dev/null; then
       log "  connector RUNNING with ${running}/${EXPECTED_TASKS} tasks RUNNING"
       return 0
@@ -706,7 +745,7 @@ cleanup_trap() {
   if [ "${CLEANUP_DONE:-0}" != "1" ]; then
     warn "cleanup trap firing (rc=${rc}); tearing down CRs, groups, topic, nodes"
     kubectl -n "${NS}" delete kafkaconnector "${CONNECTOR_NAME}" --ignore-not-found --wait=false 2>/dev/null || true
-    kubectl -n "${NS}" delete kafkaconnect "${CONNECT_NAME}" --ignore-not-found --wait=true 2>/dev/null || true
+    kubectl -n "${NS}" delete kafkaconnect "${CONNECT_NAME}" --ignore-not-found --wait=true --timeout=300s 2>/dev/null || true
     kubectl -n "${NS}" delete secret bench-ch-creds --ignore-not-found 2>/dev/null || true
     local arm tier
     for arm in head pinned; do

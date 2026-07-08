@@ -403,3 +403,47 @@ def test_rate_exporter_rule_not_overmatching():
     pat = rate_rules[0]["pattern"]
     assert "client-id=([^,]+)" in pat, pat
     assert "client-id=(.*)" not in pat, "over-matching client-id capture (F12)"
+
+
+# --------------------------------------------------------------------------- #
+# Wait audit (live fix): every wait must have a FAILURE-side exit, not just a
+# success condition + a long timeout. The wait logic itself is kubectl-driven
+# (not unit-executable offline), so these structural tests pin the shape.
+# --------------------------------------------------------------------------- #
+def test_producer_wait_watches_both_terminal_conditions():
+    """Live fix: a one-sided `kubectl wait --for=condition=complete` cannot see
+    a Failed job (terminal with backoffLimit=0) and burned cluster-hours toward
+    the 6h PRODUCER_TIMEOUT. The wait must poll BOTH terminal conditions."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_preload")
+    assert "Complete=True" in body, "producer wait must watch Complete"
+    assert "Failed=True" in body, "producer wait must watch Failed"
+    # the one-sided wait must not come back as CODE (comments may describe it)
+    code = "\n".join(l for l in body.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "--for=condition=complete" not in code, \
+        "one-sided kubectl wait must not come back"
+    # Failed path must be diagnosable: dump the pod's last log lines.
+    assert "logs job/hits-producer" in body
+
+
+def test_wait_tasks_running_fast_fails_on_failed():
+    """Same one-sided-wait class: a FAILED connector/task is terminal (Connect
+    does not auto-restart FAILED; errors.tolerance=none) — die fast, don't
+    burn the RUNNING-wait timeout."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "wait_tasks_running")
+    assert "FAILED" in body, "must inspect the FAILED state"
+    assert "fail_run" in body, "FAILED must fail the run (with rollback)"
+    # both the connector state and the per-task failed count are checked
+    assert "failed" in body and "'FAILED'" in body
+
+
+def test_no_unbounded_wait_true_deletes():
+    """Unbounded variant of the same class: `kubectl delete --wait=true`
+    without --timeout blocks forever on a stuck finalizer."""
+    src = open(RUN_PAIR).read()
+    for i, line in enumerate(src.splitlines(), 1):
+        if "kubectl" in line and " delete " in line and "--wait=true" in line:
+            assert "--timeout=" in line, \
+                f"run_pair.sh:{i}: --wait=true delete without --timeout: {line.strip()}"
