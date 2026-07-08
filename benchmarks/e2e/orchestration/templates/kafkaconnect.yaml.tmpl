@@ -64,12 +64,17 @@ spec:
     -Xmx: ${CONNECT_HEAP}
   resources:
     # m6i.large node (2 vCPU / 8 GiB). Give the single worker the bulk of a node.
+    # 5Gi/6Gi (was 3Gi/4Gi): live finding 2026-07-08 — the first poll at
+    # max.poll.records=100k x 3 tasks of deserialized 105-col Avro detonated a
+    # 2G-heap worker in ~40s (GC spiral -> /health dead -> liveness kill loop,
+    # 17 restarts, zero commits). Heap (CONNECT_HEAP) and max.poll.records MUST
+    # be co-tuned — see #32; first-pair values: CONNECT_HEAP=4096m, 25k polls.
     requests:
       cpu: "1"
-      memory: 3Gi
+      memory: 5Gi
     limits:
       cpu: "2"
-      memory: 4Gi
+      memory: 6Gi
   # Poller prerequisite 1 + 1a: JMX Prometheus exporter on port 9404 using the
   # connect-metrics ConfigMap rules (stock + the -rate rule).
   metricsConfig:
