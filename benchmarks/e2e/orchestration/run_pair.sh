@@ -86,18 +86,29 @@ POLLER_POD="${POLLER_POD:-bench-poller}"
 BROKER_POD="${BROKER_POD:-bench-combined-0}"
 EXPECTED_PARTITIONS=3
 EXPECTED_TASKS=3
-CONNECT_HEAP="${CONNECT_HEAP:-2048m}"
+# CONNECT_HEAP baseline = 4096m (co-sized with max.poll.records; the 2G heap
+# GC-spiraled on the first 100k poll — commit e140231). Runs on the dedicated
+# connect-ng m6i.xlarge (16 GiB) with the CR's 5Gi/6Gi request/limit. #32 tunes
+# heap + poll size upward together.
+CONNECT_HEAP="${CONNECT_HEAP:-4096m}"
 POLL_INTERVAL="${POLL_INTERVAL:-10}"
 POLL_TIMEOUT="${POLL_TIMEOUT:-3600}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-${SCRIPT_DIR}/artifacts}"
 
-# m6i.large us-east-2 on-demand pricing for the pair-cost calc (phase_pair_cost
-# / emit_run_cost.py). Kept here (not an AWS Pricing API call) per plan "no new
+# us-east-2 on-demand pricing for the pair-cost calc (phase_pair_cost /
+# emit_run_cost.py). Kept here (not an AWS Pricing API call) per plan "no new
 # AWS calls"; bump deliberately when prices drift.
-M6I_LARGE_USD_PER_HR="${M6I_LARGE_USD_PER_HR:-0.096}"   # us-east-2 on-demand
+# The pair now runs on TWO instance types (2026-07-08 rebuild): SCALE_UP_NODES
+# x m6i.large (broker/registry/producer/poller) + CONNECT_NODES x m6i.xlarge
+# (the dedicated, CPU-bound Connect worker). Both node-hour terms are billed.
+M6I_LARGE_USD_PER_HR="${M6I_LARGE_USD_PER_HR:-0.096}"    # us-east-2 on-demand
+M6I_XLARGE_USD_PER_HR="${M6I_XLARGE_USD_PER_HR:-0.192}"  # us-east-2 on-demand (2x large)
 EBS_GP3_USD_PER_GB_MO="${EBS_GP3_USD_PER_GB_MO:-0.08}"
 BROKER_EBS_GB="${BROKER_EBS_GB:-70}"
 SCALE_UP_NODES="${SCALE_UP_NODES:-2}"
+# Dedicated Connect nodegroup count (baseline 1 m6i.xlarge; keep in sync with
+# infra/env.sh CONNECT_NODES). Scale-out is the #37 sweep's variable.
+CONNECT_NODES="${CONNECT_NODES:-1}"
 
 log()  { printf '\033[1;34m[run_pair]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[run_pair:warn]\033[0m %s\n' "$*" >&2; }
@@ -368,9 +379,13 @@ phase_preload() {
 phase_poller_host() {
   log "PHASE 2b: in-cluster poller host pod (${POLLER_POD})"
   kubectl -n "${NS}" delete pod "${POLLER_POD}" --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
+  # Pin the poller pod to the bench nodegroup (2026-07-08 rebuild): the dedicated
+  # connect-ng m6i.xlarge runs ONLY the Connect worker. `kubectl run` has no
+  # --node-selector flag, so inject nodeSelector role=bench via --overrides.
   kubectl -n "${NS}" run "${POLLER_POD}" --image="${PRODUCER_IMAGE:?PRODUCER_IMAGE required}" \
     --restart=Never --command \
     --labels="app.kubernetes.io/part-of=kafka-connect-benchmark-v2" \
+    --overrides='{"spec":{"nodeSelector":{"role":"bench"}}}' \
     -- sleep infinity || die "poller pod create failed"
   kubectl -n "${NS}" wait --for=condition=Ready pod/"${POLLER_POD}" --timeout=300s \
     || die "poller pod not Ready"
@@ -669,11 +684,17 @@ phase_pair_cost() {
   local first_arm="$1"
   local cost_run_id="${PAIR_ID}-${first_arm}-t1"
   log "PHASE 3c: pair cost -> run_cost_usd on ${cost_run_id} (end-of-pair window)"
+  # Cost spans BOTH instance types (2026-07-08 rebuild): --nodes/--node-usd-per-hr
+  # is the m6i.large term (broker/registry/producer/poller); --connect-nodes/
+  # --connect-usd-per-hr is the dedicated m6i.xlarge Connect-worker term. Both
+  # accrue over the same pair window.
   python3 "${SCRIPT_DIR}/emit_run_cost.py" \
     --run-id "${cost_run_id}" \
     --pair-start "${PAIR_RUN_START:?}" \
     --nodes "${SCALE_UP_NODES}" \
     --node-usd-per-hr "${M6I_LARGE_USD_PER_HR}" \
+    --connect-nodes "${CONNECT_NODES}" \
+    --connect-usd-per-hr "${M6I_XLARGE_USD_PER_HR}" \
     --ebs-gb "${BROKER_EBS_GB}" --ebs-usd-per-gb-mo "${EBS_GP3_USD_PER_GB_MO}" \
     || warn "run_cost_usd emit failed (retryable; run rows remain valid)"
 }

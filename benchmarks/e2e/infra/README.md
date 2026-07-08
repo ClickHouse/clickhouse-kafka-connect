@@ -23,8 +23,9 @@ one command brings the cluster up.
 |---|---|
 | Account | `796575137974` |
 | Region  | **`us-east-2`** (co-located with the dedicated ClickHouse Cloud target) |
-| Cluster | `kafka-bench` |
-| Node group | `bench-ng` — 2× `m6i.large`, gp3, `minSize 0` (scale-to-zero) |
+| Cluster | `kafka-bench` (K8s **`1.36`**) |
+| Node group | `bench-ng` — up to 2× `m6i.large` (`role=bench`: broker, registry, producer, poller), gp3, `minSize 0` |
+| Node group | `connect-ng` — 1× `m6i.xlarge` (`role=connect`: the Connect worker ONLY), gp3, `minSize 0` |
 | Namespace | `kafka-bench` |
 | Tags | `Project: clickbench-benchmark` on every resource |
 
@@ -90,12 +91,16 @@ the Strimzi operator. After this the only cost is the EKS control plane.
 ### 2. Scale up (start of a run)
 
 ```bash
-./scale-up.sh          # -> $SCALE_UP_NODES nodes (default 2)
+./scale-up.sh          # -> $SCALE_UP_NODES bench nodes (default 2) + $CONNECT_NODES connect node (default 1)
 # or ./scale-up.sh 2
 ```
 
-Waits for nodes Ready, applies Kafka + Schema Registry, waits for the Kafka CR
-`Ready`. On success it prints the in-cluster endpoints:
+Scales **both** nodegroups (`bench-ng` to N, `connect-ng` to 1), waits for the
+total nodes Ready, applies Kafka + Schema Registry, waits for the Kafka CR
+`Ready`. The Connect worker is CPU-bound on the shared `m6i.large` (pegged at 2
+cores while the broker idles ~2%), so it runs alone on the dedicated `connect-ng`
+`m6i.xlarge`; the worker is pinned there via `nodeAffinity role=connect` in the
+KafkaConnect CR template. On success it prints the in-cluster endpoints:
 
 ```
 bootstrap: bench-kafka-bootstrap.kafka-bench.svc:9092
@@ -164,8 +169,10 @@ volume) running:
 
 - **Control plane** persists after `provision.sh`: ~$0.10/hr (~$73/mo). This is
   the deliberate trade for ~2-5 min run spin-up instead of a full create.
-- **Nodes** (2× m6i.large) are paid **only during runs** — scaled to 0 between
-  runs by `scale-down.sh`.
+- **Nodes** (up to 2× m6i.large on `bench-ng` + 1× m6i.xlarge on `connect-ng`)
+  are paid **only during runs** — both nodegroups scaled to 0 between runs by
+  `scale-down.sh` (its exit code is non-zero if *either* fails to reach 0). The
+  pair-cost calc (`emit_run_cost.py`) bills both instance-type node-hour terms.
 - **Broker EBS** (70Gi gp3) exists **only while a run's Kafka CR exists**
   (`deleteClaim: true`); `scale-down.sh` removes it every run, including after
   failures — so normally no standing EBS cost between runs. **Caveat:** after

@@ -36,6 +36,12 @@ spec:
         app.kubernetes.io/part-of: kafka-connect-benchmark-v2
     spec:
       restartPolicy: Never
+      # Keep the producer on the bench nodegroup (2026-07-08 rebuild): the
+      # dedicated connect-ng m6i.xlarge runs ONLY the Connect worker, so the
+      # producer must land on bench-ng (role=bench). The podAntiAffinity below
+      # still spreads it off the broker pod within bench-ng.
+      nodeSelector:
+        role: bench
       # Keep the producer off the broker node when the scheduler can manage it.
       affinity:
         podAntiAffinity:

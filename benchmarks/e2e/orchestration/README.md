@@ -151,6 +151,16 @@ export DWH_ROLE_ARN=... DWH_BUCKET=...
 benchmarks/e2e/orchestration/run_pair.sh
 ```
 
+**Baseline tuning knobs (first-baseline pair).** The clean reference run uses
+`CFG_MAX_POLL_RECORDS=25000` and `CONNECT_HEAP=4096m` — a *co-sized* pair (a 100k
+first poll GC-spiraled the 2G-heap worker; heap and poll size must move together,
+commit e140231). These are the documented first-baseline values, co-sized on the
+dedicated `connect-ng` m6i.xlarge. `CONNECT_HEAP` already defaults to `4096m` in
+`run_pair.sh`; set `CFG_MAX_POLL_RECORDS=25000` explicitly to run the baseline
+(the connector template's §6 value is the higher-throughput target, not the
+first-baseline). **#32** tunes both knobs *upward together* on the xlarge; worker
+`replicas` stays 1 here (scale-out is the **#37** sweep's variable).
+
 ### 4. Verify the run landed (the acceptance evidence)
 
 ```sql
@@ -288,8 +298,11 @@ cancel-in-progress: false }`. This serialises runs of **this workflow file**.
 8. **cadvisor RBAC / metrics-server** — poller prerequisite 2; the CPU metric is
    simply absent until wired (open decision 1 keeps `null_drain_rows_per_sec` the
    sole Tier-0 gate meanwhile).
-9. **run_cost pricing** — the m6i.large us-east-2 rate is a hardcoded table
-   value; verify against the current on-demand price and bump if drifted.
+9. **run_cost pricing** — the m6i.large + m6i.xlarge us-east-2 rates are
+   hardcoded table values (`M6I_LARGE_USD_PER_HR`, `M6I_XLARGE_USD_PER_HR` in
+   `run_pair.sh`); the pair-cost calc bills BOTH node-hour terms (bench-ng
+   m6i.large + the dedicated connect-ng m6i.xlarge). Verify against the current
+   on-demand prices and bump if drifted.
 10. **Broker pod name** (`bench-combined-0`) used by `delete_consumer_group.sh`
     and the broker-side partition assert assumes the Strimzi node-pool naming;
     confirm and parameterize if it differs.

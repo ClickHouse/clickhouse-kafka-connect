@@ -37,6 +37,12 @@ spec:
       # parses as the deprecated `port` config and crash-loops ("PORT is
       # deprecated"). Disable service links; discovery uses DNS anyway.
       enableServiceLinks: false
+      # Pin to the bench nodegroup (2026-07-08 rebuild): the dedicated connect-ng
+      # m6i.xlarge runs ONLY the Connect worker, so the registry lands on
+      # bench-ng (role=bench). The podAntiAffinity below still spreads it off the
+      # broker pod within bench-ng.
+      nodeSelector:
+        role: bench
       # Keep off the broker node when possible; not a hard requirement on a
       # 2-node group, so a soft anti-affinity rather than required.
       affinity:

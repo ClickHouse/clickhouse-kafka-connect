@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Scale the managed node group to ZERO and clean transient per-run K8s state,
-# so between runs the only paid footprint is the EKS control plane (~$0.10/hr).
+# Scale BOTH managed node groups (bench-ng + connect-ng) to ZERO and clean
+# transient per-run K8s state, so between runs the only paid footprint is the
+# EKS control plane (~$0.10/hr). connect-ng is the dedicated Connect-worker
+# nodegroup added in the 2026-07-08 rebuild (worker was CPU-bound on the shared
+# m6i.large); it scales to zero exactly like bench-ng.
 #
 # HARDENED FOR FAILURE PATHS. The CI orchestrator calls this from an
 # `if: always()` step after failed or aborted runs, so it MUST:
@@ -98,42 +101,61 @@ wait_for_pvc_deletion() {
 wait_for_pvc_deletion
 
 # ---------------------------------------------------------------------------
-# Scale the node group to zero. This is the step whose success CI depends on.
+# Scale a node group to zero and verify it reached desired 0. Returns 0 on
+# success, 1 on a real cost leak (did not reach 0). Covers BOTH nodegroups
+# (bench-ng + the dedicated connect-ng, 2026-07-08 rebuild) — the exit-code
+# contract is non-zero only if a nodegroup fails to reach 0.
 # ---------------------------------------------------------------------------
-log "scaling node group ${NODEGROUP_NAME} to 0"
-# NOTE: EKS NodegroupScalingConfig.maxSize has an API minimum of 1, so
-# --nodes-max 0 would be rejected. desired=0 / min=0 / max=1 is the lowest
-# valid scaled-to-zero shape (scale-up.sh raises max again when scaling up).
-if ! eksctl scale nodegroup \
-      --cluster "${CLUSTER_NAME}" \
-      --region "${AWS_REGION}" \
-      --name "${NODEGROUP_NAME}" \
-      --nodes 0 \
-      --nodes-min 0 \
-      --nodes-max 1 2>/dev/null; then
-  warn "eksctl scale returned non-zero (nodegroup may already be at 0 or mid-transition); verifying actual state"
-fi
+scale_group_to_zero() {
+  local ng="$1"
+  log "scaling node group ${ng} to 0"
+  # NOTE: EKS NodegroupScalingConfig.maxSize has an API minimum of 1, so
+  # --nodes-max 0 would be rejected. desired=0 / min=0 / max=1 is the lowest
+  # valid scaled-to-zero shape (scale-up.sh raises max again when scaling up).
+  if ! eksctl scale nodegroup \
+        --cluster "${CLUSTER_NAME}" \
+        --region "${AWS_REGION}" \
+        --name "${ng}" \
+        --nodes 0 \
+        --nodes-min 0 \
+        --nodes-max 1 2>/dev/null; then
+    warn "eksctl scale ${ng} returned non-zero (may already be at 0 or mid-transition); verifying actual state"
+  fi
 
-# ---------------------------------------------------------------------------
-# Verify the nodegroup actually reached (or is heading to) desired 0. Exit code
-# reflects this so CI can alert on a real cost leak.
-# ---------------------------------------------------------------------------
-log "verifying node group desired capacity is 0"
-desired="$(eksctl get nodegroup \
-            --cluster "${CLUSTER_NAME}" \
-            --region "${AWS_REGION}" \
-            --name "${NODEGROUP_NAME}" \
-            -o json 2>/dev/null \
-          | python3 -c 'import sys,json
+  log "verifying node group ${ng} desired capacity is 0"
+  local desired
+  desired="$(eksctl get nodegroup \
+              --cluster "${CLUSTER_NAME}" \
+              --region "${AWS_REGION}" \
+              --name "${ng}" \
+              -o json 2>/dev/null \
+            | python3 -c 'import sys,json
 try:
     d=json.load(sys.stdin)
     print(d[0].get("DesiredCapacity", d[0].get("Desired", "unknown")))
 except Exception:
     print("unknown")' 2>/dev/null || echo unknown)"
 
-if [ "${desired}" = "0" ]; then
-  log "scale-down complete: node group desired capacity is 0. Only the EKS control plane persists."
+  if [ "${desired}" = "0" ]; then
+    log "  node group ${ng} desired capacity is 0."
+    return 0
+  fi
+  warn "node group ${ng} did NOT reach desired 0 (desired='${desired}')."
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Scale BOTH node groups to zero. This is the step whose success CI depends on.
+# Run both regardless of individual outcome (best-effort push-through), then
+# fail non-zero if EITHER did not reach 0 so CI can alert on a real cost leak.
+# ---------------------------------------------------------------------------
+rc=0
+scale_group_to_zero "${NODEGROUP_NAME}" || rc=1
+scale_group_to_zero "${CONNECT_NODEGROUP_NAME}" || rc=1
+
+if [ "${rc}" = "0" ]; then
+  log "scale-down complete: both node groups (${NODEGROUP_NAME}, ${CONNECT_NODEGROUP_NAME}) at desired 0. Only the EKS control plane persists."
   exit 0
 fi
 
-die "node group did NOT reach desired 0 (desired='${desired}'). Compute may still be running — INVESTIGATE (potential cost leak)."
+die "at least one node group did NOT reach desired 0 (see warnings above). Compute may still be running — INVESTIGATE (potential cost leak)."

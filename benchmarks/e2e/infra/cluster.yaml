@@ -30,7 +30,11 @@ metadata:
   # 1.33: standard support (1.31 was already in EXTENDED support = $0.60/hr
   # control plane, 6x the $0.10/hr the plan budgets — caught in console
   # 2026-07-07 during first provision; cluster recreated at 1.33).
-  version: "1.33"
+  # 1.36 (2026-07-08 rebuild): 1.33 enters EXTENDED support 2026-07-29 (the
+  # $0.60/hr penalty again). The operator RECREATES the cluster (managed EKS
+  # does not in-place upgrade a scaled-to-zero benchmark substrate cheaply), so
+  # this bump rides the same rebuild that adds the dedicated connect nodegroup.
+  version: "1.36"
   tags:
     Project: clickbench-benchmark
     Component: kafka-connect-benchmark-v2
@@ -74,13 +78,45 @@ managedNodeGroups:
     privateNetworking: false
     amiFamily: AmazonLinux2023
     labels:
-      role: kafka-bench-worker
+      # role=bench is the symmetric selector to connect-ng's role=connect
+      # (2026-07-08 rebuild): the broker, Schema Registry, producer Job and
+      # poller pod all pin nodeSelector role=bench, so the dedicated connect
+      # node runs ONLY the Connect worker. (Was role=kafka-bench-worker; renamed
+      # to the short symmetric form the pod specs now select on.)
+      role: bench
     tags:
       Project: clickbench-benchmark
       Component: kafka-connect-benchmark-v2
       nodegroup: bench-ng
     # IAM: least-ish privilege. EBS CSI needed for the broker's gp3 PVC;
     # CloudWatch optional for pod-log shipping during a run.
+    iam:
+      withAddonPolicies:
+        ebs: true
+        cloudWatch: true
+
+  # Dedicated Connect nodegroup (2026-07-08 rebuild). LIVE FINDING: on the shared
+  # m6i.large the Connect worker was CPU-bound — pegged at its 2-core limit while
+  # the broker idled at ~2%. An m6i.xlarge (4 vCPU / 16 GiB) gives the single
+  # worker room; the worker is pinned here via nodeAffinity role=connect in the
+  # KafkaConnect CR template. maxSize 1 (baseline = one worker; scale-out is the
+  # #37 sweep's variable). Scale-to-zero like bench-ng: scale-up.sh brings it to
+  # 1 for a run, scale-down.sh returns it to 0.
+  - name: connect-ng
+    instanceType: m6i.xlarge
+    minSize: 0
+    maxSize: 1
+    desiredCapacity: 0
+    volumeSize: 40
+    volumeType: gp3
+    privateNetworking: false
+    amiFamily: AmazonLinux2023
+    labels:
+      role: connect
+    tags:
+      Project: clickbench-benchmark
+      Component: kafka-connect-benchmark-v2
+      nodegroup: connect-ng
     iam:
       withAddonPolicies:
         ebs: true

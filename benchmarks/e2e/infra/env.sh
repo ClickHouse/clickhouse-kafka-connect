@@ -13,6 +13,13 @@ export CLUSTER_NAME="${CLUSTER_NAME:-kafka-bench}"
 # us-east-2: co-located with the dedicated ClickHouse Cloud target.
 export AWS_REGION="${AWS_REGION:-us-east-2}"
 export NODEGROUP_NAME="${NODEGROUP_NAME:-bench-ng}"
+# Dedicated Connect nodegroup (2026-07-08 rebuild): the Connect worker was
+# CPU-bound on the shared m6i.large, so it now runs alone on an m6i.xlarge
+# node (cluster.yaml connect-ng). Scaled 0<->1 alongside bench-ng.
+export CONNECT_NODEGROUP_NAME="${CONNECT_NODEGROUP_NAME:-connect-ng}"
+# Node count the Connect nodegroup scales to for a run (baseline = 1 worker;
+# scale-out is the #37 sweep's variable).
+export CONNECT_NODES="${CONNECT_NODES:-1}"
 export K8S_NAMESPACE="${K8S_NAMESPACE:-kafka-bench}"
 
 # AWS account this benchmark lives in (context only — not used for auth here).

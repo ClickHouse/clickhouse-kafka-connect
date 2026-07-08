@@ -17,8 +17,14 @@ amendment / overseer directive d): the shared infra (EKS nodes + broker EBS) is
 provisioned once per pair, so the whole pair cost is charged ONCE, on the
 first-run arm's row; the other arm omits the metric.
 
-cost = node_hours x nodes x m6i.large_usd_per_hr        (compute)
+cost = node_hours x nodes x m6i.large_usd_per_hr        (bench compute)
+     + node_hours x connect_nodes x connect_usd_per_hr  (dedicated connect compute)
      + broker_ebs_gb x ebs_usd_per_gb_mo x (hours/730)   (per-run 70Gi gp3 PVC)
+
+The dedicated Connect nodegroup (2026-07-08 rebuild: the worker was CPU-bound on
+the shared m6i.large) is a SECOND instance type (m6i.xlarge), so its node-hours
+are billed at their own rate. --connect-nodes defaults to 0 so pre-rebuild
+callers that pass only the m6i.large term still compute the same cost.
 
 node_hours ~= now - PAIR_RUN_START (scale-up -> teardown window). No AWS Pricing
 API call at run time (plan "no new AWS calls"); prices are passed in from
@@ -47,8 +53,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-id", required=True, help="first-run arm's run_id")
     ap.add_argument("--pair-start", required=True, help="PAIR_RUN_START (UTC ISO)")
-    ap.add_argument("--nodes", type=int, required=True)
-    ap.add_argument("--node-usd-per-hr", type=float, required=True)
+    ap.add_argument("--nodes", type=int, required=True,
+                    help="m6i.large (bench-ng) node count")
+    ap.add_argument("--node-usd-per-hr", type=float, required=True,
+                    help="m6i.large on-demand rate")
+    # Dedicated Connect nodegroup (m6i.xlarge). Defaults keep pre-rebuild
+    # single-instance-type callers computing exactly the same cost.
+    ap.add_argument("--connect-nodes", type=int, default=0,
+                    help="m6i.xlarge (connect-ng) node count")
+    ap.add_argument("--connect-usd-per-hr", type=float, default=0.0,
+                    help="m6i.xlarge on-demand rate")
     ap.add_argument("--ebs-gb", type=float, required=True)
     ap.add_argument("--ebs-usd-per-gb-mo", type=float, required=True)
     args = ap.parse_args()
@@ -56,12 +70,15 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     hours = max(0.0, (now - parse_ts(args.pair_start)).total_seconds() / 3600.0)
 
-    compute = hours * args.nodes * args.node_usd_per_hr
+    bench_compute = hours * args.nodes * args.node_usd_per_hr
+    connect_compute = hours * args.connect_nodes * args.connect_usd_per_hr
+    compute = bench_compute + connect_compute
     ebs = args.ebs_gb * args.ebs_usd_per_gb_mo * (hours / 730.0)
     cost = compute + ebs
 
     print(f"run_cost_usd (pair) for {args.run_id}: "
-          f"{args.nodes} node(s) x {hours:.3f}h @ ${args.node_usd_per_hr}/h "
+          f"{args.nodes} m6i.large + {args.connect_nodes} m6i.xlarge x {hours:.3f}h "
+          f"(${bench_compute:.4f} bench + ${connect_compute:.4f} connect) "
           f"= ${compute:.4f} compute + ${ebs:.4f} EBS = ${cost:.4f}",
           file=sys.stderr)
 
