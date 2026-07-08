@@ -377,7 +377,11 @@ def build_sources(cfg: Dict[str, Any]):
         "group.id": cfg["group"],
         # do NOT join the group being measured; only read its committed offsets.
         "enable.auto.commit": False,
-        "auto.offset.reset": "none",
+        # librdkafka rejects the Java-consumer value "none" (_INVALID_ARG, live
+        # run 2026-07-08); its equivalent is "error". Irrelevant in practice —
+        # this consumer never subscribes/polls messages, only reads watermarks
+        # and committed offsets — but the config must parse.
+        "auto.offset.reset": "error",
     })
 
     def offsets_source():
