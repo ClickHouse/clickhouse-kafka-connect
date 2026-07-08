@@ -61,12 +61,23 @@ Driven by `hits.avsc` (single source of truth; see
 | `Int64` ×6 | `long` | pass-through |
 | `Int32` ×19 | `int` | pass-through |
 | `Int16` ×48 | `int` + `connect.type=int16` | int, **asserted within signed 16-bit range** (a wider parquet value fails here, not at 200k rows/s in the sink's `(Short)` cast) |
-| `String` ×28 | `string` | pass-through |
+| `String` ×28 | `string` | **columnar bytes→utf8 decode** — the real hits parquet stores strings as BINARY, so pyarrow yields `bytes` (fastavro's `write_utf8` requires `str`). Decoded per batch at the Arrow level: `pc.cast` fast path (validates UTF-8), python `errors='replace'` fallback for the invalid UTF-8 real hits contains. `replace` is deterministic, so `rows_expected`/`uniqExact(WatchID)` semantics are untouched. Native string/large_string columns pass through. |
 | `DateTime` ×3 (`EventTime`, `ClientEventTime`, `LocalEventTime`) | bare `long` | **epoch seconds** — a parquet `timestamp` is converted to int seconds; an already-int value passes through. NOT `timestamp-micros`. |
 | `Date` ×1 (`EventDate`) | `int` + `logicalType=date` | `datetime.date` — the `AvroSerializer` encodes it as days-since-epoch; an already-int (days) value is accepted too |
 
+All 105 fields are **non-nullable**: a `None` in any column fails the run loudly
+with the column name (columnar `null_count` guard, O(1) per column) — never a
+silent coercion. A null means the parquet source is not the expected dataset.
+
 Records are keyed `null` → librdkafka sticky/round-robin partitioning across the
 run; the per-partition split is incidental (the offset **sum** is the contract).
+
+Mapping regression test (BINARY columns + invalid UTF-8 + null guard, fixture
+generated at test time — no real hits data checked in):
+
+```bash
+./venv/bin/python test_mapping.py
+```
 
 ## Run it locally (any Kafka + registry)
 

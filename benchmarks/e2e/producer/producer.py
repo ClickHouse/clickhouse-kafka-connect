@@ -37,6 +37,8 @@ import os
 import sys
 import time
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.dataset as ds
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
@@ -86,11 +88,62 @@ def load_avro_schema(path):
     # Classify each field by its target CH width so mapping is data-driven and
     # stays in sync with the schema file (single source of truth).
     int16_fields = set()
+    string_fields = set()
     for f in schema["fields"]:
         t = f["type"]
         if isinstance(t, dict) and t.get("connect.type") == "int16":
             int16_fields.add(f["name"])
-    return schema_str, fields, int16_fields
+        elif t == "string":
+            string_fields.add(f["name"])
+    return schema_str, fields, int16_fields, string_fields
+
+
+# --- batch preparation (columnar) ---------------------------------------------
+
+def prepare_batch(batch, string_fields):
+    """Columnar per-batch normalisation, BEFORE the row loop.
+
+    1. bytes -> str: the REAL ClickBench hits parquet stores its string columns
+       as BINARY, so pyarrow yields ``bytes`` and fastavro's ``write_utf8``
+       raises ``TypeError: must be string``. Decode at the Arrow level, not with
+       per-field isinstance checks in the hot row loop:
+         - fast path: ``pc.cast(col, string())`` — validates UTF-8, zero-copyish;
+         - fallback (only if the batch contains invalid UTF-8, which real hits
+           data does): a columnar python decode with ``errors='replace'``.
+       ``errors='replace'`` is deterministic (same bytes -> same U+FFFD output
+       every run), so rows_expected / uniqExact(WatchID) semantics are
+       untouched (WatchID is numeric).
+    2. Null guard: every hits.avsc field is NON-nullable. A None must fail
+       LOUDLY with the column name — never silently coerce (e.g. to ""). The
+       Arrow ``null_count`` is O(1) metadata per column.
+    """
+    cols = list(batch.columns)
+    names = batch.schema.names
+    changed = False
+    for i, name in enumerate(names):
+        col = cols[i]
+        if col.null_count > 0:
+            die(f"column {name!r} contains {col.null_count} NULL value(s) in a "
+                f"batch; hits.avsc fields are non-nullable — refusing to "
+                f"silently coerce. The parquet source is not the expected "
+                f"hits dataset.")
+        if name in string_fields and (
+                pa.types.is_binary(col.type)
+                or pa.types.is_large_binary(col.type)
+                or pa.types.is_fixed_size_binary(col.type)):
+            try:
+                # Fast path: Arrow-level cast validates UTF-8.
+                col = pc.cast(col, pa.string())
+            except pa.lib.ArrowInvalid:
+                # Invalid UTF-8 in this batch/column: deterministic replace.
+                col = pa.array(
+                    (b.decode("utf-8", "replace") for b in col.to_pylist()),
+                    type=pa.string())
+            cols[i] = col
+            changed = True
+    if changed:
+        batch = pa.RecordBatch.from_arrays(cols, names=names)
+    return batch
 
 
 # --- row mapping -------------------------------------------------------------
@@ -278,8 +331,10 @@ def main():
         log("WARNING: PARQUET_SOURCE is the staging placeholder — set it "
             "explicitly (see README, parquet staging TBD note).")
 
-    schema_str, field_order, int16_fields = load_avro_schema(schema_path)
-    log(f"loaded hits.avsc: 105 fields, {len(int16_fields)} Int16 columns")
+    schema_str, field_order, int16_fields, string_fields = \
+        load_avro_schema(schema_path)
+    log(f"loaded hits.avsc: 105 fields, {len(int16_fields)} Int16 columns, "
+        f"{len(string_fields)} String columns")
 
     if args.create_topic:
         maybe_create_topic(args.bootstrap, args.topic, args.partitions)
@@ -334,6 +389,9 @@ def main():
     stop = False
     for batch in dataset.to_batches(columns=field_order,
                                     batch_size=args.batch_size):
+        # Columnar bytes->utf8 decode (real hits parquet: BINARY strings) +
+        # non-null guard, before the row loop.
+        batch = prepare_batch(batch, string_fields)
         rows = batch.to_pylist()
         for row in rows:
             mapped = mapper(row)
