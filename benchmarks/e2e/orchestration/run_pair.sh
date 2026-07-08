@@ -114,6 +114,11 @@ log()  { printf '\033[1;34m[run_pair]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[run_pair:warn]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[run_pair:error]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Set to 1 by ingest_failed() (contract §1.3 outcome amendment): the pair
+# CONTINUES after a failed-class run (the contract wants the data from every
+# remaining run) but main() exits non-zero at the end for CI visibility.
+PAIR_HAD_FAILURE=0
+
 # --------------------------------------------------------------------------- #
 # Image reference validation — DIGEST-PINNED BY DEFAULT (stale-tag class fix).
 #
@@ -286,6 +291,14 @@ run rows/night  : 4 -> (${order[0]},t0) (${order[0]},t1) (${order[1]},t0) (${ord
                   all sharing one pair_id (contract §1.2)
 run_cost_usd    : FULL pair cost, computed at END of pair, charged ONCE on the
                   FIRST-run arm's (${order[0]}) tier-1 row (contract §2.1)
+failure policy  : PRE-drain-start failures (scale-up/topic/producer/deploy/
+                  tasks-never-RUNNING) -> hard abort + rollback (nothing to capture).
+                  POST-drain-start ingest failures (poller timeout = lag never 0,
+                  poller hard failure, finalize failure) -> run FULLY captured +
+                  exported with runtime['outcome']='failed' (+ integrity_unverified
+                  on tier 1; contract §1.3, no survivorship bias); the PAIR
+                  CONTINUES to the remaining runs; the job exits non-zero at the
+                  very end for CI visibility. Success rows OMIT the outcome key.
 
 PHASE 1  scale up          eksctl node group 0->${SCALE_UP_NODES}; Kafka CR + Schema Registry Ready
 PHASE 2  pre-load          create topic (${EXPECTED_PARTITIONS} partitions RF1)
@@ -390,6 +403,18 @@ if missing:
           f"refusing to build a runs-row runtime without them (contract §1.1).",
           file=sys.stderr)
     sys.exit(1)
+# Contract §1.3 outcome amendment: the key is present ONLY when the ingest
+# failed (ingest_failed() exports OUTCOME=failed). A success run MUST OMIT it
+# (absent => 'success', Map semantics — legacy rows only ever landed on the
+# success path), so writing outcome='success' explicitly is rejected.
+outcome = os.environ.get("OUTCOME", "")
+if outcome:
+    if outcome != "failed":
+        print(f"ERROR: OUTCOME={outcome!r} — the only writable value is "
+              f"'failed'; a success run must OMIT the outcome key "
+              f"(contract §1.3, absent => success).", file=sys.stderr)
+        sys.exit(1)
+    rt["outcome"] = outcome
 # drop empty OPTIONAL values so a missing provenance value is absent, not "".
 rt = {k: v for k, v in rt.items() if v != ""}
 print(json.dumps(rt, sort_keys=True))
@@ -666,14 +691,23 @@ run_poller_sample() {
   # even a partial file is archived + finalizable.
   kubectl cp "${NS}/${POLLER_POD}:${pod_out}" "${SAMPLES_FILE}" 2>/dev/null \
     || warn "could not copy samples back from the poller pod"
-  # exit 0 drained, 2 timeout. A timeout means lag never hit 0 -> the finalizer
-  # records lag_reached_zero=0 -> flag_reason drain_incomplete (contract §1.3).
+  # Return codes for the caller (contract §1.3 outcome amendment — the caller
+  # decides between the success path and the capture-on-failure path; this
+  # function no longer rolls back or dies):
+  #   0 = drained (lag reached 0)
+  #   2 = poller timeout — lag never reached 0: the INGEST did not complete
+  #       (failed-class; the finalizer still lands the guards incl.
+  #       drain_incomplete from the partial samples)
+  #   1 = hard failure (poller crashed / exec dropped / no samples retrieved)
   if [ "${POLLER_RC}" = "2" ]; then
-    warn "  poller TIMED OUT (drain incomplete) — continuing to capture (run will be FLAGGED)"
+    warn "  poller TIMED OUT — lag never reached 0 (ingest did not complete)"
+    return 2
   elif [ "${POLLER_RC}" != "0" ]; then
-    fail_run "poller sample failed (rc=${POLLER_RC})"
+    warn "poller sample failed hard (rc=${POLLER_RC})"
+    return 1
   fi
-  [ -s "${SAMPLES_FILE}" ] || fail_run "no samples were retrieved for ${RUN_ID}"
+  [ -s "${SAMPLES_FILE}" ] || { warn "no samples were retrieved for ${RUN_ID}"; return 1; }
+  return 0
 }
 
 # finalize + insert the poller scalars into perf.metrics for a (arm,tier); also
@@ -696,7 +730,8 @@ finalize_and_insert_metrics() {
     python3 poller.py finalize \
       --samples "${SAMPLES_FILE}" --run-id "${RUN_ID}" --tier "${tier}" \
       --rows-expected "${ROWS_EXPECTED}" --expected-tasks "${EXPECTED_TASKS}" \
-      --insert ) > "${out}" || fail_run "poller finalize/insert failed"
+      --insert ) > "${out}" \
+    || { warn "poller finalize/insert failed for ${RUN_ID}"; return 1; }
   # Wire the poller guards JSON into flagged/flag_reason (overseer directive h).
   FLAGGED="$(python3 -c 'import sys,json;print(json.load(open(sys.argv[1]))["guards"]["flagged"])' "${out}")"
   FLAG_REASON="$(python3 -c 'import sys,json;print(json.load(open(sys.argv[1]))["guards"]["flag_reason"])' "${out}")"
@@ -710,6 +745,62 @@ append_flag() {
   FLAGGED=1
   FLAG_REASON="${FLAG_REASON:+${FLAG_REASON}|}${token}"
   export FLAGGED FLAG_REASON
+}
+
+# Human token for the ingest-failure log/reason from run_poller_sample's rc
+# (or 3 = finalize failed after a clean drain).
+ingest_fail_reason() {
+  case "$1" in
+    2) echo "drain_incomplete_timeout" ;;
+    3) echo "finalize_failed" ;;
+    *) echo "poller_hard_failure" ;;
+  esac
+}
+
+# --------------------------------------------------------------------------- #
+# Capture-on-failure (contract §1.3 `outcome` amendment): an (arm,tier) run
+# whose DRAIN STARTED (poller sampling began) but whose ingest then failed is
+# still FULLY captured and exported, marked runtime['outcome']='failed' — no
+# survivorship bias. This REPLACES the old rollback-and-die on post-drain-start
+# failures. The boundary:
+#   * PRE-DRAIN failures (scale-up, topic, producer, poller host, Connect
+#     deploy, connector apply, tasks never all RUNNING) keep hard-die +
+#     rollback — the drain never began, there is nothing meaningful to capture.
+#   * POST-DRAIN-START failures land here: poller timeout (lag never 0),
+#     poller hard failure, finalize failure. Design choice on the last one: a
+#     run that cannot be FULLY measured (finalize crashed after a clean drain)
+#     is also failed-class — a half-metriced "success" row silently entering
+#     headlines is worse than a conservatively-failed row.
+# What is captured: best-effort client-side scalars from whatever samples were
+# copied back (JSONL is flushed per tick), the CH-side capture SQL over the
+# actual window (RUN_START -> failure time), the runs row with outcome='failed'
+# (+ integrity_unverified on tier 1 — by definition, contract §1.3: a failed
+# run makes no integrity claim), and the export. Then the PAIR CONTINUES (the
+# other runs are still worth capturing; ratios skip failed-class rows by
+# outcome) and main() exits non-zero at the end.
+# --------------------------------------------------------------------------- #
+ingest_failed() {
+  local arm="$1" tier="$2" reason="$3"
+  warn "INGEST FAILED for ${RUN_ID} (${reason}) — capture-on-failure: full capture + export, outcome=failed (contract §1.3, no survivorship bias)"
+  PAIR_HAD_FAILURE=1
+  export OUTCOME="failed"
+  # Window end = failure time when the poller never anchored it.
+  RUN_END="${RUN_END:-$(date -u +%Y-%m-%dT%H:%M:%S)}"; export RUN_END
+  # No settle on a failed run — the window closes at failure time (values kept
+  # if the real settle already ran, e.g. finalize_failed after a clean drain).
+  export SETTLE_END="${SETTLE_END:-${RUN_END}}"
+  export SETTLE_SECONDS="${SETTLE_SECONDS:-0}"
+  export SETTLE_TIMED_OUT="${SETTLE_TIMED_OUT:-0}"
+  # Best-effort client-side scalars (skip the retry when finalize itself was
+  # the failure — it would fail identically).
+  if [ "${reason}" != "finalize_failed" ] && [ -s "${SAMPLES_FILE:-/nonexistent}" ]; then
+    finalize_and_insert_metrics "${tier}" \
+      || warn "finalize on the failed-class run did not land — client-side metrics absent"
+  else
+    warn "client-side metrics absent for the failed-class run (${reason})"
+  fi
+  capture_and_record "${arm}" "${tier}" "failed" || warn "failed-class capture incomplete for ${RUN_ID}"
+  unset OUTCOME
 }
 
 # Gated CH-side capture + run-record + export + integrity for a (arm,tier).
@@ -726,22 +817,39 @@ append_flag() {
 #     is inserted and the evidence exported (contract §3: flagged/failed runs
 #     are still fully captured).
 capture_and_record() {
-  local arm="$1" tier="$2"
-  log "  gated capture + run record (arm=${arm}, tier=${tier})"
+  local arm="$1" tier="$2" mode="${3:-strict}"
+  log "  gated capture + run record (arm=${arm}, tier=${tier}, mode=${mode})"
 
   local integrity_unverified=0
   local f
   for f in 11 12 13 14 15 16 17 18 19 20 22 23; do
-    if [ "${f}" = "20" ] && [ "${tier}" = "0" ]; then
-      continue   # tier 0: integrity not applicable (review F7)
+    if [ "${f}" = "20" ] && { [ "${tier}" = "0" ] || [ "${mode}" = "failed" ]; }; then
+      # tier 0: integrity not applicable (review F7). failed-class: a failed
+      # run makes NO integrity claim (contract §1.3 — integrity_unverified by
+      # definition, appended below for tier 1); running SQL 20 would compute a
+      # meaningless verdict over a truncated drain.
+      continue
     fi
     if [ "${f}" = "23" ] && [ "${tier}" != "0" ]; then
       continue   # ch_insert_cpu_share_tier0: tier-0-only parse-watch (contract §2.1)
     fi
     local sqlfile
     sqlfile="$(ls "${E2E_DIR}"/sql/capture/${f}_*.sql 2>/dev/null | head -1)"
-    [ -n "${sqlfile}" ] || fail_run "capture SQL ${f}_* not found"
+    if [ -z "${sqlfile}" ]; then
+      if [ "${mode}" = "failed" ]; then
+        warn "capture SQL ${f}_* not found — skipping on failed-class run"
+        continue
+      fi
+      fail_run "capture SQL ${f}_* not found"
+    fi
     if ! ( cd "${CAPTURE_DIR}" && python3 run_metrics_sql.py "${sqlfile}" ); then
+      if [ "${mode}" = "failed" ]; then
+        # Capture-on-failure: keep whatever evidence lands. Rolling back a
+        # failed-class run over one bad capture file would erase the very
+        # evidence the outcome amendment exists to keep.
+        warn "capture ${f} failed on a failed-class run — continuing (partial evidence beats none)"
+        continue
+      fi
       if [ "${f}" = "20" ]; then
         # Integrity COMPUTATION failed (tier 1): flag, don't roll back (F7).
         warn "capture 20 (integrity) computation failed -> FLAG integrity_unverified"
@@ -755,26 +863,48 @@ capture_and_record() {
     fi
   done
 
+  # Failed-class tier 1: integrity_unverified BY DEFINITION (contract §1.3 —
+  # SQL 20 was skipped above, no integrity claim exists for this run).
+  if [ "${mode}" = "failed" ] && [ "${tier}" = "1" ]; then
+    append_flag "integrity_unverified"
+  fi
+
   # runs row AFTER metrics (gated); failure -> rollback + abort (README).
   # NOTE (review F6): run_cost_usd is NOT emitted here — it is a whole-pair
   # metric emitted once at end-of-pair (phase_pair_cost).
   local runtime_json
-  runtime_json="$(build_runtime_json "${arm}" "${tier}")" \
-    || { warn "runtime map build failed -> rollback"; ( cd "${CAPTURE_DIR}" && python3 rollback_run_metrics.py ); die "runtime map aborted for ${RUN_ID}"; }
+  if ! runtime_json="$(build_runtime_json "${arm}" "${tier}")"; then
+    warn "runtime map build failed -> rollback"
+    ( cd "${CAPTURE_DIR}" && python3 rollback_run_metrics.py )
+    # A runs row cannot land without its runtime map; on the failed-class path
+    # this must not kill the rest of the pair (the outcome amendment wants the
+    # remaining runs), so roll back this run's metrics and continue.
+    [ "${mode}" = "failed" ] && { warn "failed-class run ${RUN_ID} could not be recorded"; return 1; }
+    die "runtime map aborted for ${RUN_ID}"
+  fi
   # Fold the guards into the runtime map (overseer directive h): flagged and
   # flag_reason are runtime keys (contract §1.3).
   if [ "${FLAGGED:-0}" = "1" ]; then
     runtime_json="$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);d["flagged"]="1";d["flag_reason"]=sys.argv[2];print(json.dumps(d,sort_keys=True))' "${runtime_json}" "${FLAG_REASON}")"
   fi
-  ( cd "${CAPTURE_DIR}" && RUNTIME="${runtime_json}" python3 insert_run_record.py ) \
-    || { warn "insert_run_record failed -> rollback"; ( cd "${CAPTURE_DIR}" && python3 rollback_run_metrics.py ); die "run record aborted for ${RUN_ID}"; }
+  if ! ( cd "${CAPTURE_DIR}" && RUNTIME="${runtime_json}" python3 insert_run_record.py ); then
+    warn "insert_run_record failed -> rollback"
+    ( cd "${CAPTURE_DIR}" && python3 rollback_run_metrics.py )
+    # Same continue-the-pair rule on the failed-class path (no metrics may
+    # outlive a missing runs row — rolled back above — but the OTHER runs of
+    # the pair are still worth capturing).
+    [ "${mode}" = "failed" ] && { warn "failed-class run ${RUN_ID} could not be recorded"; return 1; }
+    die "run record aborted for ${RUN_ID}"
+  fi
 
-  # export ONLY after runs insert succeeded (gated, README).
+  # export ONLY after runs insert succeeded (gated, README). Failed-class runs
+  # are exported too (contract §1.3: fully captured AND exported, marked).
   ( cd "${CAPTURE_DIR}" && python3 export_metrics_to_dwh.py ) || warn "DWH export failed (metrics persisted; export can be retried)"
 
-  # integrity verdict LAST (README, contract §3) — tier 1 only, and only when
-  # the integrity metrics were actually computed.
-  if [ "${tier}" = "1" ]; then
+  # integrity verdict LAST (README, contract §3) — tier 1 only, success-path
+  # only (a failed-class run makes no integrity claim), and only when the
+  # integrity metrics were actually computed.
+  if [ "${mode}" = "strict" ] && [ "${tier}" = "1" ]; then
     if [ "${integrity_unverified}" = "1" ]; then
       warn "tier 1 integrity UNVERIFIED for ${RUN_ID} — run FLAGGED (integrity_unverified), not failed (contract §1.3)"
     else
@@ -824,22 +954,37 @@ phase_arm() {
   export CH_TABLE="hits_null"
   RUN_ID="${PAIR_ID}-${arm}-t0"; export RUN_ID
   RUN_START="$(date -u +%Y-%m-%dT%H:%M:%S)"; export RUN_START
+  # Per-run state reset: no flag/settle bleed from the previous (arm,tier) run
+  # onto a failed-class run that skips finalize/settle.
+  FLAGGED=0; FLAG_REASON=""; export FLAGGED FLAG_REASON
+  SETTLE_END=""; SETTLE_SECONDS=""; SETTLE_TIMED_OUT=""
   local g0="ch-sink-${arm}-t0"
   ( cd "${CAPTURE_DIR}" && python3 run_metrics_sql.py "${E2E_DIR}/sql/capture/21_pre_run_covariates.sql" ) \
     || warn "tier0 pre-run covariates failed (continuing)"
   deploy_connector "hits_null" "${g0}"
   wait_tasks_running
-  run_poller_sample "${g0}"
-  finalize_and_insert_metrics 0
-  # Tier 0 has no settle (Null engine): SETTLE_END = RUN_END, settle 0.
-  export SETTLE_END="${RUN_END}" SETTLE_SECONDS=0 SETTLE_TIMED_OUT=0
-  capture_and_record "${arm}" "0"
+  # Drain start boundary (outcome amendment): from here on, a failure is a
+  # failed-class CAPTURED run, not a rollback-and-die.
+  local rc0=0
+  run_poller_sample "${g0}" || rc0=$?
+  if [ "${rc0}" -eq 0 ]; then
+    # Tier 0 has no settle (Null engine): SETTLE_END = RUN_END, settle 0.
+    export SETTLE_END="${RUN_END}" SETTLE_SECONDS=0 SETTLE_TIMED_OUT=0
+    finalize_and_insert_metrics 0 || rc0=3
+  fi
+  if [ "${rc0}" -eq 0 ]; then
+    capture_and_record "${arm}" "0"
+  else
+    ingest_failed "${arm}" "0" "$(ingest_fail_reason "${rc0}")"
+  fi
   delete_connector "${g0}"
 
   # ---- Tier 1 (hits) ----
   export CH_TABLE="hits"
   RUN_ID="${PAIR_ID}-${arm}-t1"; export RUN_ID
   RUN_START="$(date -u +%Y-%m-%dT%H:%M:%S)"; export RUN_START
+  FLAGGED=0; FLAG_REASON=""; export FLAGGED FLAG_REASON
+  SETTLE_END=""; SETTLE_SECONDS=""; SETTLE_TIMED_OUT=""
   local g1="ch-sink-${arm}-t1"
   # Review F8: pre-run covariates BEFORE truncate (capture/README binding
   # order) — pre_run_active_parts / pre_run_rss have PRE-truncate semantics
@@ -849,16 +994,24 @@ phase_arm() {
   ( cd "${CAPTURE_DIR}" && python3 truncate_target.py ) || fail_run "tier1 truncate failed"
   deploy_connector "hits" "${g1}"
   wait_tasks_running
-  run_poller_sample "${g1}"
-  # settle after lag 0 (plan §5 step 3b).
-  local settle_status="${ARTIFACT_DIR}/settle-${RUN_ID}.status"
-  SETTLE_END="$( cd "${CAPTURE_DIR}" && SETTLE_STATUS_FILE="${settle_status}" python3 wait_for_settle.py )" \
-    || warn "wait_for_settle errored (continuing with RUN_END)"
-  export SETTLE_END="${SETTLE_END:-${RUN_END}}"
-  export SETTLE_TIMED_OUT="$(cat "${settle_status}" 2>/dev/null || echo 0)"
-  export SETTLE_SECONDS=0   # settle_seconds is emitted by capture SQL 14 from the window
-  finalize_and_insert_metrics 1
-  capture_and_record "${arm}" "1"
+  local rc1=0
+  run_poller_sample "${g1}" || rc1=$?
+  if [ "${rc1}" -eq 0 ]; then
+    # settle after lag 0 (plan §5 step 3b) — success path only; a failed run's
+    # window closes at failure time (ingest_failed).
+    local settle_status="${ARTIFACT_DIR}/settle-${RUN_ID}.status"
+    SETTLE_END="$( cd "${CAPTURE_DIR}" && SETTLE_STATUS_FILE="${settle_status}" python3 wait_for_settle.py )" \
+      || warn "wait_for_settle errored (continuing with RUN_END)"
+    export SETTLE_END="${SETTLE_END:-${RUN_END}}"
+    export SETTLE_TIMED_OUT="$(cat "${settle_status}" 2>/dev/null || echo 0)"
+    export SETTLE_SECONDS=0   # settle_seconds is emitted by capture SQL 14 from the window
+    finalize_and_insert_metrics 1 || rc1=3
+  fi
+  if [ "${rc1}" -eq 0 ]; then
+    capture_and_record "${arm}" "1"
+  else
+    ingest_failed "${arm}" "1" "$(ingest_fail_reason "${rc1}")"
+  fi
   delete_connector "${g1}"
 
   delete_connect
@@ -934,6 +1087,9 @@ main() {
   # ---- live execution from here ----
   command -v kubectl >/dev/null 2>&1 || die "kubectl required"
   command -v envsubst >/dev/null 2>&1 || die "envsubst required (gettext)"
+  # OUTCOME is owned exclusively by ingest_failed(); an ambient value would
+  # mark every run failed (contract §1.3: success must OMIT the key).
+  unset OUTCOME
 
   # Image validation FIRST (before any cluster mutation): every deployed image
   # must be a DIGEST ref (stale-tag class fix). A mutable tag is either resolved
@@ -1003,6 +1159,15 @@ main() {
   phase_scale_down
   CLEANUP_DONE=1
   trap - EXIT INT TERM
+  # Pair-level policy (contract §1.3 outcome amendment): a failed-class run
+  # does NOT abort the pair — every remaining (arm,tier) run was still executed
+  # and captured (the failed run's tier ratio is simply non-computable; the
+  # other arm's rows keep their absolute-trend value). But CI must SEE it, so
+  # the job exits non-zero after all capture + cleanup completed.
+  if [ "${PAIR_HAD_FAILURE}" = "1" ]; then
+    warn "pair ${PAIR_ID} completed WITH FAILED-CLASS RUN(S) — evidence captured + exported (runtime['outcome']='failed'); exiting non-zero for CI visibility"
+    exit 1
+  fi
   log "pair complete: ${PAIR_ID}"
 }
 

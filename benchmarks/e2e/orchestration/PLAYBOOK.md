@@ -590,14 +590,19 @@ chq "SELECT run_id, runtime['arm'] arm, runtime['tier'] tier,
             runtime['pair_id'] pair_id, runtime['target_region'] tr,
             runtime['environment_class'] ec, runtime['compute_region'] cr,
             runtime['batch_size'] bs, runtime['write_parallelism'] wp,
-            runtime['partition_scheme'] ps, mapContains(runtime,'warm_up') has_warmup
+            runtime['partition_scheme'] ps, mapContains(runtime,'warm_up') has_warmup,
+            mapContains(runtime,'outcome') has_outcome
      FROM perf.runs WHERE runtime['pair_id']='${PAIR_ID}' ORDER BY run_id"
 ```
 Expected sketch (4 rows), runtime keys that MUST be present and non-empty:
 `arm, tier, pair_id, target_region(=us-east-2), environment_class(=staging),
 compute_region(=us-east-2), batch_size(=100000), write_parallelism(=3),
 partition_scheme(=toYear(EventDate)), async_insert(=0), dataset(=hits)`; and
-`has_warmup` MUST be `0` (warm_up absent by design).
+`has_warmup` MUST be `0` (warm_up absent by design), and on a CLEAN pair
+`has_outcome` MUST be `0` on all 4 rows — the `outcome` key is present ONLY on
+failed-class runs (value `failed`; contract §1.3 amendment). A row with
+`runtime['outcome']='failed'` means that run's ingest failed but was captured
+anyway — its tier ratio is non-computable; exclude it by outcome, not absence.
 ```
 run_id                              arm     tier  pair_id            tr        ec       cr        bs      wp  ps               has_warmup
 <PAIR>-<arm0>-t0                    <arm0>  0     <PAIR>             us-east-2 staging  us-east-2 100000  3   toYear(EventDate) 0
@@ -759,14 +764,15 @@ recreate topic + fresh Job (never let K8s retry the producer — `backoffLimit 0
 | S5 poller host | `poller pod lacks confluent-kafka/requests and pip install failed` | maybe | node egress to PyPI blocked; producer image should already have them — rebuild producer image |
 | S5 connect | `KafkaConnect did not become Ready` (600s) | maybe | `kubectl describe kafkaconnect bench-connect`; image pull error ⇒ check ECR node policy (S1); then clean re-run |
 | S5 connector | `connector/tasks did not all reach RUNNING in time` | needs clean re-run | usually CH auth (wrong `bench-ch-creds`) or ClassNotFound (converter) — check task trace; `fail_run` already rolled back |
-| S5 poller | `poller TIMED OUT (drain incomplete)` (WARN) | continues | run FLAGGED `drain_incomplete`; row still lands. If lag never moves, STOP-AND-REPORT (sink stalled) |
-| S5 poller | `no samples were retrieved for <run_id>` (fail_run) | needs clean re-run | exec into poller dropped before first tick; rolled back automatically |
+| S5 poller | `poller TIMED OUT — lag never reached 0 (ingest did not complete)` then `INGEST FAILED … outcome=failed` | continues (failed-class) | contract §1.3 outcome amendment: the run is FULLY captured + exported with `runtime['outcome']='failed'` (+ guards incl. `drain_incomplete`, and `integrity_unverified` on t1); the PAIR CONTINUES and `run_pair.sh` exits non-zero at the very end. If lag never moves at all, STOP-AND-REPORT (sink stalled) |
+| S5 poller | `poller sample failed hard` / `no samples were retrieved for <run_id>` then `INGEST FAILED … outcome=failed` | continues (failed-class) | failed-class capture: CH-side capture still runs over the window; row lands with `outcome='failed'` (client-side metrics absent when no samples); pair continues; exits non-zero at end |
+| S5 finalize | `poller finalize/insert failed` then `INGEST FAILED … (finalize_failed)` | continues (failed-class) | a run that cannot be fully measured never lands as success: row lands `outcome='failed'` (CH-side capture present, client-side absent); pair continues; exits non-zero at end |
 | S5 truncate | `tier1 truncate failed` (fail_run) | needs clean re-run | target unreachable on 9440/`remoteSecure`; rolled back |
 | S5 capture | `capture <NN> failed -> rollback` then `capture aborted` | needs clean re-run | a capture SQL erred (grants/query_log filter); rows rolled back; fix grants then re-run pair |
 | S5 capture 20 | `capture 20 (integrity) computation failed -> FLAG integrity_unverified` | continues | run FLAGGED, not failed; row lands; investigate SOURCE_UNIQUE/count constants after |
 | S5 capture 20 | stderr `WARNING: no INPUT_PARQUET_GLOB and SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED are not both set — integrity source ground truth is 0/0 and the check will FAIL.` then later `TIER 1 INTEGRITY MISMATCH` with `rows_expected=0`/`unique_expected=0` in perf.metrics | needs clean pair re-run | NOT a data-loss mismatch — `SOURCE_UNIQUE_EXPECTED` was unset (READ-FIRST #3). SQL 20 succeeded with 0/0 ground truth, so no rollback fired and the false verdict is exported. Purge the pair's rows (S6 rollback loop), set `SOURCE_UNIQUE_EXPECTED=10000000` in the env, re-run the pair |
 | S5 integrity | `TIER 1 INTEGRITY MISMATCH … run FAILS` | run failed by design | evidence already exported; STOP-AND-REPORT (real data loss/dupes) — do not retry blindly |
-| S5 run record | `insert_run_record failed -> rollback` | needs clean re-run | metrics landing down / GIT_SHA empty (provenance.json unreadable); rolled back |
+| S5 run record | `insert_run_record failed -> rollback` | needs clean re-run | metrics landing down / GIT_SHA empty (provenance.json unreadable); rolled back. On a failed-class run this rolls back that run only and the PAIR CONTINUES (`failed-class run … could not be recorded`) |
 | S5 export | `DWH export failed (metrics persisted; export can be retried)` (WARN) | retry export only | fix `DWH_ROLE_ARN`; re-run `RUN_ID=<run> python3 export_metrics_to_dwh.py` per run (no full re-run) |
 | S5 pair cost | `run_cost_usd emit failed (retryable; run rows remain valid)` (WARN) | retry emit only | re-run `emit_run_cost.py --run-id <first-arm-t1> --pair-start <PAIR_RUN_START> --nodes 2 ...` |
 | S7 scale-down | `node group did NOT reach desired 0 (desired='X')` (die, exit non-zero) | must fix | STOP-AND-REPORT cost leak; inspect EC2/ASG; re-run scale-down until desired=0 |

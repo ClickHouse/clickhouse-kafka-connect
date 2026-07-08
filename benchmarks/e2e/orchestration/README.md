@@ -99,6 +99,37 @@ insert; integrity verdict LAST.
 - **Tier 1, mismatch:** run **FAILS** — after the runs row is inserted and the
   evidence exported (flagged/failed runs are still fully captured).
 
+**Capture-on-failure — `outcome` (contract §1.3 amendment): FAILED runs are
+fully captured and exported, marked — no survivorship bias.**
+- **Drain-start boundary:** the poller sample beginning. **Pre-drain failures**
+  (scale-up, topic create, producer, poller host, Connect deploy, connector
+  apply, tasks never all RUNNING) keep the old **hard-abort + rollback** — the
+  drain never began, there is nothing meaningful to capture.
+- **Post-drain-start ingest failures** — poller timeout (lag never reached 0),
+  poller hard failure/no samples, finalize failure — route to `ingest_failed()`:
+  best-effort client scalars from the partial JSONL, CH-side capture SQL over
+  the actual window (`RUN_START` → failure time; per-file failures tolerated —
+  partial evidence beats none), runs row with `runtime['outcome']='failed'`
+  (+ `integrity_unverified` on tier 1, **by definition** — SQL 20 is skipped, a
+  failed run makes no integrity claim), then export. A finalize failure after a
+  clean drain is deliberately failed-class too: a half-metriced "success" row
+  silently entering headlines is worse than a conservatively-failed row.
+- **Success rows OMIT the key** (absent ⇒ `success`, Map semantics); writing
+  `outcome='success'` explicitly is rejected by the runtime-map builder.
+- **Pair-level policy:** a failed-class run does **not** abort the pair — every
+  remaining (arm,tier) run still executes and captures (the failed run's tier
+  ratio is simply non-computable; the other arm keeps its absolute-trend value;
+  dashboards exclude failed rows **by outcome, not by absence**). After all
+  capture + teardown, `run_pair.sh` **exits non-zero** so CI surfaces the
+  failure.
+- **Not reclassified:** a tier-1 integrity **mismatch** keeps its §3 semantics
+  (run FAILS after evidence export, detectable via `integrity_ok=0`) — its runs
+  row is inserted before the verdict and is not retroactively marked; and a
+  poller **timeout** now lands as failed-class (previously flagged-only
+  `drain_incomplete`) because "lag never reached 0" means the ingest step did
+  not complete — the finalize guards (incl. `drain_incomplete`) still land
+  alongside.
+
 **Pair cost (contract §2.1 — review F6):** `run_cost_usd` is computed at
 **end of pair** (the window must cover both arms; charging mid-pair would halve
 the node-hours) and attached to the **first-run arm's tier-1** run_id. This one

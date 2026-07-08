@@ -173,6 +173,9 @@ def _runtime_json_raw(arm, tier, extra_env=None):
         "STRIMZI_VERSION": "0.46.0",
         "PLUGIN_SHA256": "abc123",
     })
+    # OUTCOME is owned by ingest_failed(); keep the baseline env clean so the
+    # outcome-absent-on-success assertions cannot be polluted ambiently.
+    env.pop("OUTCOME", None)
     if extra_env:
         env.update(extra_env)
     # invoke the function by sourcing run_pair.sh's python heredoc indirectly:
@@ -564,3 +567,90 @@ def test_build_arm_push_resolves_and_emits_digest():
     assert "RepoDigests" in src  # docker inspect digest resolution
     # push path must FAIL LOUD (exit 1) if the digest cannot be resolved.
     assert "could not resolve its registry digest" in src
+
+
+# --------------------------------------------------------------------------- #
+# outcome='failed' capture-on-failure semantics (contract §1.3 amendment):
+# failed runs are FULLY captured + exported, marked — no survivorship bias.
+# Success rows OMIT the key (absent => success, Map semantics).
+# --------------------------------------------------------------------------- #
+def test_runtime_map_outcome_absent_on_success():
+    """Success path: outcome MUST be absent — dashboards distinguish failed
+    runs by outcome VALUE, and legacy rows never carried the key."""
+    rt = _build_runtime_json("head", "1")
+    assert "outcome" not in rt
+
+
+def test_runtime_map_outcome_failed_present():
+    rt = _build_runtime_json("head", "1", extra_env={"OUTCOME": "failed"})
+    assert rt["outcome"] == "failed"
+
+
+def test_runtime_map_outcome_success_rejected():
+    """Writing outcome='success' explicitly is prohibited (absent => success);
+    any value other than 'failed' is a hard error."""
+    out = _runtime_json_raw("head", "1", extra_env={"OUTCOME": "success"})
+    assert out.returncode != 0
+    assert "OMIT the outcome key" in out.stderr
+
+
+def test_poller_sample_no_longer_rolls_back():
+    """Post-drain-start failures are the caller's decision now: the sampler
+    returns 0 (drained) / 2 (timeout — ingest incomplete) / 1 (hard failure)
+    and never rolls back or dies itself."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "run_poller_sample")
+    assert "fail_run" not in body, "sampler must not roll back — the caller routes to ingest_failed"
+    assert "return 2" in body and "return 1" in body and "return 0" in body
+
+
+def test_ingest_failed_marks_and_captures():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "ingest_failed")
+    assert 'export OUTCOME="failed"' in body
+    assert 'capture_and_record "${arm}" "${tier}" "failed"' in body
+    assert "PAIR_HAD_FAILURE=1" in body
+    assert "unset OUTCOME" in body  # success runs must never inherit it
+    # no rollback on the failed-class path — the evidence must survive
+    assert "rollback_run_metrics" not in body
+
+
+def test_phase_arm_routes_failures_to_ingest_failed():
+    """Both tiers must branch: success -> capture_and_record (strict), failure
+    -> ingest_failed. The drain-start boundary is the poller sample."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_arm")
+    # one CALL per tier (count call sites, not comment mentions)
+    assert body.count('ingest_failed "${arm}"') == 2
+    assert 'ingest_failed "${arm}" "0"' in body
+    assert 'ingest_failed "${arm}" "1"' in body
+    # per-run flag/settle state reset (no bleed onto a failed-class run)
+    assert body.count('FLAGGED=0; FLAG_REASON=""') == 2
+
+
+def test_capture_and_record_failed_mode_semantics():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "capture_and_record")
+    # mode param exists, defaulting strict
+    assert 'mode="${3:-strict}"' in body
+    # failed mode skips SQL 20 (no integrity claim on a failed run)
+    assert '[ "${mode}" = "failed" ]' in body
+    # failed-class tier 1 is integrity_unverified BY DEFINITION
+    assert 'append_flag "integrity_unverified"' in body
+    # per-file capture failure on the failed path continues (no rollback-die)
+    assert "partial evidence beats none" in body
+    # integrity verdict runs on the STRICT path only
+    assert '[ "${mode}" = "strict" ] && [ "${tier}" = "1" ]' in body
+
+
+def test_pair_continues_and_exits_nonzero_on_failure():
+    """Pair-level policy: a failed-class run never aborts the pair (the other
+    runs are still captured), but main() exits non-zero at the very end."""
+    src = open(RUN_PAIR).read()
+    main_body = _extract_function(src, "main")
+    assert 'if [ "${PAIR_HAD_FAILURE}" = "1" ]' in main_body
+    assert "exit 1" in main_body
+    # the failure exit comes AFTER cleanup (teardown + scale down)
+    assert main_body.index("phase_scale_down") < main_body.index('PAIR_HAD_FAILURE}" = "1"')
+    # ambient OUTCOME must be cleared before any run
+    assert "unset OUTCOME" in main_body
