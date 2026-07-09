@@ -1,8 +1,9 @@
-# Benchmark v2 — Kafka dashboard verdict artifacts (#33 prep)
+# Benchmark v2 — Kafka dashboard verdict artifacts (#33)
 
 This directory owns the **verdict map** and its **fixture-based acceptance** for the
 Kafka Connect sink Benchmark v2 dashboard (Tab 1, plan `docs/benchmark-v2-plan.md`
-§8; verdict semantics `docs/benchmark-v2-contract.md` §3).
+§8; verdict semantics `docs/benchmark-v2-contract.md` §3, **Amendment 2026-07-09b**
+— conformed in #33 Stage A2 per the manager's option-B ruling).
 
 ## The standing rule (principal mandate)
 
@@ -19,105 +20,132 @@ green run of that test.
 
 | File | Role |
 |------|------|
-| `sql/v_kc_pair_ratios.sql` | The H/P pair self-join + verdict map. **#33's Superset virtual dataset consumes this file VERBATIM** (see below). |
+| `sql/v_kc_pair_ratios.sql` | The H/P pair self-join + verdict map (CANONICAL copy). |
 | `sql/fixture_verdict_truth_table.sql` | Synthetic `perf.runs`/`perf.metrics` rows covering every verdict branch. Idempotent (delete-by-prefix first). |
 | `test_verdicts.sh` | The acceptance test: builds `perf.*` from the byte-locked DDL, applies the fixture, creates the view, asserts every case's verdict == expectation. Exits non-zero on any mismatch. |
+| `superset/v_kc_pair_ratios.sql` | The DWH twin #33 deploys to Superset (same verdict bytes + DWH table names, connector scope, presentation columns). Accepted by `superset/verify_verdict_dwh.sh`. |
+| `superset/` | The full #33 dashboard build package (datasets, chart specs, pre-checks) — see `superset/DASHBOARD.md`. |
 
-## Verdict map (per gated metric)
+## Verdict map (contract §3, Amendment 2026-07-09b)
 
-Applied identically to every gated metric. Precedence: **NO_DATA → FLAGGED →
-band/threshold → OK**.
+Precedence (PINNED): **FAIL (integrity) > FLAG > NO_DATA / TRIPWIRE / band verdicts
+/ OK**. FAIL is honoured upstream (failed-outcome runs never reach the view);
+**FLAG beats NO_DATA** — a flagged pair is FLAGGED even when its ratio is
+NULL/0-denominator or its tripwire is armed. (This REVERSES the pre-amendment
+NO_DATA-first ordering; the fixture pins it.)
+
+Banded metrics:
 
 | Condition | Verdict |
 |-----------|---------|
+| either arm's run flagged (`runtime['flagged']='1'`) | `FLAGGED` (excluded from bands) |
 | ratio is NULL (a side's metric missing) **or** pinned value = 0 (0-denominator) | `NO_DATA` |
-| either arm's run is flagged (`runtime['flagged']='1'`) | `FLAGGED` (excluded from bands) |
-| ratio excursion beyond band, **good** direction | `IMPROVEMENT` |
-| ratio excursion beyond band, **bad** direction | `REGRESSION` |
+| ratio outside the calibrated band, **good** direction | `IMPROVEMENT` |
+| ratio outside the calibrated band, **bad** direction | `REGRESSION` |
 | otherwise | `OK` |
 
-Direction turns "beyond band" into good/bad:
+Tripwire metric (`parts_per_insert`): flagged ⇒ `FLAGGED`; head value NULL/absent ⇒
+`NO_DATA`; head value exactly `1.0` ⇒ `OK`; **any** deviation ⇒ `TRIPWIRE`
+(structural invariant break — batches spraying across partitions; **alerts
+regardless of calibration state**). The pinned value and ratio are ignored.
+
+Direction turns "outside band" into good/bad:
 
 - `higher_better`: `ratio > 1+band` → IMPROVEMENT; `ratio < 1−band` → REGRESSION
 - `lower_better`: `ratio < 1−band` → IMPROVEMENT; `ratio > 1+band` → REGRESSION
 
-### Gated metrics and directions
+### Gated metrics (Kafka registry)
 
-| Metric | Tier | Direction | Band / rule |
-|--------|------|-----------|-------------|
-| `null_drain_rows_per_sec` | 0 | `higher_better` | ±3% |
-| `connect_cpu_seconds_per_Mrows` | 0 | `lower_better` | ±3% |
-| `drain_rows_per_sec` | 1 | `higher_better` | ±5% |
-| `parts_per_insert` | 1 | `lower_better` | ±5% |
-| `merge_amplification` | 1 | `lower_better` | ±5% |
-| `ch_avg_rows_per_insert` | 1 | `higher_better` | **threshold**: HEAD `>= 50000` → OK else REGRESSION (plan §6 batching contract, not a ratio band) |
+| Metric | Tier | Direction | Rule |
+|--------|------|-----------|------|
+| `null_drain_rows_per_sec` | 0 | `higher_better` | banded **±8.5%** (calibrated, contract §3) |
+| `connect_cpu_seconds_per_Mrows` | 0 | `lower_better` | banded **±6%** (cpu-per-Mrows family band — see the spelling note) |
+| `drain_rows_per_sec` | 1 | `higher_better` | banded **±8.5%** (calibrated, contract §3) |
+| `parts_per_insert` | 1 | (tripwire) | **TRIPWIRE**: head `== 1.0` ⇒ OK, else TRIPWIRE |
 
-**Direction spelling assumption:** the literal strings `higher_better` /
-`lower_better` are used pending a contract amendment the principal flagged as
-possible. They are centralized in the `gated` CTE of `v_kc_pair_ratios.sql`, so an
-amendment is a one-line change. See the report/handoff note.
+NOT gated (deliberately absent from the registry — no verdict rows):
+
+- **`merge_amplification`** — DEMOTED to watch-only by the amendment (per-run merge
+  noise, no pairing dividend; would manufacture false regressions). Stays a
+  reported covariate (`v_kc_runs`, Tab 2 trend). The fixture asserts zero rows.
+- **`ch_avg_rows_per_insert`** — the pre-amendment `>=50k` threshold gate is GONE:
+  the amended gate composition ("replaces the prior flat-band gated set") does not
+  include it; it is a plain §2.1 covariate. The fixture asserts zero rows.
+- `settle_seconds` / `settle_timed_out` / `merge_pool_peak_pct` — covariates (unchanged).
+
+**`connect_cpu_seconds_per_Mrows` band spelling note (flagged for a contract
+amendment):** the contract's pinned band table lists the cpu-per-Mrows family as
+`ch_insert_cpu_seconds_per_Mrows` / `cpu_seconds_per_Mrows` (±6%) but does not
+name the Kafka client-side spelling `connect_cpu_seconds_per_Mrows` (plan §5
+[gate]; poller README "tier-0 CPU gate"). It is gated at the family's ±6% pending
+a one-line amendment adding the spelling — mirroring the drain row's "Kafka drain
+analogues" parenthetical.
+
+## Alerting (contract §3)
+
+The view exposes `alert_now = (verdict='TRIPWIRE') OR (verdict='REGRESSION' AND
+alerts_enabled)`. During the calibration hold only integrity failures and the
+parts TRIPWIRE alert; band REGRESSIONs arm at `alerts_enabled = 1`
+(`comparable_pairs >= 20`). Alert queries **MUST** gate on `alert_now = 1` and
+never re-derive the predicate — that is how dashboard and alerts drift apart.
 
 ## Fixture matrix and expected verdicts
 
-Direction carriers: `null_drain_rows_per_sec` (higher_better, T0, ±3%) and
-`parts_per_insert` (lower_better, T1, ±5%); threshold carrier
-`ch_avg_rows_per_insert`. Ratio = head / pinned (`0.90`→head 90, `1.00`→100,
-`1.10`→110, pinned 100).
+Carriers: `null_drain_rows_per_sec` (higher_better, T0, ±8.5%),
+`connect_cpu_seconds_per_Mrows` (lower_better, T0, ±6%), `drain_rows_per_sec`
+band edges (T1, ±8.5%), `parts_per_insert` tripwire (T1), plus watch-only /
+degated exclusion rows. Ratio = head / pinned. Full truth table in the header of
+`sql/fixture_verdict_truth_table.sql` (31 named verdict cells + zero-row
+exclusions); highlights:
 
 | Fixture pair | Tier | Metric | Expected |
 |--------------|------|--------|----------|
-| `fixture-hb-090-unflagged` | 0 | null_drain_rows_per_sec | `REGRESSION` |
-| `fixture-hb-100-unflagged` | 0 | null_drain_rows_per_sec | `OK` |
-| `fixture-hb-110-unflagged` | 0 | null_drain_rows_per_sec | `IMPROVEMENT` |
-| `fixture-hb-null-unflagged` | 0 | null_drain_rows_per_sec | `NO_DATA` (pinned side missing) |
-| `fixture-hb-zerodenom-unflagged` | 0 | null_drain_rows_per_sec | `NO_DATA` (pinned = 0) |
-| `fixture-hb-090-flagged` | 0 | null_drain_rows_per_sec | `FLAGGED` |
-| `fixture-hb-100-flagged` | 0 | null_drain_rows_per_sec | `FLAGGED` |
-| `fixture-hb-110-flagged` | 0 | null_drain_rows_per_sec | `FLAGGED` |
-| `fixture-lb-090-unflagged` | 1 | parts_per_insert | `IMPROVEMENT` |
-| `fixture-lb-100-unflagged` | 1 | parts_per_insert | `OK` |
-| `fixture-lb-110-unflagged` | 1 | parts_per_insert | `REGRESSION` |
-| `fixture-lb-null-unflagged` | 1 | parts_per_insert | `NO_DATA` (pinned side missing) |
-| `fixture-lb-zerodenom-unflagged` | 1 | parts_per_insert | `NO_DATA` (pinned = 0) |
-| `fixture-lb-090-flagged` | 1 | parts_per_insert | `FLAGGED` |
-| `fixture-lb-100-flagged` | 1 | parts_per_insert | `FLAGGED` |
-| `fixture-lb-110-flagged` | 1 | parts_per_insert | `FLAGGED` |
-| `fixture-thr-above-unflagged` | 1 | ch_avg_rows_per_insert | `OK` (head 60000) |
-| `fixture-thr-below-unflagged` | 1 | ch_avg_rows_per_insert | `REGRESSION` (head 40000) |
-| `fixture-thr-null-unflagged` | 1 | ch_avg_rows_per_insert | `NO_DATA` (head metric missing) |
-| `fixture-thr-above-flagged` | 1 | ch_avg_rows_per_insert | `FLAGGED` |
+| `fixture-hb-090/100/110-unflagged` | 0 | null_drain_rows_per_sec | `REGRESSION` / `OK` / `IMPROVEMENT` |
+| `fixture-hb-null/zerodenom-unflagged` | 0 | null_drain_rows_per_sec | `NO_DATA` |
+| `fixture-hb-{090,100,110}-flagged` | 0 | null_drain_rows_per_sec | `FLAGGED` |
+| `fixture-hb-null-flagged` | 0 | null_drain_rows_per_sec | `FLAGGED` (**FLAG > NO_DATA**) |
+| `fixture-drain-{1080,0920}-unflagged` | 1 | drain_rows_per_sec | `OK` (edges just INSIDE ±8.5%) |
+| `fixture-drain-1090-unflagged` | 1 | drain_rows_per_sec | `IMPROVEMENT` (edge just outside, hb) |
+| `fixture-drain-0910-unflagged` | 1 | drain_rows_per_sec | `REGRESSION` (edge just outside, hb) |
+| `fixture-cpu-090/100/110-unflagged` | 0 | connect_cpu_seconds_per_Mrows | `IMPROVEMENT` / `OK` / `REGRESSION` (lb) |
+| `fixture-cpu-{1050,0950}-unflagged` | 0 | connect_cpu_seconds_per_Mrows | `OK` (edges just INSIDE ±6%) |
+| `fixture-cpu-1070-unflagged` | 0 | connect_cpu_seconds_per_Mrows | `REGRESSION` (edge outside, bad dir) |
+| `fixture-cpu-0930-unflagged` | 0 | connect_cpu_seconds_per_Mrows | `IMPROVEMENT` (edge outside, good dir) |
+| `fixture-tw-ok-unflagged` | 1 | parts_per_insert | `OK` (head = 1.0) |
+| `fixture-tw-armed-{high,low}-unflagged` | 1 | parts_per_insert | `TRIPWIRE` (head 1.02 / 0.98) |
+| `fixture-tw-null-unflagged` | 1 | parts_per_insert | `NO_DATA` (head absent) |
+| `fixture-tw-armed-flagged` | 1 | parts_per_insert | `FLAGGED` (**FLAG > armed tripwire**) |
+| `fixture-tw-ok-pinnedmissing-unflagged` | 1 | parts_per_insert | `OK` (tripwire ignores pinned) |
+| `fixture-watch-pair-unflagged` | 1 | merge_amplification, ch_avg_rows_per_insert | **NO ROWS** (watch-only / degated), despite excursion-sized values |
 | `fixture-failed-run` | 1 | parts_per_insert | **excluded** — `runtime['outcome']='failed'`; produces no row |
 
-`FLAGGED` cases are built on comparable ratios (0.90/1.00/1.10) so the FLAGGED
-override — not NO_DATA — is what is being asserted. `NO_DATA` beats `FLAGGED` in the
-precedence, which is why the missing/0-denominator cases are kept unflagged.
+Structural asserts on top of the named cells: fixture-exclusion guard present AND
+effective, failed-run excluded by outcome value, idempotency, calibration hold
+(all provisional, band alerts disabled), watch-only/degated zero-row, and the
+alert rule (TRIPWIRE `alert_now=1` while provisional; provisional REGRESSIONs
+`alert_now=0`).
 
 ## Calibration hold
 
-Plan §8 bands are "recalibrated from the first ~20 pairs". Until a `(tier, metric)`
-has **≥ 20 unflagged, comparable pairs**, its verdict is **provisional** and band
-alerts are **suppressed**. The view encodes this as two columns:
-
-- `provisional` (`UInt8`) — 1 while `comparable_pairs < 20`.
-- `alerts_enabled` (`UInt8`) — `NOT provisional`. Tab 1 alert queries (GitHub
-  issue / Slack on band excursion or integrity failure) **MUST** gate on
-  `alerts_enabled = 1`.
-
-The verdict value itself is always computed; only alerting is gated. (Every fixture
-`(tier, metric)` has 1 comparable pair, so all fixture rows are provisional with
-alerts disabled — the test asserts this.)
+Until a `(tier, metric)` has **≥ 20 unflagged, comparable pairs** its verdict is
+**provisional** ("calibrating, n=X/20") and band alerts are suppressed. Columns:
+`provisional`, `alerts_enabled`, `alert_now`. Comparability: banded = ratio
+present; tripwire = head value present. The verdict value itself is always
+computed; only band alerting is gated — the TRIPWIRE alerts through the hold.
+At ~12 pairs the bands recalibrate from trailing-window statistics (contract §3
+recalibration rule).
 
 ## How #33's Superset virtual dataset consumes this
 
-Issue #33 (Tab 1 + alerts) registers `v_kc_pair_ratios.sql` as a Superset **virtual
-dataset verbatim** — the `CREATE OR REPLACE VIEW perf.v_kc_pair_ratios AS <body>` is
-the dataset's SQL, unmodified. Tab 1's gated-metrics table reads
-`(tier, metric_name, head_value, pinned_value, ratio, band, verdict)` directly; the
-`REGRESSION`/`IMPROVEMENT`/`OK`/`NO_DATA`/`FLAGGED` verdict drives the tile coloring
-and the excursion/flagged-run log. Alert queries share the same view and filter
-`verdict = 'REGRESSION' AND alerts_enabled = 1`, so dashboard and alerts cannot
-drift apart (plan §8). Because it is consumed verbatim, the acceptance test runs the
-**same bytes** that ship.
+Issue #33 registers `superset/v_kc_pair_ratios.sql` — the DWH twin whose verdict
+bytes are identical to the canonical copy (only table names, the
+`connector='kafka-connect'` scope and presentation columns differ; see its
+header). Tab 1's gated-metrics table reads `(tier, metric_name, head_value,
+pinned_value, ratio, band, is_tripwire, verdict, alert_now)` directly; verdicts
+drive the tiles and the excursion/flagged-run log. Alert queries share the same
+view and filter `alert_now = 1`, so dashboard and alerts cannot drift (plan §8).
+`superset/verify_verdict_dwh.sh` re-runs the full fixture acceptance against the
+DWH body, so the twin is held to the same 31/31 bar.
 
 Two correctness points the view bakes in (both covered by the fixture):
 
@@ -127,14 +155,14 @@ Two correctness points the view bakes in (both covered by the fixture):
   never by key absence — legacy rows have no `outcome` key and default to success
   (contract §1.3).
 
-## Running the acceptance test
+## Running the acceptance tests
 
 ```
-benchmarks/e2e/dashboard/test_verdicts.sh
+benchmarks/e2e/dashboard/test_verdicts.sh                # canonical view
+benchmarks/e2e/dashboard/superset/verify_verdict_dwh.sh  # DWH twin
 ```
 
-Requires `clickhouse` (clickhouse-local) on `PATH` (or `CLICKHOUSE_BIN` set). Builds
-`perf.*` from the byte-locked DDL at `benchmarks/e2e/sql/perf/`, applies the fixture,
-creates the view, and asserts all 20 verdict cases plus the structural guards
-(fixture-exclusion present and effective, failed-run excluded, idempotency,
-calibration hold). Exits non-zero on any mismatch.
+Requires `clickhouse` (clickhouse-local) on `PATH` (or `CLICKHOUSE_BIN` set). Both
+build `perf.*` from the byte-locked DDL at `benchmarks/e2e/sql/perf/`, apply the
+fixture, create the view, and assert all 31 verdict cases plus the structural
+guards. Exit non-zero on any mismatch.

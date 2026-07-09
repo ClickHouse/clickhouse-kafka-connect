@@ -73,8 +73,8 @@ carries a `ch_inserts` mirror; Tab 1 does not use it.
 
 | Dataset SQL | Role | Feeds |
 |---|---|---|
-| `v_kc_runs.sql` | base fact: one row per (arm,tier) kafka run, runtime unnested + metrics pivoted, integrity/headline_ok derived | integrity + validity tiles, latest-pair scoping |
-| `v_kc_pair_ratios.sql` | **verdict view** — DWH twin of the fixture-accepted `../sql/v_kc_pair_ratios.sql`, verdict map preserved byte-for-byte + `pair_ts`/`pair_seq`/`flag_reason` for charts | verdict tiles, gated table, ratio trends, pairs-in-band |
+| `v_kc_runs.sql` | base fact: one row per (arm,tier) kafka run, runtime unnested + metrics pivoted, integrity/headline_ok derived; carries merge_amplification + ch_avg_rows_per_insert as covariates | integrity + validity tiles, latest-pair scoping |
+| `v_kc_pair_ratios.sql` | **verdict view** — DWH twin of the fixture-accepted `../sql/v_kc_pair_ratios.sql` (Amendment 2026-07-09b, 31/31), verdict map preserved byte-for-byte + `pair_ts`/`pair_seq`/`flag_reason` presentation columns | verdict tiles, gated table, ratio trends, pairs-in-band, alert queries (`alert_now`) |
 | `v_kc_flagged_log.sql` | flagged + failed run log (audit trail of runs excluded from ratios) | excursion/flagged log |
 
 All three are Kafka-scoped (`connector='kafka-connect'`) and exclude the reserved
@@ -93,63 +93,70 @@ Row 1 (5 tiles):
 Row 2:
   kc_t1_latest_pair_gated_table <- v_kc_pair_ratios (pair_seq=1, full gated detail)
 Row 3 (2 trend lines):
-  kc_t1_ratio_trend_tier0    <- v_kc_pair_ratios (tier=0, band ±3% shaded)
-  kc_t1_ratio_trend_tier1    <- v_kc_pair_ratios (tier=1, band ±5% shaded)
+  kc_t1_ratio_trend_tier0    <- v_kc_pair_ratios (tier=0; per-metric bands:
+                                null_drain ±8.5%, connect_cpu ±6%)
+  kc_t1_ratio_trend_tier1    <- v_kc_pair_ratios (tier=1; drain ±8.5%;
+                                parts_per_insert EXCLUDED — tripwire, not a ratio)
 Row 4:
   kc_t1_excursion_flagged_log <- v_kc_flagged_log
 ```
 
 Every chart spec carries a `description` (what it shows / how to read it /
 direction of goodness) — required by the #33 directive. The verdict tiles and the
-gated table read `verdict`/`provisional` straight from `v_kc_pair_ratios`, and the
-alert queries (future) share the same view filtered `verdict='REGRESSION' AND
-alerts_enabled=1`, so **dashboard and alerts cannot drift** (plan §8).
+gated table read `verdict`/`provisional`/`alert_now` straight from
+`v_kc_pair_ratios`, and the alert queries (future) share the same view filtered
+`alert_now = 1`, so **dashboard and alerts cannot drift** (plan §8). Per contract
+§3 the TRIPWIRE alerts even during the calibration hold; band REGRESSIONs arm at
+`alerts_enabled = 1`.
 
 `drain_rate_stability` is **not charted** (principal ruling, #33 constraint 3 —
 commit-cadence-dominated pending refinement).
 
-## ⚠ Contract-drift decision (BLOCKING for Stage B — needs a principal ruling)
+## Contract level: Amendment 2026-07-09b (drift RESOLVED — ruling option B)
 
-The verdict map shipped here is the one that **passed fixture acceptance 20/20**
-(`../sql/v_kc_pair_ratios.sql`, commit `3b7cc59`) and #33 instructs "PRESERVE the
-verdict semantics exactly". That map is the **OLD contract**: flat bands (T0 ±3% /
-T1 ±5%), `parts_per_insert` as a lower_better ratio band, `merge_amplification`
-gated, `ch_avg_rows_per_insert` as a >=50k threshold.
+The Stage-A package initially carried the pre-amendment map (flat T0 ±3% / T1 ±5%,
+merge_amplification gated, ch_avg >=50k threshold; 20/20 accepted at commit
+`3b7cc59`). The manager ruled **option B**: conform to the ratified contract
+BEFORE Stage B. Stage A2 delivered that: calibrated per-metric bands
+(null_drain/drain ±8.5%, connect_cpu ±6%), `parts_per_insert` as a binary
+TRIPWIRE, `merge_amplification` watch-only (no verdict row; reported on Tab 2),
+`ch_avg_rows_per_insert` degated (covariate in `v_kc_runs`), precedence
+FLAG > NO_DATA, and the `alert_now` rule. The fixture was extended to 31 named
+cells (+ zero-row exclusion asserts) and BOTH acceptance suites re-ran green —
+see `../README.md` for the full amended map and truth table.
 
-Contract §3 was **since re-vendored** (commits `22ed529` / `f2c008f` / `85c5e73`,
-Amendment 2026-07-09b) to:
+Items still FLAGGED for upstream (not resolved here):
 
-- **calibrated per-metric bands** (same on both tiers): throughput ±9%, drain/null
-  ±8.5%, cpu ±6%, serialize ±8.5%;
-- **`merge_amplification` DEMOTED to watch-only** (not gated);
-- **`parts_per_insert` = binary TRIPWIRE** (head==1.0 ⇒ OK, else TRIPWIRE), not a
-  ratio band.
-
-The Spark side already implements the amendment
-(`benchmarks/dashboard/v2/v_verdict_fixture_check.sql`). Shipping the old map on a
-contract-current dashboard is exactly the "verdict drift" the acceptance apparatus
-exists to catch. **Decision owner: principal.** Options: (a) ship the accepted old
-map now (what this package does), amend later; (b) adopt the amendment first —
-requires a NEW fixture covering the tripwire + calibrated bands and a fresh 20/20
-run before ship. Adopting is a one-place change in the `gated` CTE of
-`v_kc_pair_ratios.sql` plus band constants; the trend-chart band shading in
-`tab1_charts.json` would change with it. **Stage B is paused on this ruling.**
+- `connect_cpu_seconds_per_Mrows` is absent from the contract's pinned band
+  table (only `ch_insert_cpu_seconds_per_Mrows`/`cpu_seconds_per_Mrows` appear);
+  gated at the family ±6% pending a one-line contract amendment.
+- The contract §3 Tier-0 gate composition names `serialize_seconds_per_Mrows`,
+  which the Kafka pipeline does not emit (Spark event-log specific) — the wording
+  is Spark-centric; the Kafka registry omits it rather than gate a perpetual
+  NO_DATA row.
+- Spark's shipped `v_verdict_fixture_check.sql` cannot represent NO_DATA for an
+  absent HEAD tripwire metric (its INNER-JOIN shape drops the row entirely),
+  where the contract says NULL/absent parts ⇒ NO_DATA — a Spark-side gap, noted
+  not fixed.
 
 ## Acceptance checklist
 
-Stage A (done):
+Stage A + A2 (done):
 
-- [x] Baseline: `../test_verdicts.sh` → 20/20 on `perf.*` (accepted map).
-- [x] DWH adaptation: `verify_verdict_dwh.sh` → 20/20 against the DWH view body
+- [x] Stage A baseline: `../test_verdicts.sh` → 20/20 on the pre-amendment map.
+- [x] Stage A2 conformance: canonical + fixture + tests updated to Amendment
+      2026-07-09b; `../test_verdicts.sh` → **31/31** + structural asserts
+      (watch-only/degated zero-row, FLAG>NO_DATA, tripwire alert rule).
+- [x] DWH twin: `verify_verdict_dwh.sh` → **31/31** against the DWH view body
       (table names swapped back to `perf.*`; verdict multiIf / gated registry /
-      calibration columns are byte-identical to the accepted view — the
+      calibration + alert columns byte-identical to the canonical view — the
       adaptation is table-name + connector scope + presentation columns only).
 - [x] `v_kc_runs.sql`, `v_kc_flagged_log.sql`, `v_kc_pair_ratios.sql` all create
       and run against clickhouse-local (perf.* substitution), returning 0 rows
       without error when no kafka rows exist; a seeded real pair produces correct
       verdicts, `pair_ts`, `pair_seq=1`, `provisional=1` (n=1 calibration hold).
 
-Stage B (gated on the browser-window GO + the contract-drift ruling):
+Stage B (gated on the browser-window GO):
 
 - [ ] `visibility_precheck.sql` Q1/Q1b: the 8 kafka run_ids (2 pairs × 2 arms × 2
       tiers) present on the DWH; 4 runs per pair. ABORT if absent.
@@ -178,5 +185,5 @@ Stage B (gated on the browser-window GO + the contract-drift ruling):
 | `v_kc_flagged_log.sql` | flagged/failed run log |
 | `tab1_charts.json` | 8 Tab-1 chart specs, each with its description |
 | `visibility_precheck.sql` | Stage-B pre-flight queries (run first; abort on failure) |
-| `verify_verdict_dwh.sh` | fixture acceptance for the adapted verdict view (20/20) |
+| `verify_verdict_dwh.sh` | fixture acceptance for the adapted verdict view (31/31) |
 | `DASHBOARD.md` | this file |

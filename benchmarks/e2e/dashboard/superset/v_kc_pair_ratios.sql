@@ -3,17 +3,26 @@
 -- =============================================================================
 -- WHAT THIS IS
 --   The DWH-adapted twin of benchmarks/e2e/dashboard/sql/v_kc_pair_ratios.sql
---   (the fixture-ACCEPTED verdict map — 20/20 via test_verdicts.sh). This file is
+--   (the fixture-ACCEPTED verdict map — 31/31 via test_verdicts.sh). This file is
 --   the SQL body of the Superset virtual dataset that Tab 1's gated-metrics table,
 --   verdict tiles, ratio-trend lines and excursion log all read.
 --
--- ADAPTATION DELTA vs the accepted sql/v_kc_pair_ratios.sql (issue #33, Stage A)
+-- CONTRACT LEVEL: Amendment 2026-07-09b (CONFORMED — #33 Stage A2, manager ruling
+--   option B). Calibrated per-metric bands (drain/null ±8.5%, connect-cpu ±6%),
+--   parts_per_insert TRIPWIRE (head==1.0 => OK else TRIPWIRE), merge_amplification
+--   watch-only (no verdict row), ch_avg_rows_per_insert degated (no verdict row),
+--   precedence FLAG > NO_DATA/TRIPWIRE/band, alert_now rule (TRIPWIRE alerts
+--   through the calibration hold). See the canonical file's header for the full
+--   amendment notes and the connect_cpu band REGISTRY NOTE (flagged for a
+--   contract amendment).
+--
+-- ADAPTATION DELTA vs the canonical sql/v_kc_pair_ratios.sql
 --   The verdict semantics are PRESERVED BYTE-FOR-BYTE (the `gated` registry, the
---   NULL-safe ratio, the verdict multiIf precedence, and the calibration-hold
---   window are copied verbatim so the 20/20 acceptance still describes THIS SQL —
---   see verify_verdict_dwh.sh, which re-runs the fixture against exactly this body
---   with only the table names swapped back to perf.*). The DWH twin differs ONLY
---   by:
+--   NULL-safe ratio, the verdict multiIf precedence, calibration-hold window and
+--   alert_now are copied verbatim so the 31/31 acceptance still describes THIS
+--   SQL — see verify_verdict_dwh.sh, which re-runs the fixture against exactly
+--   this body with only the table names swapped back to perf.*). The DWH twin
+--   differs ONLY by:
 --     1. SOURCE TABLES: perf.runs/perf.metrics -> the ClickPipe DWH mirror
 --        raw_connectors_load_testing.runs / .metrics (per the Spark v2 datasets;
 --        see benchmarks/dashboard/v2/v_runs_enriched.sql header "DWH mirror").
@@ -29,57 +38,39 @@
 --        for the excursion+flagged log. These are additive SELECT columns; they do
 --        not touch the verdict expression.
 --
--- ⚠ CONTRACT-DRIFT NOTE (raised to the manager for a Stage-B ruling — do NOT
---   silently "fix" here). This verdict map encodes the OLD contract that was in
---   force when the fixture was accepted (commit 3b7cc59): flat bands (T0 ±3% /
---   T1 ±5%), null_drain higher_better + parts_per_insert lower_better as RATIO
---   bands, and ch_avg_rows_per_insert as a >=50k threshold. Contract §3 was since
---   re-vendored (commits 22ed529 / f2c008f / 85c5e73, Amendment 2026-07-09b) to
---   CALIBRATED per-metric bands (throughput ±9%, drain/null ±8.5%, cpu ±6%,
---   serialize ±8.5%, same on both tiers), merge_amplification DEMOTED to
---   watch-only, and parts_per_insert as a BINARY TRIPWIRE (head==1.0 => OK, else
---   TRIPWIRE) — see benchmarks/dashboard/v2/v_verdict_fixture_check.sql on the
---   Spark side for the current-contract map. Task #33 instructs "PRESERVE the
---   verdict semantics exactly (it passed 20/20)", so Stage A ships the accepted
---   bytes UNCHANGED; the amendment requires a NEW fixture + re-acceptance before a
---   contract-current view ships. Which map goes live on the dashboard is a
---   principal decision, flagged in the Stage-A report. This file changes in ONE
---   place (the `gated` CTE) if the ruling is "adopt the amendment".
+-- CALIBRATION HOLD: provisional while comparable_pairs < 20; BAND alerts
+--   suppressed while provisional; a TRIPWIRE alerts regardless (alert_now).
+--   Kafka n=1 today (only pair-2 is a clean calibration point; pair-1 is flagged
+--   instrument_resize and excluded), so every emitted verdict is provisional
+--   ("calibrating, n=X/20").
 --
--- CALIBRATION HOLD (unchanged): provisional while comparable_pairs < 20; band
---   alerts suppressed while provisional. Kafka n=1 today (only pair-2 is a clean
---   calibration point; pair-1 is flagged instrument_resize and excluded), so every
---   emitted verdict is provisional ("calibrating, n=X/20").
---
--- FIXTURE / FAILED-RUN GUARDS (unchanged, verbatim): connector != the reserved
---   fixture connector; failed runs excluded BY OUTCOME VALUE (never by absence).
---   NOTE the fixture connector spelling: the accepted view and its fixture use
---   '__verdict_fixture__'; that literal is preserved here so the same guard the
---   acceptance test asserts remains effective on the DWH.
+-- FIXTURE / FAILED-RUN GUARDS (verbatim): connector != the reserved fixture
+--   connector ('__verdict_fixture__'); failed runs excluded BY OUTCOME VALUE
+--   (never by absence).
 --
 -- SETTINGS join_use_nulls = 1 is REQUIRED (an absent metric must surface as NULL
 --   => NO_DATA, not the Float64 default 0 => false REGRESSION / 0-denominator).
 -- =============================================================================
 CREATE OR REPLACE VIEW raw_connectors_load_testing.v_kc_pair_ratios AS
 WITH
-  -- ============ VERBATIM from the accepted verdict map (do not edit) ============
-  -- The gated-metric registry: metric name, direction, and band fraction.
-  -- Bands: Tier 0 +-3% (0.03), Tier 1 +-5% (0.05) per the accepted map.
-  -- ch_avg_rows_per_insert carries a sentinel band (unused; threshold rule instead).
+  -- ============ VERBATIM from the canonical verdict map (do not edit) ===========
+  -- The gated-metric registry (contract §3 gate composition, Amendment
+  -- 2026-07-09b, Kafka spellings — see the canonical header REGISTRY NOTE):
+  --   Tier 0 gate: null_drain_rows_per_sec (banded ±8.5%, higher_better)
+  --                connect_cpu_seconds_per_Mrows (banded ±6%, lower_better)
+  --   Tier 1 gate: drain_rows_per_sec (banded ±8.5%, higher_better)
+  --                parts_per_insert (TRIPWIRE — direction/band unused)
+  -- merge_amplification (watch-only) and ch_avg_rows_per_insert (degated
+  -- covariate) are DELIBERATELY absent: no registry row => no verdict row.
   gated AS
   (
-    SELECT metric_name, tier, direction, band, is_threshold
+    SELECT metric_name, tier, direction, band, is_tripwire
     FROM values(
-      'metric_name String, tier String, direction String, band Float64, is_threshold UInt8',
-      -- Tier 0 gates (+-3%)
-      ('null_drain_rows_per_sec',           '0', 'higher_better', 0.03, 0),
-      ('connect_cpu_seconds_per_Mrows',     '0', 'lower_better',  0.03, 0),
-      -- Tier 1 gates (+-5%)
-      ('drain_rows_per_sec',                '1', 'higher_better', 0.05, 0),
-      ('parts_per_insert',                  '1', 'lower_better',  0.05, 0),
-      ('merge_amplification',               '1', 'lower_better',  0.05, 0),
-      -- Tier 1 batching contract: threshold check (>=50k), not a ratio band.
-      ('ch_avg_rows_per_insert',            '1', 'higher_better', 0.00, 1)
+      'metric_name String, tier String, direction String, band Float64, is_tripwire UInt8',
+      ('null_drain_rows_per_sec',       '0', 'higher_better', 0.085, 0),
+      ('connect_cpu_seconds_per_Mrows', '0', 'lower_better',  0.06,  0),
+      ('drain_rows_per_sec',            '1', 'higher_better', 0.085, 0),
+      ('parts_per_insert',              '1', 'tripwire',      0.0,   1)
     )
   ),
   -- ==============================================================================
@@ -87,7 +78,7 @@ WITH
   -- Runs in scope: THIS connector's benchmark (DWH mirror carries both), fixture
   -- excluded, failed excluded BY OUTCOME VALUE (not by key absence — legacy rows
   -- default to 'success'). Only the source table and the connector predicate
-  -- differ from the accepted view; the projected columns are identical, plus
+  -- differ from the canonical view; the projected columns are identical, plus
   -- flag_reason carried for the log.
   runs_scoped AS
   (
@@ -117,7 +108,7 @@ WITH
   head_side AS
   (
     SELECT r.pair_id AS pair_id, r.tier AS tier, g.metric_name AS metric_name,
-           g.direction AS direction, g.band AS band, g.is_threshold AS is_threshold,
+           g.direction AS direction, g.band AS band, g.is_tripwire AS is_tripwire,
            r.flagged AS head_flagged, r.flag_reason AS head_flag_reason,
            mv.value AS head_value
     FROM runs_scoped AS r
@@ -145,7 +136,7 @@ WITH
       h.metric_name  AS metric_name,
       h.direction    AS direction,
       h.band         AS band,
-      h.is_threshold AS is_threshold,
+      h.is_tripwire  AS is_tripwire,
       h.head_value   AS head_value,
       p.pinned_value AS pinned_value,
       (h.head_flagged OR p.pinned_flagged) AS flagged,
@@ -168,25 +159,26 @@ SELECT
   metric_name,
   direction,
   band,
+  is_tripwire,
   head_value,
   pinned_value,
   ratio,
   flagged,
   flag_reason,
 
-  -- ================ VERDICT — VERBATIM from the accepted map ==================
-  -- Precedence exactly per the accepted verdict map:
-  --   NO_DATA -> FLAGGED -> (threshold rule | band rule) -> OK
+  -- ============ VERDICT — VERBATIM from the canonical map =====================
+  -- (contract §3, Amendment 2026-07-09b; precedence PINNED):
+  --   FLAG > NO_DATA / TRIPWIRE / IMPROVEMENT / REGRESSION / OK.
+  --   (FAIL > FLAG is honoured upstream: failed-outcome runs never reach here.)
   multiIf(
-    is_threshold = 1,
+    flagged, 'FLAGGED',
+    is_tripwire = 1,
       multiIf(
-        isNull(head_value), 'NO_DATA',
-        flagged,            'FLAGGED',
-        head_value >= 50000, 'OK',
-                             'REGRESSION'
+        isNull(head_value),  'NO_DATA',
+        head_value = 1.0,    'OK',
+                             'TRIPWIRE'
       ),
     isNull(ratio), 'NO_DATA',
-    flagged,       'FLAGGED',
     (direction = 'higher_better' AND ratio > 1 + band), 'IMPROVEMENT',
     (direction = 'higher_better' AND ratio < 1 - band), 'REGRESSION',
     (direction = 'lower_better'  AND ratio < 1 - band), 'IMPROVEMENT',
@@ -194,16 +186,20 @@ SELECT
     'OK'
   ) AS verdict,
 
-  -- CALIBRATION HOLD — VERBATIM: count of unflagged, comparable (non-NO_DATA)
-  -- pairs seen so far for this (tier, metric). While < 20 the verdict is
-  -- provisional and alerts are suppressed.
+  -- CALIBRATION HOLD — VERBATIM: tripwire comparability = head_value present;
+  -- banded comparability = ratio present.
   countIf(
     (NOT flagged)
-    AND if(is_threshold = 1, isNotNull(head_value), isNotNull(ratio))
+    AND if(is_tripwire = 1, isNotNull(head_value), isNotNull(ratio))
   ) OVER (PARTITION BY tier, metric_name) AS comparable_pairs,
 
   (comparable_pairs < 20) AS provisional,
   (NOT provisional)       AS alerts_enabled,
+
+  -- ALERT RULE — VERBATIM (contract §3): TRIPWIRE alerts REGARDLESS of the
+  -- calibration hold; band REGRESSIONs alert only once calibration completes.
+  -- Alert queries MUST fire on alert_now = 1 (never re-derive this predicate).
+  ((verdict = 'TRIPWIRE') OR (verdict = 'REGRESSION' AND alerts_enabled)) AS alert_now,
   -- ===========================================================================
 
   -- ---- PRESENTATION-ONLY columns (NOT consumed by the verdict) --------------

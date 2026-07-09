@@ -76,6 +76,9 @@ echo "OK  : fixture-exclusion guard present in view SQL"
 # =====================================================================================
 #  Expected truth table: "<pair_id> <tier> <metric>|<expected_verdict>"
 # =====================================================================================
+# Truth table per contract Amendment 2026-07-09b (calibrated bands, tripwire,
+# watch-only/degated exclusions, FLAG > NO_DATA precedence). Keep in sync with
+# sql/fixture_verdict_truth_table.sql and superset/verify_verdict_dwh.sh.
 declare -a CASES=(
   "fixture-hb-090-unflagged 0 null_drain_rows_per_sec|REGRESSION"
   "fixture-hb-100-unflagged 0 null_drain_rows_per_sec|OK"
@@ -85,18 +88,29 @@ declare -a CASES=(
   "fixture-hb-090-flagged 0 null_drain_rows_per_sec|FLAGGED"
   "fixture-hb-100-flagged 0 null_drain_rows_per_sec|FLAGGED"
   "fixture-hb-110-flagged 0 null_drain_rows_per_sec|FLAGGED"
-  "fixture-lb-090-unflagged 1 parts_per_insert|IMPROVEMENT"
-  "fixture-lb-100-unflagged 1 parts_per_insert|OK"
-  "fixture-lb-110-unflagged 1 parts_per_insert|REGRESSION"
-  "fixture-lb-null-unflagged 1 parts_per_insert|NO_DATA"
-  "fixture-lb-zerodenom-unflagged 1 parts_per_insert|NO_DATA"
-  "fixture-lb-090-flagged 1 parts_per_insert|FLAGGED"
-  "fixture-lb-100-flagged 1 parts_per_insert|FLAGGED"
-  "fixture-lb-110-flagged 1 parts_per_insert|FLAGGED"
-  "fixture-thr-above-unflagged 1 ch_avg_rows_per_insert|OK"
-  "fixture-thr-below-unflagged 1 ch_avg_rows_per_insert|REGRESSION"
-  "fixture-thr-null-unflagged 1 ch_avg_rows_per_insert|NO_DATA"
-  "fixture-thr-above-flagged 1 ch_avg_rows_per_insert|FLAGGED"
+  "fixture-hb-null-flagged 0 null_drain_rows_per_sec|FLAGGED"
+  "fixture-drain-1080-unflagged 1 drain_rows_per_sec|OK"
+  "fixture-drain-1090-unflagged 1 drain_rows_per_sec|IMPROVEMENT"
+  "fixture-drain-0920-unflagged 1 drain_rows_per_sec|OK"
+  "fixture-drain-0910-unflagged 1 drain_rows_per_sec|REGRESSION"
+  "fixture-cpu-090-unflagged 0 connect_cpu_seconds_per_Mrows|IMPROVEMENT"
+  "fixture-cpu-100-unflagged 0 connect_cpu_seconds_per_Mrows|OK"
+  "fixture-cpu-110-unflagged 0 connect_cpu_seconds_per_Mrows|REGRESSION"
+  "fixture-cpu-null-unflagged 0 connect_cpu_seconds_per_Mrows|NO_DATA"
+  "fixture-cpu-zerodenom-unflagged 0 connect_cpu_seconds_per_Mrows|NO_DATA"
+  "fixture-cpu-090-flagged 0 connect_cpu_seconds_per_Mrows|FLAGGED"
+  "fixture-cpu-100-flagged 0 connect_cpu_seconds_per_Mrows|FLAGGED"
+  "fixture-cpu-110-flagged 0 connect_cpu_seconds_per_Mrows|FLAGGED"
+  "fixture-cpu-1050-unflagged 0 connect_cpu_seconds_per_Mrows|OK"
+  "fixture-cpu-1070-unflagged 0 connect_cpu_seconds_per_Mrows|REGRESSION"
+  "fixture-cpu-0950-unflagged 0 connect_cpu_seconds_per_Mrows|OK"
+  "fixture-cpu-0930-unflagged 0 connect_cpu_seconds_per_Mrows|IMPROVEMENT"
+  "fixture-tw-ok-unflagged 1 parts_per_insert|OK"
+  "fixture-tw-armed-high-unflagged 1 parts_per_insert|TRIPWIRE"
+  "fixture-tw-armed-low-unflagged 1 parts_per_insert|TRIPWIRE"
+  "fixture-tw-null-unflagged 1 parts_per_insert|NO_DATA"
+  "fixture-tw-armed-flagged 1 parts_per_insert|FLAGGED"
+  "fixture-tw-ok-pinnedmissing-unflagged 1 parts_per_insert|OK"
 )
 
 fails=0
@@ -151,8 +165,8 @@ INSERT INTO perf.runs (run_id, run_started_at, run_ended_at, git_sha, connector,
   ('prod-pair-head-t1',   now(), now(), 'abc', 'kafka-connect', 'v1', {'arm':'head','tier':'1','pair_id':'prod-pair','outcome':'success'}),
   ('prod-pair-pinned-t1', now(), now(), 'abc', 'kafka-connect', 'v1', {'arm':'pinned','tier':'1','pair_id':'prod-pair','outcome':'success'});
 INSERT INTO perf.metrics (run_id, metric_name, unit, value) VALUES
-  ('prod-pair-head-t1',   'parts_per_insert', 'ratio', 100),
-  ('prod-pair-pinned-t1', 'parts_per_insert', 'ratio', 100);
+  ('prod-pair-head-t1',   'parts_per_insert', 'ratio', 1.0),
+  ('prod-pair-pinned-t1', 'parts_per_insert', 'ratio', 1.0);
 SQL
 prod_visible="$(ch --query "SELECT count() FROM perf.v_kc_pair_ratios WHERE pair_id='prod-pair'")"
 still_no_fixture="$(ch --query "SELECT count() FROM perf.v_kc_pair_ratios WHERE pair_id LIKE 'fixture-%'")"
@@ -173,12 +187,35 @@ else
 fi
 
 # ---- calibration hold: all fixture (tier,metric) have <20 comparable pairs, so
-#      every emitted verdict must be provisional with alerts disabled ----
+#      every emitted verdict must be provisional with BAND alerts disabled ----
 bad_calib="$(ch --query "SELECT count() FROM perf.v_kc_pair_ratios_fixture WHERE pair_id LIKE 'fixture-%' AND (provisional != 1 OR alerts_enabled != 0)")"
 if [ "$bad_calib" = "0" ]; then
-  echo "PASS: calibration hold active (all fixture verdicts provisional, alerts disabled)"
+  echo "PASS: calibration hold active (all fixture verdicts provisional, band alerts disabled)"
 else
   echo "FAIL: calibration hold broken on $bad_calib fixture rows"
+  fails=$((fails+1))
+fi
+
+# ---- watch-only / degated exclusions (Amendment 2026-07-09b): the view must emit
+#      ZERO rows for merge_amplification (watch-only) and ch_avg_rows_per_insert
+#      (degated), even though the fixture seeds excursion-sized values for both ----
+excluded_rows="$(ch --query "SELECT count() FROM perf.v_kc_pair_ratios_fixture WHERE metric_name IN ('merge_amplification','ch_avg_rows_per_insert')")"
+if [ "$excluded_rows" = "0" ]; then
+  echo "PASS: watch-only/degated metrics emit 0 verdict rows (merge_amplification, ch_avg_rows_per_insert)"
+else
+  echo "FAIL: watch-only/degated metrics leaked $excluded_rows verdict rows"
+  fails=$((fails+1))
+fi
+
+# ---- alert rule (Amendment 2026-07-09b): a TRIPWIRE alerts REGARDLESS of the
+#      calibration hold (alert_now=1 while provisional); band REGRESSIONs do NOT
+#      alert while provisional (alert_now=0) ----
+bad_tw_alert="$(ch --query "SELECT count() FROM perf.v_kc_pair_ratios_fixture WHERE verdict='TRIPWIRE' AND alert_now != 1")"
+bad_band_alert="$(ch --query "SELECT count() FROM perf.v_kc_pair_ratios_fixture WHERE verdict='REGRESSION' AND alert_now != 0")"
+if [ "$bad_tw_alert" = "0" ] && [ "$bad_band_alert" = "0" ]; then
+  echo "PASS: alert rule — TRIPWIRE alerts through the calibration hold; provisional REGRESSIONs do not"
+else
+  echo "FAIL: alert rule — $bad_tw_alert TRIPWIRE rows without alert_now, $bad_band_alert provisional REGRESSIONs alerting"
   fails=$((fails+1))
 fi
 

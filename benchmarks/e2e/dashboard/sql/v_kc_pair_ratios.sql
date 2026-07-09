@@ -3,16 +3,55 @@
 -- WHAT THIS IS
 --   The per-(pair, tier, gated-metric) H/P self-join that produces the nightly
 --   regression verdict for the Kafka Connect sink benchmark (plan §8 Tab 1,
---   contract §3 verdict semantics). Issue #33's Superset virtual dataset consumes
---   this file VERBATIM (see benchmarks/e2e/dashboard/README.md).
+--   contract §3 verdict semantics). Issue #33's Superset virtual dataset is the
+--   DWH twin of this file (benchmarks/e2e/dashboard/superset/v_kc_pair_ratios.sql);
+--   the verdict logic below is the canonical copy.
+--
+-- CONTRACT LEVEL: Amendment 2026-07-09b (CONFORMED — #33 Stage A2, manager ruling
+--   option B). Supersedes the original flat-band map (commit 3b7cc59, T0 ±3% /
+--   T1 ±5%, merge_amplification gated, ch_avg_rows_per_insert >=50k threshold).
+--   The amended semantics implemented here (docs/benchmark-v2-contract.md §3):
+--     * CALIBRATED per-metric bands, same on both tiers (2x measured noise floor):
+--         null_drain_rows_per_sec / drain_rows_per_sec   ±8.5%  (=> 0.085)
+--         connect_cpu_seconds_per_Mrows                  ±6%    (=> 0.06)
+--       (throughput_rows_per_sec ±9% and serialize_seconds_per_Mrows ±8.5% are
+--        Spark-side spellings; the Kafka pipeline does not emit them — see the
+--        REGISTRY NOTE below.)
+--     * parts_per_insert is a binary TRIPWIRE on the HEAD arm's ABSOLUTE value:
+--       exactly 1.0 => OK; ANY deviation => TRIPWIRE (structural invariant break,
+--       alerts regardless of calibration); NULL/absent => NO_DATA as usual.
+--     * merge_amplification is DEMOTED TO WATCH-ONLY: not gated, never a verdict
+--       row here (it stays a reported covariate — v_kc_runs / Tab 2). The fixture
+--       asserts this view emits ZERO merge_amplification rows.
+--     * ch_avg_rows_per_insert is DEGATED: the amended gate composition (which
+--       "replaces the prior flat-band gated set") does not include it; it is a
+--       plain §2.1 covariate now. The fixture asserts zero rows for it too.
+--     * PRECEDENCE (PINNED): FAIL (integrity; excluded upstream by outcome) >
+--       FLAG > NO_DATA / TRIPWIRE / IMPROVEMENT / REGRESSION / OK. NOTE: this
+--       REVERSES the original map's NO_DATA-before-FLAGGED ordering — a flagged
+--       pair is FLAGGED even when its ratio is NULL/0-denominator or its tripwire
+--       is armed. The fixture covers this cell explicitly.
+--     * ALERT RULE: during calibration only integrity failures and the parts
+--       TRIPWIRE alert. Encoded as `alert_now` so alert queries share the view.
+--   Direction spellings 'higher_better'/'lower_better' are now CONTRACT-PINNED
+--   (§3 direction table) — the former "pending amendment" assumption is resolved.
+--
+-- REGISTRY NOTE — connect_cpu_seconds_per_Mrows band (FLAGGED for amendment):
+--   the contract's pinned band table lists the cpu-per-Mrows family as
+--   `ch_insert_cpu_seconds_per_Mrows` / `cpu_seconds_per_Mrows` (±6%) but does
+--   NOT list the Kafka client-side spelling `connect_cpu_seconds_per_Mrows`
+--   (plan §5 [gate]; poller README "tier-0 CPU gate"; emitted by the poller).
+--   It is gated here at the family's ±6% pending a one-line contract amendment
+--   adding the spelling to that row — mirroring how the drain row already names
+--   its "Kafka drain analogues". Raised in the #33 Stage A2 report.
 --
 -- WHY IT EXISTS AS A BUILD-TIME ACCEPTANCE ARTIFACT
---   The Spark dashboard shipped verdict logic that mislabeled 0/0 (no-data) and
---   good-direction excursions as REGRESSION. Per the principal mandate, any
---   verdict-emitting artifact requires fixture-based acceptance before it ships.
---   The verdict map below is exercised end-to-end by
+--   Per the principal mandate, any verdict-emitting artifact requires fixture-
+--   based acceptance before it ships. The map below is exercised end-to-end by
 --   benchmarks/e2e/dashboard/test_verdicts.sh against
---   benchmarks/e2e/dashboard/sql/fixture_verdict_truth_table.sql.
+--   benchmarks/e2e/dashboard/sql/fixture_verdict_truth_table.sql (extended for
+--   the amendment: band edges in both directions, tripwire cells, watch-only and
+--   degated exclusions, FLAG>NO_DATA precedence).
 --
 -- DATA MODEL (contract §1, §2; DDL benchmarks/e2e/sql/perf/02,03)
 --   perf.runs   : ONE row per (arm, tier). runtime Map(String,String) carries
@@ -22,25 +61,10 @@
 --   perf.metrics: tall/narrow (run_id, metric_name, unit, value, recorded_at).
 --                 NO runtime map — inherits (arm,tier) solely via run_id join.
 --
--- VERDICT MAP (contract §3; spec pinned by the principal). Per gated metric:
---   ratio NULL or pinned=0 (0-denominator)      -> NO_DATA
---   either arm's run flagged (runtime flagged=1) -> FLAGGED (excluded from bands)
---   ratio excursion beyond band, GOOD direction  -> IMPROVEMENT
---   ratio excursion beyond band, BAD direction   -> REGRESSION
---   otherwise                                    -> OK
--- ch_avg_rows_per_insert is NOT a ratio band: it is the >=50k batching contract
---   (plan §6 milestone), modeled as its own verdict rule on the HEAD value.
---
--- DIRECTION SPELLINGS (ASSUMPTION — pending contract amendment):
---   direction values are the literal strings 'higher_better' and 'lower_better'.
---   The principal flagged these as refinable by a pending contract amendment; they
---   are centralized in the `gated` CTE below so an amendment is a one-line change.
---
--- CALIBRATION HOLD (plan §8 bands "recalibrated from the first ~20 pairs"):
---   until >= 20 unflagged, comparable pairs exist for a (tier, metric), the verdict
---   is PROVISIONAL and band alerts are suppressed. Encoded as columns:
---     provisional     UInt8  (1 = still calibrating)
---     alerts_enabled  UInt8  (1 = NOT provisional; Tab 1 alert queries gate on this)
+-- CALIBRATION HOLD (contract §3): until >= 20 unflagged, comparable pairs exist
+--   for a (tier, metric), the verdict is PROVISIONAL ("calibrating, n=X/20") and
+--   band alerts are suppressed. Columns: provisional, alerts_enabled, alert_now
+--   (alert_now fires for TRIPWIRE even while provisional — contract §3).
 --
 -- FIXTURE EXCLUSION GUARD (contract §3; acceptance requirement):
 --   the WHERE clause excludes connector='__verdict_fixture__' so the synthetic
@@ -53,23 +77,23 @@
 
 CREATE OR REPLACE VIEW perf.v_kc_pair_ratios AS
 WITH
-  -- The gated-metric registry: metric name, direction, and band fraction.
-  -- Bands: Tier 0 +-3% (0.03), Tier 1 +-5% (0.05) per plan §8 / contract §3.
-  -- ch_avg_rows_per_insert carries a sentinel band (unused; threshold rule instead).
+  -- The gated-metric registry (contract §3 gate composition, Amendment
+  -- 2026-07-09b, Kafka spellings — see the header REGISTRY NOTE):
+  --   Tier 0 gate: null_drain_rows_per_sec (banded ±8.5%, higher_better)
+  --                connect_cpu_seconds_per_Mrows (banded ±6%, lower_better)
+  --   Tier 1 gate: drain_rows_per_sec (banded ±8.5%, higher_better)
+  --                parts_per_insert (TRIPWIRE — direction/band unused)
+  -- merge_amplification (watch-only) and ch_avg_rows_per_insert (degated
+  -- covariate) are DELIBERATELY absent: no registry row => no verdict row.
   gated AS
   (
-    SELECT metric_name, tier, direction, band, is_threshold
+    SELECT metric_name, tier, direction, band, is_tripwire
     FROM values(
-      'metric_name String, tier String, direction String, band Float64, is_threshold UInt8',
-      -- Tier 0 gates (+-3%)
-      ('null_drain_rows_per_sec',           '0', 'higher_better', 0.03, 0),
-      ('connect_cpu_seconds_per_Mrows',     '0', 'lower_better',  0.03, 0),
-      -- Tier 1 gates (+-5%)
-      ('drain_rows_per_sec',                '1', 'higher_better', 0.05, 0),
-      ('parts_per_insert',                  '1', 'lower_better',  0.05, 0),
-      ('merge_amplification',               '1', 'lower_better',  0.05, 0),
-      -- Tier 1 batching contract: threshold check (>=50k), not a ratio band.
-      ('ch_avg_rows_per_insert',            '1', 'higher_better', 0.00, 1)
+      'metric_name String, tier String, direction String, band Float64, is_tripwire UInt8',
+      ('null_drain_rows_per_sec',       '0', 'higher_better', 0.085, 0),
+      ('connect_cpu_seconds_per_Mrows', '0', 'lower_better',  0.06,  0),
+      ('drain_rows_per_sec',            '1', 'higher_better', 0.085, 0),
+      ('parts_per_insert',              '1', 'tripwire',      0.0,   1)
     )
   ),
 
@@ -104,7 +128,7 @@ WITH
   head_side AS
   (
     SELECT r.pair_id AS pair_id, r.tier AS tier, g.metric_name AS metric_name,
-           g.direction AS direction, g.band AS band, g.is_threshold AS is_threshold,
+           g.direction AS direction, g.band AS band, g.is_tripwire AS is_tripwire,
            r.flagged AS head_flagged, mv.value AS head_value
     FROM runs_scoped AS r
     CROSS JOIN gated AS g
@@ -130,7 +154,7 @@ WITH
       h.metric_name  AS metric_name,
       h.direction    AS direction,
       h.band         AS band,
-      h.is_threshold AS is_threshold,
+      h.is_tripwire  AS is_tripwire,
       h.head_value   AS head_value,
       p.pinned_value AS pinned_value,
       (h.head_flagged OR p.pinned_flagged) AS flagged,
@@ -149,27 +173,30 @@ SELECT
   metric_name,
   direction,
   band,
+  is_tripwire,
   head_value,
   pinned_value,
   ratio,
   flagged,
 
-  -- VERDICT (precedence exactly per contract §3 verdict map):
-  --   NO_DATA -> FLAGGED -> (threshold rule | band rule) -> OK
+  -- VERDICT (contract §3, Amendment 2026-07-09b; precedence PINNED):
+  --   FLAG > NO_DATA / TRIPWIRE / IMPROVEMENT / REGRESSION / OK.
+  --   (FAIL > FLAG is honoured upstream: failed-outcome runs never reach here.)
   multiIf(
-    -- ch_avg_rows_per_insert threshold rule (>=50k). NO_DATA if head missing;
-    -- FLAGGED wins over the threshold; else OK/REGRESSION on the 50k contract.
-    is_threshold = 1,
+    -- FLAG overrides everything below, including an armed TRIPWIRE and a
+    -- NULL/0-denominator ratio (contract §3 precedence line).
+    flagged, 'FLAGGED',
+    -- TRIPWIRE metric (parts_per_insert): binary on the HEAD arm's ABSOLUTE
+    -- value, NO ratio/band comparison. NULL/absent head => NO_DATA as usual.
+    is_tripwire = 1,
       multiIf(
-        isNull(head_value), 'NO_DATA',
-        flagged,            'FLAGGED',
-        head_value >= 50000, 'OK',
-                             'REGRESSION'
+        isNull(head_value),  'NO_DATA',
+        head_value = 1.0,    'OK',
+                             'TRIPWIRE'
       ),
-    -- ratio-band gated metrics
+    -- banded metrics: NO_DATA on NULL ratio (either side missing / pinned=0)
     isNull(ratio), 'NO_DATA',
-    flagged,       'FLAGGED',
-    -- excursion beyond band?
+    -- excursion beyond the calibrated band?
     (direction = 'higher_better' AND ratio > 1 + band), 'IMPROVEMENT',
     (direction = 'higher_better' AND ratio < 1 - band), 'REGRESSION',
     (direction = 'lower_better'  AND ratio < 1 - band), 'IMPROVEMENT',
@@ -178,16 +205,22 @@ SELECT
   ) AS verdict,
 
   -- CALIBRATION HOLD: count of unflagged, comparable (non-NO_DATA) pairs seen so
-  -- far for this (tier, metric). While < 20 the verdict is provisional and alerts
-  -- are suppressed. Threshold-rule comparability = head_value present; ratio-rule
+  -- far for this (tier, metric). While < 20 the verdict is provisional and BAND
+  -- alerts are suppressed. Tripwire comparability = head_value present; banded
   -- comparability = ratio present.
   countIf(
     (NOT flagged)
-    AND if(is_threshold = 1, isNotNull(head_value), isNotNull(ratio))
+    AND if(is_tripwire = 1, isNotNull(head_value), isNotNull(ratio))
   ) OVER (PARTITION BY tier, metric_name) AS comparable_pairs,
 
   (comparable_pairs < 20) AS provisional,
-  (NOT provisional)       AS alerts_enabled
+  (NOT provisional)       AS alerts_enabled,
+
+  -- ALERT RULE (contract §3): a TRIPWIRE alerts REGARDLESS of calibration state
+  -- (structural invariant break, not a noise excursion); band REGRESSIONs alert
+  -- only once calibration completes. Alert queries MUST fire on alert_now = 1
+  -- (never re-derive this predicate — that is how dashboard and alerts drift).
+  ((verdict = 'TRIPWIRE') OR (verdict = 'REGRESSION' AND alerts_enabled)) AS alert_now
 
 FROM pairs
 ORDER BY pair_id, tier, metric_name

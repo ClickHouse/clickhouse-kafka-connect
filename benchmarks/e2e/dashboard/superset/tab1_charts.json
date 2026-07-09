@@ -6,18 +6,20 @@
     "2 ratio-trend lines with band shading + provisional watermark, excursion+flagged log.",
     "EVERY chart carries `description` (what it shows / how to read it / direction of",
     "goodness) per the #33 normative directive. ADDITIVE-ONLY: all new assets; the",
-    "verdict tiles read verdict/provisional from v_kc_pair_ratios so dashboard and",
-    "alerts cannot drift (plan §8). Bands here (T0 ±3% / T1 ±5%) match the",
-    "fixture-accepted verdict map shipped in v_kc_pair_ratios.sql — SEE the",
-    "contract-drift note in DASHBOARD.md and the Stage-A report (a principal ruling is",
-    "pending on whether to adopt the Amendment 2026-07-09b calibrated bands/tripwire).",
+    "verdict tiles read verdict/provisional/alert_now from v_kc_pair_ratios so",
+    "dashboard and alerts cannot drift (plan §8).",
+    "CONTRACT LEVEL: Amendment 2026-07-09b (Stage A2, ruling option B): calibrated",
+    "per-metric bands (drain/null ±8.5%, connect-cpu ±6%, same both tiers),",
+    "parts_per_insert = binary TRIPWIRE (not a ratio band; excluded from the ratio",
+    "trends), merge_amplification watch-only (NOT on this tab's verdict artifacts;",
+    "reported on Tab 2), ch_avg_rows_per_insert degated (covariate in v_kc_runs).",
     "drain_rate_stability is intentionally NOT charted (principal ruling, #33 constraint 3)."
   ],
   "dashboard_title": "Benchmark v2 — Kafka Connect (REGRESSION)",
   "tab": "Tab 1 — REGRESSION",
   "datasets": {
-    "v_kc_pair_ratios": "verdict view (per pair,tier,metric): verdict, ratio, band, provisional, pair_ts, pair_seq",
-    "v_kc_runs": "base fact (per run): integrity_ok, duplicate_rows, task_retries/restarts/rebalances, flagged",
+    "v_kc_pair_ratios": "verdict view (per pair,tier,gated metric): verdict (OK/IMPROVEMENT/REGRESSION/NO_DATA/FLAGGED/TRIPWIRE), ratio, band, is_tripwire, provisional, alert_now, pair_ts, pair_seq",
+    "v_kc_runs": "base fact (per run): integrity_ok, duplicate_rows, task_retries/restarts/rebalances, flagged, merge_amplification + ch_avg_rows_per_insert as covariates",
     "v_kc_flagged_log": "flagged + failed run log (audit trail for excluded runs)"
   },
   "charts": [
@@ -26,32 +28,32 @@
       "viz_type": "big_number_total",
       "dataset": "v_kc_pair_ratios",
       "row": 1, "width": 2,
-      "query": "SELECT anyIf(verdict, verdict='REGRESSION') != '' ? 'REGRESSION' : (countIf(verdict='NO_DATA')=count() ? 'NO_DATA' : 'OK') AS tier0_verdict FROM v_kc_pair_ratios WHERE tier='0' AND pair_seq=1",
-      "subheader_source": "worst-of the Tier-0 gated metrics for the latest pair; provisional watermark when any row provisional=1",
-      "description": "TIER 0 verdict tile for the latest pair. Rolls the Tier-0 gated metrics (null_drain_rows_per_sec, connect_cpu_seconds_per_Mrows) into one worst-case verdict: REGRESSION if any metric regressed, else NO_DATA if all are no-data, else OK. HOW TO READ: green OK = last night's Tier-0 pair held its band; red REGRESSION = a Tier-0 metric moved outside its band in the BAD direction. While calibrating it shows 'provisional — calibrating (n=X/20)' and does NOT alert. DIRECTION OF GOODNESS: OK/IMPROVEMENT are good; REGRESSION is bad; NO_DATA/FLAGGED are neither (investigate, not a regression)."
+      "query": "SELECT multiIf(countIf(verdict IN ('REGRESSION','TRIPWIRE'))>0, 'REGRESSION', countIf(verdict='NO_DATA')=count(), 'NO_DATA', 'OK') AS tier0_verdict FROM v_kc_pair_ratios WHERE tier='0' AND pair_seq=1",
+      "subheader_source": "worst-of the Tier-0 gated metrics for the latest pair; 'provisional — calibrating (n=X/20)' watermark when any row provisional=1",
+      "description": "TIER 0 verdict tile for the latest pair. Rolls the Tier-0 gated metrics (null_drain_rows_per_sec, banded ±8.5%; connect_cpu_seconds_per_Mrows, banded ±6%) into one worst-case verdict: bad if any metric regressed, else NO_DATA if all are no-data, else OK. HOW TO READ: green OK = last night's Tier-0 pair held its calibrated bands; red = a Tier-0 metric moved outside its band in the BAD direction. While calibrating it shows 'provisional — calibrating (n=X/20)' and band excursions do NOT alert. DIRECTION OF GOODNESS: OK/IMPROVEMENT are good; REGRESSION is bad; NO_DATA/FLAGGED are neither (investigate, not a regression)."
     },
     {
       "slice_name": "kc_t1_tile_tier1_verdict",
       "viz_type": "big_number_total",
       "dataset": "v_kc_pair_ratios",
       "row": 1, "width": 2,
-      "query": "SELECT (countIf(verdict='REGRESSION')>0 ? 'REGRESSION' : (countIf(verdict='NO_DATA')=count() ? 'NO_DATA' : 'OK')) AS tier1_verdict FROM v_kc_pair_ratios WHERE tier='1' AND pair_seq=1",
-      "description": "TIER 1 verdict tile for the latest pair. Rolls the Tier-1 gated metrics (drain_rows_per_sec, parts_per_insert, merge_amplification, ch_avg_rows_per_insert threshold) into one worst-case verdict. HOW TO READ: same as the Tier-0 tile — OK = held band; REGRESSION = a Tier-1 metric moved outside band in the bad direction (or ch_avg_rows_per_insert fell below the 50k batching contract). Shows 'provisional — calibrating (n=X/20)' and does not alert while calibrating. DIRECTION OF GOODNESS: OK/IMPROVEMENT good, REGRESSION bad, NO_DATA/FLAGGED neither."
+      "query": "SELECT multiIf(countIf(verdict='TRIPWIRE')>0, 'TRIPWIRE', countIf(verdict='REGRESSION')>0, 'REGRESSION', countIf(verdict='NO_DATA')=count(), 'NO_DATA', 'OK') AS tier1_verdict FROM v_kc_pair_ratios WHERE tier='1' AND pair_seq=1",
+      "description": "TIER 1 verdict tile for the latest pair. Rolls the Tier-1 gate (drain_rows_per_sec, banded ±8.5%; parts_per_insert, a binary TRIPWIRE) into one worst-case verdict. HOW TO READ: OK = drain throughput held its band AND parts_per_insert was exactly 1.0 (one part per insert, the structural invariant). TRIPWIRE = parts_per_insert deviated from 1.0 — batches are spraying across partitions; this ALERTS EVEN DURING CALIBRATION (it is an invariant break, not band noise). REGRESSION = drain throughput fell out of band in the bad direction (alerts only after calibration). DIRECTION OF GOODNESS: OK/IMPROVEMENT good; TRIPWIRE and REGRESSION bad (TRIPWIRE is the more urgent); NO_DATA/FLAGGED neither."
     },
     {
       "slice_name": "kc_t1_tile_integrity",
       "viz_type": "big_number_total",
       "dataset": "v_kc_runs",
       "row": 1, "width": 2,
-      "query": "SELECT (countIf(integrity_ok = 0)=0 AND countIf(duplicate_rows>0)=0) ? 'OK' : 'FAIL' AS integrity FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
-      "description": "INTEGRITY tile for the latest pair. OK iff every run of the pair delivered exactly the expected rows (rows_delivered==rows_expected) with zero duplicates (duplicate_rows=0). HOW TO READ: OK = the ingest was lossless and dup-free, so the throughput numbers are trustworthy; FAIL = an integrity mismatch, which per contract §3 FAILS the run — it contributes NO headline number and the verdict tiles should be read as suspect. DIRECTION OF GOODNESS: OK is the only acceptable state; FAIL is a hard stop (overrides any band verdict)."
+      "query": "SELECT if(countIf(integrity_ok = 0)=0 AND countIf(duplicate_rows>0)=0, 'OK', 'FAIL') AS integrity FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
+      "description": "INTEGRITY tile for the latest pair. OK iff every run of the pair delivered exactly the expected rows (rows_delivered==rows_expected) with zero duplicates (duplicate_rows=0). HOW TO READ: OK = the ingest was lossless and dup-free, so the throughput numbers are trustworthy; FAIL = an integrity mismatch, which per contract §3 FAILS the run — it contributes NO headline number and the verdict tiles should be read as suspect. DIRECTION OF GOODNESS: OK is the only acceptable state; FAIL is a hard stop (contract precedence: FAIL overrides every band/tripwire verdict)."
     },
     {
       "slice_name": "kc_t1_tile_validity",
       "viz_type": "big_number_total",
       "dataset": "v_kc_runs",
       "row": 1, "width": 2,
-      "query": "SELECT (countIf(flagged)=0) ? 'OK' : toString(countIf(flagged)) AS validity_guards FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
+      "query": "SELECT if(countIf(flagged)=0, 'OK', toString(countIf(flagged))) AS validity_guards FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
       "description": "VALIDITY GUARDS tile for the latest pair (Kafka-specific twist, plan §8). OK iff no run of the pair tripped a validity guard (task retries, settle timeout, rebalance, task restart, drain incomplete, instrument_resize/shift). Otherwise shows the count of flagged runs. HOW TO READ: a guard trip is NOT a regression — it means the pair is non-comparable and is excluded from bands/ratios; the reason is in the flagged-run log below. DIRECTION OF GOODNESS: OK is good; any non-zero means investigate the log, but do NOT read it as a performance regression."
     },
     {
@@ -60,16 +62,16 @@
       "dataset": "v_kc_pair_ratios",
       "row": 1, "width": 2,
       "query": "SELECT concat(toString(uniqExactIf(pair_id, verdict IN ('OK','IMPROVEMENT'))), '/', toString(least(uniqExact(pair_id), 20))) AS pairs_in_band FROM v_kc_pair_ratios WHERE NOT flagged",
-      "description": "PAIRS IN BAND (n/20) tile — the calibration progress + health counter. Numerator = distinct unflagged pairs whose verdict is OK or IMPROVEMENT (held their bands); denominator = min(pairs so far, 20), the calibration target. HOW TO READ: while < 20 the whole dashboard is 'calibrating' and band-excursion alerts stay unwired (only integrity failures and the parts tripwire alert). At 20/20 the bands recalibrate from measured noise and alerts arm. DIRECTION OF GOODNESS: numerator approaching the denominator is good; the denominator climbing toward 20 marks progress out of the calibration hold."
+      "description": "PAIRS IN BAND (n/20) tile — the calibration progress + health counter. Numerator = distinct unflagged pairs whose verdicts are OK or IMPROVEMENT (held their calibrated bands / tripwire); denominator = min(pairs so far, 20), the calibration target. HOW TO READ: while < 20 the whole dashboard is 'calibrating' and band-excursion alerts stay unwired (only integrity failures and the parts TRIPWIRE alert). At ~12 pairs the bands recalibrate from trailing-window statistics (contract §3 recalibration rule). DIRECTION OF GOODNESS: numerator approaching the denominator is good; the denominator climbing toward 20 marks progress out of the calibration hold."
     },
     {
       "slice_name": "kc_t1_latest_pair_gated_table",
       "viz_type": "table",
       "dataset": "v_kc_pair_ratios",
       "row": 2, "width": 10,
-      "query": "SELECT tier, metric_name, head_value, pinned_value, ratio, round((ratio-1)*100,2) AS delta_pct, band, verdict FROM v_kc_pair_ratios WHERE pair_seq=1 ORDER BY tier, metric_name",
-      "columns": ["tier","metric_name","head_value","pinned_value","ratio","delta_pct","band","verdict"],
-      "description": "LATEST-PAIR gated-metrics table — the detail behind the two verdict tiles. One row per gated (tier, metric): HEAD value, pinned value, their ratio, the delta % ((ratio-1)*100), the band width, and the resulting verdict. HOW TO READ: delta_pct inside ±band ⇒ OK; outside in the good direction ⇒ IMPROVEMENT; outside in the bad direction ⇒ REGRESSION; ch_avg_rows_per_insert uses the >=50k contract instead of a band; a blank ratio ⇒ NO_DATA (a metric was missing or pinned=0). DIRECTION OF GOODNESS is per metric: throughput/drain/null are higher_better (want ratio ≥ 1); parts/merge_amp/cpu are lower_better (want ratio ≤ 1). Verdict already encodes direction, so read the verdict column for the answer and the ratio for the magnitude."
+      "query": "SELECT tier, metric_name, if(is_tripwire=1,'TRIPWIRE (head==1.0)', concat('±', toString(round(band*100,1)), '%')) AS rule, head_value, pinned_value, ratio, round((ratio-1)*100,2) AS delta_pct, verdict, alert_now FROM v_kc_pair_ratios WHERE pair_seq=1 ORDER BY tier, metric_name",
+      "columns": ["tier","metric_name","rule","head_value","pinned_value","ratio","delta_pct","verdict","alert_now"],
+      "description": "LATEST-PAIR gated-metrics table — the detail behind the two verdict tiles. One row per gated (tier, metric): the rule (calibrated band width, or 'TRIPWIRE' for parts_per_insert), HEAD value, pinned value, their ratio, the delta % ((ratio-1)*100), the verdict, and whether it alerts now. HOW TO READ: banded rows — delta_pct inside the rule's ± band ⇒ OK; outside in the good direction ⇒ IMPROVEMENT; outside in the bad direction ⇒ REGRESSION; blank ratio ⇒ NO_DATA (a metric missing or pinned=0). The parts_per_insert row is a TRIPWIRE: ignore its ratio — only the HEAD value matters (exactly 1.0 ⇒ OK; anything else ⇒ TRIPWIRE, alerts even while calibrating). merge_amplification is watch-only (Tab 2) and ch_avg_rows_per_insert is a covariate — neither appears here by design. DIRECTION OF GOODNESS per metric: null_drain/drain rows-per-sec are higher_better (want ratio ≥ 1); connect_cpu_seconds_per_Mrows is lower_better (want ratio ≤ 1). The verdict column already encodes direction — read verdict for the answer, ratio for the magnitude."
     },
     {
       "slice_name": "kc_t1_ratio_trend_tier0",
@@ -80,9 +82,12 @@
       "metric": "ratio",
       "series": "metric_name",
       "filters": "tier='0' AND NOT flagged AND ratio IS NOT NULL",
-      "band_shading": {"center": 1.0, "lower": 0.97, "upper": 1.03, "note": "T0 ±3% (accepted-map band; see contract-drift note)"},
+      "band_shading": [
+        {"metric": "null_drain_rows_per_sec", "center": 1.0, "lower": 0.915, "upper": 1.085, "note": "±8.5% calibrated band (Amendment 2026-07-09b)"},
+        {"metric": "connect_cpu_seconds_per_Mrows", "center": 1.0, "lower": 0.94, "upper": 1.06, "note": "±6% calibrated band (Amendment 2026-07-09b)"}
+      ],
       "provisional_watermark": true,
-      "description": "TIER 0 H/P RATIO TREND (one line per Tier-0 gated metric). Plots the head/pinned ratio per pair over time; the shaded band is ±3% around 1.0 (the accepted verdict-map Tier-0 band). Environment noise hits both arms and cancels in the ratio, so a line leaving the band is a connector signal, not weather. HOW TO READ: a point inside the shaded band = in-band (OK). Above the band on a higher_better metric = improvement; below = regression (and vice-versa for lower_better). A 'PROVISIONAL — calibrating (n=X/20)' watermark means the band is a starting estimate and excursions do NOT alert yet. Flagged pairs are omitted from this line (see the log). DIRECTION OF GOODNESS: for null_drain_rows_per_sec higher is better (ratio > 1 good); for connect_cpu_seconds_per_Mrows lower is better (ratio < 1 good)."
+      "description": "TIER 0 H/P RATIO TREND (one line per Tier-0 gated metric). Plots the head/pinned ratio per pair over time. The bands are PER METRIC (calibrated at 2x each metric's measured noise floor, contract Amendment 2026-07-09b): null_drain_rows_per_sec ±8.5% (outer reference lines at 0.915 and 1.085) and connect_cpu_seconds_per_Mrows ±6% (inner reference lines at 0.94 and 1.06). Environment noise hits both arms and cancels in the ratio, so a line leaving ITS band is a connector signal, not weather. HOW TO READ: match each line to its own band. A 'PROVISIONAL — calibrating (n=X/20)' watermark means excursions do NOT alert yet. Flagged pairs are omitted (see the log). DIRECTION OF GOODNESS: null_drain_rows_per_sec is higher_better (above its band = improvement, below = regression); connect_cpu_seconds_per_Mrows is lower_better (below its band = improvement, above = regression)."
     },
     {
       "slice_name": "kc_t1_ratio_trend_tier1",
@@ -92,10 +97,12 @@
       "x_axis": "pair_ts",
       "metric": "ratio",
       "series": "metric_name",
-      "filters": "tier='1' AND NOT flagged AND ratio IS NOT NULL AND metric_name != 'ch_avg_rows_per_insert'",
-      "band_shading": {"center": 1.0, "lower": 0.95, "upper": 1.05, "note": "T1 ±5% (accepted-map band; see contract-drift note)"},
+      "filters": "tier='1' AND NOT flagged AND ratio IS NOT NULL AND is_tripwire = 0",
+      "band_shading": [
+        {"metric": "drain_rows_per_sec", "center": 1.0, "lower": 0.915, "upper": 1.085, "note": "±8.5% calibrated band (Amendment 2026-07-09b)"}
+      ],
       "provisional_watermark": true,
-      "description": "TIER 1 H/P RATIO TREND (one line per Tier-1 gated metric). Same construction as the Tier-0 trend but with the ±5% Tier-1 band shaded around 1.0. ch_avg_rows_per_insert is excluded from this line (it is a >=50k threshold contract, not a ratio band). HOW TO READ: inside the shaded band = OK; a line drifting out = a connector change moved that metric relative to the pinned baseline. 'PROVISIONAL — calibrating (n=X/20)' watermark = excursions do not alert yet. DIRECTION OF GOODNESS: drain_rows_per_sec higher is better (ratio > 1 good); parts_per_insert and merge_amplification lower is better (ratio < 1 good)."
+      "description": "TIER 1 H/P RATIO TREND. Plots the head/pinned ratio of drain_rows_per_sec (verified throughput) per pair over time, with its ±8.5% calibrated band shaded around 1.0 (contract Amendment 2026-07-09b). parts_per_insert is deliberately NOT on this chart — it is a binary TRIPWIRE on the head arm's absolute value (see the gated table / Tier-1 tile), not a ratio series; charting its ratio would invite reading band semantics into an invariant. HOW TO READ: inside the shaded band = OK; drifting out = a connector change moved verified throughput relative to the pinned baseline. 'PROVISIONAL — calibrating (n=X/20)' watermark = excursions do not alert yet. DIRECTION OF GOODNESS: drain_rows_per_sec is higher_better — above the band is an improvement, below the band is a regression."
     },
     {
       "slice_name": "kc_t1_excursion_flagged_log",
