@@ -2165,12 +2165,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     // STRUCT field auto-evolved as JSON column when auto.evolve.struct.to.json=true
     @Test
+    @SinceClickHouseVersion("25.2")
     public void autoEvolveStructToJsonCreatesJsonColumn() {
         Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "true");
-        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
+        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1,enable_json_type=1");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_to_json_test";
@@ -2198,12 +2199,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
 
     // V1 records (no struct) inserted first, then V2 records (with struct) trigger JSON column creation.
     @Test
+    @SinceClickHouseVersion("25.2")
     public void autoEvolveStructToJsonMixedBatchOlderRecordsGetDefault() {
         Assumptions.assumeFalse(isCluster, "Test is disabled against cluster until issue #738 is resolved");
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE, "true");
         props.put(ClickHouseSinkConfig.AUTO_EVOLVE_STRUCT_TO_JSON, "true");
-        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1");
+        props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "input_format_binary_read_json_as_string=1,enable_json_type=1");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String topic = "auto_evolve_struct_json_mixed_test";
