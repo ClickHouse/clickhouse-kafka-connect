@@ -1,4 +1,4 @@
-1d577c4597caf41a42203eb2845f390e83becd01ecd00284c3d8881d20a067cf  docs/benchmark-v2-contract.md
+886283c171289434f35f53bc0acab268197c44fc3236265f37fd3a521a9a4276  docs/benchmark-v2-contract.md
 96b099e7e3083448ea96856f533c9b00b1b09eaea11b5d986c2047b737299eb0  benchmarks/e2e/sql/perf/01_create_database.sql
 2b0d88ec6571ef3f5873d3a2c2b9a2f7b31b1c64450954c12f0bc4be58680d02  benchmarks/e2e/sql/perf/02_create_runs.sql
 03125fdfccb510db2b1abc4333d046c0cc6bdbe49c569f4897d172f8a984ba9f  benchmarks/e2e/sql/perf/03_create_metrics.sql
