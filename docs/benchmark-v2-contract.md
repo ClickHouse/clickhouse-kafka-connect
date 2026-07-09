@@ -303,7 +303,7 @@ Three outcomes, applied identically by both pipelines:
    | Metric | direction |
    |--------|-----------|
    | `throughput_rows_per_sec` (verified), `null_rows_per_sec` / `null_drain_rows_per_sec`, `drain_rows_per_sec` | `higher_better` |
-   | `parts_per_insert`, `merge_amplification`, `cpu_seconds_per_Mrows`, `serialize_seconds_per_Mrows`, `ch_insert_cpu_seconds_per_Mrows` | `lower_better` |
+   | `parts_per_insert`, `merge_amplification`, `cpu_seconds_per_Mrows`, `connect_cpu_seconds_per_Mrows`, `serialize_seconds_per_Mrows`, `ch_insert_cpu_seconds_per_Mrows` | `lower_better` |
 
    **Calibrated per-metric bands (PINNED — Amendment 2026-07-09b, supersedes the
    flat ±3%/±5% rule).** Each band is **2× the measured noise floor** for its
@@ -314,7 +314,7 @@ Three outcomes, applied identically by both pipelines:
    |----------------------------------------|-------------------|
    | `throughput_rows_per_sec` (verified) | **±9%** |
    | `null_rows_per_sec`, `null_drain_rows_per_sec`, `drain_rows_per_sec` (Tier-0 null + Kafka drain analogues) | **±8.5%** |
-   | `ch_insert_cpu_seconds_per_Mrows`, `cpu_seconds_per_Mrows` | **±6%** |
+   | `ch_insert_cpu_seconds_per_Mrows`, `cpu_seconds_per_Mrows`, `connect_cpu_seconds_per_Mrows` (Kafka client-cpu spelling; gated at the family band — Amendment 2026-07-09f) | **±6%** |
    | `serialize_seconds_per_Mrows` | **±8.5%** |
 
    in-band ⇒ ratio ∈ `[1 − band, 1 + band]` (e.g. throughput `[0.91, 1.09]`;
@@ -343,9 +343,13 @@ Three outcomes, applied identically by both pipelines:
    flat-band gated set):**
    - **Tier 1 gate** = verified throughput (`throughput_rows_per_sec` /
      `drain_rows_per_sec`, banded) **+** `parts_per_insert` (tripwire).
-   - **Tier 0 gate** = `null_rows_per_sec` (banded), the cpu-per-Mrows metric
-     (`ch_insert_cpu_seconds_per_Mrows` / `cpu_seconds_per_Mrows`, banded) and
-     `serialize_seconds_per_Mrows` (banded).
+   - **Tier 0 gate** = `null_rows_per_sec` / `null_drain_rows_per_sec` (banded)
+     and the client cpu-per-Mrows metric (`cpu_seconds_per_Mrows` Spark /
+     `connect_cpu_seconds_per_Mrows` Kafka, banded), plus
+     `serialize_seconds_per_Mrows` (banded) — **Spark-specific** (Amendment
+     2026-07-09f): Kafka does not emit a serialize decomposition and correctly
+     OMITS the metric rather than rendering a perpetual NO_DATA row; a pipeline
+     gates only the metrics it emits.
    - **`merge_amplification` is DEMOTED to WATCH-ONLY** — it is **not gated** and
      does **not** raise a REGRESSION. Single-pair excursions **<25%** are
      indistinguishable from merge-timing noise (measured within-arm floor 12.7%,
@@ -452,14 +456,20 @@ staging). H/P ratio gates are unaffected by the class difference (both arms shar
 the target), but absolute cross-connector numbers straddle a production/staging
 boundary and the reader **MUST** be told.
 
-**Matched-dataset rule (Amendment 2026-07-09d, principal ruling):** cross-
-connector comparisons are valid **only on a MATCHED dataset**. The `dataset`
-runtime key (§1.4) MUST be recorded by both pipelines, and Tab 5 MUST filter
-on dataset equality. A mismatched-dataset row (today: Kafka runs hits-10M vs
-Spark's hits 100M — record them as distinct `dataset` values, e.g. `'hits'` vs
-`'hits_10m'`) **MUST NEVER render as a comparable efficiency number** — it may
-appear only in clearly-separated per-connector context, never on a shared
-comparison series.
+**Matched-dataset rule (Amendment 2026-07-09d; enforcement mechanism concurred
+2026-07-09e):** cross-connector comparisons are valid **only on a MATCHED
+dataset**, where **matched = equal `(dataset, rows_expected)`** — the `dataset`
+runtime key (§1.4, logical shape, correctly `'hits'` on both pipelines today)
+joined with the `rows_expected` integrity metric (§2.1, volume truth).
+Rationale: `dataset` alone cannot discriminate volume variants (`'hits'`@10M
+would "match" `'hits'`@100M — today's actual state: Kafka 10,000,000 vs Spark
+99,997,497); `rows_expected` already exists on every integrity-bearing run,
+requires zero new keys and zero row mutations, and self-maintains (a future
+volume change un-matches automatically). Rows missing `rows_expected` are
+UNMATCHED by default (safe failure mode). The Tab-5 cross-connector view MUST
+implement this join, and a mismatched row **MUST NEVER render as a comparable
+efficiency number** — it may appear only in clearly-separated per-connector
+context, never on a shared comparison series.
 
 ---
 
