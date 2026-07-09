@@ -850,5 +850,12 @@ containing placeholders were checked for shell-syntax validity, not executed.
 
 **Known live-first-time risks inherited from the components** (not blockers, but
 watch): Strimzi 0.46 pod labels + `bench-connect-connect-api` DNS,
-`bench-combined-0` broker pod name, the JMX `-rate` rule output name, cadvisor
-RBAC for `connect_cpu_seconds_per_Mrows`, and the producer IRSA role (S5 prereq).
+`bench-combined-0` broker pod name, the JMX `-rate` rule output name, and the
+producer IRSA role (S5 prereq). The cadvisor CPU source for
+`connect_cpu_seconds_per_Mrows` / `kafka_worker_cpu_share_t0` is now **wired**
+(no longer a gap): `bench-poller-sa` (`infra/poller-rbac.yaml`, `nodes/proxy get`,
+applied by `scale-up.sh`) lets the poller pod scrape the kubelet cadvisor
+endpoint through the API-server node proxy — the tier-0 CPU gate is **sighted**.
+First-live-run watch: confirm the `nodes/proxy` grant resolves and the proxy URL
+returns cadvisor text (a 403 or empty body degrades the gate to UNAVAILABLE, not
+a run failure).

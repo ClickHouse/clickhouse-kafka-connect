@@ -44,7 +44,7 @@ are inserted by the orchestrator (task 30/31), not here.
 cd benchmarks/e2e/poller
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt pytest
-python -m pytest tests/ -q          # 64 tests, all pure/offline
+python -m pytest tests/ -q          # 68 tests, all pure/offline
 python -m py_compile *.py tests/*.py
 ```
 
@@ -61,7 +61,7 @@ python poller.py sample \
   --bootstrap  bench-kafka-bootstrap.kafka-bench.svc:9092 \
   --connect-url http://<connect-svc>:8083 \
   --jmx-url     http://<connect-pod>:9404/metrics \
-  --cadvisor-url https://<node>:10250/metrics/cadvisor \
+  --cadvisor-url https://kubernetes.default.svc/api/v1/nodes/<node>/proxy/metrics/cadvisor \
   --pod-name <connect-pod> --pod-container <container> \
   --poll-interval 10 --timeout 3600
 ```
@@ -204,16 +204,41 @@ edit any `benchmarks/e2e/infra/` file. Task 31 must provide:
    poller matches by the `records_consumed_rate` substring. Without this rule
    the poller tolerates the absence and the metric is not emitted.
 
-2. **metrics-server + kubelet cadvisor scrape** (for
-   `connect_cpu_seconds_per_Mrows`). The metric integrates the **cumulative**
-   cadvisor counter `container_cpu_usage_seconds_total{pod,container}` from the
-   kubelet `/metrics/cadvisor` endpoint (an instantaneous `kubectl top`
-   millicore reading cannot be integrated — see `sampler.sample_pod` docstring).
-   Task 31 MUST ensure metrics-server is installed and grant the poller RBAC to
-   read the kubelet cadvisor endpoint (or a cadvisor scrape proxy), then pass
-   `--cadvisor-url` + `--pod-name` + `--pod-container`. If absent, the CPU metric
-   is not emitted (plan open decision 1 keeps `null_drain_rows_per_sec` the sole
-   Tier-0 gate meanwhile, with CPU as diagnostic).
+2. **kubelet cadvisor scrape via the API-server node proxy** (for
+   `connect_cpu_seconds_per_Mrows` and the tier-0 CPU gate share
+   `kafka_worker_cpu_share_t0`) — **DONE (wired, sighted gate).** The metric
+   integrates the **cumulative** cadvisor counter
+   `container_cpu_usage_seconds_total{pod,container}` from the kubelet
+   `/metrics/cadvisor` endpoint (an instantaneous `kubectl top` millicore reading
+   cannot be integrated — see `sampler.sample_pod` docstring).
+
+   **Mechanism (as wired):**
+   - **URL shape:** the poller reads the cadvisor endpoint of the node hosting
+     the Connect worker *through the API-server proxy* —
+     `https://kubernetes.default.svc/api/v1/nodes/<node>/proxy/metrics/cadvisor`.
+     `run_pair.sh:deploy_connect` resolves `<node>` per-arm (the node the Connect
+     pod landed on) and exports it as `POD_CADVISOR_URL`; the same function
+     resolves the pod's main container name into `CONNECT_POD_CONTAINER`.
+     `run_poller_sample` passes both as `--cadvisor-url` / `--pod-container`
+     (plus the already-resolved `--pod-name ${CONNECT_POD}`).
+   - **Auth/TLS:** the poller pod runs as ServiceAccount `bench-poller-sa`
+     (`benchmarks/e2e/infra/poller-rbac.yaml`), which holds a **least-privilege**
+     `ClusterRole` granting exactly `get` on `nodes/proxy` (no secrets, no pods,
+     no exec). `sampler._cadvisor_auth` activates on the `https://` scheme: it
+     sends `Authorization: Bearer <token>` from the projected SA token
+     (`/var/run/secrets/kubernetes.io/serviceaccount/token`) and verifies TLS
+     against the mounted cluster CA
+     (`/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`). A plain `http://`
+     URL (tests / a pre-authorized proxy) is scraped bare, unchanged.
+   - **Apply path:** `benchmarks/e2e/infra/scale-up.sh` applies
+     `poller-rbac.yaml` (idempotent, cluster-scoped) alongside the Kafka /
+     Schema-Registry manifests, so the operator does **nothing extra** — a normal
+     scale-up provisions the gate. `run_pair.sh`'s poller pod sets
+     `serviceAccountName: bench-poller-sa`.
+
+   If the node cannot be resolved (unusual), `POD_CADVISOR_URL` is left empty and
+   the CPU metric/gate degrade to UNAVAILABLE (tolerated absence, plan open
+   decision 1) rather than failing the run.
 
 3. **`run_id` provenance.** Task 31 generates the `pair_id`/`run_id` per contract
    §1.2 (`<pair_id>-<arm>-t<tier>`) and passes the correct per-(arm,tier) `run_id`
@@ -247,10 +272,12 @@ the `run_id`, so a concurrent CH-side capture writing other names for the same
 ## Testing gap (explicit)
 
 There is **no live Kafka / ClickHouse integration test** — no cluster and no
-credentials are available in this environment. All 64 tests are offline:
+credentials are available in this environment. All 68 tests are offline:
 finalizer math against synthetic streams with hand-computed answers (including
 the guard startup grace and the cadvisor double-count exclusion), the contract
 metric-name-set assertion, the JSONL round-trip, the Prometheus parser, the
+cadvisor API-server-proxy auth (`_cadvisor_auth` http/https/no-token paths + the
+Bearer-header/CA `verify` forwarding into a capturing fake `requests`), the
 sampling loop against injected fake sources + a fake clock, and the inserter
 against a fake `requests` (row building, tier-ownership rejection, rollback
 sequence, post-insert verify + verify-mismatch rollback, credential hygiene).

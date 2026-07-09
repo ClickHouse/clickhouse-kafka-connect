@@ -1,0 +1,55 @@
+# RBAC for the in-cluster benchmark poller (task 31 — poller prerequisite 2).
+#
+# The poller integrates the cumulative cadvisor CPU counter
+# (container_cpu_usage_seconds_total) to produce connect_cpu_seconds_per_Mrows
+# and the tier-0 CPU acceptance-gate share (kafka_worker_cpu_share_t0). It reads
+# the kubelet /metrics/cadvisor endpoint of the node hosting the Connect worker
+# THROUGH the API server proxy:
+#
+#   https://kubernetes.default.svc/api/v1/nodes/<node>/proxy/metrics/cadvisor
+#
+# That proxy subresource requires `get` on `nodes/proxy`. This is the ENTIRE
+# grant — least-privilege (plan scope check): no secrets, no pods, no pods/exec,
+# no node object mutation. The poller pod authenticates with this ServiceAccount's
+# projected token (Authorization: Bearer) and verifies TLS against the mounted
+# cluster CA (see sampler._cadvisor_auth).
+#
+# Applied by scale-up.sh (idempotent) into the kafka-bench namespace; the poller
+# pod (bench-poller) sets serviceAccountName: bench-poller-sa. Cluster-scoped
+# because nodes are cluster-scoped resources.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bench-poller-sa
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bench-poller-cadvisor
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+rules:
+  # Read-only access to the kubelet cadvisor scrape via the API-server node
+  # proxy subresource. `get` only — no list/watch, no create.
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bench-poller-cadvisor
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bench-poller-cadvisor
+subjects:
+  - kind: ServiceAccount
+    name: bench-poller-sa
+    namespace: kafka-bench

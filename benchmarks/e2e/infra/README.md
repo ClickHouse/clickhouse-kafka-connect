@@ -56,10 +56,11 @@ this infra. They are listed here only so operators know they are env-sourced.
 | `storageclass-gp3.yaml` | `gp3-bench` StorageClass (EBS CSI, WaitForFirstConsumer) for the broker PVC. |
 | `kafka.yaml` | Strimzi `KafkaNodePool` + `Kafka` — KRaft, 1 combined node, RF=1 everywhere, 70Gi gp3 PVC (`deleteClaim: true`), ~2Gi broker heap. |
 | `schema-registry.yaml` | Confluent `cp-schema-registry` Deployment + Service, pointing at the Strimzi bootstrap. |
+| `poller-rbac.yaml` | `bench-poller-sa` ServiceAccount + least-privilege ClusterRole/Binding (`nodes/proxy` `get` only) so the in-cluster poller pod can scrape the kubelet cadvisor endpoint via the API-server node proxy — the sighted tier-0 CPU source (poller prerequisite 2). |
 | `env.sh` | Shared config + helpers (`require`, `require_aws_creds`); pins Strimzi version. Sourced by all scripts. NO credentials. |
 | `install-strimzi.sh` | Applies namespace, pinned Strimzi operator, gp3 StorageClass. Idempotent, no AWS calls. |
 | `provision.sh` | **One-shot**: create cluster (nodes at 0) + install operator. |
-| `scale-up.sh` | Node group 0 -> N; wait nodes Ready; apply Kafka + Registry; wait Kafka CR Ready. Idempotent. |
+| `scale-up.sh` | Node group 0 -> N; wait nodes Ready; apply poller RBAC + Kafka + Registry; wait Kafka CR Ready. Idempotent. |
 | `scale-down.sh` | Node group -> 0 + best-effort transient cleanup. **Hardened for failure paths**; exit code reflects reaching 0. |
 | `teardown.sh` | Full cluster delete (control plane included). Idempotent. |
 

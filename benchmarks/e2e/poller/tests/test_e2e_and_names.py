@@ -221,3 +221,76 @@ def test_cadvisor_other_pod_never_included():
         _FakeReq(_CADVISOR_TEXT), "http://kubelet/metrics/cadvisor",
         pod="does-not-exist", container="")
     assert res["unavailable"] is True
+
+
+# --------------------------------------------------------------------------- #
+# cadvisor API-server-proxy auth (poller prerequisite 2 — sighted CPU gate)
+# --------------------------------------------------------------------------- #
+class _FakeOs:
+    """Minimal os-like shim: `path.exists` answers from a set of present paths."""
+    def __init__(self, present):
+        self._present = set(present)
+        self.path = self
+
+    def exists(self, p):
+        return p in self._present
+
+
+def test_cadvisor_auth_http_url_is_unauthenticated():
+    # A plain http:// URL (test / pre-authorized proxy) gets no token/CA — the
+    # sampler then issues a bare GET, matching the existing offline tests.
+    headers, verify = sampler._cadvisor_auth(
+        "http://kubelet:10255/metrics/cadvisor", os_mod=_FakeOs([]))
+    assert headers is None and verify is None
+
+
+def test_cadvisor_auth_https_reads_token_and_ca(tmp_path, monkeypatch):
+    # In-cluster https:// proxy path: read the projected SA token, send it as a
+    # Bearer header, and verify TLS against the mounted cluster CA.
+    token_file = tmp_path / "token"
+    token_file.write_text("  abc.def.ghi\n")   # whitespace must be stripped
+    ca_file = tmp_path / "ca.crt"
+    ca_file.write_text("---CA---")
+    monkeypatch.setattr(sampler, "SA_TOKEN_PATH", str(token_file))
+    monkeypatch.setattr(sampler, "SA_CA_PATH", str(ca_file))
+    headers, verify = sampler._cadvisor_auth(
+        "https://kubernetes.default.svc/api/v1/nodes/n1/proxy/metrics/cadvisor",
+        os_mod=_FakeOs([str(ca_file)]))
+    assert headers == {"Authorization": "Bearer abc.def.ghi"}
+    assert verify == str(ca_file)
+
+
+def test_cadvisor_auth_https_no_token_falls_back_to_bare():
+    # https:// but the SA token is not mounted (not in-cluster) -> no auth added,
+    # so sample_pod_cadvisor degrades to a bare GET rather than crashing.
+    headers, verify = sampler._cadvisor_auth(
+        "https://kubernetes.default.svc/api/v1/nodes/n1/proxy/metrics/cadvisor",
+        os_mod=_FakeOs([]))  # os shim irrelevant; token open() will fail
+    assert headers is None and verify is None
+
+
+class _CapturingReq:
+    """Fake requests that records the kwargs of the last get() call."""
+    def __init__(self, text):
+        self._text = text
+        self.calls = []
+
+    def get(self, url, timeout=None, headers=None, verify=None):
+        self.calls.append({"url": url, "timeout": timeout,
+                           "headers": headers, "verify": verify})
+        return _FakeResp(self._text)
+
+
+def test_cadvisor_forwards_headers_and_verify_to_get():
+    # When the caller supplies auth, sample_pod_cadvisor must forward it to
+    # requests.get (Bearer header + CA verify) AND still parse correctly.
+    req = _CapturingReq(_CADVISOR_TEXT)
+    res = sampler.sample_pod_cadvisor(
+        req, "https://kubernetes.default.svc/.../proxy/metrics/cadvisor",
+        pod="connect-0", container="connect",
+        headers={"Authorization": "Bearer tok"}, verify="/ca.crt")
+    assert res["cpu_seconds_total"] == pytest.approx(60.0)
+    call = req.calls[-1]
+    assert call["headers"] == {"Authorization": "Bearer tok"}
+    assert call["verify"] == "/ca.crt"
+    assert call["timeout"] == 10

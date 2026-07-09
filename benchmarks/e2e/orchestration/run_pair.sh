@@ -412,8 +412,9 @@ rt = {
     "kafka_worker_mem_request": os.environ.get("KAFKA_WORKER_MEM_REQUEST", ""),
     "kafka_worker_mem_limit": os.environ.get("KAFKA_WORKER_MEM_LIMIT", ""),
 }
-# Tier-0-only: the CPU acceptance-gate share (compute_cpu_gate_t0). Absent when
-# the cadvisor CPU source is unwired or the gate could not compute.
+# Tier-0-only: the CPU acceptance-gate share (compute_cpu_gate_t0). The cadvisor
+# CPU source is wired (poller prerequisite 2), so this is normally present;
+# absent only if the runtime scrape failed or the gate could not compute.
 if tier == "0":
     _share = os.environ.get("KAFKA_WORKER_CPU_SHARE_T0", "")
     if _share:
@@ -546,10 +547,14 @@ phase_poller_host() {
   # Pin the poller pod to the bench nodegroup (2026-07-08 rebuild): the dedicated
   # connect-ng m6i.xlarge runs ONLY the Connect worker. `kubectl run` has no
   # --node-selector flag, so inject nodeSelector role=bench via --overrides.
+  # serviceAccountName=bench-poller-sa (infra/poller-rbac.yaml, applied by
+  # scale-up.sh) grants the projected token used to scrape the kubelet cadvisor
+  # endpoint through the API-server node proxy (poller prerequisite 2 — the
+  # sighted CPU source). Without it the pod runs as `default` (no nodes/proxy).
   kubectl -n "${NS}" run "${POLLER_POD}" --image="${PRODUCER_IMAGE:?PRODUCER_IMAGE required}" \
     --restart=Never --command \
     --labels="app.kubernetes.io/part-of=kafka-connect-benchmark-v2" \
-    --overrides='{"spec":{"nodeSelector":{"role":"bench"}}}' \
+    --overrides='{"spec":{"nodeSelector":{"role":"bench"},"serviceAccountName":"bench-poller-sa"}}' \
     -- sleep infinity || die "poller pod create failed"
   kubectl -n "${NS}" wait --for=condition=Ready pod/"${POLLER_POD}" --timeout=300s \
     || die "poller pod not Ready"
@@ -635,6 +640,29 @@ deploy_connect() {
   # migrating to the shared names later is a 1-line rename here.
   local node
   node="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" -o jsonpath='{.spec.nodeName}' 2>/dev/null)"
+
+  # Sighted CPU source (poller prerequisite 2): the cadvisor cumulative CPU
+  # counter for the Connect pod, scraped from the kubelet /metrics/cadvisor of
+  # the node the worker landed on, THROUGH the API-server node proxy. The poller
+  # pod authenticates with its bench-poller-sa token (nodes/proxy get, granted by
+  # infra/poller-rbac.yaml) and verifies TLS against the mounted cluster CA
+  # (sampler._cadvisor_auth activates on the https:// scheme). Node is resolved
+  # per-arm here (connect-ng has 1 node, but never hardcode — the pod may be
+  # rescheduled between arm deploys). Empty node -> leave POD_CADVISOR_URL empty
+  # so the poller tolerates absence rather than scraping a malformed URL.
+  if [ -n "${node}" ]; then
+    export POD_CADVISOR_URL="https://kubernetes.default.svc/api/v1/nodes/${node}/proxy/metrics/cadvisor"
+  else
+    export POD_CADVISOR_URL=""
+    warn "could not resolve the Connect worker node — POD_CADVISOR_URL empty, CPU gate stays UNAVAILABLE"
+  fi
+  # Container-label filter for the cadvisor series: the Strimzi Connect pod's
+  # single main container (containers[0].name). Empty -> the sampler sums real
+  # containers only (double-count guard excludes the "" aggregate + "POD" pause).
+  CONNECT_POD_CONTAINER="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" \
+      -o jsonpath='{.spec.containers[0].name}' 2>/dev/null)"
+  export CONNECT_POD_CONTAINER
+
   KAFKA_COMPUTE_INSTANCE_TYPE="$(kubectl get node "${node}" \
       -o jsonpath='{.metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null)"
   KAFKA_WORKER_CPU_REQUEST="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" \
@@ -810,9 +838,11 @@ append_flag() {
 #
 # Source: the finalize JSON already integrates the cadvisor CPU counter into
 # connect_cpu_seconds_per_Mrows; share = (cpu_per_Mrows x rows/1e6) /
-# (drain_seconds x limit_cores). When the cadvisor source is unwired (known
-# gap) or the limit is unreadable, the gate reports UNAVAILABLE and the key is
-# simply absent.
+# (drain_seconds x limit_cores). The cadvisor source is WIRED (poller
+# prerequisite 2: bench-poller-sa + POD_CADVISOR_URL via the API-server node
+# proxy), so the gate is normally SIGHTED. It reports UNAVAILABLE (key absent)
+# only if the scrape failed at runtime (node unresolved, proxy 403/empty) or the
+# CPU limit is unreadable — tolerated absence, never a run failure.
 # Sets/exports KAFKA_WORKER_CPU_SHARE_T0 (fraction 0..1, 4 decimals, or "").
 # --------------------------------------------------------------------------- #
 compute_cpu_gate_t0() {
@@ -839,7 +869,7 @@ PY
 )"
   export KAFKA_WORKER_CPU_SHARE_T0
   if [ -z "${KAFKA_WORKER_CPU_SHARE_T0}" ]; then
-    warn "CPU GATE (tier 0, ${RUN_ID}): UNAVAILABLE — cadvisor CPU source unwired (known gap) or CPU limit unreadable; kafka_worker_cpu_share_t0 omitted"
+    warn "CPU GATE (tier 0, ${RUN_ID}): UNAVAILABLE — cadvisor scrape failed at runtime (node unresolved / proxy 403 / empty body) or CPU limit unreadable; kafka_worker_cpu_share_t0 omitted"
     return 0
   fi
   if awk "BEGIN{exit !(${KAFKA_WORKER_CPU_SHARE_T0} >= 0.80)}"; then

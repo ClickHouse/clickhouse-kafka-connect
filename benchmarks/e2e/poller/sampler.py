@@ -27,6 +27,7 @@ the loop is unit-testable without a live cluster; :func:`build_sources` wires th
 real ones from config.
 """
 import json
+import os
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -226,8 +227,9 @@ def sample_pod(subprocess_mod, namespace: str, pod_selector: str) -> Dict[str, A
     return {"unavailable": True}
 
 
-def sample_pod_cadvisor(requests_mod, cadvisor_url: str, pod: str, container: str
-                        ) -> Dict[str, Any]:
+def sample_pod_cadvisor(requests_mod, cadvisor_url: str, pod: str, container: str,
+                        headers: Optional[Dict[str, str]] = None,
+                        verify: Any = None) -> Dict[str, Any]:
     """Scrape the kubelet cadvisor endpoint for the cumulative container CPU
     counter + working set. cadvisor exposes:
       container_cpu_usage_seconds_total{pod="...",container="..."}  (cumulative)
@@ -238,9 +240,23 @@ def sample_pod_cadvisor(requests_mod, cadvisor_url: str, pod: str, container: st
     With an explicit ``container`` filter we take exactly that container;
     without one we sum the real containers only, excluding container in
     ("", "POD").
+
+    Auth/TLS: the direct kubelet endpoint (``:10250``) and the API-server proxy
+    path (``https://kubernetes.default.svc/api/v1/nodes/<node>/proxy/metrics/cadvisor``)
+    both require a Bearer token and CA-verified TLS. ``headers`` (e.g. the
+    ServiceAccount ``Authorization: Bearer <token>``) and ``verify`` (the CA
+    bundle path, or True/False) are forwarded to ``requests.get`` when set;
+    when both are None the call is a plain unauthenticated GET (used by the
+    unit tests' fake ``requests`` and by any pre-authorized proxy). The
+    caller (:func:`build_sources`) fills these in for the in-cluster proxy path.
     Never raises; unavailable on failure."""
     try:
-        r = requests_mod.get(cadvisor_url, timeout=10)
+        kwargs: Dict[str, Any] = {"timeout": 10}
+        if headers is not None:
+            kwargs["headers"] = headers
+        if verify is not None:
+            kwargs["verify"] = verify
+        r = requests_mod.get(cadvisor_url, **kwargs)
         r.raise_for_status()
         series = _parse_prometheus(r.text)
     except Exception:
@@ -361,6 +377,34 @@ def load_samples(path: str) -> List[Dict[str, Any]]:
 # --------------------------------------------------------------------------- #
 # wiring the real sources from config (imported lazily so tests need no deps)
 # --------------------------------------------------------------------------- #
+# Standard in-pod ServiceAccount mount (projected by the kubelet). Used to
+# authenticate the kubelet cadvisor scrape through the API-server proxy.
+SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+SA_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+
+def _cadvisor_auth(cadvisor_url: str, os_mod=os):
+    """Return (headers, verify) for a cadvisor scrape.
+
+    The API-server proxy path (``https://kubernetes.default.svc/.../proxy/metrics/cadvisor``)
+    and the direct kubelet HTTPS port both require the pod's ServiceAccount
+    Bearer token and the cluster CA for TLS verification. When the SA token is
+    mounted (the in-cluster case) we send ``Authorization: Bearer <token>`` and
+    verify against the mounted CA bundle. For a plain ``http://`` URL (test /
+    pre-authorized proxy) no auth is added. Returns (None, None) when no token
+    is available so :func:`sample_pod_cadvisor` falls back to a bare GET."""
+    if not cadvisor_url.lower().startswith("https"):
+        return None, None
+    try:
+        with open(SA_TOKEN_PATH) as f:
+            token = f.read().strip()
+    except OSError:
+        return None, None
+    headers = {"Authorization": f"Bearer {token}"}
+    verify = SA_CA_PATH if os_mod.path.exists(SA_CA_PATH) else True
+    return headers, verify
+
+
 def build_sources(cfg: Dict[str, Any]):
     """Build the four zero-arg source callables from a config dict.
 
@@ -396,10 +440,13 @@ def build_sources(cfg: Dict[str, Any]):
         return sample_jmx(requests, cfg["jmx_url"])
 
     def pod_source():
-        if not cfg.get("cadvisor_url"):
+        cadvisor_url = cfg.get("cadvisor_url")
+        if not cadvisor_url:
             return {"unavailable": True}
+        headers, verify = _cadvisor_auth(cadvisor_url)
         return sample_pod_cadvisor(
-            requests, cfg["cadvisor_url"],
-            cfg.get("pod_name", ""), cfg.get("pod_container", ""))
+            requests, cadvisor_url,
+            cfg.get("pod_name", ""), cfg.get("pod_container", ""),
+            headers=headers, verify=verify)
 
     return offsets_source, connect_source, jmx_source, pod_source

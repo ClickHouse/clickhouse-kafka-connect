@@ -78,6 +78,12 @@ log "ensuring Strimzi operator + storage class are installed"
 "${INFRA_DIR}/install-strimzi.sh"
 kubectl -n "${K8S_NAMESPACE}" rollout status deploy/strimzi-cluster-operator --timeout=300s
 
+log "applying poller RBAC (bench-poller-sa + nodes/proxy get for the cadvisor CPU source)"
+# Least-privilege ServiceAccount the in-cluster poller pod runs as, granting the
+# kubelet cadvisor scrape via the API-server node proxy (poller prerequisite 2).
+# Cluster-scoped + idempotent — safe to re-apply on every scale-up.
+kubectl apply -f "${INFRA_DIR}/poller-rbac.yaml"
+
 log "applying Kafka (KRaft, 1 broker RF1) + Schema Registry manifests"
 kubectl apply -f "${INFRA_DIR}/kafka.yaml"
 kubectl apply -f "${INFRA_DIR}/schema-registry.yaml"
