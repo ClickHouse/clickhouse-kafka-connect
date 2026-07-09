@@ -145,6 +145,11 @@ record was rolled back (failed-class run whose insert failed), the cost emit is
 other arm (that would blur the first-run-arm cost convention); per-pair cost
 sums stay honest: the pair simply carries no `run_cost_usd` that night, and the
 job is already red via `PAIR_HAD_FAILURE`.
+The gate keys on the row **landing**, not on the run's outcome: a first-arm t1
+run that is **failed-class but whose `perf.runs` row still landed** (e.g. a
+tier-1 integrity mismatch, which inserts its row before the verdict) **does**
+receive the pair cost — the cost anchors to a real, present row, and the pair's
+node-hours are attributable regardless of that run's pass/fail verdict.
 
 ## Manual-validation runbook (the first e2e pair)
 
@@ -252,6 +257,46 @@ WHERE metric_name='ch_avg_rows_per_insert' AND run_id LIKE '<pair_id>%-t1';
 SELECT metric_name, value FROM perf.metrics
 WHERE run_id='<pair_id>-<first-arm>-t1'
 AND metric_name IN ('integrity_ok','rows_delivered','rows_expected','duplicate_rows');
+```
+
+### 4b. CPU acceptance gate + deployed-instrument keys
+
+**CPU acceptance gate (tier 0 only).** After the tier-0 drain finalizes,
+`compute_cpu_gate_t0` integrates the Connect worker's cadvisor CPU counter over
+the drain window and computes its **share of the CPU limit** =
+`(connect_cpu_seconds_per_Mrows × rows/1e6) / (drain_seconds × limit_cores)`.
+The verdict is printed loudly and is **LOG-ONLY** (never auto-flags — the
+quarantine flag decision is the manager's):
+
+| Verdict | Condition |
+| --- | --- |
+| `PASS` | share `< 0.80` |
+| `INSTRUMENT_RESIZE_SUSPECT` | share `>= 0.80` (the instrument, not the connector, may be the bottleneck) |
+| `UNAVAILABLE` | cadvisor scrape failed at runtime (node unresolved, proxy 403/empty) or the CPU limit is unreadable — tolerated, never a run failure |
+
+The share is **not bounded to 0..1**: a worker can burn more CPU-seconds than
+`limit × drain` (bursting, brief over-limit before throttling, multi-core
+accounting), so values `> 1.0` are legitimate and still classify as
+`INSTRUMENT_RESIZE_SUSPECT`. When sighted, the share also lands as the tier-0
+runtime key `kafka_worker_cpu_share_t0` (fixed to 4 decimals).
+
+**Deployed-instrument keys** (kafka-namespaced until the shared pinned spellings
+land) describe the substrate the run executed on, so a result is reproducible
+and comparable only against a matched instrument:
+
+| Key | Meaning |
+| --- | --- |
+| `kafka_compute_instance_type` | Connect worker node instance type (e.g. `m6i.xlarge`) |
+| `kafka_worker_cpu_request` / `kafka_worker_cpu_limit` | Connect worker pod CPU request / limit |
+| `kafka_worker_mem_request` / `kafka_worker_mem_limit` | Connect worker pod memory request / limit |
+| `kafka_worker_cpu_share_t0` | tier-0 CPU-gate share of limit (see above; tier 0 only, sighted-only) |
+
+```sql
+SELECT run_id,
+       runtime['kafka_compute_instance_type'] AS instance,
+       runtime['kafka_worker_cpu_limit']      AS cpu_limit,
+       runtime['kafka_worker_cpu_share_t0']   AS cpu_share_t0
+FROM perf.runs WHERE runtime['pair_id']='<pair_id>' ORDER BY run_id;
 ```
 
 ### 5. Confirm cleanup

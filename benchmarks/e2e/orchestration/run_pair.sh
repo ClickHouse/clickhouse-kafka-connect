@@ -241,6 +241,76 @@ validate_image_ref() {
   return 1
 }
 
+# --------------------------------------------------------------------------- #
+# Pre-launch provenance gate (stale-pin lesson): a pre-fix producer digest once
+# wasted a full launch. AFTER digest validation, for each ECR-hosted image ref,
+# WARN LOUDLY (never fail) if a NEWER image was pushed to that repo AFTER the
+# pinned digest's own push time. Pinned-arm refs are LEGITIMATELY old, so this
+# is an operator eyeball prompt, not a gate: the run proceeds regardless.
+# Skips silently for non-ECR refs and when aws is unavailable. Kept fast (one
+# describe-images per ref = 3 calls for arm0/arm1/producer).
+#
+# _ecr_newer_push_exists: PURE comparator (unit-testable offline). Reads an
+# `aws ecr describe-images` JSON document on stdin and the pinned sha256 digest
+# as $1. Echoes "1" if any image in the repo was pushed strictly AFTER the
+# pinned digest's imagePushedAt; "0" otherwise (including when the pinned digest
+# is not found, or timestamps are missing — fail safe to no-warning). No AWS.
+_ecr_newer_push_exists() {
+  local pinned_digest="$1"
+  # The describe-images JSON arrives on STDIN, so the python program itself is
+  # read from fd 3 (heredoc) — `python3 -` would consume stdin as the program.
+  python3 /dev/fd/3 "${pinned_digest}" 3<<'PY'
+import json, sys
+pinned = sys.argv[1]
+try:
+    doc = json.load(sys.stdin)
+    imgs = doc.get("imageDetails", []) if isinstance(doc, dict) else doc
+    # Find the pinned image's push time.
+    pinned_at = None
+    for im in imgs:
+        if im.get("imageDigest") == pinned:
+            pinned_at = im.get("imagePushedAt")
+            break
+    if pinned_at is None:
+        print("0"); sys.exit(0)
+    newer = any(
+        im.get("imageDigest") != pinned
+        and im.get("imagePushedAt") is not None
+        and str(im["imagePushedAt"]) > str(pinned_at)
+        for im in imgs
+    )
+    print("1" if newer else "0")
+except Exception:
+    print("0")
+PY
+}
+
+check_image_provenance() {
+  local name="$1" ref="$2"
+  command -v aws >/dev/null 2>&1 || return 0
+  # digest ref = repo@sha256:...  ; only ECR-hosted repos are checked.
+  case "${ref}" in *@sha256:*) : ;; *) return 0 ;; esac
+  local repo="${ref%@*}" pinned="${ref##*@}"
+  local registry="${repo%%/*}"
+  case "${registry}" in
+    *.dkr.ecr.*.amazonaws.com) : ;;
+    *) return 0 ;;   # non-ECR ref: skip silently
+  esac
+  local region ecr_repo json newer
+  region="$(printf '%s' "${registry}" | sed -n 's/.*\.dkr\.ecr\.\([^.]*\)\.amazonaws\.com/\1/p')"
+  ecr_repo="${repo#*/}"
+  [ -n "${region}" ] && [ -n "${ecr_repo}" ] || return 0
+  json="$(aws ecr describe-images --region "${region}" \
+            --repository-name "${ecr_repo}" \
+            --query '{imageDetails: imageDetails[].{imageDigest: imageDigest, imagePushedAt: imagePushedAt}}' \
+            --output json 2>/dev/null)" || return 0
+  [ -n "${json}" ] || return 0
+  newer="$(printf '%s' "${json}" | _ecr_newer_push_exists "${pinned}")"
+  if [ "${newer}" = "1" ]; then
+    warn "PROVENANCE (${name}): a NEWER image was pushed to ${ecr_repo} AFTER the pinned digest (${pinned}) — confirm your pin is intentional. (Pinned-arm refs are legitimately old; this is informational, the run proceeds.)"
+  fi
+}
+
 # Rollback-then-die (review F13): for failures that occur AFTER this run_id has
 # started landing rows (SQL 21 pre-run covariates onward), roll the run's
 # partial perf rows back before dying so a truncate/poller/finalize failure
@@ -843,7 +913,18 @@ append_flag() {
 # proxy), so the gate is normally SIGHTED. It reports UNAVAILABLE (key absent)
 # only if the scrape failed at runtime (node unresolved, proxy 403/empty) or the
 # CPU limit is unreadable — tolerated absence, never a run failure.
-# Sets/exports KAFKA_WORKER_CPU_SHARE_T0 (fraction 0..1, 4 decimals, or "").
+# Sets/exports KAFKA_WORKER_CPU_SHARE_T0 (a ratio of used-to-limit CPU-seconds,
+# >=0, 4 decimals, or ""). NOTE: this is NOT bounded to 0..1 — a worker can burn
+# more CPU-seconds than its limit x drain (bursting above request up to the
+# limit, brief over-limit before throttling, multi-core accounting), so the
+# ratio legitimately exceeds 1.0; the >=0.80 gate treats anything at/above the
+# threshold (including >1) as INSTRUMENT_RESIZE_SUSPECT.
+# M4: the cpu_seconds delta is integrated by the poller over the finalize
+# window, which spans the FIRST valid cadvisor sample to the LAST valid sample
+# of the tier-0 drain (connect_cpu_seconds_per_Mrows in the finalize JSON) —
+# not the wall-clock run_start/run_end. drain_seconds below matches that same
+# first->last-valid-sample span, so the ratio's numerator and denominator are
+# taken over the identical window.
 # --------------------------------------------------------------------------- #
 compute_cpu_gate_t0() {
   local fin="${ARTIFACT_DIR}/finalize-${RUN_ID}.json"
@@ -1259,6 +1340,11 @@ main() {
     || die "PRODUCER_IMAGE failed digest validation"
   export ARM0_IMAGE ARM1_IMAGE PRODUCER_IMAGE
   log "images validated (digest-pinned): arm0=${ARM0_IMAGE} arm1=${ARM1_IMAGE} producer=${PRODUCER_IMAGE}"
+
+  # Pre-launch provenance gate: non-fatal newer-push eyeball for ECR refs.
+  check_image_provenance ARM0_IMAGE "${ARM0_IMAGE}"
+  check_image_provenance ARM1_IMAGE "${ARM1_IMAGE}"
+  check_image_provenance PRODUCER_IMAGE "${PRODUCER_IMAGE}"
 
   # pair_id = RUN_ID from lib_runid.sh (contract §1.2); nogit MUST fail.
   # shellcheck source=/dev/null

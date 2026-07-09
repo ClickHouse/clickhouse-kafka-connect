@@ -126,8 +126,12 @@ def main() -> None:
         "run_end": os.environ.get("RUN_END") or os.environ.get("RUN_START", ""),
         "settle_end": os.environ.get("SETTLE_END") or os.environ.get("RUN_END")
         or os.environ.get("RUN_START", ""),
-        "settle_seconds": float(os.environ.get("SETTLE_SECONDS", "0")),
-        "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT", "0")),
+        # `or "0"` (not just a default): run_pair resets SETTLE_SECONDS="" per
+        # arm and the pre-settle covariates SQL runs with it SET-BUT-EMPTY, so
+        # os.environ.get(..., "0") returns "" and float("") throws ValueError.
+        # The `or` collapses set-but-empty to "0" as well as unset.
+        "settle_seconds": float(os.environ.get("SETTLE_SECONDS") or "0"),
+        "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT") or "0"),
         # Kafka query_log filter: connector CH user, '' => table scope only.
         "query_user": os.environ.get("QUERY_LOG_USER", ""),
         "source_glob": source_glob,

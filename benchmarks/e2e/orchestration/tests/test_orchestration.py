@@ -812,3 +812,91 @@ def test_cpu_gate_wired_after_tier0_finalize_and_log_only():
     gate = _extract_function(src, "compute_cpu_gate_t0")
     assert "INSTRUMENT_RESIZE_SUSPECT" in gate and "PASS" in gate
     assert "append_flag" not in gate and "fail_run" not in gate and "die " not in gate
+
+
+# --------------------------------------------------------------------------- #
+# Pre-launch provenance gate (fix 2): the _ecr_newer_push_exists comparator is a
+# PURE function (describe-images JSON on stdin + pinned digest as $1). Source
+# run_pair.sh and feed it synthetic JSON so the newer-push logic is exercised
+# fully offline — no AWS, no network.
+# --------------------------------------------------------------------------- #
+def _newer_push_exists(describe_images_doc, pinned_digest):
+    """Run the sourced _ecr_newer_push_exists with synthetic JSON on stdin.
+    Returns the printed '1'/'0'."""
+    script = f'source "{RUN_PAIR}"; _ecr_newer_push_exists "{pinned_digest}"'
+    r = subprocess.run(["bash", "-c", script],
+                       input=json.dumps(describe_images_doc),
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+_PINNED = "sha256:" + "a" * 64
+_NEWER = "sha256:" + "b" * 64
+_OLDER = "sha256:" + "c" * 64
+
+
+def test_provenance_warns_when_newer_push_exists():
+    doc = {"imageDetails": [
+        {"imageDigest": _PINNED, "imagePushedAt": "2026-07-01T00:00:00+00:00"},
+        {"imageDigest": _NEWER, "imagePushedAt": "2026-07-05T00:00:00+00:00"},
+    ]}
+    assert _newer_push_exists(doc, _PINNED) == "1"
+
+
+def test_provenance_quiet_when_pin_is_newest():
+    doc = {"imageDetails": [
+        {"imageDigest": _OLDER, "imagePushedAt": "2026-07-01T00:00:00+00:00"},
+        {"imageDigest": _PINNED, "imagePushedAt": "2026-07-05T00:00:00+00:00"},
+    ]}
+    assert _newer_push_exists(doc, _PINNED) == "0"
+
+
+def test_provenance_quiet_when_only_pin_present():
+    doc = {"imageDetails": [
+        {"imageDigest": _PINNED, "imagePushedAt": "2026-07-05T00:00:00+00:00"},
+    ]}
+    assert _newer_push_exists(doc, _PINNED) == "0"
+
+
+def test_provenance_fail_safe_when_pin_not_found():
+    # Pinned digest absent from the repo listing -> no push time -> no warning
+    # (fail safe: never warn on data we cannot anchor).
+    doc = {"imageDetails": [
+        {"imageDigest": _NEWER, "imagePushedAt": "2026-07-05T00:00:00+00:00"},
+    ]}
+    assert _newer_push_exists(doc, _PINNED) == "0"
+
+
+def test_provenance_fail_safe_on_missing_timestamps():
+    doc = {"imageDetails": [
+        {"imageDigest": _PINNED},
+        {"imageDigest": _NEWER},
+    ]}
+    assert _newer_push_exists(doc, _PINNED) == "0"
+
+
+def test_provenance_gate_is_non_fatal_and_ecr_scoped():
+    """check_image_provenance must WARN (never die/fail), only touch ECR refs,
+    and stay fast (a single describe-images per ref)."""
+    src = open(RUN_PAIR).read()
+    fn = _extract_function(src, "check_image_provenance")
+    # non-fatal: no die/fail_run/exit inside the gate
+    assert "die " not in fn and "fail_run" not in fn and "exit " not in fn
+    # loud warning is the only signal
+    assert "warn " in fn and "confirm your pin is intentional" in fn
+    # ECR-scoped: skips non-ECR / non-digest / no-aws silently
+    assert "dkr.ecr" in fn
+    assert "command -v aws" in fn
+    # one describe-images call (fast)
+    assert fn.count("aws ecr describe-images") == 1
+
+
+def test_provenance_gate_wired_after_validation_before_pair():
+    """The gate runs AFTER digest validation and BEFORE any cluster mutation
+    (phase_scale_up) so a stale pin is eyeballed pre-launch."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "main")
+    assert body.index("images validated (digest-pinned)") \
+        < body.index("check_image_provenance ARM0_IMAGE") \
+        < body.index("phase_scale_up")

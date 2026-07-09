@@ -122,26 +122,59 @@ scale_group_to_zero() {
     warn "eksctl scale ${ng} returned non-zero (may already be at 0 or mid-transition); verifying actual state"
   fi
 
-  log "verifying node group ${ng} desired capacity is 0"
-  local desired
-  desired="$(eksctl get nodegroup \
-              --cluster "${CLUSTER_NAME}" \
-              --region "${AWS_REGION}" \
-              --name "${ng}" \
-              -o json 2>/dev/null \
-            | python3 -c 'import sys,json
+  # Read back desired capacity. `eksctl scale` returns before the ASG desired
+  # is updated (async), so a single immediate read RACES the update and can see
+  # the pre-scale value. Poll with a bounded retry (12x10s = 2min) and judge
+  # only the final observed value.
+  read_desired() {
+    eksctl get nodegroup \
+        --cluster "${CLUSTER_NAME}" \
+        --region "${AWS_REGION}" \
+        --name "${ng}" \
+        -o json 2>/dev/null \
+      | python3 -c 'import sys,json
 try:
     d=json.load(sys.stdin)
     print(d[0].get("DesiredCapacity", d[0].get("Desired", "unknown")))
 except Exception:
-    print("unknown")' 2>/dev/null || echo unknown)"
+    print("unknown")' 2>/dev/null || echo unknown
+  }
 
-  if [ "${desired}" = "0" ]; then
-    log "  node group ${ng} desired capacity is 0."
-    return 0
+  log "verifying node group ${ng} desired capacity reaches 0 (bounded retry: eksctl scale is async)"
+  local desired i
+  for i in $(seq 1 12); do
+    desired="$(read_desired)"
+    if [ "${desired}" = "0" ]; then
+      break
+    fi
+    log "  attempt ${i}/12: desired='${desired}' (not 0 yet); waiting 10s for async ASG update"
+    sleep 10
+  done
+
+  if [ "${desired}" != "0" ]; then
+    warn "node group ${ng} did NOT reach desired 0 after retries (desired='${desired}')."
+    return 1
   fi
-  warn "node group ${ng} did NOT reach desired 0 (desired='${desired}')."
-  return 1
+
+  # desired=0 is reached. The LAST node commonly lingers ~15min in
+  # Terminating:Wait under the EKS-managed drain lifecycle hook: at zero the
+  # kube-system coredns PodDisruptionBudget is unsatisfiable, so the hook holds
+  # the instance until its heartbeat timeout, then force-terminates. This is
+  # EXPECTED, not a leak — desired=0 means the ASG will not replace it and the
+  # cost is bounded (~15min of one node, ~$0.02). Only desired!=0 is a leak.
+  local instances
+  instances="$(aws ec2 describe-instances \
+        --region "${AWS_REGION}" \
+        --filters "Name=tag:eks:nodegroup-name,Values=${ng}" \
+                  "Name=instance-state-name,Values=pending,running,shutting-down,stopping" \
+        --query 'length(Reservations[].Instances[])' \
+        --output text 2>/dev/null || echo unknown)"
+  if [ -n "${instances}" ] && [ "${instances}" != "0" ] && [ "${instances}" != "unknown" ]; then
+    log "  node group ${ng}: desired=0 reached; last node(s) draining under lifecycle hook (expected, ~15min, ~\$0.02) — NOT a leak (${instances} instance(s) still Terminating)."
+  else
+    log "  node group ${ng} desired capacity is 0."
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------------------
