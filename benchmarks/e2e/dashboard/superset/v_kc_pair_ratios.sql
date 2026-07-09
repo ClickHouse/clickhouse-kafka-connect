@@ -13,8 +13,8 @@
 --   watch-only (no verdict row), ch_avg_rows_per_insert degated (no verdict row),
 --   precedence FLAG > NO_DATA/TRIPWIRE/band, alert_now rule (TRIPWIRE alerts
 --   through the calibration hold). See the canonical file's header for the full
---   amendment notes and the connect_cpu band REGISTRY NOTE (flagged for a
---   contract amendment).
+--   amendment notes; the connect_cpu ±6% band spelling and the Kafka serialize
+--   omission are RATIFIED by Amendment 2026-07-09f (contract at bd249f2).
 --
 -- ADAPTATION DELTA vs the canonical sql/v_kc_pair_ratios.sql
 --   The verdict semantics are PRESERVED BYTE-FOR-BYTE (the `gated` registry, the

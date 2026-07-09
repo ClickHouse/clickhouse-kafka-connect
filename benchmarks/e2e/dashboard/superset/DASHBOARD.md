@@ -125,15 +125,11 @@ FLAG > NO_DATA, and the `alert_now` rule. The fixture was extended to 31 named
 cells (+ zero-row exclusion asserts) and BOTH acceptance suites re-ran green —
 see `../README.md` for the full amended map and truth table.
 
-Items still FLAGGED for upstream (not resolved here):
+Follow-ups: the two contract gaps A2 flagged (connect_cpu band spelling; the
+Spark-centric serialize wording) were RATIFIED upstream by Amendment 2026-07-09f
+(contract re-vendored at `bd249f2`) — the registry here already matched, so no
+code change resulted. Still flagged, not resolved:
 
-- `connect_cpu_seconds_per_Mrows` is absent from the contract's pinned band
-  table (only `ch_insert_cpu_seconds_per_Mrows`/`cpu_seconds_per_Mrows` appear);
-  gated at the family ±6% pending a one-line contract amendment.
-- The contract §3 Tier-0 gate composition names `serialize_seconds_per_Mrows`,
-  which the Kafka pipeline does not emit (Spark event-log specific) — the wording
-  is Spark-centric; the Kafka registry omits it rather than gate a perpetual
-  NO_DATA row.
 - Spark's shipped `v_verdict_fixture_check.sql` cannot represent NO_DATA for an
   absent HEAD tripwire metric (its INNER-JOIN shape drops the row entirely),
   where the contract says NULL/absent parts ⇒ NO_DATA — a Spark-side gap, noted

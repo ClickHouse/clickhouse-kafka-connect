@@ -15,8 +15,8 @@
 --         null_drain_rows_per_sec / drain_rows_per_sec   ±8.5%  (=> 0.085)
 --         connect_cpu_seconds_per_Mrows                  ±6%    (=> 0.06)
 --       (throughput_rows_per_sec ±9% and serialize_seconds_per_Mrows ±8.5% are
---        Spark-side spellings; the Kafka pipeline does not emit them — see the
---        REGISTRY NOTE below.)
+--        Spark-side spellings; the Kafka pipeline does not emit them and per
+--        Amendment 2026-07-09f correctly omits them — see the REGISTRY NOTE.)
 --     * parts_per_insert is a binary TRIPWIRE on the HEAD arm's ABSOLUTE value:
 --       exactly 1.0 => OK; ANY deviation => TRIPWIRE (structural invariant break,
 --       alerts regardless of calibration); NULL/absent => NO_DATA as usual.
@@ -36,14 +36,13 @@
 --   Direction spellings 'higher_better'/'lower_better' are now CONTRACT-PINNED
 --   (§3 direction table) — the former "pending amendment" assumption is resolved.
 --
--- REGISTRY NOTE — connect_cpu_seconds_per_Mrows band (FLAGGED for amendment):
---   the contract's pinned band table lists the cpu-per-Mrows family as
---   `ch_insert_cpu_seconds_per_Mrows` / `cpu_seconds_per_Mrows` (±6%) but does
---   NOT list the Kafka client-side spelling `connect_cpu_seconds_per_Mrows`
---   (plan §5 [gate]; poller README "tier-0 CPU gate"; emitted by the poller).
---   It is gated here at the family's ±6% pending a one-line contract amendment
---   adding the spelling to that row — mirroring how the drain row already names
---   its "Kafka drain analogues". Raised in the #33 Stage A2 report.
+-- REGISTRY NOTE — connect_cpu_seconds_per_Mrows band (RATIFIED — Amendment
+--   2026-07-09f, contract re-vendored at bd249f2): the pinned band table now
+--   names the Kafka client-cpu spelling `connect_cpu_seconds_per_Mrows` in the
+--   cpu-per-Mrows family row (±6%), and the Tier-0 gate composition marks
+--   `serialize_seconds_per_Mrows` as Spark-specific ("a pipeline gates only the
+--   metrics it emits") — both exactly as this registry implements. The Stage-A2
+--   assumption note is resolved; no code change was needed.
 --
 -- WHY IT EXISTS AS A BUILD-TIME ACCEPTANCE ARTIFACT
 --   Per the principal mandate, any verdict-emitting artifact requires fixture-

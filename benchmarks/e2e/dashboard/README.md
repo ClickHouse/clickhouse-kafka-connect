@@ -73,13 +73,11 @@ NOT gated (deliberately absent from the registry — no verdict rows):
   include it; it is a plain §2.1 covariate. The fixture asserts zero rows.
 - `settle_seconds` / `settle_timed_out` / `merge_pool_peak_pct` — covariates (unchanged).
 
-**`connect_cpu_seconds_per_Mrows` band spelling note (flagged for a contract
-amendment):** the contract's pinned band table lists the cpu-per-Mrows family as
-`ch_insert_cpu_seconds_per_Mrows` / `cpu_seconds_per_Mrows` (±6%) but does not
-name the Kafka client-side spelling `connect_cpu_seconds_per_Mrows` (plan §5
-[gate]; poller README "tier-0 CPU gate"). It is gated at the family's ±6% pending
-a one-line amendment adding the spelling — mirroring the drain row's "Kafka drain
-analogues" parenthetical.
+**`connect_cpu_seconds_per_Mrows` band spelling (RATIFIED — Amendment
+2026-07-09f, contract at `bd249f2`):** the pinned band table now names the Kafka
+client-cpu spelling in the cpu-per-Mrows family row (±6%), and the Tier-0 gate
+composition marks `serialize_seconds_per_Mrows` as Spark-specific ("a pipeline
+gates only the metrics it emits") — both exactly as this registry implements.
 
 ## Alerting (contract §3)
 
