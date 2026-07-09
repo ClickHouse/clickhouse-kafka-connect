@@ -654,3 +654,161 @@ def test_pair_continues_and_exits_nonzero_on_failure():
     assert main_body.index("phase_scale_down") < main_body.index('PAIR_HAD_FAILURE}" = "1"')
     # ambient OUTCOME must be cleared before any run
     assert "unset OUTCOME" in main_body
+
+
+# --------------------------------------------------------------------------- #
+# Pair-cost §1.2 join-rule gate: run_cost_usd only attaches to a run_id whose
+# perf.runs row actually landed (no orphaned metrics for rolled-back records).
+# --------------------------------------------------------------------------- #
+def test_capture_and_record_tracks_recorded_runs():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "capture_and_record")
+    append = 'RECORDED_RUNS="${RECORDED_RUNS} ${RUN_ID}"'
+    assert append in body
+    # the append happens AFTER the insert_run_record gate, BEFORE the export
+    assert body.index("insert_run_record.py") < body.index(append) \
+        < body.index("export_metrics_to_dwh.py")
+
+
+def test_pair_cost_skipped_when_target_row_never_landed():
+    """phase_pair_cost must consult RECORDED_RUNS and skip-with-loud-warn (no
+    silent re-anchor to the other arm) when the first-arm t1 row was rolled
+    back — an orphaned run_cost_usd would violate the §1.2 join rule."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_pair_cost")
+    assert "RECORDED_RUNS" in body
+    assert "PHASE 3c SKIPPED" in body
+    assert "return 0" in body            # skip, not die (job already red)
+    assert "re-anchor" in body           # the no-silent-re-anchor decision is documented
+    # the gate sits BEFORE the emit
+    assert body.index("RECORDED_RUNS") < body.index("emit_run_cost.py")
+
+
+def test_pair_cost_gate_matching_logic():
+    """Exercise the exact case-pattern used by phase_pair_cost: substring-safe
+    matching on the space-delimited RECORDED_RUNS list."""
+    script = '''
+RECORDED_RUNS="$1"; cost_run_id="$2"
+case " ${RECORDED_RUNS} " in
+  *" ${cost_run_id} "*) echo EMIT ;;
+  *) echo SKIP ;;
+esac
+'''
+    def gate(recorded, target):
+        return subprocess.run(["bash", "-c", script, "bash", recorded, target],
+                              capture_output=True, text=True).stdout.strip()
+    pair = "2026-07-09T04-15-32Z-abc1234"
+    assert gate(f"{pair}-head-t0 {pair}-head-t1", f"{pair}-head-t1") == "EMIT"
+    assert gate(f"{pair}-head-t0", f"{pair}-head-t1") == "SKIP"
+    # substring safety: a longer id containing the target must not match
+    assert gate(f"{pair}-head-t1-extra", f"{pair}-head-t1") == "SKIP"
+    assert gate("", f"{pair}-head-t1") == "SKIP"
+
+
+# --------------------------------------------------------------------------- #
+# Instrument runtime keys (kafka-namespaced, deployed truth) + CPU gate.
+# --------------------------------------------------------------------------- #
+INSTRUMENT_ENV = {
+    "KAFKA_COMPUTE_INSTANCE_TYPE": "m6i.xlarge",
+    "KAFKA_WORKER_CPU_REQUEST": "3",
+    "KAFKA_WORKER_CPU_LIMIT": "4",
+    "KAFKA_WORKER_MEM_REQUEST": "5Gi",
+    "KAFKA_WORKER_MEM_LIMIT": "6Gi",
+}
+
+
+def test_runtime_map_instrument_keys_present():
+    rt = _build_runtime_json("head", "1", extra_env=INSTRUMENT_ENV)
+    assert rt["kafka_compute_instance_type"] == "m6i.xlarge"
+    assert rt["kafka_worker_cpu_request"] == "3"
+    assert rt["kafka_worker_cpu_limit"] == "4"
+    assert rt["kafka_worker_mem_request"] == "5Gi"
+    assert rt["kafka_worker_mem_limit"] == "6Gi"
+
+
+def test_runtime_map_instrument_keys_absent_when_unread():
+    """Unreadable deployed values must be ABSENT (not empty strings)."""
+    rt = _build_runtime_json("head", "1")
+    for k in ("kafka_compute_instance_type", "kafka_worker_cpu_request",
+              "kafka_worker_cpu_limit", "kafka_worker_mem_request",
+              "kafka_worker_mem_limit"):
+        assert k not in rt
+
+
+def test_runtime_map_cpu_share_tier0_only():
+    """kafka_worker_cpu_share_t0 rides the TIER-0 row only (arm-scoped value,
+    but a t1 row carrying a t0 gate number would be misleading)."""
+    env = dict(INSTRUMENT_ENV, KAFKA_WORKER_CPU_SHARE_T0="0.6100")
+    rt0 = _build_runtime_json("head", "0", extra_env=env)
+    rt1 = _build_runtime_json("head", "1", extra_env=env)
+    assert rt0["kafka_worker_cpu_share_t0"] == "0.6100"
+    assert "kafka_worker_cpu_share_t0" not in rt1
+    # and absent on tier 0 when the gate could not compute
+    rt0_none = _build_runtime_json("head", "0", extra_env=INSTRUMENT_ENV)
+    assert "kafka_worker_cpu_share_t0" not in rt0_none
+
+
+def _cpu_gate_share(finalize_doc, limit):
+    """Run the extracted compute_cpu_gate_t0 python body against a synthetic
+    finalize JSON; returns the printed share string ('' = unavailable)."""
+    import tempfile
+    src = open(RUN_PAIR).read()
+    m = re.search(
+        r'compute_cpu_gate_t0\(\).*?python3 - "\$\{fin\}" "\$\{KAFKA_WORKER_CPU_LIMIT:-\}" <<\'PY\'\n(.*?)\nPY',
+        src, re.S)
+    assert m, "could not extract compute_cpu_gate_t0 python body"
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(finalize_doc, f)
+        path = f.name
+    out = subprocess.run([sys.executable, "-c", m.group(1), path, limit],
+                         capture_output=True, text=True)
+    os.unlink(path)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip()
+
+
+def test_cpu_gate_math():
+    # cpu_seconds = 12 s/Mrows * 10 Mrows = 120 CPU-s over a 60 s drain with a
+    # 4-core limit => 120 / (60*4) = 0.5
+    doc = {"rows_expected": 10_000_000,
+           "scalars": {"connect_cpu_seconds_per_Mrows": 12.0,
+                       "drain_seconds": 60.0}}
+    assert _cpu_gate_share(doc, "4") == "0.5000"
+    # millicore limit form: 4000m == 4 cores
+    assert _cpu_gate_share(doc, "4000m") == "0.5000"
+    # saturated instrument: 240 CPU-s / (60*1 core) = 4.0 (prints SUSPECT)
+    doc2 = {"rows_expected": 10_000_000,
+            "scalars": {"connect_cpu_seconds_per_Mrows": 24.0,
+                        "drain_seconds": 60.0}}
+    assert _cpu_gate_share(doc2, "1000m") == "4.0000"
+
+
+def test_cpu_gate_unavailable_paths():
+    base = {"rows_expected": 10_000_000,
+            "scalars": {"connect_cpu_seconds_per_Mrows": 12.0,
+                        "drain_seconds": 60.0}}
+    # cadvisor unwired -> CPU scalar is None -> unavailable
+    doc = json.loads(json.dumps(base))
+    doc["scalars"]["connect_cpu_seconds_per_Mrows"] = None
+    assert _cpu_gate_share(doc, "4") == ""
+    # no limit readable -> unavailable
+    assert _cpu_gate_share(base, "") == ""
+    # zero drain -> unavailable (no division blow-up)
+    doc2 = json.loads(json.dumps(base))
+    doc2["scalars"]["drain_seconds"] = 0
+    assert _cpu_gate_share(doc2, "4") == ""
+
+
+def test_cpu_gate_wired_after_tier0_finalize_and_log_only():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_arm")
+    # gate runs on the tier-0 SUCCESS path, after finalize, before capture
+    assert body.index("finalize_and_insert_metrics 0") \
+        < body.index("compute_cpu_gate_t0") \
+        < body.index('capture_and_record "${arm}" "0"')
+    # per-run reset so arm 2 never inherits arm 1's share
+    assert 'KAFKA_WORKER_CPU_SHARE_T0=""' in body
+    # verdict is LOG-ONLY: the gate function must not flag or fail the run
+    gate = _extract_function(src, "compute_cpu_gate_t0")
+    assert "INSTRUMENT_RESIZE_SUSPECT" in gate and "PASS" in gate
+    assert "append_flag" not in gate and "fail_run" not in gate and "die " not in gate

@@ -119,6 +119,13 @@ die()  { printf '\033[1;31m[run_pair:error]\033[0m %s\n' "$*" >&2; exit 1; }
 # remaining run) but main() exits non-zero at the end for CI visibility.
 PAIR_HAD_FAILURE=0
 
+# Space-separated run_ids whose perf.runs row ACTUALLY landed (appended by
+# capture_and_record after a successful insert_run_record). phase_pair_cost
+# consults this before emitting run_cost_usd: a metric row for a run_id with
+# no runs row would violate the contract §1.2 join rule (metrics inherit their
+# tagging solely through the runs-row join).
+RECORDED_RUNS=""
+
 # --------------------------------------------------------------------------- #
 # Image reference validation — DIGEST-PINNED BY DEFAULT (stale-tag class fix).
 #
@@ -393,7 +400,24 @@ rt = {
     "kafka_connect_version": os.environ.get("KAFKA_CONNECT_VERSION", ""),
     "strimzi_version": os.environ.get("STRIMZI_VERSION", ""),
     "plugin_sha256": os.environ.get("PLUGIN_SHA256", ""),
+    # --- deployed-instrument keys (principal directive, pair #2 onward) ---
+    # kafka-NAMESPACED for now: the shared pinned spellings arrive in a pending
+    # contract amendment; namespaced keys are contract-legal today (§1.4
+    # connector-specific rule) and the later migration to the shared names is a
+    # 1-line rename. Values are DEPLOYED truth read back from the live pod/node
+    # by deploy_connect (never template intent — the provenance lesson).
+    "kafka_compute_instance_type": os.environ.get("KAFKA_COMPUTE_INSTANCE_TYPE", ""),
+    "kafka_worker_cpu_request": os.environ.get("KAFKA_WORKER_CPU_REQUEST", ""),
+    "kafka_worker_cpu_limit": os.environ.get("KAFKA_WORKER_CPU_LIMIT", ""),
+    "kafka_worker_mem_request": os.environ.get("KAFKA_WORKER_MEM_REQUEST", ""),
+    "kafka_worker_mem_limit": os.environ.get("KAFKA_WORKER_MEM_LIMIT", ""),
 }
+# Tier-0-only: the CPU acceptance-gate share (compute_cpu_gate_t0). Absent when
+# the cadvisor CPU source is unwired or the gate could not compute.
+if tier == "0":
+    _share = os.environ.get("KAFKA_WORKER_CPU_SHARE_T0", "")
+    if _share:
+        rt["kafka_worker_cpu_share_t0"] = _share
 # Review F9: mandatory keys hard-fail when empty (never silently dropped).
 MANDATORY = ("arm", "tier", "pair_id", "target_region",
              "environment_class", "compute_region")
@@ -600,6 +624,32 @@ deploy_connect() {
   export GIT_SHA CONNECTOR_VERSION KAFKA_CONNECT_VERSION STRIMZI_VERSION PLUGIN_SHA256
   [ -n "${GIT_SHA}" ] || warn "provenance.json git_sha empty — insert_run_record will fail its GIT_SHA require()"
   log "  arm provenance: git_sha=${GIT_SHA:0:12} connector_version=${CONNECTOR_VERSION}"
+
+  # Instrument runtime keys — DEPLOYED truth, not template intent (the
+  # provenance lesson: record what actually ran). Read the instance type from
+  # the NODE the worker pod landed on, and the CPU/memory requests/limits from
+  # the DEPLOYED pod spec (containers[0] — the Strimzi Connect pod has a single
+  # main container; the JMX exporter is an agent, not a sidecar). Keys are
+  # kafka-NAMESPACED for now: the shared pinned spellings arrive in a pending
+  # contract amendment; namespaced keys are contract-legal today (§1.4), and
+  # migrating to the shared names later is a 1-line rename here.
+  local node
+  node="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" -o jsonpath='{.spec.nodeName}' 2>/dev/null)"
+  KAFKA_COMPUTE_INSTANCE_TYPE="$(kubectl get node "${node}" \
+      -o jsonpath='{.metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null)"
+  KAFKA_WORKER_CPU_REQUEST="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" \
+      -o jsonpath='{.spec.containers[0].resources.requests.cpu}' 2>/dev/null)"
+  KAFKA_WORKER_CPU_LIMIT="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" \
+      -o jsonpath='{.spec.containers[0].resources.limits.cpu}' 2>/dev/null)"
+  KAFKA_WORKER_MEM_REQUEST="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" \
+      -o jsonpath='{.spec.containers[0].resources.requests.memory}' 2>/dev/null)"
+  KAFKA_WORKER_MEM_LIMIT="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" \
+      -o jsonpath='{.spec.containers[0].resources.limits.memory}' 2>/dev/null)"
+  export KAFKA_COMPUTE_INSTANCE_TYPE KAFKA_WORKER_CPU_REQUEST KAFKA_WORKER_CPU_LIMIT \
+         KAFKA_WORKER_MEM_REQUEST KAFKA_WORKER_MEM_LIMIT
+  [ -n "${KAFKA_COMPUTE_INSTANCE_TYPE}" ] \
+    || warn "could not read the worker node's instance-type label — kafka_compute_instance_type will be absent"
+  log "  instrument: node=${node} type=${KAFKA_COMPUTE_INSTANCE_TYPE:-?} cpu=${KAFKA_WORKER_CPU_REQUEST:-?}/${KAFKA_WORKER_CPU_LIMIT:-?} mem=${KAFKA_WORKER_MEM_REQUEST:-?}/${KAFKA_WORKER_MEM_LIMIT:-?}"
 }
 
 delete_connect() {
@@ -745,6 +795,58 @@ append_flag() {
   FLAGGED=1
   FLAG_REASON="${FLAG_REASON:+${FLAG_REASON}|}${token}"
   export FLAGGED FLAG_REASON
+}
+
+# --------------------------------------------------------------------------- #
+# CPU acceptance gate (tier 0, principal directive): after the tier-0 drain's
+# finalize, compute the worker's integrated CPU share of its CPU LIMIT over the
+# drain window and print a loud verdict:
+#   PASS                      share < 0.80
+#   INSTRUMENT_RESIZE_SUSPECT share >= 0.80  (the instrument may be the
+#                                             bottleneck, not the connector)
+# LOG-ONLY verdict — the run is NOT auto-flagged (the flag decision is the
+# manager's per the quarantine protocol). The share also lands as the runtime
+# key kafka_worker_cpu_share_t0 on the tier-0 runs row.
+#
+# Source: the finalize JSON already integrates the cadvisor CPU counter into
+# connect_cpu_seconds_per_Mrows; share = (cpu_per_Mrows x rows/1e6) /
+# (drain_seconds x limit_cores). When the cadvisor source is unwired (known
+# gap) or the limit is unreadable, the gate reports UNAVAILABLE and the key is
+# simply absent.
+# Sets/exports KAFKA_WORKER_CPU_SHARE_T0 (fraction 0..1, 4 decimals, or "").
+# --------------------------------------------------------------------------- #
+compute_cpu_gate_t0() {
+  local fin="${ARTIFACT_DIR}/finalize-${RUN_ID}.json"
+  KAFKA_WORKER_CPU_SHARE_T0="$(python3 - "${fin}" "${KAFKA_WORKER_CPU_LIMIT:-}" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    s = d.get("scalars", {})
+    cpu_per_m = s.get("connect_cpu_seconds_per_Mrows")
+    drain = s.get("drain_seconds")
+    rows = d.get("rows_expected")
+    limit = (sys.argv[2] or "").strip()
+    def cores(q):  # k8s cpu quantity: "2" | "2000m"
+        return float(q[:-1]) / 1000.0 if q.endswith("m") else float(q)
+    if not limit or cpu_per_m is None or not drain or not rows or float(drain) <= 0:
+        print("")
+    else:
+        cpu_seconds = float(cpu_per_m) * (float(rows) / 1e6)
+        print(f"{cpu_seconds / (float(drain) * cores(limit)):.4f}")
+except Exception:
+    print("")
+PY
+)"
+  export KAFKA_WORKER_CPU_SHARE_T0
+  if [ -z "${KAFKA_WORKER_CPU_SHARE_T0}" ]; then
+    warn "CPU GATE (tier 0, ${RUN_ID}): UNAVAILABLE — cadvisor CPU source unwired (known gap) or CPU limit unreadable; kafka_worker_cpu_share_t0 omitted"
+    return 0
+  fi
+  if awk "BEGIN{exit !(${KAFKA_WORKER_CPU_SHARE_T0} >= 0.80)}"; then
+    warn "CPU GATE (tier 0, ${RUN_ID}): INSTRUMENT_RESIZE_SUSPECT — worker used ${KAFKA_WORKER_CPU_SHARE_T0} of its CPU limit (${KAFKA_WORKER_CPU_LIMIT:-?}) over the drain (>=80%: the instrument may be the bottleneck). LOG-ONLY — no auto-flag (quarantine protocol: flag decision is the manager's)."
+  else
+    log "CPU GATE (tier 0, ${RUN_ID}): PASS — worker CPU share of limit = ${KAFKA_WORKER_CPU_SHARE_T0} (<80%)"
+  fi
 }
 
 # Human token for the ingest-failure log/reason from run_poller_sample's rc
@@ -896,6 +998,9 @@ capture_and_record() {
     [ "${mode}" = "failed" ] && { warn "failed-class run ${RUN_ID} could not be recorded"; return 1; }
     die "run record aborted for ${RUN_ID}"
   fi
+  # The runs row landed — record it so phase_pair_cost can verify its target
+  # row exists before attaching run_cost_usd (contract §1.2 join rule).
+  RECORDED_RUNS="${RECORDED_RUNS} ${RUN_ID}"
 
   # export ONLY after runs insert succeeded (gated, README). Failed-class runs
   # are exported too (contract §1.3: fully captured AND exported, marked).
@@ -928,6 +1033,20 @@ capture_and_record() {
 phase_pair_cost() {
   local first_arm="$1"
   local cost_run_id="${PAIR_ID}-${first_arm}-t1"
+  # §1.2 join-rule gate (review of bf623b48, F2): run_cost_usd may only attach
+  # to a run_id whose perf.runs row actually LANDED. A failed-class run whose
+  # record insert failed was rolled back — emitting the cost metric onto it
+  # would create an orphaned metric row with no runs-row join. We deliberately
+  # SKIP with a loud warn rather than silently re-anchor to the other arm: a
+  # re-anchor would blur the "first-run arm carries the pair cost" convention
+  # and per-pair cost sums stay honest either way (the pair simply has no cost
+  # row that night — rare, and the CI job is already red via PAIR_HAD_FAILURE).
+  case " ${RECORDED_RUNS} " in
+    *" ${cost_run_id} "*) ;;
+    *)
+      warn "PHASE 3c SKIPPED: run_cost_usd target ${cost_run_id} has NO recorded runs row (its record insert failed/rolled back) — refusing to orphan a metric (contract §1.2). This pair carries no run_cost_usd."
+      return 0 ;;
+  esac
   log "PHASE 3c: pair cost -> run_cost_usd on ${cost_run_id} (end-of-pair window)"
   # Cost spans BOTH instance types (2026-07-08 rebuild): --nodes/--node-usd-per-hr
   # is the m6i.large term (broker/registry/producer/poller); --connect-nodes/
@@ -958,6 +1077,7 @@ phase_arm() {
   # onto a failed-class run that skips finalize/settle.
   FLAGGED=0; FLAG_REASON=""; export FLAGGED FLAG_REASON
   SETTLE_END=""; SETTLE_SECONDS=""; SETTLE_TIMED_OUT=""
+  KAFKA_WORKER_CPU_SHARE_T0=""; export KAFKA_WORKER_CPU_SHARE_T0
   local g0="ch-sink-${arm}-t0"
   ( cd "${CAPTURE_DIR}" && python3 run_metrics_sql.py "${E2E_DIR}/sql/capture/21_pre_run_covariates.sql" ) \
     || warn "tier0 pre-run covariates failed (continuing)"
@@ -973,6 +1093,10 @@ phase_arm() {
     finalize_and_insert_metrics 0 || rc0=3
   fi
   if [ "${rc0}" -eq 0 ]; then
+    # CPU acceptance gate AFTER the tier-0 finalize (principal directive):
+    # loud PASS / INSTRUMENT_RESIZE_SUSPECT verdict + kafka_worker_cpu_share_t0
+    # runtime key on this run's row (log-only; never auto-flags).
+    compute_cpu_gate_t0
     capture_and_record "${arm}" "0"
   else
     ingest_failed "${arm}" "0" "$(ingest_fail_reason "${rc0}")"

@@ -137,6 +137,14 @@ metric deliberately sits **outside the capture gate**: the target runs row is
 already complete and exported, the insert is idempotent (pre-delete + insert),
 and rolling back a completed run over a failed cost write would destroy good
 evidence — a failure there is a warn, not a rollback.
+**§1.2 join-rule gate:** `phase_pair_cost` only emits when the target run's
+`perf.runs` row actually **landed** (tracked via `RECORDED_RUNS`, appended by
+`capture_and_record` after a successful record insert). If the first-arm t1
+record was rolled back (failed-class run whose insert failed), the cost emit is
+**skipped with a loud warn** — deliberately **not** silently re-anchored to the
+other arm (that would blur the first-run-arm cost convention); per-pair cost
+sums stay honest: the pair simply carries no `run_cost_usd` that night, and the
+job is already red via `PAIR_HAD_FAILURE`.
 
 ## Manual-validation runbook (the first e2e pair)
 
