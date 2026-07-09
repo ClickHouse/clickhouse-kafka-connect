@@ -33,6 +33,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           java-version: ${{ matrix.java }}
+          distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
       - name: Run Tests
@@ -44,7 +45,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: result standalone_${{ matrix.client }}_${{ matrix.clickhouse }}_runid_${{ github.run_id }}
+          name: result standalone_${{ matrix.client }}_${{ matrix.clickhouse }}_jdk_${{ matrix.java }}_runid_${{ github.run_id }}
           path: |
             **/build/reports/tests
           retention-days: 5
