@@ -15,7 +15,6 @@ on:
       - 'LICENSE'
       - 'docs/**'
 
-# note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
 jobs:
   standalone-tests:
     runs-on: ubuntu-latest
@@ -24,15 +23,16 @@ jobs:
       fail-fast: false
       matrix:
         client: ["V1", "V2"]
-        clickhouse: ["25.3", "25.8", "25.10", "25.11", "25.12", "latest"]
+        # note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
+        clickhouse: ["24.8", "25.2", "25.8", "26.3", "latest"]
+        java: ["11", "17", "21", "25"]
     name: ClickHouse Standalone ${{ matrix.clickhouse }} Client version ${{ matrix.client }} tests
     steps:
       - uses: actions/checkout@v3
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v5
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
       - name: Run Tests
@@ -100,7 +100,7 @@ jobs:
       fail-fast: false
       matrix:
         client: [ "V1", "V2" ]
-        clickhouse: [ "25.3", "25.8", "25.10", "25.11", "25.12", "latest" ]
+        clickhouse: ["24.8", "25.2", "25.8", "26.3", "latest"]
         cluster_name: [ "three_shards_one_replica_each", "one_shard_three_replicas" ]
     name: ClickHouse Cluster ${{ matrix.cluster_name }} ${{ matrix.clickhouse }} Client version ${{ matrix.client }} tests
     steps:
