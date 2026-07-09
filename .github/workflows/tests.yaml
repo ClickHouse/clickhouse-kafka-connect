@@ -25,7 +25,7 @@ jobs:
         client: ["V1", "V2"]
         # note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
         clickhouse: ["24.8", "25.2", "25.8", "26.3", "latest"]
-        java: ["11", "17", "21", "25"]
+        java: ["17", "21", "25"]
     name: ClickHouse Standalone ${{ matrix.clickhouse }} Client version ${{ matrix.client }} tests
     steps:
       - uses: actions/checkout@v3
