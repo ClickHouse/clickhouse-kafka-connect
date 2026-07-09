@@ -141,25 +141,28 @@ def test_drain_seconds_nonmonotonic_clock_never_negative():
 # drain_rate_stability
 # --------------------------------------------------------------------------- #
 def test_drain_rate_stability_steady_is_zero():
-    # equal deltas over equal intervals -> flat rate -> CoV 0
+    # equal deltas over equal intervals -> flat rate -> CoV 0.
+    # bucket_seconds=10 => one interval per bucket (per-poll granularity).
     samples = [
         mk_sample(0, off(0, 300)),
         mk_sample(10, off(100, 300)),
         mk_sample(20, off(200, 300)),
         mk_sample(30, off(300, 300)),
     ]
-    assert F.compute_drain_rate_stability(samples) == pytest.approx(0.0)
+    assert F.compute_drain_rate_stability(
+        samples, bucket_seconds=10) == pytest.approx(0.0)
 
 
 def test_drain_rate_stability_sawtooth_positive():
     # deltas 100 then 0 then 200 over equal intervals -> nonzero CoV
+    # (bucket_seconds=10 keeps each poll in its own bucket).
     samples = [
         mk_sample(0, off(0, 1000)),
         mk_sample(10, off(100, 1000)),
         mk_sample(20, off(100, 1000)),
         mk_sample(30, off(300, 1000)),
     ]
-    cov = F.compute_drain_rate_stability(samples)
+    cov = F.compute_drain_rate_stability(samples, bucket_seconds=10)
     assert cov is not None and cov > 0.0
 
 
@@ -172,7 +175,72 @@ def test_drain_rate_stability_ignores_offset_regression():
         mk_sample(30, off(150, 1000)),
     ]
     # usable rates: (100/10)=10 and (100/10)=10 -> CoV 0
-    assert F.compute_drain_rate_stability(samples) == pytest.approx(0.0)
+    assert F.compute_drain_rate_stability(
+        samples, bucket_seconds=10) == pytest.approx(0.0)
+
+
+# --------------------------------------------------------------------------- #
+# drain_rate_stability — bucketing refinement (2026-07-10)
+# --------------------------------------------------------------------------- #
+def _lumpy_commit_stream():
+    """A STEADY drain whose committed-offset counter advances in lumps.
+
+    True drain rate is a flat 2500 rows/s. But the sink commits offsets only
+    every ~30s in a single 75000-row lump, so at the 10s poll cadence the
+    committed position steps 0, 0, 75000, 0, 0, 75000, ... The per-poll deltas
+    are therefore wildly uneven (0 / 0 / 75000) even though the drain is steady.
+    A 30s bucket contains exactly one commit lump each, so every 30s bucket sees
+    75000 rows / 30s = 2500 rows/s -> flat -> CoV ~ 0.
+    """
+    samples = []
+    committed = 0
+    t = 0
+    # 9 polls => 3 full 30s commit cycles.
+    for i in range(1, 10):
+        t = i * 10
+        if i % 3 == 0:            # commit lands every 30s
+            committed += 75000
+        samples.append(mk_sample(t, off(committed, 1_000_000)))
+    # prepend the t=0 origin sample (committed 0) so the first interval exists.
+    return [mk_sample(0, off(0, 1_000_000))] + samples
+
+
+def test_drain_rate_stability_10s_bucket_is_high_on_lumpy_commits():
+    # OLD behaviour (per-poll 10s buckets): the 0/0/75000 commit lumps produce a
+    # large CoV on a drain that is actually steady. Pin it high to prove the
+    # commit-cadence contamination the refinement removes.
+    cov10 = F.compute_drain_rate_stability(
+        _lumpy_commit_stream(), bucket_seconds=10)
+    assert cov10 is not None and cov10 > 1.0
+
+
+def test_drain_rate_stability_60s_bucket_is_low_on_lumpy_commits():
+    # NEW behaviour: 30s buckets each capture exactly one commit lump, so every
+    # bucket reports the true 2500 rows/s -> CoV ~ 0. Wider (60s) buckets are
+    # even smoother; here we use 30 to land whole lumps in whole buckets and get
+    # an exactly-hand-computable answer.
+    cov30 = F.compute_drain_rate_stability(
+        _lumpy_commit_stream(), bucket_seconds=30)
+    assert cov30 is not None
+    assert cov30 == pytest.approx(0.0, abs=1e-9)
+
+
+def test_drain_rate_stability_default_bucket_is_60s():
+    # With no bucket_seconds the default is 60s (BUCKET_SECONDS_DEFAULT) — a
+    # single 90s lumpy-commit drain collapses to too few buckets to vary, so the
+    # refinement's smoothing is what makes the metric chartable. Assert the
+    # default matches the explicit-60 call (i.e. the env default is wired).
+    stream = _lumpy_commit_stream()
+    assert F.compute_drain_rate_stability(stream) == \
+        F.compute_drain_rate_stability(stream, bucket_seconds=60)
+
+
+def test_drain_rate_stability_zero_bucket_falls_back_to_default():
+    # A non-positive bucket width is coerced to the default rather than dividing
+    # by zero / making one bucket per interval accidentally.
+    stream = _lumpy_commit_stream()
+    assert F.compute_drain_rate_stability(stream, bucket_seconds=0) == \
+        F.compute_drain_rate_stability(stream, bucket_seconds=60)
 
 
 # --------------------------------------------------------------------------- #

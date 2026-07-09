@@ -165,6 +165,38 @@ kafka_connect_sink_task_put_batch_avg_time_ms{connector="ch",task="0"} 4.2
 
 
 # --------------------------------------------------------------------------- #
+# heap series naming across jmx_exporter versions (pair-2 blindness, symptom d)
+# --------------------------------------------------------------------------- #
+# Older jmx_exporter agents emit jvm_memory_bytes_used; newer client_java emits
+# jvm_memory_used_bytes. The live pair-2 exporter used the newer spelling, so
+# connect_jvm_heap_peak was null while gc (unaffected) was present. sample_jmx
+# must capture heap under BOTH spellings.
+_JMX_OLD_SPELLING = """
+jvm_memory_bytes_used{area="heap"} 1.0e8
+jvm_memory_bytes_used{area="nonheap"} 3.0e7
+jvm_memory_bytes_max{area="heap"} 2.0e8
+jvm_gc_collection_seconds_sum{gc="G1 Young"} 5.0
+"""
+
+_JMX_NEW_SPELLING = """
+jvm_memory_used_bytes{area="heap"} 1.0e8
+jvm_memory_used_bytes{area="nonheap"} 3.0e7
+jvm_memory_max_bytes{area="heap"} 2.0e8
+jvm_gc_collection_seconds_sum{gc="G1 Young"} 5.0
+"""
+
+
+@pytest.mark.parametrize("text", [_JMX_OLD_SPELLING, _JMX_NEW_SPELLING])
+def test_sample_jmx_heap_both_exporter_spellings(text):
+    res = sampler.sample_jmx(_FakeReq(text), "http://connect:9404/metrics")
+    assert res["unavailable"] is False
+    # heap captured (not None) under either spelling, nonheap excluded by area.
+    assert res["jvm_heap_used_bytes"] == pytest.approx(1.0e8)
+    assert res["jvm_heap_max_bytes"] == pytest.approx(2.0e8)
+    assert res["gc_collection_seconds_sum"] == pytest.approx(5.0)
+
+
+# --------------------------------------------------------------------------- #
 # cadvisor scrape label hygiene (review follow-up 1)
 # --------------------------------------------------------------------------- #
 class _FakeResp:
@@ -214,6 +246,81 @@ def test_cadvisor_explicit_container_filter_takes_exactly_that_container():
         pod="connect-0", container="connect")
     assert res["cpu_seconds_total"] == pytest.approx(60.0)
     assert res["memory_working_set_bytes"] == pytest.approx(300.0)
+
+
+# --------------------------------------------------------------------------- #
+# cadvisor startup self-check (pair-2 symptom b: blindness was undiagnosable)
+# --------------------------------------------------------------------------- #
+class _StatusResp:
+    def __init__(self, text, status_code=200):
+        self.text = text
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        pass
+
+
+class _StatusReq:
+    def __init__(self, text, status_code=200, raise_exc=None):
+        self._text = text
+        self._status = status_code
+        self._raise = raise_exc
+
+    def get(self, url, timeout=None, headers=None, verify=None):
+        if self._raise is not None:
+            raise self._raise
+        return _StatusResp(self._text, self._status)
+
+
+def _capture_log():
+    lines = []
+    return lines, lines.append
+
+
+def test_probe_cadvisor_armed_logs_matched_count():
+    lines, log = _capture_log()
+    res = sampler.probe_cadvisor(
+        _StatusReq(_CADVISOR_TEXT, 200), "https://k/proxy/metrics/cadvisor",
+        pod="connect-0", container="connect", log=log)
+    assert res["ok"] is True and res["matched"] == 1
+    assert any("ARMED" in l for l in lines)
+
+
+def test_probe_cadvisor_403_logs_rbac_hint():
+    lines, log = _capture_log()
+    res = sampler.probe_cadvisor(
+        _StatusReq("Forbidden", 403), "https://k/proxy/metrics/cadvisor",
+        pod="connect-0", container="connect", log=log)
+    assert res["ok"] is False and res["status"] == 403
+    assert any("403" in l or "RBAC" in l for l in lines)
+
+
+def test_probe_cadvisor_empty_body_logs_empty():
+    lines, log = _capture_log()
+    res = sampler.probe_cadvisor(
+        _StatusReq("", 200), "https://k/proxy/metrics/cadvisor",
+        pod="connect-0", container="connect", log=log)
+    assert res["ok"] is False and res["bytes"] == 0
+    assert any("EMPTY" in l for l in lines)
+
+
+def test_probe_cadvisor_no_matching_series_logs_label_hint():
+    lines, log = _capture_log()
+    res = sampler.probe_cadvisor(
+        _StatusReq(_CADVISOR_TEXT, 200), "https://k/proxy/metrics/cadvisor",
+        pod="does-not-exist", container="", log=log)
+    assert res["ok"] is False and res["matched"] == 0
+    assert any("0 container_cpu_usage_seconds_total" in l for l in lines)
+
+
+def test_probe_cadvisor_connection_error_logged_not_raised():
+    lines, log = _capture_log()
+    res = sampler.probe_cadvisor(
+        _StatusReq("", raise_exc=OSError("connection refused")),
+        "https://k/proxy/metrics/cadvisor",
+        pod="connect-0", container="connect", log=log)
+    assert res["ok"] is False
+    assert any("GET FAILED" in l for l in lines)
 
 
 def test_cadvisor_other_pod_never_included():

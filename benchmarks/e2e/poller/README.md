@@ -44,7 +44,7 @@ are inserted by the orchestrator (task 30/31), not here.
 cd benchmarks/e2e/poller
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt pytest
-python -m pytest tests/ -q          # 68 tests, all pure/offline
+python -m pytest tests/ -q          # 79 tests, all pure/offline
 python -m py_compile *.py tests/*.py
 ```
 
@@ -110,10 +110,10 @@ MBeans.
 | `null_drain_rows_per_sec` | rows/s | 0 only | poller offsets | `rows_expected / drain_seconds` | plan §7, contract §2.2 |
 | `drain_rows_per_sec` | rows/s | 1 only | poller offsets | `rows_expected / drain_seconds` | plan §7, contract §2.2 |
 | `drain_seconds` | seconds | both | poller offsets | first-sample-after-connector-start → first lag-0 sample; clock-guarded ≥0 | plan §7 |
-| `drain_rate_stability` | ratio | both | poller offsets | CoV of per-interval delivered-rows rate; offset-regression deltas dropped | plan §7 |
+| `drain_rate_stability` | ratio | both | poller offsets | CoV of the delivered-rows rate over fixed **60s** buckets (`DRAIN_RATE_STABILITY_BUCKET_SECONDS`); offset-regression deltas dropped. See the bucketing note below | plan §7 |
 | `partition_skew` | count | both | poller offsets | peak of per-sample (max−min) per-partition committed-offset spread | plan §7 |
 | `connect_cpu_seconds_per_Mrows` | s/Mrows | both | kubelet cadvisor | Δ`container_cpu_usage_seconds_total` / (rows/1e6); None if source absent or counter reset. Without an explicit container filter, the pod-aggregate (`container=""`) and pause (`container="POD"`) series are excluded from the sum (double-count guard) | plan §7 (client-side; NOT the contract-§2.1 server-side `ch_insert_cpu_seconds_per_Mrows`) |
-| `connect_jvm_heap_peak` | bytes | both | Connect JMX | max `jvm_memory_bytes_used{area="heap"}` across samples | plan §7 |
+| `connect_jvm_heap_peak` | bytes | both | Connect JMX | max heap-`used` across samples; matched under **both** exporter spellings `jvm_memory_bytes_used{area="heap"}` (older jmx_exporter) and `jvm_memory_used_bytes{area="heap"}` (newer client_java) | plan §7 |
 | `gc_time_share` | ratio | both | Connect JMX | Δ`jvm_gc_collection_seconds_sum` / wall-seconds; None on counter reset | plan §7 |
 | `put_batch_avg_time_ms` | ms | both | sink/Connect JMX | **time-weighted** average of the put-batch moving-average MBean across samples | plan §7 (never scrape once) |
 | `fetch_latency_avg` | ms | both | consumer JMX | time-weighted average of `fetch-latency-avg` | plan §7 |
@@ -142,6 +142,27 @@ tasks and explicit REBALANCING states count even during the grace window, and a
 startup that never completes cannot drain, so `drain_incomplete` flags the run
 regardless. The same idea protects `partition_skew`: samples where a partition
 has not committed yet are skipped instead of being treated as offset 0.
+
+### `drain_rate_stability` bucketing (changed 2026-07-10 — not comparable across the boundary)
+
+`drain_rate_stability` is the CoV of the delivered-rows rate, i.e. how steady the
+drain plateau is. The committed-offset position (its only input) advances **only
+on the sink's periodic offset commit** — a large lump (~25k+ records) every few
+seconds — so a delta measured at the 10s poll cadence is dominated by *whether
+that particular window contained a commit*, not by the real drain rate. On the
+live pairs a visibly steady drain measured CoV ≈ **1.2–1.4** purely from this
+commit rhythm.
+
+**Refinement (2026-07-10):** the per-poll delivered-row deltas are now aggregated
+into fixed **60s buckets** (`DRAIN_RATE_STABILITY_BUCKET_SECONDS`, default 60)
+before the CoV is taken. A 60s bucket spans several commit lumps, so the commit
+cadence averages out and the CoV reflects genuine rate variation. Same metric
+**name**, changed computation.
+
+> **Comparability:** values recorded **before 2026-07-10 used 10s (per-poll)
+> buckets** and are **not comparable** to values recorded after. The unit tests
+> pin both: the synthetic steady-drain-with-lumpy-commits stream yields CoV ≈
+> 1.41 at 10s buckets and ≈ 0 at 60s, proving the fix.
 
 ### Left out of the poller (documented, by design)
 
@@ -177,9 +198,14 @@ edit any `benchmarks/e2e/infra/` file. Task 31 must provide:
    matches a `-rate` suffix. See 1a.
    Point the poller at it with `--jmx-url http://<connect-pod-or-svc>:9404/metrics`
    (or `JMX_METRICS_URL`). If absent, JMX scalars are simply not emitted.
-   The default `jvm_*` series (`jvm_memory_bytes_used{area="heap"}`,
-   `jvm_gc_collection_seconds_sum`) are emitted by the jmx_exporter agent by
-   default — confirm the CR does not disable them.
+   The default `jvm_*` series (heap-used, `jvm_gc_collection_seconds_sum`) are
+   emitted by the jmx_exporter agent by default — confirm the CR does not disable
+   them. **Heap naming differs across agent versions:** older jmx_exporter emits
+   `jvm_memory_bytes_used{area="heap"}`, newer client_java emits
+   `jvm_memory_used_bytes{area="heap"}`. The poller matches **both** spellings
+   (pair-2, 2026-07-09, emitted the newer one, so `connect_jvm_heap_peak` was
+   null while `gc_time_share` — unaffected — was present); no CR change is needed
+   for either.
 
    **1a. Extra exporter rule for `-rate` attributes (REQUIRED for
    `records_consumed_rate`).** The CR's `metricsConfig` rule list MUST include,
@@ -272,15 +298,20 @@ the `run_id`, so a concurrent CH-side capture writing other names for the same
 ## Testing gap (explicit)
 
 There is **no live Kafka / ClickHouse integration test** — no cluster and no
-credentials are available in this environment. All 68 tests are offline:
+credentials are available in this environment. All 79 tests are offline:
 finalizer math against synthetic streams with hand-computed answers (including
-the guard startup grace and the cadvisor double-count exclusion), the contract
-metric-name-set assertion, the JSONL round-trip, the Prometheus parser, the
-cadvisor API-server-proxy auth (`_cadvisor_auth` http/https/no-token paths + the
+the guard startup grace, the cadvisor double-count exclusion, and the
+`drain_rate_stability` bucketing refinement — the lumpy-commit stream pinned at
+CoV ≈ 1.41 @10s buckets vs ≈ 0 @60s), the contract metric-name-set assertion,
+the JSONL round-trip, the Prometheus parser + heap dual-spelling
+(`jvm_memory_bytes_used` / `jvm_memory_used_bytes`), the cadvisor
+API-server-proxy auth (`_cadvisor_auth` http/https/no-token paths + the
 Bearer-header/CA `verify` forwarding into a capturing fake `requests`), the
-sampling loop against injected fake sources + a fake clock, and the inserter
-against a fake `requests` (row building, tier-ownership rejection, rollback
-sequence, post-insert verify + verify-mismatch rollback, credential hygiene).
+cadvisor startup self-check (`probe_cadvisor`: armed / 403-RBAC / empty-body /
+no-matching-series / connection-error log lines), the sampling loop against
+injected fake sources + a fake clock, and the inserter against a fake `requests`
+(row building, tier-ownership rejection, rollback sequence, post-insert verify +
+verify-mismatch rollback, credential hygiene).
 The live paths (`sampler.build_sources`,
 `sampler.sample_offsets`, and the real HTTP calls) are exercised for the first
 time by task 31's end-to-end run.

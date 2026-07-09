@@ -53,6 +53,22 @@ def cmd_sample(args) -> int:
         "pod_container": args.pod_container,
     }
     offsets_source, connect_source, jmx_source, pod_source = sampler.build_sources(cfg)
+
+    # cadvisor startup self-check (pair-2 symptom b): when a cadvisor URL is
+    # configured, probe it ONCE and log the HTTP status + first bytes + matched
+    # series count, so pod blindness (403 RBAC / empty body / wrong labels) is
+    # diagnosable from the pod logs instead of silently producing null CPU.
+    if cfg.get("cadvisor_url"):
+        import requests
+        headers, verify = sampler._cadvisor_auth(cfg["cadvisor_url"])
+        sampler.probe_cadvisor(
+            requests, cfg["cadvisor_url"],
+            cfg.get("pod_name", ""), cfg.get("pod_container", ""),
+            headers=headers, verify=verify, log=_log)
+    else:
+        _log("cadvisor self-check: --cadvisor-url empty — pod CPU source "
+             "intentionally UNAVAILABLE (node unresolved or gate disabled)")
+
     result = sampler.run_sampler(
         out_path=args.out,
         offsets_source=offsets_source,

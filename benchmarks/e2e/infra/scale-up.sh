@@ -82,7 +82,28 @@ log "applying poller RBAC (bench-poller-sa + nodes/proxy get for the cadvisor CP
 # Least-privilege ServiceAccount the in-cluster poller pod runs as, granting the
 # kubelet cadvisor scrape via the API-server node proxy (poller prerequisite 2).
 # Cluster-scoped + idempotent — safe to re-apply on every scale-up.
+#
+# A ClusterRoleBinding's roleRef is IMMUTABLE: `kubectl apply` cannot repoint a
+# pre-existing binding of the same name, so a binding left over from an earlier
+# (broken) manifest would silently survive the apply and the poller would keep
+# getting 403 on the cadvisor scrape (pair-2 symptom: `can-i get nodes/proxy`
+# NO despite the objects "looking correct"). Delete the binding first so the
+# apply always installs the current roleRef. The ClusterRole/SA update in place.
+kubectl delete clusterrolebinding bench-poller-cadvisor --ignore-not-found
 kubectl apply -f "${INFRA_DIR}/poller-rbac.yaml"
+
+# Preflight (fail loud BEFORE a drain pays for it): the RBAC objects can look
+# correct yet not grant the SA anything (stale binding, propagation lag). Assert
+# the SA can actually GET nodes/proxy — the exact permission the cadvisor scrape
+# needs. If NO, the CPU gate would be blind for the whole pair; die here so the
+# operator fixes RBAC instead of discovering it in the dashboard as NO_DATA.
+SA="system:serviceaccount:${K8S_NAMESPACE}:bench-poller-sa"
+log "preflight: verifying ${SA} can get nodes/proxy (cadvisor CPU gate)"
+if [ "$(kubectl auth can-i --as="${SA}" get nodes/proxy 2>/dev/null || echo no)" != "yes" ]; then
+  kubectl describe clusterrolebinding bench-poller-cadvisor 2>&1 | sed 's/^/    | /' >&2 || true
+  die "poller RBAC preflight FAILED: ${SA} cannot 'get nodes/proxy' — the cadvisor CPU gate would be BLIND for the whole pair. Check poller-rbac.yaml (ClusterRoleBinding roleRef/subject) before running run_pair.sh."
+fi
+log "  preflight OK: ${SA} can get nodes/proxy"
 
 log "applying Kafka (KRaft, 1 broker RF1) + Schema Registry manifests"
 kubectl apply -f "${INFRA_DIR}/kafka.yaml"

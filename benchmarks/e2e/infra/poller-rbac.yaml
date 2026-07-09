@@ -34,9 +34,21 @@ metadata:
     app.kubernetes.io/part-of: kafka-connect-benchmark-v2
 rules:
   # Read-only access to the kubelet cadvisor scrape via the API-server node
-  # proxy subresource. `get` only — no list/watch, no create.
+  # proxy subresource. `get` is the verb for a GET through the proxy;
+  # `create` is included because the proxy subresource historically authorizes
+  # some request shapes as `create` (POST/other verbs are proxied) — Prometheus'
+  # own kubelet-scrape ClusterRole grants both on nodes/proxy, and omitting
+  # `create` is a known cause of a 403 on the proxy path even though a plain
+  # `can-i get nodes/proxy` may still say no when the binding is stale. No
+  # list/watch, no secrets, no pods, no node mutation.
   - apiGroups: [""]
     resources: ["nodes/proxy"]
+    verbs: ["get", "create"]
+  # The sibling read-only kubelet metrics subresources, so the grant is correct
+  # regardless of which subresource this cluster's kube-apiserver version maps
+  # the /proxy/metrics/cadvisor path onto. Read-only (`get`) only.
+  - apiGroups: [""]
+    resources: ["nodes/metrics", "nodes/stats"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

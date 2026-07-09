@@ -156,8 +156,12 @@ def sample_jmx(requests_mod, metrics_url: str) -> Dict[str, Any]:
                                   README prerequisites, or this field stays None.
       * fetch_latency_avg_ms    — consumer-fetch-manager-metrics fetch-latency-avg
                                   (covered by the `.+-avg` rule).
-      * jvm_heap_used_bytes / jvm_heap_max_bytes — JVM heap (jmx_exporter default
-                                  jvm_memory_bytes_used{area="heap"})
+      * jvm_heap_used_bytes / jvm_heap_max_bytes — JVM heap. Matched under BOTH
+                                  jmx_exporter/client_java spellings:
+                                  jvm_memory_bytes_used{area="heap"} (older) and
+                                  jvm_memory_used_bytes{area="heap"} (newer) —
+                                  the deployed agent version decides which one is
+                                  on the wire (see the version note below).
       * gc_collection_seconds_sum — cumulative GC seconds (jvm_gc_collection_seconds_sum)
 
     Name forms: the exporter sanitizes MBean attribute names into prometheus
@@ -184,11 +188,22 @@ def sample_jmx(requests_mod, metrics_url: str) -> Dict[str, Any]:
 
     fetch_lat = _avg_matching(series, name_has("fetch_latency_avg"))
 
+    # JVM heap naming differs across jmx_exporter / client_java versions:
+    #   * older jmx_exporter agent (<0.20):   jvm_memory_bytes_used{area="heap"}
+    #   * newer client_java / jmx_exporter:   jvm_memory_used_bytes{area="heap"}
+    # Live pair-2 (2026-07-09) emitted gc_collection_seconds_sum but NOT the
+    # heap series -> connect_jvm_heap_peak was blind because we only matched the
+    # `_bytes_used` spelling while the deployed exporter used `_used_bytes`.
+    # Accept BOTH spellings (used and max) so heap is captured regardless of the
+    # agent version. `_used_bytes` is anchored so it does not also match the
+    # `_bytes_used` name — the two are checked as distinct substrings.
     heap_used = _sum_matching(
-        series, name_has("jvm_memory_bytes_used"),
+        series,
+        lambda n: "jvm_memory_bytes_used" in n or "jvm_memory_used_bytes" in n,
         lambda l: l.get("area") == "heap")
     heap_max = _sum_matching(
-        series, name_has("jvm_memory_bytes_max"),
+        series,
+        lambda n: "jvm_memory_bytes_max" in n or "jvm_memory_max_bytes" in n,
         lambda l: l.get("area") == "heap")
     gc_sum = _sum_matching(series, name_has("jvm_gc_collection_seconds_sum"))
 
@@ -285,6 +300,79 @@ def sample_pod_cadvisor(requests_mod, cadvisor_url: str, pod: str, container: st
         "memory_working_set_bytes": mem,
         "unavailable": False,
     }
+
+
+# --------------------------------------------------------------------------- #
+# cadvisor startup self-check (pair-2 symptom b: the source never armed and the
+# pod logs had ZERO cadvisor lines, so blindness was undiagnosable). One probe
+# scrape at sample start logs the HTTP status + first bytes so a 403 (RBAC),
+# an empty body, or a wrong URL is visible in the pod logs immediately.
+# --------------------------------------------------------------------------- #
+def probe_cadvisor(requests_mod, cadvisor_url: str, pod: str, container: str,
+                   headers: Optional[Dict[str, str]] = None,
+                   verify: Any = None, log=None) -> Dict[str, Any]:
+    """Do ONE diagnostic GET of the cadvisor URL and log the outcome.
+
+    Logs (via ``log``, one line, to the poller's stderr so it lands in pod logs):
+      * the HTTP status code,
+      * the number of bytes returned + the first ~120 bytes of the body,
+      * how many container_cpu_usage_seconds_total series matched the pod filter
+        (the number that actually feeds connect_cpu_seconds_per_Mrows).
+    A non-200, an empty body, or 0 matching series each print a distinct WARN so
+    the failure class (403 RBAC / empty / wrong-label) is readable at a glance.
+    Never raises. Returns a small dict for the caller/tests; side effect is the
+    log line(s)."""
+    def _log(msg):
+        if log:
+            log(msg)
+
+    kwargs: Dict[str, Any] = {"timeout": 10}
+    if headers is not None:
+        kwargs["headers"] = headers
+    if verify is not None:
+        kwargs["verify"] = verify
+    try:
+        r = requests_mod.get(cadvisor_url, **kwargs)
+    except Exception as e:
+        _log(f"cadvisor self-check: GET FAILED ({type(e).__name__}: {e}) "
+             f"url={cadvisor_url} — pod CPU source will be UNAVAILABLE")
+        return {"ok": False, "status": None, "error": str(e)}
+
+    status = getattr(r, "status_code", None)
+    body = getattr(r, "text", "") or ""
+    head = body[:120].replace("\n", "\\n")
+    if status is not None and status != 200:
+        _log(f"cadvisor self-check: HTTP {status} ({len(body)} bytes) — "
+             f"likely RBAC/403 (bench-poller-sa lacks nodes/proxy get) or a bad "
+             f"node URL. first bytes: {head!r}")
+        return {"ok": False, "status": status, "bytes": len(body)}
+    if not body:
+        _log(f"cadvisor self-check: HTTP {status} but EMPTY body — "
+             f"proxy reachable but returned nothing; pod CPU source UNAVAILABLE")
+        return {"ok": False, "status": status, "bytes": 0}
+
+    series = _parse_prometheus(body)
+
+    def _match(labels):
+        if labels.get("pod") != pod:
+            return False
+        c = labels.get("container", "")
+        return c == container if container else c not in ("", "POD")
+
+    matched = sum(1 for s in series
+                  if s["name"] == "container_cpu_usage_seconds_total"
+                  and _match(s["labels"]))
+    if matched == 0:
+        _log(f"cadvisor self-check: HTTP {status} OK ({len(body)} bytes) but "
+             f"0 container_cpu_usage_seconds_total series matched pod={pod!r} "
+             f"container={container!r} — check the pod/container labels. "
+             f"first bytes: {head!r}")
+        return {"ok": False, "status": status, "bytes": len(body), "matched": 0}
+
+    _log(f"cadvisor self-check: HTTP {status} OK ({len(body)} bytes), "
+         f"{matched} cpu series matched pod={pod!r} container={container!r} — "
+         f"pod CPU source ARMED")
+    return {"ok": True, "status": status, "bytes": len(body), "matched": matched}
 
 
 # --------------------------------------------------------------------------- #

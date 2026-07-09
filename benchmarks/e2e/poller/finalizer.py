@@ -53,9 +53,23 @@ already "after connector start"; finalize uses the first sample's timestamp as
 the start anchor and the lag-0 sample's timestamp as the end anchor.
 """
 import math
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import metric_names as mn
+
+
+# drain_rate_stability bucket width (seconds). The committed-offset counter only
+# advances on the sink's periodic offset commit (a ~25k-record lump), so at the
+# 10s poll cadence the per-interval delta is commit-cadence-dominated: a visibly
+# steady drain shows CoV ≈ 1.2–1.4 (live pairs, 2026-07-09) purely because some
+# 10s windows straddle a commit and others do not. Aggregating deltas into WIDER
+# buckets (default 60s) averages the lumpy commits out, so the CoV reflects the
+# genuine drain-rate variation rather than the commit rhythm. Parameterizable via
+# DRAIN_RATE_STABILITY_BUCKET_SECONDS. See README "drain_rate_stability" note:
+# values recorded before 2026-07-10 used 10s buckets and are NOT comparable.
+BUCKET_SECONDS_DEFAULT = float(
+    os.environ.get("DRAIN_RATE_STABILITY_BUCKET_SECONDS", "60"))
 
 
 # --------------------------------------------------------------------------- #
@@ -190,10 +204,41 @@ def compute_drain_seconds(samples: List[Dict[str, Any]]) -> Tuple[float, bool]:
     return drain, reached
 
 
-def compute_drain_rate_stability(samples: List[Dict[str, Any]]) -> Optional[float]:
-    """CoV of per-interval delivered-rows rate (plan §7). Lower = steadier
-    plateau; higher = sawtooth (flush stalls). None if < 2 usable intervals."""
-    rates = []
+def compute_drain_rate_stability(
+    samples: List[Dict[str, Any]],
+    bucket_seconds: Optional[float] = None,
+) -> Optional[float]:
+    """CoV of the delivered-rows rate over fixed-width time buckets (plan §7).
+    Lower = steadier plateau; higher = sawtooth (flush stalls). None if < 2
+    usable buckets.
+
+    Bucketing (2026-07-10 refinement): the committed-offset position only jumps
+    on the sink's periodic offset commit (a ~25k-record lump), so a per-poll
+    (10s) delta is dominated by whether that window happened to contain a commit,
+    not by the true drain rate — a visibly steady drain measured CoV ≈ 1.2–1.4
+    on the live pairs. We therefore aggregate the per-poll delivered-row deltas
+    into ``bucket_seconds``-wide windows (default 60s, from
+    BUCKET_SECONDS_DEFAULT / DRAIN_RATE_STABILITY_BUCKET_SECONDS) and take the
+    CoV of the per-bucket rates. A 60s bucket spans several commit lumps, so the
+    commit cadence averages out and the CoV reflects genuine rate variation.
+    The metric NAME is unchanged; only its computation changed — pre-2026-07-10
+    values used 10s (per-poll) buckets and are not comparable (README).
+
+    Method: walk consecutive samples with a valid delivered position, dropping
+    intervals with a non-positive clock step or a negative row delta (rebalance
+    offset regression). Assign each interval's row delta to the bucket its START
+    timestamp falls in (bucket index = floor((t0 - t_origin) / bucket_seconds),
+    t_origin = first usable sample). Per bucket, rate = Σrows / Σdt over the
+    intervals landing in it (Σdt, not the nominal width, so a bucket with gaps is
+    still divided by the time actually observed). CoV over the per-bucket rates.
+    """
+    if bucket_seconds is None:
+        bucket_seconds = BUCKET_SECONDS_DEFAULT
+    if bucket_seconds <= 0:
+        bucket_seconds = BUCKET_SECONDS_DEFAULT
+
+    # 1) reduce samples to usable (t_start, dt, drows) interval records.
+    intervals: List[Tuple[float, float, float]] = []
     prev_t = None
     prev_pos = None
     for s in samples:
@@ -207,8 +252,26 @@ def compute_drain_rate_stability(samples: List[Dict[str, Any]]) -> Optional[floa
             if dt > 0:  # monotonic clock guard
                 drows = pos - prev_pos
                 if drows >= 0:  # ignore offset regressions (rebalance reset)
-                    rates.append(drows / dt)
+                    intervals.append((prev_t, dt, float(drows)))
         prev_t, prev_pos = t, pos
+
+    if not intervals:
+        return None
+
+    # 2) aggregate row deltas + observed time into fixed-width buckets keyed off
+    #    the first usable interval's start (so buckets are run-relative).
+    t_origin = intervals[0][0]
+    rows_by_bucket: Dict[int, float] = {}
+    dt_by_bucket: Dict[int, float] = {}
+    for t0, dt, drows in intervals:
+        b = int((t0 - t_origin) // bucket_seconds)
+        rows_by_bucket[b] = rows_by_bucket.get(b, 0.0) + drows
+        dt_by_bucket[b] = dt_by_bucket.get(b, 0.0) + dt
+
+    # 3) per-bucket rate = rows / observed-seconds; CoV across the buckets.
+    rates = [rows_by_bucket[b] / dt_by_bucket[b]
+             for b in sorted(rows_by_bucket)
+             if dt_by_bucket[b] > 0]
     return _coefficient_of_variation(rates)
 
 
