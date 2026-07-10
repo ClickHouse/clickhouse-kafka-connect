@@ -2,6 +2,36 @@ name: ClickHouse Kafka Connect Tests CI
 
 on:
   workflow_dispatch:
+    inputs:
+      clickhouse_version:
+        description: 'ClickHouse server version to test against (e.g. latest or head). Leave empty for the default matrix.'
+        required: false
+        type: string
+        default: ''
+      clickhouse_java:
+        description: 'ClickHouse Java client to test against: a published artifact version (e.g. 0.9.8) or a clickhouse-java branch to build from (e.g. main). Leave empty to use the version from the catalog.'
+        required: false
+        type: string
+        default: ''
+      run_cloud_tests:
+        description: 'Also run the ClickHouse Cloud tests (always run on PR/main CI regardless of this flag).'
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      clickhouse_version:
+        required: false
+        type: string
+        default: ''
+      clickhouse_java:
+        required: false
+        type: string
+        default: ''
+      run_cloud_tests:
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -15,26 +45,98 @@ on:
       - 'LICENSE'
       - 'docs/**'
 
-# note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      clickhouse_versions: ${{ steps.config.outputs.clickhouse_versions }}
+      clickhouse_java_version: ${{ steps.resolve.outputs.version }}
+      clickhouse_java_built: ${{ steps.resolve.outputs.built }}
+    steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          if [[ -n "${{ inputs.clickhouse_version }}" ]]; then
+            echo 'clickhouse_versions=["${{ inputs.clickhouse_version }}"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'clickhouse_versions=["24.8","25.2","25.8","26.3","latest"]' >> "$GITHUB_OUTPUT"
+          fi
+          # A numeric value is a published artifact version; anything else is a branch to build.
+          JAVA='${{ inputs.clickhouse_java }}'
+          if [[ "$JAVA" =~ ^[0-9] ]]; then
+            echo "artifact_version=$JAVA" >> "$GITHUB_OUTPUT"
+            echo "build_ref=" >> "$GITHUB_OUTPUT"
+          else
+            echo "artifact_version=" >> "$GITHUB_OUTPUT"
+            echo "build_ref=$JAVA" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up JDK 17
+        if: steps.config.outputs.build_ref != ''
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Build ClickHouse Java client from '${{ steps.config.outputs.build_ref }}'
+        if: steps.config.outputs.build_ref != ''
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${{ steps.config.outputs.build_ref }}" \
+            https://github.com/ClickHouse/clickhouse-java.git "$RUNNER_TEMP/clickhouse-java"
+          cd "$RUNNER_TEMP/clickhouse-java"
+          mvn -B -q -DskipTests -Dmaven.javadoc.skip=true -Dgpg.skip=true clean install
+          VERSION="$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)"
+          if [[ "$VERSION" == *'${'* || -z "$VERSION" ]]; then
+            VERSION="$(mvn -q -DforceStdout help:evaluate -Dexpression=revision)"
+          fi
+          echo "Built clickhouse-java version: $VERSION"
+          echo "BUILT_VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p "$GITHUB_WORKSPACE/clickhouse-java-m2"
+          cp -r "$HOME/.m2/repository/com/clickhouse" "$GITHUB_WORKSPACE/clickhouse-java-m2/"
+      - name: Upload built ClickHouse Java client
+        if: steps.config.outputs.build_ref != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: clickhouse-java-m2
+          path: clickhouse-java-m2
+          retention-days: 1
+      - name: Resolve ClickHouse Java client version
+        id: resolve
+        run: |
+          if [[ -n "${BUILT_VERSION:-}" ]]; then
+            echo "version=$BUILT_VERSION" >> "$GITHUB_OUTPUT"
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ steps.config.outputs.artifact_version }}" >> "$GITHUB_OUTPUT"
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
+
   standalone-tests:
+    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         client: ["V1", "V2"]
-        clickhouse: ["25.3", "25.8", "25.10", "25.11", "25.12", "latest"]
+        # note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
+        clickhouse: ${{ fromJSON(needs.setup.outputs.clickhouse_versions) }}
+        java: ["17", "21", "25"]
     name: ClickHouse Standalone ${{ matrix.clickhouse }} Client version ${{ matrix.client }} tests
     steps:
       - uses: actions/checkout@v3
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v5
         with:
-          java-version: '17'
+          java-version: ${{ matrix.java }}
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
+      - name: Use ClickHouse Java client override
+        uses: ./.github/actions/use-clickhouse-java
+        with:
+          version: ${{ needs.setup.outputs.clickhouse_java_version }}
+          built: ${{ needs.setup.outputs.clickhouse_java_built }}
       - name: Run Tests
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
@@ -44,11 +146,14 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: result standalone_${{ matrix.client }}_${{ matrix.clickhouse }}_runid_${{ github.run_id }}
+          name: result standalone_${{ matrix.client }}_${{ matrix.clickhouse }}_jdk_${{ matrix.java }}_runid_${{ github.run_id }}
           path: |
             **/build/reports/tests
           retention-days: 5
   cloud-tests:
+    needs: setup
+    # Always run on regular PR/main CI; on manual/reusable runs only when opted in.
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || inputs.run_cloud_tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -77,6 +182,12 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
+      - name: Use ClickHouse Java client override
+        if: env.SKIP_STEP != 'true'
+        uses: ./.github/actions/use-clickhouse-java
+        with:
+          version: ${{ needs.setup.outputs.clickhouse_java_version }}
+          built: ${{ needs.setup.outputs.clickhouse_java_built }}
       - name: Run Tests
         if: env.SKIP_STEP != 'true'
         env:
@@ -94,13 +205,14 @@ jobs:
             **/build/reports/tests
           retention-days: 5
   cluster-tests:
+    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         client: [ "V1", "V2" ]
-        clickhouse: [ "25.3", "25.8", "25.10", "25.11", "25.12", "latest" ]
+        clickhouse: ${{ fromJSON(needs.setup.outputs.clickhouse_versions) }}
         cluster_name: [ "three_shards_one_replica_each", "one_shard_three_replicas" ]
     name: ClickHouse Cluster ${{ matrix.cluster_name }} ${{ matrix.clickhouse }} Client version ${{ matrix.client }} tests
     steps:
@@ -112,6 +224,11 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
+      - name: Use ClickHouse Java client override
+        uses: ./.github/actions/use-clickhouse-java
+        with:
+          version: ${{ needs.setup.outputs.clickhouse_java_version }}
+          built: ${{ needs.setup.outputs.clickhouse_java_built }}
       - name: Run Tests
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}

@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.*;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
@@ -433,7 +434,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("payload", "Tuple(fields Map(String, Variant(Float64, Int64, String)), tags Map(String, String))")
                 .engine("MergeTree").orderByColumn("off16")
-                .settings(Map.of("allow_experimental_variant_type", 1))
+                .settings(Map.of(ClientConfigProperties.serverSetting("allow_experimental_variant_type"), 1))
                 .tableName(topic).execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createTupleLikeInfluxValueData(topic, 1);
