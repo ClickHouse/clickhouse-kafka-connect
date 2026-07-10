@@ -470,6 +470,53 @@ public class SchemaTestData {
         return array;
     }
 
+    public static Collection<SinkRecord> createJSONTypeWithNullableStringJson(String topic, int partition, int totalRecords) {
+
+        Schema CONTENT_SCHEMA = SchemaBuilder.struct()
+                .field("k1", Schema.STRING_SCHEMA)
+                .field("k2", Schema.STRING_SCHEMA);
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("struct_content", CONTENT_SCHEMA)
+                .field("json_as_str", Schema.OPTIONAL_STRING_SCHEMA)
+                .build();
+
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+
+            Struct content = new Struct(CONTENT_SCHEMA)
+                    .put("k1", "v1" + n)
+                    .put("k2", "v2" + n);
+
+            // Alternate between a present value and a missing (null) one, like a
+            // Debezium "before"/"after" JSON field would be on insert/delete events.
+            String json_as_str = (n % 2 == 0) ? "{\"k3\":\"v3\", \"k4\":\"v4\"}" : null;
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short)n)
+                    .put("struct_content", content)
+                    .put("json_as_str", json_as_str)
+                    ;
+
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     public static Collection<SinkRecord> createTupleType(String topic, int partition) {
         return createTupleType(topic, partition, DEFAULT_TOTAL_RECORDS);
     }

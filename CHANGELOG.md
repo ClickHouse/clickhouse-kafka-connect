@@ -1,3 +1,11 @@
+# 1.3.11, 2026-06-24
+
+## Bug Fixes
+* Fixed `NullPointerException` when writing a `null` value into a `Nullable(JSON)` column via the binary
+insert path with `input_format_binary_read_json_as_string=1`. The JSON case in `ClickHouseWriter` cast the
+field straight to `String` without checking for `null` first, unlike every other nullable-aware type in the
+same switch. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/562)
+
 # 1.3.10, 2026-06-24
 
 ## New Features
