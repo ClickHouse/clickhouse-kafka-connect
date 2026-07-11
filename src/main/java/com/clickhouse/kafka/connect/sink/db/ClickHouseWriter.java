@@ -84,6 +84,7 @@ public class ClickHouseWriter implements DBWriter {
     private ClickHouseSinkConfig csc = null;
 
     private final Map<String, Table> mapping;
+    private DestinationTableFilter destinationTableFilter;
     private final AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
     private final SinkTaskStatistics statistics;
 
@@ -104,6 +105,7 @@ public class ClickHouseWriter implements DBWriter {
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
         this.csc = csc;
+        this.destinationTableFilter = new DestinationTableFilter(csc);
         String clientVersion = csc.getClientVersion();
         boolean useClientV2 = clientVersion.equals("V1") ? false : true;
 
@@ -147,9 +149,9 @@ public class ClickHouseWriter implements DBWriter {
 
         LOGGER.debug("Ping was successful.");
         this.updateMapping(csc.getDatabase());
-        if (mapping.isEmpty()) {
-            LOGGER.error("Did not find any tables in destination Please create before running.");
-            return false;
+        if (destinationTableFilter.hasDestinationIn(csc.getDatabase()) && mapping.isEmpty()) {
+            LOGGER.warn("Did not find a configured destination table during startup; "
+                    + "table mapping will be retried when records arrive.");
         }
 
         startBackgroundTableSync(csc.getDatabase());
@@ -168,10 +170,8 @@ public class ClickHouseWriter implements DBWriter {
 
         try {
             // Getting tables from ClickHouse
-            List<Table> tableList = this.chc.extractTablesMapping(database, this.mapping);
+            List<Table> tableList = this.chc.extractTablesMapping(database, this.mapping, destinationTableFilter);
             // Adding new tables to mapping, or update existing tables
-            // TODO: check Kafka Connect's topics name or topics regex config and
-            // only add tables to in-memory mapping that matches the topics we consume.
             for (Table table : tableList) {
                 this.mapping.put(table.getFullName(), table);
             }
@@ -1517,7 +1517,7 @@ public class ClickHouseWriter implements DBWriter {
         return request;
     }
     protected Table getTable(String database, String topic) {
-        String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
+        String tableName = destinationTableFilter.registerDestination(database, topic);
         Table table = this.mapping.get(tableName);
         if (table == null) {
             if (this.updateMapping(database)) {
@@ -1525,6 +1525,9 @@ public class ClickHouseWriter implements DBWriter {
             } else {
                 String cleanTopicName = Utils.getMappedOrTopicTableName(topic, csc.getTopicToTableMap());
                 table = chc.describeTable(database, cleanTopicName.replace("`", "").trim());
+                if (table != null) {
+                    this.mapping.put(table.getFullName(), table);
+                }
             }
         }
 

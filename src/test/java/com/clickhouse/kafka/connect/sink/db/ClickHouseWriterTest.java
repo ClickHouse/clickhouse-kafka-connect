@@ -40,6 +40,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
 import static org.junit.jupiter.api.Assertions.*;
@@ -152,6 +153,46 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 });
 
         ClickHouseTestHelpers.dropTable(chc, topic);
+    }
+
+    @Test
+    public void configuredTopicsLimitInitialTableMapping() {
+        Map<String, String> props = getBaseProps();
+        String relevantTopic = createTopicName("configured_mapping_test");
+        String unrelatedTopic = createTopicName("unrelated_mapping_test");
+        props.put(ClickHouseSinkConfig.TOPICS, relevantTopic);
+
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(relevantTopic).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(unrelatedTopic).execute(chc);
+        try {
+            runWithWriter(props, (writer) -> {
+                assertNotNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), relevantTopic)));
+                assertNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), unrelatedTopic)));
+            });
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, relevantTopic);
+            ClickHouseTestHelpers.dropTable(chc, unrelatedTopic);
+        }
+    }
+
+    @Test
+    public void configuredTopicsRegexLimitsInitialTableMapping() {
+        Map<String, String> props = getBaseProps();
+        String relevantTopic = createTopicName("regex_mapping_test");
+        String unrelatedTopic = createTopicName("unrelated_regex_mapping_test");
+        props.put(ClickHouseSinkConfig.TOPICS_REGEX, Pattern.quote(relevantTopic));
+
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(relevantTopic).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(unrelatedTopic).execute(chc);
+        try {
+            runWithWriter(props, (writer) -> {
+                assertNotNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), relevantTopic)));
+                assertNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), unrelatedTopic)));
+            });
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, relevantTopic);
+            ClickHouseTestHelpers.dropTable(chc, unrelatedTopic);
+        }
     }
 
     @Test
