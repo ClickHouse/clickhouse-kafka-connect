@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.clickhouse.kafka.connect.ClickHouseSinkConnector.CLIENT_VERSION;
 
@@ -35,6 +37,8 @@ public class ClickHouseSinkConfig {
     public static final String SUPPRESS_TABLE_EXISTENCE_EXCEPTION = "suppressTableExistenceException";
     public static final String CLICKHOUSE_SETTINGS = "clickhouseSettings";
     public static final String TABLE_MAPPING = "topic2TableMap";
+    public static final String TOPICS = "topics";
+    public static final String TOPICS_REGEX = "topics.regex";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
     public static final String CUSTOM_INSERT_FORMAT_ENABLE = "customInsertFormat";
@@ -100,6 +104,8 @@ public class ClickHouseSinkConfig {
     private final boolean errorsTolerance;
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
+    private final List<String> topics;
+    private final Pattern topicsRegex;
     private final ClickHouseProxyType proxyType;
     private final String proxyHost;
     private final int proxyPort;
@@ -246,6 +252,13 @@ public class ClickHouseSinkConfig {
                 }
             }
         }
+
+        topics = Arrays.stream(props.getOrDefault(TOPICS, "").split(","))
+                .map(String::trim)
+                .filter(topic -> !topic.isEmpty())
+                .collect(Collectors.toList());
+        String topicsRegexString = props.getOrDefault(TOPICS_REGEX, "");
+        topicsRegex = topicsRegexString.isBlank() ? null : Pattern.compile(topicsRegexString);
 
         String insertFormatTmp = props.getOrDefault(INSERT_FORMAT, "node").toLowerCase();
         switch (insertFormatTmp) {

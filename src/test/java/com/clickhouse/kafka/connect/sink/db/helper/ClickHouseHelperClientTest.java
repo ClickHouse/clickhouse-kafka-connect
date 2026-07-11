@@ -15,10 +15,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
+
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseHelperClientTest extends ClickHouseBase {
@@ -53,6 +58,30 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    @Test
+    public void extractTablesMappingOnlyDescribesRelevantTables() {
+        String relevantTopic = createTopicName("relevant_table_mapping_test");
+        String unrelatedTopic = createTopicName("unrelated_table_mapping_test");
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(relevantTopic).execute(chc);
+        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(unrelatedTopic).execute(chc);
+
+        ClickHouseHelperClient clientSpy = spy(chc);
+        try {
+            List<Table> tables = clientSpy.extractTablesMapping(
+                    chc.getDatabase(),
+                    new HashMap<>(),
+                    table -> table.getCleanName().equals(relevantTopic));
+
+            Assertions.assertEquals(1, tables.size());
+            Assertions.assertEquals(relevantTopic, tables.get(0).getCleanName());
+            verify(clientSpy).describeTable(chc.getDatabase(), relevantTopic);
+            verify(clientSpy, never()).describeTable(chc.getDatabase(), unrelatedTopic);
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, relevantTopic);
+            ClickHouseTestHelpers.dropTable(chc, unrelatedTopic);
         }
     }
 

@@ -1,3 +1,11 @@
+# 1.3.12, 2026-07-12
+
+## Bug Fixes
+* Limited table schema discovery to destinations selected by the connector's `topics`, `topics.regex`, and
+`topic2TableMap` configuration. Runtime-routed tables are added lazily, so databases with many unrelated
+tables no longer receive a `DESCRIBE TABLE` request for every table during connector startup or refresh.
+(https://github.com/ClickHouse/clickhouse-kafka-connect/issues/632)
+
 # 1.3.11, 2026-06-24
 
 ## Bug Fixes
