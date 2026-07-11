@@ -113,8 +113,8 @@ public class ClickHouseSinkTask extends SinkTask {
         // Track the max flushed offset per topic/partition so preCommit() only
         // allows the framework to commit offsets for data written to ClickHouse
         for (SinkRecord record : toFlush) {
-            TopicPartition tp = new TopicPartition(record.topic(), record.kafkaPartition());
-            long offset = record.kafkaOffset() + 1; // +1 because committed offset = next offset to consume
+            TopicPartition tp = SinkRecordMetadata.topicPartition(record);
+            long offset = SinkRecordMetadata.offset(record) + 1; // +1 because committed offset = next offset to consume
             OffsetAndMetadata current = flushedOffsets.get(tp);
             if (current == null || offset > current.offset()) {
                 flushedOffsets.put(tp, new OffsetAndMetadata(offset));
@@ -192,10 +192,7 @@ public class ClickHouseSinkTask extends SinkTask {
         // will redeliver them — no data loss.
         if (!buffer.isEmpty()) {
             int before = buffer.size();
-            buffer.removeIf(record -> {
-                TopicPartition tp = new TopicPartition(record.topic(), record.kafkaPartition());
-                return partitions.contains(tp);
-            });
+            buffer.removeIf(record -> partitions.contains(SinkRecordMetadata.topicPartition(record)));
             if (buffer.size() != before) {
                 LOGGER.info("Rebalance: removed {} buffered records for revoked partitions {}",
                         before - buffer.size(), partitions);

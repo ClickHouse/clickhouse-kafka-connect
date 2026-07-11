@@ -312,4 +312,58 @@ public class ProcessingTest {
                 "State offsets should not contain processed database.topic key");
     }
 
+    @Test
+    @DisplayName("Transformed records use original topic for state offsets")
+    public void transformedRecordUsesOriginalTopicForStateOffsets() throws IOException, ExecutionException, InterruptedException {
+        String sourceTopic = "orders";
+        String transformedTopic = "orders_table";
+        int partition = 1;
+        SinkRecord sinkRecord = new SinkRecordWithOriginalTopic(
+                transformedTopic, partition, sourceTopic);
+        Record record = Record.newRecord(
+                SchemaType.SCHEMA,
+                transformedTopic,
+                partition,
+                0,
+                null,
+                Collections.singletonMap("off", new Data(Schema.INT8_SCHEMA, 0)),
+                "default",
+                sinkRecord);
+
+        InMemoryState stateProvider = new InMemoryState();
+        DBWriter dbWriter = new InMemoryDBWriter();
+        Processing processing = new Processing(
+                stateProvider,
+                dbWriter,
+                null,
+                new ClickHouseSinkConfig(new HashMap<>()),
+                sinkTaskStatistics);
+        processing.doLogic(List.of(record));
+
+        Map<TopicPartition, OffsetAndMetadata> offsets = stateProvider.getLastInsertedOffsetsSnapshot();
+        assertTrue(offsets.containsKey(new TopicPartition(sourceTopic, partition)));
+        assertFalse(offsets.containsKey(new TopicPartition(transformedTopic, partition)));
+    }
+
+    public static final class SinkRecordWithOriginalTopic extends SinkRecord {
+        private final String originalTopic;
+
+        private SinkRecordWithOriginalTopic(String topic, int partition, String originalTopic) {
+            super(topic, partition, null, null, null, null, 0);
+            this.originalTopic = originalTopic;
+        }
+
+        public String originalTopic() {
+            return originalTopic;
+        }
+
+        public Integer originalKafkaPartition() {
+            return kafkaPartition();
+        }
+
+        public long originalKafkaOffset() {
+            return kafkaOffset();
+        }
+    }
+
 }
