@@ -1,3 +1,11 @@
+# 1.3.12, 2026-07-11
+
+## Bug Fixes
+* Buffered offset commits and partition revocation now use the original Kafka topic, partition, and offset
+when a sink transform changes record metadata. This prevents commits from being reported for transformed,
+unassigned topic partitions while retaining compatibility with Kafka Connect runtimes older than 3.6.
+(https://github.com/ClickHouse/clickhouse-kafka-connect/issues/777)
+
 # 1.3.11, 2026-06-24
 
 ## Bug Fixes

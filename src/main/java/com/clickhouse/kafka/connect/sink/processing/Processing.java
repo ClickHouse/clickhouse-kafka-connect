@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.processing;
 
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
+import com.clickhouse.kafka.connect.sink.SinkRecordMetadata;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.DBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.DuplicateException;
@@ -134,7 +135,7 @@ public class Processing {
 
         String database = record.getDatabase();
         String topic = record.getRecordOffsetContainer().getTopic();
-        String originalTopic = record.getSinkRecord().topic();
+        String originalTopic = SinkRecordMetadata.topic(record.getSinkRecord());
 
         if (this.clickHouseSinkConfig != null && clickHouseSinkConfig.isEnableDbTopicSplit()) {
             topic = database + clickHouseSinkConfig.getDbTopicSplitChar() + topic;
