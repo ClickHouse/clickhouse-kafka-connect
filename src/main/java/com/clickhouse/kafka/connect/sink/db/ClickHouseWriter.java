@@ -828,6 +828,18 @@ public class ClickHouseWriter implements DBWriter {
         Type colType = col.getType();
         if (fieldExists) {
             LOGGER.trace("Column value is {}", value);
+            // Debezium can encode deleted UUID fields as empty strings.
+            if (colType == Type.UUID && col.isNullable() && "".equals(value.getObject())) {
+                if (defaultsSupport) {
+                    if (col.hasDefault()) {
+                        BinaryStreamUtils.writeNull(stream);
+                        return;
+                    }
+                    BinaryStreamUtils.writeNonNull(stream);
+                }
+                BinaryStreamUtils.writeNull(stream);
+                return;
+            }
             // TODO: the mapping need to be more efficient
             if (defaultsSupport) {
                 if (value.getObject() != null) {//Because we now support defaults, we have to send nonNull

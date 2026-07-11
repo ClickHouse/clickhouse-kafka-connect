@@ -1,3 +1,10 @@
+# 1.3.12, 2026-07-12
+
+## Bug Fixes
+* Empty strings written to `Nullable(UUID)` columns through the RowBinary path are now encoded as `NULL`
+instead of failing UUID parsing. Empty strings for non-nullable UUID columns remain invalid.
+(https://github.com/ClickHouse/clickhouse-kafka-connect/issues/479)
+
 # 1.3.11, 2026-06-24
 
 ## Bug Fixes
