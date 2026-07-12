@@ -221,11 +221,15 @@ To make this diagnosable **from the Job log alone**:
 Local full-pipeline run (1.5M rows, real Kafka, fast broker): **peak_rss ≈ 4.4 GiB**
 high-water (`getrusage` maxrss). The stall-driven readahead spike — the thing that
 actually OOMed pair-3 — drops from ~5.2 GiB to ~2.1 GiB. With that path bounded, a
-full run's peak is dominated by one ~1M-row row-group decode plus the 128 MiB queue,
-which sits **comfortably under the `4Gi` request** and well under the `7Gi` limit.
-The `7Gi` limit (bumped from 6Gi as a stopgap on 2026-07-12) is now **documented
-headroom**, not a workaround — it can be revisited down to ~6Gi once a full
-stall-under-load run confirms the flattened peak in-cluster.
+full run's peak is dominated by one ~1M-row row-group decode plus the 128 MiB queue.
+That **~4.4 GiB peak is ABOVE the `4Gi` request but well under the `7Gi` limit** —
+which is exactly the intended shape. The `memory` **request is scheduling-only**: it
+reserves capacity for the scheduler and does NOT cap usage, so a peak above it is
+expected and harmless as long as it stays under the **limit**, which is the value the
+kernel OOMKills against. The `7Gi` limit (bumped from 6Gi as a stopgap on 2026-07-12)
+is now **documented headroom** over that ~4.4 GiB peak, not a workaround — it can be
+revisited down to ~6Gi once a full stall-under-load run confirms the flattened peak
+in-cluster.
 
 ## Deferred
 

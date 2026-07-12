@@ -235,6 +235,30 @@ def test_drain_rate_stability_default_bucket_is_60s():
         F.compute_drain_rate_stability(stream, bucket_seconds=60)
 
 
+def test_bucket_seconds_default_is_exactly_60():
+    # Pin the constant itself. The equality test above cannot distinguish 30
+    # from 60 for the lumpy stream (both give CoV ~ 0), so assert the VALUE
+    # directly: a regression to 30 (the pre-2026-07-10 bucketing) would slip
+    # past every behavioural test but change chart comparability.
+    assert F.BUCKET_SECONDS_DEFAULT == 60.0
+
+
+def test_bucket_seconds_default_survives_set_but_empty_env(monkeypatch):
+    # `or "60"` idiom (B7 / 083e836 class): the orchestrator may export
+    # DRAIN_RATE_STABILITY_BUCKET_SECONDS SET-BUT-EMPTY. The old
+    # float(os.environ.get(k, "60")) would see "" and raise ValueError on
+    # import; `get(k) or "60"` collapses empty to the default.
+    import importlib
+    monkeypatch.setenv("DRAIN_RATE_STABILITY_BUCKET_SECONDS", "")
+    reloaded = importlib.reload(F)
+    try:
+        assert reloaded.BUCKET_SECONDS_DEFAULT == 60.0
+    finally:
+        # Restore the module to the unset-env default for later tests.
+        monkeypatch.delenv("DRAIN_RATE_STABILITY_BUCKET_SECONDS", raising=False)
+        importlib.reload(F)
+
+
 def test_drain_rate_stability_zero_bucket_falls_back_to_default():
     # A non-positive bucket width is coerced to the default rather than dividing
     # by zero / making one bucket per interval accidentally.

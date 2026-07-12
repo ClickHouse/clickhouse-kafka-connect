@@ -96,15 +96,22 @@ def rss_mb():
     return (ru / (1024 * 1024)) if sys.platform == "darwin" else (ru / 1024)
 
 
+# Throttle for the periodic progress LOG line (updated every 500k rows).
 _last_progress = {"read": 0}
+# LIVE row counter, updated every row by the hot loop. The breadcrumb must read
+# THIS, not _last_progress: on an OOMKill the last thing we want is a trailer
+# that under-reports by up to ~500k rows (the log-throttle window). A single
+# dict write per row is negligible next to the Avro serialise + produce.
+_live_progress = {"read": 0}
 
 
 def _final_breadcrumb(reason):
     # Best-effort: a single line so an OOMKill/SIGTERM leaves a diagnosable
-    # trailer in the Job log instead of silence. Must not raise.
+    # trailer in the Job log instead of silence. Must not raise. Reads the LIVE
+    # counter so the reported row count is exact at the moment of death.
     try:
         print(f"[producer] FINAL breadcrumb ({reason}): "
-              f"rows_produced_so_far={_last_progress['read']} "
+              f"rows_produced_so_far={_live_progress['read']} "
               f"peak_rss={rss_mb():.0f} MiB", file=sys.stderr, flush=True)
     except Exception:
         pass
@@ -422,9 +429,12 @@ def main():
         "acks": "all",
         "compression.type": "lz4",
         "linger.ms": 50,
-        # Kafka producer batch (messages coalesced per broker request). Bounded
-        # by queue.buffering.max.messages below; kept modest so a full batch is
-        # a fraction of the queue, not the whole thing.
+        # Kafka producer batch (max messages coalesced per broker request).
+        # Set EQUAL to queue.buffering.max.messages below: this is a ceiling, not
+        # a reservation, so a single broker request may pack up to the whole
+        # queue when it is full — fine at acks=all/idempotence (linger.ms=50
+        # still bounds latency). It is the queue cap, not this, that bounds the
+        # C-side memory reservation.
         "batch.num.messages": 100000,
         # HARD memory bound on the C-side queue of un-acked messages. 100k msgs
         # is the librdkafka default; at ~1 KiB/serialised-row that is ~100 MiB.
@@ -503,6 +513,9 @@ def main():
                 except BufferError:
                     producer.poll(0.5)
             read += 1
+            # Publish the live count every row so _final_breadcrumb is exact on
+            # an abrupt OOMKill/SIGTERM (cheap dict write; see _live_progress).
+            _live_progress["read"] = read
             if limit and read >= limit:
                 stop = True
                 break

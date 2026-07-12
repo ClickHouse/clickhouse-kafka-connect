@@ -89,7 +89,12 @@ log "applying poller RBAC (bench-poller-sa + nodes/proxy get for the cadvisor CP
 # getting 403 on the cadvisor scrape (pair-2 symptom: `can-i get nodes/proxy`
 # NO despite the objects "looking correct"). Delete the binding first so the
 # apply always installs the current roleRef. The ClusterRole/SA update in place.
+#
+# The NAMESPACED RoleBinding bench-poller-pods has the same immutable-roleRef
+# constraint, so delete-before-apply it too — otherwise a stale roleRef survives
+# the apply and the pods get/list grant silently fails to update.
 kubectl delete clusterrolebinding bench-poller-cadvisor --ignore-not-found
+kubectl -n "${K8S_NAMESPACE}" delete rolebinding bench-poller-pods --ignore-not-found
 kubectl apply -f "${INFRA_DIR}/poller-rbac.yaml"
 
 # Preflight (fail loud BEFORE a drain pays for it): assert the SA's REAL access
@@ -103,12 +108,24 @@ kubectl apply -f "${INFRA_DIR}/poller-rbac.yaml"
 SA="system:serviceaccount:${K8S_NAMESPACE}:bench-poller-sa"
 log "preflight: probing ${SA} real access (cadvisor CPU gate)"
 SA_TOKEN="$(kubectl create token bench-poller-sa -n "${K8S_NAMESPACE}" --duration=10m)"
-proxy_probe="$(kubectl --token="${SA_TOKEN}" get --raw "/api/v1/nodes/preflight-dummy-node/proxy/metrics/cadvisor" 2>&1 || true)"
+# --request-timeout so an API-server blip is a bounded failure, not a hang that
+# stalls the whole pair before it even starts.
+proxy_probe="$(kubectl --token="${SA_TOKEN}" --request-timeout=30s get --raw "/api/v1/nodes/preflight-dummy-node/proxy/metrics/cadvisor" 2>&1 || true)"
 if echo "${proxy_probe}" | grep -qi "forbidden"; then
   kubectl describe clusterrolebinding bench-poller-cadvisor 2>&1 | sed 's/^/    | /' >&2 || true
   die "poller RBAC preflight FAILED: ${SA} raw GET nodes/proxy is Forbidden — the cadvisor CPU gate would be BLIND for the whole pair. Check poller-rbac.yaml before running run_pair.sh."
+elif echo "${proxy_probe}" | grep -Eqi "notfound|not found|\"code\": *404|404"; then
+  # POSITIVE authorization signature: the request went PAST authz and the dummy
+  # node simply does not exist. This is the only outcome that proves the grant.
+  :
+else
+  # Neither Forbidden nor the expected NotFound/404 — e.g. a timeout, a
+  # connection error, or an unrecognized shape. Don't assume authorized (the old
+  # code passed on ANY non-Forbidden output, which would mask a probe that never
+  # actually reached authz). Warn loudly with the raw output and continue.
+  warn "poller RBAC preflight: nodes/proxy probe returned neither Forbidden nor NotFound/404 — cannot positively confirm authorization; continuing but the CPU gate may be blind. Raw probe output: $(echo "${proxy_probe}" | tr '\n' ' ')"
 fi
-if ! kubectl --token="${SA_TOKEN}" get pods -n "${K8S_NAMESPACE}" -o name >/dev/null 2>&1; then
+if ! kubectl --token="${SA_TOKEN}" --request-timeout=30s get pods -n "${K8S_NAMESPACE}" -o name >/dev/null 2>&1; then
   die "poller RBAC preflight FAILED: ${SA} cannot list pods in ${K8S_NAMESPACE} — nodeName resolution would fail and the CPU gate would be BLIND (the 2026-07-09 failure mode). Ensure the bench-poller-pods Role+RoleBinding exist (poller-rbac.yaml)."
 fi
 log "  preflight OK: ${SA} raw nodes/proxy authorized + pods listable"

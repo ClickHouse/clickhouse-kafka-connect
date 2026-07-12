@@ -66,12 +66,20 @@ subjects:
     name: bench-poller-sa
     namespace: kafka-bench
 ---
-# Namespace-scoped pods read: the sampler resolves the Connect worker pod's
-# .spec.nodeName before it can build the node-proxy cadvisor URL. Without this
-# the source never arms ("node unresolved") — the ACTUAL cause of the
-# 2026-07-09 blind CPU gate (nodes/proxy itself was authorized all along; SSAR
-# `can-i` checks false-negative on this cluster, so verify with a real
-# token+request probe, never can-i — see scale-up.sh preflight).
+# Namespace-scoped pods read (get/list). NOTE on who uses this: the actual
+# .spec.nodeName resolution that builds the node-proxy cadvisor URL runs in
+# run_pair.sh under the ORCHESTRATOR identity, NOT the poller SA — so this Role
+# is not on that hot path. It exists for (a) the scale-up.sh preflight, which
+# verifies the poller SA can reach the API with a real token+request probe, and
+# (b) any future IN-POD nodeName resolution should the poller ever resolve the
+# node itself. Kept least-privilege (get/list pods only) so both uses are
+# covered without granting the sampler more than it could ever need.
+#
+# The 2026-07-09 blind CPU gate was NOT an RBAC denial: nodes/proxy was
+# authorized all along, and the orchestrator-side resolver silently swallowed
+# its stderr (fixed in run_pair.sh). Because SSAR `can-i` checks false-negative
+# on this cluster, verify authorization with a real token+request probe, never
+# can-i — see scale-up.sh preflight.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

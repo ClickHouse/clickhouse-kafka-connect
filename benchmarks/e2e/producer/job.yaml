@@ -94,10 +94,13 @@ spec:
             # 128 MiB, per-batch dicts released promptly.
             requests:
               cpu: "1"
-              # 4Gi: the 1Gi/3Gi sizing OOMKilled at ~2m44s into a 10M-row
-              # pre-load (2026-07-07). Post-fix the stall-driven pyarrow readahead
-              # spike (the pair-3 OOM cause) drops from ~5.2Gi to ~2.1Gi; a full
-              # run's peak now sits under this request.
+              # 4Gi request is SCHEDULING-ONLY — it reserves capacity for the
+              # scheduler and does NOT cap usage. The measured post-fix peak
+              # (~4.4Gi) runs slightly ABOVE this request, which is expected and
+              # fine: only the LIMIT below is enforced by the OOMKiller. The
+              # 1Gi/3Gi sizing OOMKilled at ~2m44s into a 10M-row pre-load
+              # (2026-07-07); post-fix the stall-driven pyarrow readahead spike
+              # (the pair-3 OOM cause) drops from ~5.2Gi to ~2.1Gi.
               memory: 4Gi
             limits:
               cpu: "2"

@@ -53,9 +53,13 @@ def log(msg: str) -> None:
 def main() -> None:
     db = ch_common.require("CH_DATABASE")
     table = ch_common.require("CH_TABLE")
-    poll_interval = int(os.environ.get("POLL_INTERVAL", "10"))
-    stable_samples = int(os.environ.get("STABLE_SAMPLES", "3"))
-    settle_timeout = int(os.environ.get("SETTLE_TIMEOUT", "1800"))
+    # `or "N"` (not the 2-arg default): the orchestrator may export these
+    # SET-BUT-EMPTY, and os.environ.get(k, "N") returns "" for that case, so
+    # int("") would raise ValueError. `get(k) or "N"` collapses both unset and
+    # empty to the default (same class fixed in 083e836).
+    poll_interval = int(os.environ.get("POLL_INTERVAL") or "10")
+    stable_samples = int(os.environ.get("STABLE_SAMPLES") or "3")
+    settle_timeout = int(os.environ.get("SETTLE_TIMEOUT") or "1800")
 
     client = ch_common.get_client("TARGET_CH_HOST", "TARGET_CH_USER", "TARGET_CH_PASSWORD")
 

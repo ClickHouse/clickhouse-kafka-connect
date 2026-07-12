@@ -68,8 +68,12 @@ import metric_names as mn
 # genuine drain-rate variation rather than the commit rhythm. Parameterizable via
 # DRAIN_RATE_STABILITY_BUCKET_SECONDS. See README "drain_rate_stability" note:
 # values recorded before 2026-07-10 used 10s buckets and are NOT comparable.
+# `or "60"` (not the 2-arg default): a SET-BUT-EMPTY env var makes
+# os.environ.get(k, "60") return "" and float("") raises ValueError. `get(k)
+# or "60"` collapses both unset and empty to the default (same class fixed in
+# 083e836).
 BUCKET_SECONDS_DEFAULT = float(
-    os.environ.get("DRAIN_RATE_STABILITY_BUCKET_SECONDS", "60"))
+    os.environ.get("DRAIN_RATE_STABILITY_BUCKET_SECONDS") or "60")
 
 
 # --------------------------------------------------------------------------- #

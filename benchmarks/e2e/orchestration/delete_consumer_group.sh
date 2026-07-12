@@ -30,6 +30,25 @@ NS="${K8S_NAMESPACE:-kafka-bench}"
 BOOTSTRAP="${KAFKA_BOOTSTRAP:-bench-kafka-bootstrap.${NS}.svc:9092}"
 BROKER_POD="${BROKER_POD:-bench-combined-0}"
 
-kubectl -n "${NS}" exec "${BROKER_POD}" -- \
+# A group that never existed (e.g. a pre-drain abort, or the very first drain of
+# a tier) is a SILENT success, not a failure: kafka-consumer-groups.sh prints a
+# multi-line GroupIdNotFoundException Java stack (to stdout) and exits non-zero
+# for that case, which spammed 4 scary "Error" blocks per aborted pair. Capture
+# the combined output, and if the ONLY problem is GroupIdNotFoundException,
+# treat it as done (there is nothing to delete). Any other error still fails.
+out="$(kubectl -n "${NS}" exec "${BROKER_POD}" -- \
   bin/kafka-consumer-groups.sh --bootstrap-server "${BOOTSTRAP}" \
-  --delete --group "${GROUP}"
+  --delete --group "${GROUP}" 2>&1)"
+rc=$?
+if [ "${rc}" -ne 0 ]; then
+  if echo "${out}" | grep -q "GroupIdNotFoundException"; then
+    # Nothing to delete — the next drain already starts fresh at offset 0.
+    exit 0
+  fi
+  echo "${out}" >&2
+  exit "${rc}"
+fi
+# Success path: echo whatever the tool reported (normally the "Deletion of
+# requested consumer groups ... successful" line).
+[ -n "${out}" ] && echo "${out}"
+exit 0

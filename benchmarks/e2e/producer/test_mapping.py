@@ -176,6 +176,24 @@ def main():
         assert failed, "None in a numeric column must fail the run"
         print("PASS null guard: None in 'RegionID' failed loudly")
 
+    # --- N3: _final_breadcrumb reports the LIVE row count, not the stale
+    #        500k-throttled _last_progress. Simulate the state right before an
+    #        OOMKill: the live counter is well past the last throttled log line.
+    producer._last_progress["read"] = 500000   # last periodic LOG flush
+    producer._live_progress["read"] = 512345    # true rows produced at death
+    cap = io.StringIO()
+    _orig_stderr = sys.stderr
+    try:
+        sys.stderr = cap
+        producer._final_breadcrumb("test")
+    finally:
+        sys.stderr = _orig_stderr
+    out = cap.getvalue()
+    assert "rows_produced_so_far=512345" in out, out
+    assert "rows_produced_so_far=500000" not in out, out
+    print("PASS breadcrumb: FINAL trailer reports the live row count (512345), "
+          "not the 500k-throttled _last_progress")
+
     print("ALL MAPPING TESTS PASSED")
 
 

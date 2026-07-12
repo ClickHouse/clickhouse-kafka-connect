@@ -708,8 +708,19 @@ deploy_connect() {
   # kafka-NAMESPACED for now: the shared pinned spellings arrive in a pending
   # contract amendment; namespaced keys are contract-legal today (§1.4), and
   # migrating to the shared names later is a 1-line rename here.
-  local node
-  node="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" -o jsonpath='{.spec.nodeName}' 2>/dev/null)"
+  # nodeName resolution runs here under the ORCHESTRATOR identity (not the
+  # poller SA). Do NOT swallow stderr: the 07-09 blind-CPU-gate incident was a
+  # silent failure here — 2>/dev/null hid the true cause, so a resolution
+  # failure looked identical to an empty node. Capture stderr and warn-log it
+  # loudly on failure; the gate degrades honestly (POD_CADVISOR_URL empty ->
+  # CPU gate UNAVAILABLE) but the operator now sees WHY.
+  local node node_err
+  node_err="$(mktemp)"
+  node="$(kubectl -n "${NS}" get pod "${CONNECT_POD}" -o jsonpath='{.spec.nodeName}' 2>"${node_err}")"
+  if [ -z "${node}" ] && [ -s "${node_err}" ]; then
+    warn "nodeName resolution failed for pod ${CONNECT_POD}: $(tr '\n' ' ' < "${node_err}")"
+  fi
+  rm -f "${node_err}"
 
   # Sighted CPU source (poller prerequisite 2): the cadvisor cumulative CPU
   # counter for the Connect pod, scraped from the kubelet /metrics/cadvisor of
