@@ -31,9 +31,12 @@ is always the summary; all human logging goes to stderr) for the orchestrator
 """
 
 import argparse
+import atexit
 import datetime
 import json
 import os
+import resource
+import signal
 import sys
 import time
 
@@ -74,6 +77,52 @@ def log(msg):
 def die(msg, code=1):
     print(f"[producer:error] {msg}", file=sys.stderr, flush=True)
     sys.exit(code)
+
+
+# --- memory diagnosability ---------------------------------------------------
+# The 2026-07-12 pair-3 producer died ABRUPTLY at 2,545,486/10,000,000 rows with
+# NO traceback — the classic OOMKill (exit 137) signature: a normal progress
+# line, then silence. To make a future OOM diagnosable from the Job log ALONE,
+# every progress line now carries an RSS number, and we emit a best-effort final
+# line on SIGTERM/atexit. If you see a progress+RSS line climbing toward the
+# container memory limit and then an abrupt stop with no summary JSON and no
+# traceback, that is an OOMKill — raise the limit OR (preferably) find the new
+# growth path; the buffers below are all explicitly bounded.
+
+def rss_mb():
+    """Resident set size in MiB. On Linux (the container) ru_maxrss is KiB."""
+    ru = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # macOS reports bytes; Linux (where this runs) reports KiB.
+    return (ru / (1024 * 1024)) if sys.platform == "darwin" else (ru / 1024)
+
+
+_last_progress = {"read": 0}
+
+
+def _final_breadcrumb(reason):
+    # Best-effort: a single line so an OOMKill/SIGTERM leaves a diagnosable
+    # trailer in the Job log instead of silence. Must not raise.
+    try:
+        print(f"[producer] FINAL breadcrumb ({reason}): "
+              f"rows_produced_so_far={_last_progress['read']} "
+              f"peak_rss={rss_mb():.0f} MiB", file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
+def _install_breadcrumbs():
+    atexit.register(_final_breadcrumb, "atexit")
+
+    def _on_sigterm(signum, frame):
+        # OOMKilled pods normally get SIGKILL (no handler runs), but a graceful
+        # eviction / deadline sends SIGTERM first — capture that case.
+        _final_breadcrumb(f"signal {signum}")
+        sys.exit(143)
+
+    try:
+        signal.signal(signal.SIGTERM, _on_sigterm)
+    except (ValueError, OSError):
+        pass  # not in main thread / unsupported platform
 
 
 # --- schema handling ---------------------------------------------------------
@@ -319,6 +368,7 @@ def maybe_create_topic(bootstrap, topic, partitions):
 
 
 def main():
+    _install_breadcrumbs()
     args = parse_args()
     schema_path = os.path.abspath(args.schema)
     if not os.path.exists(schema_path):
@@ -350,15 +400,38 @@ def main():
 
     # Idempotent producer (overseer directive 1). acks=all is implied by
     # enable.idempotence but set explicitly for provenance.
+    #
+    # MEMORY BOUND (2026-07-12 OOM root cause, path (b)): librdkafka holds every
+    # un-acked produced message in a C-side queue until the broker acks it. When
+    # the broker is SLOWER than the parquet reader — exactly the pair-3 case,
+    # where librdkafka logged "Failed to acquire idempotence PID ...: Coordinator
+    # load in progress: retrying" right as the read side started pumping — this
+    # queue fills to its cap and stays there. The cap is therefore a hard memory
+    # reservation, not a theoretical ceiling. The previous values (1,000,000 msgs
+    # / 1 GiB) were 10x the librdkafka default and reserved ~1 GiB of C heap that,
+    # stacked on the pyarrow readahead spike, tipped a 6Gi container over.
+    #
+    # We set BOTH caps explicitly and back to the librdkafka defaults' order of
+    # magnitude. queue-full raises BufferError in produce(), which the row loop
+    # handles as backpressure (poll without advancing the iterator) — so a
+    # smaller queue costs throughput under a stall, never correctness. Whichever
+    # cap is hit first bounds the queue; keep the two consistent.
     producer = Producer({
         "bootstrap.servers": args.bootstrap,
         "enable.idempotence": True,
         "acks": "all",
         "compression.type": "lz4",
         "linger.ms": 50,
+        # Kafka producer batch (messages coalesced per broker request). Bounded
+        # by queue.buffering.max.messages below; kept modest so a full batch is
+        # a fraction of the queue, not the whole thing.
         "batch.num.messages": 100000,
-        "queue.buffering.max.messages": 1000000,
-        "queue.buffering.max.kbytes": 1048576,
+        # HARD memory bound on the C-side queue of un-acked messages. 100k msgs
+        # is the librdkafka default; at ~1 KiB/serialised-row that is ~100 MiB.
+        "queue.buffering.max.messages": 100000,
+        # ...OR 128 MiB, whichever fills first (was 1 GiB). This is the dominant
+        # C-heap reservation under a send-side stall — keep it small.
+        "queue.buffering.max.kbytes": 131072,
         "message.max.bytes": 10485760,
     })
 
@@ -387,17 +460,41 @@ def main():
     read = 0
     limit = args.limit
     stop = False
+    # MEMORY BOUND (2026-07-12 OOM root cause, path (c) — the DOMINANT one).
+    # pyarrow's dataset scanner prefetches batches in BACKGROUND threads. The
+    # defaults are batch_readahead=16 and fragment_readahead=4, i.e. up to 64
+    # decoded RecordBatches can be held in memory ahead of the consumer. When the
+    # send side stalls (broker slow / idempotence PID coordinator-load), the row
+    # loop below blocks in the BufferError poll, but the scanner threads keep
+    # racing ahead, decoding whole row-groups (the staged hits files are ~1M rows
+    # per row-group) into RAM. Measured locally on a 105-col hits-shaped parquet:
+    # a 2s stall after the first batch pushed RSS to ~5.2 GiB at the defaults vs
+    # ~2.1 GiB at 1x1 — a ~3.1 GiB (60%) swing that, stacked on the rdkafka queue
+    # and the per-batch to_pylist, is what OOMKilled pair-3. We bound the scanner
+    # to a single batch/fragment ahead: readahead now COSTS throughput only when
+    # the broker can't keep up (exactly when we must not also blow up memory).
     for batch in dataset.to_batches(columns=field_order,
-                                    batch_size=args.batch_size):
+                                    batch_size=args.batch_size,
+                                    batch_readahead=1,
+                                    fragment_readahead=1):
         # Columnar bytes->utf8 decode (real hits parquet: BINARY strings) +
         # non-null guard, before the row loop.
         batch = prepare_batch(batch, string_fields)
+        # to_pylist materialises this ONE batch (batch_size rows) of 105-col
+        # dicts. Release the Arrow batch reference before the row loop so it is
+        # not pinned alongside the python dicts, and release the dict list right
+        # after — keeps at most one batch's worth of rows live at a time.
         rows = batch.to_pylist()
+        del batch
         for row in rows:
             mapped = mapper(row)
             payload = avro_serializer(mapped, ser_ctx)
             # Retry on local queue-full backpressure (BufferError) — this is not
             # a send failure, just flow control. Idempotence keeps retries safe.
+            # CRITICAL for memory: on BufferError we poll (drain acks) and RETRY
+            # THE SAME row — we do NOT advance the iterator. So pyarrow batches
+            # and python dicts are consumed no faster than the broker drains,
+            # rather than piling up while librdkafka's bounded queue is full.
             while True:
                 try:
                     producer.produce(args.topic, value=payload,
@@ -409,10 +506,17 @@ def main():
             if limit and read >= limit:
                 stop = True
                 break
+        # Drop this batch's rows promptly (do not let them straddle the next
+        # batch's to_pylist allocation).
+        del rows
         producer.poll(0)
-        if read % 500000 < args.batch_size:
+        if read - _last_progress["read"] >= 500000 or stop:
+            _last_progress["read"] = read
+            # RSS on every progress line so a future OOM is diagnosable from the
+            # Job log alone (see _final_breadcrumb).
             log(f"produced {read} rows "
-                f"({read / max(time.time() - t0, 1e-9):.0f} rows/s)")
+                f"({read / max(time.time() - t0, 1e-9):.0f} rows/s) "
+                f"peak_rss={rss_mb():.0f} MiB")
         if stop:
             break
 

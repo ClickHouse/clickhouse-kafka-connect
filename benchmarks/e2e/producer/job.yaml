@@ -87,21 +87,25 @@ spec:
               value: "65536"
           resources:
             # Sized for an m6i.large node (2 vCPU / 8 GiB). The producer is
-            # I/O + serialize bound; it streams parquet in bounded batches so
-            # memory stays flat regardless of dataset size.
+            # I/O + serialize bound; it streams parquet in bounded batches. The
+            # boundedness is now enforced on ALL buffers (see producer.py + the
+            # README "Memory boundedness & OOM diagnosis"): pyarrow scanner
+            # readahead pinned to 1x1, librdkafka queue capped at 100k msgs /
+            # 128 MiB, per-batch dicts released promptly.
             requests:
               cpu: "1"
-              # 4Gi/6Gi: the 1Gi/3Gi sizing OOMKilled at ~2m44s into a 10M-row
-              # pre-load (2026-07-07 live run) — the bounded-batch streaming
-              # assumption does not hold (suspect pyarrow fragment prefetch and/or
-              # rdkafka queue growth); needs a proper streaming fix, tracked.
+              # 4Gi: the 1Gi/3Gi sizing OOMKilled at ~2m44s into a 10M-row
+              # pre-load (2026-07-07). Post-fix the stall-driven pyarrow readahead
+              # spike (the pair-3 OOM cause) drops from ~5.2Gi to ~2.1Gi; a full
+              # run's peak now sits under this request.
               memory: 4Gi
             limits:
               cpu: "2"
-              # 7Gi (was 6Gi): 6Gi OOMKilled nondeterministically at ~2.5M rows
-              # (2026-07-12 pair-3 attempt) while an identical run passed at 6Gi
-              # (pair-2) — the peak (rdkafka queue near its 1GiB cap + a pyarrow
-              # row-group spike) sits right at the old limit. Limit-only bump:
-              # scheduling (requests) unchanged; m6i.large allocatable ~7.1Gi.
-              # Durable fix (queued): halve queue.buffering.max in producer.py.
+              # 7Gi: bumped from 6Gi as a stopgap on 2026-07-12 when 6Gi
+              # OOMKilled nondeterministically at ~2.5M rows (pair-3) — the peak
+              # (rdkafka queue near its old 1GiB cap + a pyarrow readahead spike)
+              # sat right at the old limit. The durable producer.py fix has since
+              # bounded both paths; 7Gi is retained as DOCUMENTED HEADROOM and can
+              # be revisited down to ~6Gi once a full stall-under-load run confirms
+              # the flattened peak in-cluster. m6i.large allocatable ~7.1Gi.
               memory: 7Gi

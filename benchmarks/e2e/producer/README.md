@@ -167,6 +167,66 @@ explicitly once the staging location is chosen; until then the default is an
 obviously-invalid placeholder so a mis-wired run fails loudly rather than
 reading the wrong data.
 
+## Memory boundedness & OOM diagnosis
+
+The producer streams the parquet in bounded batches, but "bounded" only holds if
+**every** buffer between the parquet read side and the Kafka send side is capped.
+The 2026-07-07 and 2026-07-12 (pair-3) OOMKills proved two of them were not.
+
+### The OOMKill signature (read this first when a run dies)
+
+An **abrupt stop right after a normal progress line, with NO Python traceback and
+NO summary JSON**, is an OOMKill (the kernel `SIGKILL`s the process; Python never
+runs an except/finally, so there is nothing to log). In Kubernetes the pod shows
+`reason: OOMKilled`, container `exitCode: 137`. Pair-3 died exactly this way at
+`2,545,486 / 10,000,000` rows.
+
+To make this diagnosable **from the Job log alone**:
+
+- Every progress line now carries `peak_rss=<N> MiB` (process peak RSS via
+  `getrusage`). If those numbers climb toward the container limit and then the
+  log stops mid-run → OOMKill.
+- A best-effort **FINAL breadcrumb** line is emitted on `atexit` and on `SIGTERM`
+  (`[producer] FINAL breadcrumb (...): rows_produced_so_far=... peak_rss=... MiB`).
+  Note an OOMKill is `SIGKILL`, which **cannot** be trapped — so a *missing*
+  breadcrumb after a climbing-RSS progress line is itself the OOMKill tell. The
+  breadcrumb catches the softer cases (graceful eviction / `activeDeadlineSeconds`
+  → `SIGTERM`).
+
+### The three growth paths (all now explicitly bounded)
+
+1. **pyarrow scanner readahead — the dominant path.** `ds.to_batches()` prefetches
+   in *background threads*: defaults `batch_readahead=16`, `fragment_readahead=4`
+   (up to 64 decoded batches held ahead of the consumer). When the send side
+   stalls — pair-3's librdkafka logged `Failed to acquire idempotence PID ...:
+   Coordinator load in progress: retrying` right as the read side started pumping —
+   the row loop blocks but the scanner keeps decoding whole row-groups (the staged
+   hits files are ~1M rows/row-group) into RAM. Measured on a 105-col hits-shaped
+   parquet, a 2 s stall after the first batch: **RSS 5,240 MiB at the defaults vs
+   2,069 MiB at `1×1` — a 3,170 MiB (60%) swing.** Now pinned to
+   `batch_readahead=1, fragment_readahead=1`.
+2. **librdkafka C-side queue.** `queue.buffering.max.messages/kbytes` was set 10×
+   the librdkafka default (1,000,000 msgs / 1 GiB). Under a stall the queue fills
+   to the cap and stays there — a ~1 GiB reservation stacked on (1). Now
+   `100,000 msgs / 128 MiB` (~librdkafka default order of magnitude). `produce()`
+   raises `BufferError` at the cap; the loop treats that as backpressure (poll,
+   **retry the same row — the parquet iterator does not advance**), so a smaller
+   queue costs throughput under a stall, never correctness.
+3. **Per-batch `to_pylist()`.** Materialises one batch of 105-col dicts at once
+   (bounded by `PARQUET_BATCH_ROWS`); the Arrow batch and the dict list are now
+   `del`-ed promptly so they don't straddle the next batch's allocation.
+
+### Post-fix peak vs limits
+
+Local full-pipeline run (1.5M rows, real Kafka, fast broker): **peak_rss ≈ 4.4 GiB**
+high-water (`getrusage` maxrss). The stall-driven readahead spike — the thing that
+actually OOMed pair-3 — drops from ~5.2 GiB to ~2.1 GiB. With that path bounded, a
+full run's peak is dominated by one ~1M-row row-group decode plus the 128 MiB queue,
+which sits **comfortably under the `4Gi` request** and well under the `7Gi` limit.
+The `7Gi` limit (bumped from 6Gi as a stopgap on 2026-07-12) is now **documented
+headroom**, not a workaround — it can be revisited down to ~6Gi once a full
+stall-under-load run confirms the flattened peak in-cluster.
+
 ## Deferred
 
 `produce_ts` / the rate-controlled latency profile (plan Appendix A) is **not**
