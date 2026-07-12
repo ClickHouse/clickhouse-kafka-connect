@@ -99,6 +99,37 @@ insert; integrity verdict LAST.
 - **Tier 1, mismatch:** run **FAILS** — after the runs row is inserted and the
   evidence exported (flagged/failed runs are still fully captured).
 
+**The `check_integrity.py` verdict is a REDUNDANT CONFIRMATION LAYER, not the
+source of truth (pair-4 crash-class fix).** The authoritative verdict is the
+capture-computed `integrity_ok` written by SQL 20 during the gated capture step;
+it is already on the `perf.runs`/`perf.metrics` row before the checker runs.
+`check_integrity.py` merely *reads it back* at the very end and now returns
+**distinct exit codes** that `capture_and_record` maps as:
+
+| exit | meaning | `run_pair.sh` action |
+|------|---------|----------------------|
+| `0`  | ran, verdict OK (`integrity_ok == 1`) | proceed |
+| `1`  | **RAN and MISMATCHED** (`integrity_ok != 1`, or metrics missing) — the ONLY code that may fail a run | run **FAILS** (`die`); the row already stands, mismatch detectable via `integrity_ok=0` |
+| `3`  | **CHECK_ERROR**: any infra/connection/query exception — *could not verify* | **WARN loudly, do NOT die**; set `PAIR_HAD_WARNING`, pair stays **green** |
+
+The checker wraps both the client acquisition and the query and **retries with
+backoff** (3 attempts, 5/15/30s; `CH_INTEGRITY_ATTEMPTS` / `CH_INTEGRITY_BACKOFFS`)
+before conceding exit 3. The staging-service handshake stall that triggered the
+pair-4 false-red (a transient `clickhouse_connect` read-timeout on the connect
+`SELECT version()`) is a **CHECK_ERROR (exit 3)**, not a mismatch — the old code
+treated any non-zero as a mismatch and failed a **perfect** run.
+
+**Why exit 3 does NOT retro-flag the row.** The verdict runs *post-insert /
+post-export by design*, so the `perf.runs` row is **already inserted** when the
+checker fires — a flag can no longer ride the runtime map. More importantly, it
+**must not** flag: there is nothing wrong to record. The authoritative
+capture-computed `integrity_ok` (SQL 20) already verified the data and is on the
+row; `check_integrity.py` failing to *re-read* it is a property of the redundant
+confirmation layer, not of the data. So an exit-3 leaves the row **clean**,
+warns the operator that the confirmation checker could not run, and keeps the
+pair green (`PAIR_HAD_WARNING`, surfaced in `main()`'s completion summary — not
+`PAIR_HAD_FAILURE`). Only an unambiguous exit-1 mismatch fails the run.
+
 **Capture-on-failure — `outcome` (contract §1.3 amendment): FAILED runs are
 fully captured and exported, marked — no survivorship bias.**
 - **Drain-start boundary:** the poller sample beginning. **Pre-drain failures**

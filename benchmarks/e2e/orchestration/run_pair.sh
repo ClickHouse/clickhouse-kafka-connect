@@ -119,6 +119,12 @@ die()  { printf '\033[1;31m[run_pair:error]\033[0m %s\n' "$*" >&2; exit 1; }
 # remaining run) but main() exits non-zero at the end for CI visibility.
 PAIR_HAD_FAILURE=0
 
+# Set to 1 by a NON-FATAL anomaly that must NOT fail the pair (pair-4 fix): a
+# tier-1 integrity CHECK_ERROR (exit 3) — the redundant confirmation checker
+# could not verify, but the capture-computed integrity_ok is authoritative and
+# already recorded. The pair exit stays GREEN; main() logs the warning summary.
+PAIR_HAD_WARNING=0
+
 # Space-separated run_ids whose perf.runs row ACTUALLY landed (appended by
 # capture_and_record after a successful insert_run_record). phase_pair_cost
 # consults this before emitting run_cost_usd: a metric row for a run_id with
@@ -411,7 +417,10 @@ PHASE 3  per arm, in order [ ${order[0]} , ${order[1]} ]:
       (tier 1: SQL 23 ch_insert_cpu_share_tier0 NOT run — tier-0-only, contract §2.1)
       SQL 20 integrity: computation failure -> FLAG integrity_unverified (not rollback)
       insert_run_record ; on fail -> rollback + abort
-      export (gated) ; integrity check LAST (MISMATCH FAILS run, evidence already exported)
+      export (gated) ; integrity check LAST — redundant confirmation over capture-
+       computed integrity_ok (authoritative). exit 0 OK -> proceed; exit 1 MISMATCH
+       -> run FAILS (row stands, mismatch detectable via integrity_ok=0); exit 3
+       CHECK_ERROR (could not verify: infra/timeout) -> WARN, pair stays green
       delete connector + consumer group
     delete KafkaConnect CR + CH-creds Secret
 PHASE 3c pair cost         emit run_cost_usd once, end-of-pair window, on (${order[0]},t1)
@@ -576,6 +585,12 @@ phase_preload() {
     case " ${jconds}" in
       *" Complete=True"*)
         log "  producer Job Complete"
+        # Observability (best-effort): relay the pod's final progress line —
+        # which carries peak_rss — into the runner log so the operator sees the
+        # producer's memory high-water mark without digging into pod logs.
+        { kubectl -n "${NS}" logs job/hits-producer --tail=40 2>/dev/null \
+            | grep -i "peak_rss" | tail -1 \
+            | sed 's/^/  producer final: /' >&2; } || true
         break ;;
       *" Failed=True"*)
         warn "producer Job FAILED (backoffLimit=0: first failure is terminal). Last log lines:"
@@ -779,8 +794,10 @@ delete_connector() {
   local group="$1"
   kubectl -n "${NS}" delete kafkaconnector "${CONNECTOR_NAME}" --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
   # Delete the consumer group so the next drain starts fresh at offset 0
-  # (plan §5 step 3c). Best-effort via the broker pod.
-  "${SCRIPT_DIR}/delete_consumer_group.sh" "${group}" 2>/dev/null || warn "consumer-group delete best-effort failed for ${group}"
+  # (plan §5 step 3c). Best-effort via the broker pod. Let the script's stderr
+  # through: it already silences GroupIdNotFoundException (B5) itself, so a
+  # blanket 2>/dev/null here would only hide a REAL delete error before the warn.
+  "${SCRIPT_DIR}/delete_consumer_group.sh" "${group}" || warn "consumer-group delete best-effort failed for ${group}"
 }
 
 # Poll Connect REST /status THROUGH the in-cluster poller pod (review F3+F4:
@@ -1131,12 +1148,45 @@ capture_and_record() {
   # integrity verdict LAST (README, contract §3) — tier 1 only, success-path
   # only (a failed-class run makes no integrity claim), and only when the
   # integrity metrics were actually computed.
+  #
+  # pair-4 crash-class fix: check_integrity.py now returns DISTINCT exit codes,
+  # and this is a REDUNDANT CONFIRMATION LAYER over the capture-computed
+  # integrity_ok (SQL 20), which is the AUTHORITATIVE verdict already on the row:
+  #   0  verdict OK           -> proceed.
+  #   1  RAN and MISMATCHED   -> the run FAILS (unchanged §3 semantics). The row
+  #                             already stands (verdict runs post-insert/export
+  #                             by design), so the mismatch is detectable via
+  #                             integrity_ok=0; the job fails for CI visibility.
+  #   3  CHECK_ERROR          -> could NOT verify (infra/connection/query — the
+  #                             pair-4 transient read-timeout was THIS). WARN
+  #                             loudly; do NOT die. The runs row stands clean
+  #                             because capture-computed integrity_ok is
+  #                             authoritative; a transient checker failure must
+  #                             never turn a perfect run false-red.
+  #
+  # NOTE on why exit 3 does NOT retro-flag: the runs row is ALREADY INSERTED at
+  # this point (post-insert/post-export by design), so a flag can no longer ride
+  # the runtime map — and it must not, because there is nothing wrong to flag:
+  # the authoritative capture verdict already recorded integrity_ok. We mark a
+  # PAIR-level WARNING (not a failure) so the pair exit stays green.
   if [ "${mode}" = "strict" ] && [ "${tier}" = "1" ]; then
     if [ "${integrity_unverified}" = "1" ]; then
       warn "tier 1 integrity UNVERIFIED for ${RUN_ID} — run FLAGGED (integrity_unverified), not failed (contract §1.3)"
     else
-      ( cd "${CAPTURE_DIR}" && python3 check_integrity.py ) \
-        || die "TIER 1 INTEGRITY MISMATCH for ${RUN_ID} — run FAILS (evidence already exported, contract §3)"
+      local ic_rc=0
+      ( cd "${CAPTURE_DIR}" && python3 check_integrity.py ) || ic_rc=$?
+      case "${ic_rc}" in
+        0)
+          : ;;  # verdict OK
+        1)
+          die "TIER 1 INTEGRITY MISMATCH for ${RUN_ID} — checker RAN and read integrity_ok!=1; run FAILS. The perf.runs row is already inserted and the metrics persisted (DWH export was attempted best-effort earlier — see its own log line for whether a DWH role was present); the mismatch is detectable via integrity_ok=0 on the persisted row (contract §3)." ;;
+        3)
+          PAIR_HAD_WARNING=1
+          warn "TIER 1 integrity CHECK_ERROR for ${RUN_ID} (exit 3): the redundant confirmation checker could NOT verify (infra/connection/query failure after its own retries — e.g. a transient CH read-timeout). This is NOT a data verdict. The runs row STANDS CLEAN: the capture-computed integrity_ok (SQL 20) is the AUTHORITATIVE verdict and is already on the row + exported. Run is NOT failed; pair stays green with a WARNING." ;;
+        *)
+          PAIR_HAD_WARNING=1
+          warn "TIER 1 integrity checker returned UNEXPECTED exit ${ic_rc} for ${RUN_ID} — treating as CHECK_ERROR (could not verify; capture-computed integrity_ok remains authoritative). Run NOT failed; pair WARNING." ;;
+      esac
     fi
   fi
 }
@@ -1286,10 +1336,17 @@ cleanup_trap() {
     kubectl -n "${NS}" delete kafkaconnector "${CONNECTOR_NAME}" --ignore-not-found --wait=false 2>/dev/null || true
     kubectl -n "${NS}" delete kafkaconnect "${CONNECT_NAME}" --ignore-not-found --wait=true --timeout=300s 2>/dev/null || true
     kubectl -n "${NS}" delete secret bench-ch-creds --ignore-not-found 2>/dev/null || true
+    # Route group deletion through delete_consumer_group.sh (single-point
+    # maintenance) — same path as delete_connector(). pair-4 fix: the previous
+    # `2>/dev/null` here swallowed the script's OWN B5 not-found silencing AND
+    # any real error, so the not-found handling never got a chance to show and
+    # the trap printed scary noise / hid genuine failures. The script already
+    # treats GroupIdNotFoundException as a silent success (exit 0) and emits a
+    # clean line otherwise; let its stderr through and keep it best-effort.
     local arm tier
     for arm in head pinned; do
       for tier in 0 1; do
-        "${SCRIPT_DIR}/delete_consumer_group.sh" "ch-sink-${arm}-t${tier}" 2>/dev/null || true
+        "${SCRIPT_DIR}/delete_consumer_group.sh" "ch-sink-${arm}-t${tier}" || true
       done
     done
     teardown_poller_pod
@@ -1418,6 +1475,13 @@ main() {
   if [ "${PAIR_HAD_FAILURE}" = "1" ]; then
     warn "pair ${PAIR_ID} completed WITH FAILED-CLASS RUN(S) — evidence captured + exported (runtime['outcome']='failed'); exiting non-zero for CI visibility"
     exit 1
+  fi
+  # A non-fatal warning (e.g. a tier-1 integrity CHECK_ERROR: the redundant
+  # confirmation checker could not verify) does NOT fail the pair — the
+  # capture-computed integrity_ok is authoritative and already recorded. Surface
+  # it so the operator sees the checker did not run clean, but exit GREEN.
+  if [ "${PAIR_HAD_WARNING}" = "1" ]; then
+    warn "pair ${PAIR_ID} complete WITH WARNING(S) (e.g. integrity CHECK_ERROR — redundant checker could not verify; capture-computed integrity_ok authoritative). Pair is GREEN."
   fi
   log "pair complete: ${PAIR_ID}"
 }

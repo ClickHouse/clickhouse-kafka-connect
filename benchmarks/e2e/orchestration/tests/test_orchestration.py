@@ -900,3 +900,112 @@ def test_provenance_gate_wired_after_validation_before_pair():
     assert body.index("images validated (digest-pinned)") \
         < body.index("check_image_provenance ARM0_IMAGE") \
         < body.index("phase_scale_up")
+
+
+# --------------------------------------------------------------------------- #
+# pair-4 crash-class fix: check_integrity.py exit-code mapping in
+# capture_and_record. The checker is a REDUNDANT confirmation over the
+# capture-computed integrity_ok:
+#   0 -> proceed ; 1 -> the run FAILS (die) ; 3 -> WARN, pair stays green.
+# A transient infra error (exit 3) must NEVER die (that was the pair-4 false-red).
+# --------------------------------------------------------------------------- #
+def test_integrity_exit_codes_mapped_distinctly():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "capture_and_record")
+    # captures the checker's exit code (does not treat any-nonzero as mismatch)
+    assert "ic_rc=0" in body
+    assert "python3 check_integrity.py ) || ic_rc=$?" in body
+    # a case on the exit code with the three arms
+    assert 'case "${ic_rc}" in' in body
+    # isolate the case block and assert the mapping shape inside it
+    case_region = body[body.index('case "${ic_rc}" in'):body.index("esac")]
+    # exit 0 -> proceed (no-op ':'), exit 1 -> die MISMATCH, exit 3 -> warn
+    assert "TIER 1 INTEGRITY MISMATCH" in case_region
+    # the ONLY die inside the case block is the exit-1 mismatch arm
+    assert case_region.count("die ") == 1, "only the exit-1 arm may die"
+
+
+def test_integrity_exit_3_does_not_fail_the_run():
+    """exit 3 = CHECK_ERROR: could not verify. It must WARN and set a
+    PAIR-level WARNING, never die or set PAIR_HAD_FAILURE."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "capture_and_record")
+    # find the exit-3 arm text region
+    assert "3)" in body
+    assert "PAIR_HAD_WARNING=1" in body
+    assert "CHECK_ERROR" in body
+    assert "authoritative" in body  # capture verdict is authoritative
+    # exit 3 must NOT flip the failure flag
+    assert "PAIR_HAD_FAILURE=1" not in body
+
+
+def test_integrity_check_error_message_not_stale_evidence_text():
+    """pair-4 message fix: the mismatch die no longer asserts a bare 'evidence
+    already exported' (wrong when no DWH role in-run); it states what actually
+    happened (row persisted; export was best-effort)."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "capture_and_record")
+    # the exit-1 die describes the persisted row + best-effort export honestly
+    assert "best-effort" in body
+    assert "integrity_ok=0 on the persisted row" in body
+
+
+def test_pair_had_warning_declared_and_surfaced():
+    src = open(RUN_PAIR).read()
+    # declared as a top-level state var (default 0)
+    assert re.search(r"^PAIR_HAD_WARNING=0", src, re.M)
+    # main() surfaces it as a GREEN completion (no exit 1)
+    main_body = _extract_function(src, "main")
+    assert 'if [ "${PAIR_HAD_WARNING}" = "1" ]' in main_body
+    # the warning branch does NOT exit non-zero
+    warn_region = main_body[main_body.index('PAIR_HAD_WARNING}" = "1"'):]
+    assert "exit 1" not in warn_region
+
+
+# --------------------------------------------------------------------------- #
+# Trap cleanup unification (pair-4 collateral): the trap's group deletion must
+# route through delete_consumer_group.sh (single-point B5 not-found silencing),
+# not an inline kafka-consumer-groups.sh call, and must not blanket-suppress the
+# script's stderr (which hid both the B5 silencing and real errors).
+# --------------------------------------------------------------------------- #
+def test_cleanup_trap_routes_group_delete_through_script():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "cleanup_trap")
+    # routed through the shared script (single-point maintenance)
+    assert "delete_consumer_group.sh" in body
+    # NOT an inline kafka-consumer-groups.sh call that bypasses the B5 silencing
+    assert "kafka-consumer-groups.sh" not in body
+    # no blanket 2>/dev/null on the group-delete INVOCATION line (let the
+    # script's own not-found silencing show; keep best-effort via || true)
+    inv = [ln for ln in body.splitlines()
+           if "${SCRIPT_DIR}/delete_consumer_group.sh" in ln]
+    assert len(inv) == 1
+    assert "2>/dev/null" not in inv[0]
+    assert "|| true" in inv[0]
+
+
+def test_delete_connector_group_delete_not_stderr_suppressed():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "delete_connector")
+    inv = [ln for ln in body.splitlines()
+           if "${SCRIPT_DIR}/delete_consumer_group.sh" in ln]
+    assert len(inv) == 1
+    assert "2>/dev/null" not in inv[0]
+    assert "|| warn" in inv[0]
+
+
+# --------------------------------------------------------------------------- #
+# Producer SUCCESS observability: relay the pod's final peak_rss line into the
+# runner log (best-effort) on the Complete path of phase_preload.
+# --------------------------------------------------------------------------- #
+def test_producer_success_relays_peak_rss():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_preload")
+    # on the Complete=True success arm, grep the pod log for peak_rss, best-effort
+    assert "peak_rss" in body
+    # locate the Complete arm and assert the relay + best-effort guard live there
+    complete_idx = body.index("Complete=True")
+    tail = body[complete_idx:]
+    assert "kubectl -n \"${NS}\" logs job/hits-producer" in tail
+    assert "grep -i \"peak_rss\"" in tail
+    assert "|| true" in tail
