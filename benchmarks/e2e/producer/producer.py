@@ -9,25 +9,45 @@ so the sink's Confluent ``AvroConverter`` can decode it.
 
 Backlog-drain precondition (plan §5 step 2, decision 6): this Job runs to
 completion BEFORE any measured drain. Its single job is to leave the topic
-pre-loaded with EXACTLY the dataset, and to report an authoritative
-``rows_expected`` derived from committed topic END OFFSETS — never from
-producer-side send counts (overseer directive 2).
+pre-loaded with EXACTLY the dataset. The AUTHORITATIVE ``rows_expected`` is
+derived by the ORCHESTRATOR from committed topic END OFFSETS after the Job
+completes — never from producer-side send counts (overseer directive 2).
 
-Design decisions baked in (non-negotiable, see README):
+SHARDED PRE-LOAD (parallel producer, cut the ~20min preload to ~5-6min): the
+producer runs as a K8s INDEXED Job of ``SHARD_COUNT`` pods. Each pod reads its
+completion index (``JOB_COMPLETION_INDEX``, K8s-injected) and ``SHARD_COUNT``,
+lists the parquet files under ``PARQUET_SOURCE``, stable-sorts them
+lexicographically, and produces ONLY the files at ``i % SHARD_COUNT == index``
+(stride-N). N=1 degenerates to the original single-producer behaviour. Every
+pod is otherwise identical: its own idempotent producer (own PID), same
+schema/serializer, the same bounded memory (each pod streams only its shard).
+The preload is UNMEASURED, so this parallelism does not touch the instrument.
+
+Count contract under sharding (the crux):
   * enable.idempotence=true (=> acks=all): producer retries never write
     duplicate records into the topic. Without it the sink would be blamed for
-    producer-side dupes (overseer directive 1).
-  * rows_expected = sum over partitions of (end_offset - beginning_offset),
-    read via the consumer API after flush. rows_sent (delivery-callback count)
-    is emitted alongside; a mismatch FAILS the Job (the pre-load is invalid).
+    producer-side dupes (overseer directive 1). Still per-pod.
+  * Each pod counts ITS OWN shard: ``rows_sent`` is the delivery-callback count
+    for this pod's files only, and the summary JSON carries shard fields
+    (shard_index, shard_count, files_in_shard, rows_sent). The per-pod GLOBAL
+    end-offsets check is REMOVED — under sharding the topic's end offsets show
+    the SUM of all N pods, so a per-pod compare against them is nonsense. The
+    only per-pod sanity is shard-local: rows_sent > 0 when files_in_shard > 0.
+  * The GLOBAL rows_expected (= Σ end-offset − beginning-offset over partitions)
+    is computed by the ORCHESTRATOR (run_pair.sh phase_preload) AFTER the Job
+    completes, via the broker — producer-count-agnostic, the property that keeps
+    preload speed irrelevant to the measurement. A best-effort cross-check sums
+    the N pods' rows_sent and WARNs on mismatch.
   * PARQUET_SOURCE is a parameter (overseer directive 3), defaulting to a
     us-east-2 staging placeholder (see README for the staging TBD note).
 
 Latency profile / produce_ts is DEFERRED (plan Appendix A) — not implemented.
 
 Output: a single machine-readable JSON object on stdout (the last stdout line
-is always the summary; all human logging goes to stderr) for the orchestrator
-(task 31) to parse. Non-zero exit on any failure or count mismatch.
+is always the summary; all human logging goes to stderr) PER POD for the
+orchestrator (task 31) to parse from that pod's completion-index log. Per-pod
+exit codes: 0 success (incl. an empty shard), 1 any send/delivery failure, 3
+a non-empty shard that produced zero rows.
 """
 
 import argparse
@@ -45,7 +65,6 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
-from confluent_kafka import Consumer, TopicPartition
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
 from confluent_kafka.serialization import SerializationContext, MessageField
@@ -130,6 +149,51 @@ def _install_breadcrumbs():
         signal.signal(signal.SIGTERM, _on_sigterm)
     except (ValueError, OSError):
         pass  # not in main thread / unsupported platform
+
+
+# --- sharding ----------------------------------------------------------------
+
+def read_shard_env():
+    """Return (shard_index, shard_count) from the environment.
+
+    ``JOB_COMPLETION_INDEX`` is injected by K8s into every pod of an Indexed
+    Job (0..completions-1). ``SHARD_COUNT`` is set from the Job's completions/
+    parallelism (default 3). Standalone/local runs default index 0 / count 1
+    (=> the original single-producer whole-dataset behaviour).
+    """
+    idx = int(os.environ.get("JOB_COMPLETION_INDEX", "0"))
+    cnt = int(os.environ.get("SHARD_COUNT", "1"))
+    if cnt < 1:
+        die(f"SHARD_COUNT={cnt} is invalid (must be >= 1)")
+    if idx < 0 or idx >= cnt:
+        die(f"JOB_COMPLETION_INDEX={idx} out of range for SHARD_COUNT={cnt}")
+    return idx, cnt
+
+
+def list_dataset_files(dataset):
+    """Stable, lexicographically-sorted list of the dataset's parquet files.
+
+    ``ds.dataset(...).files`` returns the fully-qualified file paths (local or
+    ``s3://``). We sort them so the stride assignment is DETERMINISTIC and
+    IDENTICAL across all N pods — every pod must see the same ordering or two
+    pods could produce the same file (or a file could be skipped). A single
+    parquet file (the canonical ClickBench ``hits.parquet``) yields a one-item
+    list, so a single-file source with N>1 gives exactly one non-empty shard
+    and N-1 empty shards (each empty shard exits 0, rows_sent=0).
+    """
+    return sorted(dataset.files)
+
+
+def select_shard_files(files, shard_index, shard_count):
+    """Stride-N selection: files[i] where i % shard_count == shard_index.
+
+    ``files`` MUST already be stable-sorted (see list_dataset_files) so the
+    partition of the file set across shards is disjoint and complete: every
+    file lands in exactly one shard. N=1 selects every file (degenerate =
+    today's behaviour). When len(files) < shard_count the high-index shards get
+    an empty selection (a legitimate empty shard).
+    """
+    return [f for i, f in enumerate(files) if i % shard_count == shard_index]
 
 
 # --- schema handling ---------------------------------------------------------
@@ -269,35 +333,14 @@ def make_row_mapper(field_order, int16_fields):
 
 
 # --- offset accounting -------------------------------------------------------
-
-def committed_offsets(bootstrap, topic, timeout=30.0):
-    """Return (rows_expected, per_partition) from committed topic offsets.
-
-    rows_expected = sum over partitions of (high_watermark - low_watermark),
-    read via the consumer API. This is the authoritative pre-load count
-    (overseer directive 2), independent of producer send counts.
-    """
-    consumer = Consumer({
-        "bootstrap.servers": bootstrap,
-        "group.id": f"__producer_offset_probe_{int(time.time())}",
-        "enable.auto.commit": False,
-    })
-    try:
-        md = consumer.list_topics(topic, timeout=timeout)
-        if topic not in md.topics or md.topics[topic].error is not None:
-            die(f"topic {topic!r} not found when reading end offsets")
-        parts = sorted(md.topics[topic].partitions.keys())
-        per_partition = {}
-        total = 0
-        for p in parts:
-            low, high = consumer.get_watermark_offsets(
-                TopicPartition(topic, p), timeout=timeout, cached=False)
-            count = high - low
-            per_partition[p] = {"low": low, "high": high, "count": count}
-            total += count
-        return total, per_partition
-    finally:
-        consumer.close()
+#
+# The authoritative global rows_expected (= Σ end-offset − beginning-offset over
+# partitions) is computed by the ORCHESTRATOR (run_pair.sh phase_preload) from
+# the broker AFTER the whole Indexed Job completes, not per-pod. Under sharding
+# a per-pod consumer probe of the topic end offsets would return the running
+# GLOBAL total (all N pods), which is meaningless as a per-pod check — so the
+# producer no longer reads offsets at all. See run_pair.sh phase_preload /
+# broker_topic_row_count for the (kafka-get-offsets.sh) derivation.
 
 
 # --- schema registration -----------------------------------------------------
@@ -381,6 +424,10 @@ def main():
     if not os.path.exists(schema_path):
         die(f"schema not found: {schema_path}")
 
+    shard_index, shard_count = read_shard_env()
+    log(f"shard {shard_index}/{shard_count} "
+        f"(JOB_COMPLETION_INDEX={os.environ.get('JOB_COMPLETION_INDEX','<unset>')} "
+        f"SHARD_COUNT={os.environ.get('SHARD_COUNT','<unset>')})")
     log(f"bootstrap={args.bootstrap} registry={args.registry_url} "
         f"topic={args.topic} partitions={args.partitions}")
     log(f"parquet_source={args.parquet_source}")
@@ -466,6 +513,43 @@ def main():
         die(f"parquet source is missing {len(missing)} required columns: "
             f"{missing[:10]}{'...' if len(missing) > 10 else ''}")
 
+    # Sharded selection (parallel preload). Every pod lists + stable-sorts the
+    # SAME file set and takes its stride-N slice, so the shards are disjoint and
+    # complete. N=1 selects everything (original behaviour).
+    all_files = list_dataset_files(dataset)
+    shard_files = select_shard_files(all_files, shard_index, shard_count)
+    log(f"shard {shard_index}/{shard_count}: {len(shard_files)} of "
+        f"{len(all_files)} file(s) assigned to this pod")
+    for f in shard_files:
+        log(f"  shard file: {f}")
+    if not shard_files:
+        # A legitimate empty shard (files < SHARD_COUNT). Produce nothing, emit a
+        # summary saying so, and exit 0 — an empty shard is NOT a failure. The
+        # orchestrator's global end-offsets count is unaffected (other pods carry
+        # the whole dataset between them).
+        log(f"shard {shard_index}/{shard_count} has NO files — nothing to "
+            f"produce; exiting 0 (empty shard)")
+        summary = {
+            "topic": args.topic,
+            "shard_index": shard_index,
+            "shard_count": shard_count,
+            "files_in_shard": 0,
+            "rows_sent": 0,
+            "duration_seconds": 0.0,
+            "rate_rows_per_sec": 0.0,
+            "idempotence": True,
+            "acks": "all",
+            "parquet_source": args.parquet_source,
+            "empty_shard": True,
+        }
+        print(json.dumps(summary), flush=True)
+        log("OK: empty shard, rows_sent=0.")
+        sys.exit(0)
+    # Restrict the scan to THIS pod's files. A dataset built from an explicit
+    # file list reads only those files (the readahead bounds below are unchanged
+    # and now apply per-shard).
+    shard_dataset = ds.dataset(shard_files, format="parquet")
+
     t0 = time.time()
     read = 0
     limit = args.limit
@@ -483,10 +567,10 @@ def main():
     # and the per-batch to_pylist, is what OOMKilled pair-3. We bound the scanner
     # to a single batch/fragment ahead: readahead now COSTS throughput only when
     # the broker can't keep up (exactly when we must not also blow up memory).
-    for batch in dataset.to_batches(columns=field_order,
-                                    batch_size=args.batch_size,
-                                    batch_readahead=1,
-                                    fragment_readahead=1):
+    for batch in shard_dataset.to_batches(columns=field_order,
+                                          batch_size=args.batch_size,
+                                          batch_readahead=1,
+                                          fragment_readahead=1):
         # Columnar bytes->utf8 decode (real hits parquet: BINARY strings) +
         # non-null guard, before the row loop.
         batch = prepare_batch(batch, string_fields)
@@ -546,38 +630,38 @@ def main():
     rows_sent = sent["ok"]
     log(f"delivery-callback confirmed rows_sent={rows_sent} in {duration:.1f}s")
 
-    # Authoritative count from committed END OFFSETS (overseer directive 2).
-    rows_expected, per_partition = committed_offsets(args.bootstrap, args.topic)
-    log(f"committed offsets: rows_expected={rows_expected} "
-        f"across {len(per_partition)} partitions")
-
-    rate = rows_expected / duration if duration > 0 else 0.0
+    # SHARDED count contract: this pod reports ITS OWN shard's rows_sent only.
+    # The per-pod GLOBAL end-offsets check is REMOVED — under sharding the topic
+    # end offsets reflect the SUM of all N pods, so comparing THIS pod's send
+    # count to them is meaningless. The authoritative global rows_expected is
+    # computed by the orchestrator from the broker AFTER the whole Job completes
+    # (run_pair.sh phase_preload). The only per-pod sanity is shard-LOCAL:
+    # a non-empty shard that produced zero rows is a failure (exit 3).
+    rate = rows_sent / duration if duration > 0 else 0.0
     summary = {
         "topic": args.topic,
-        "partitions": len(per_partition),
+        "shard_index": shard_index,
+        "shard_count": shard_count,
+        "files_in_shard": len(shard_files),
         "rows_sent": rows_sent,
-        "rows_expected": rows_expected,
-        "per_partition": {str(k): v for k, v in per_partition.items()},
         "duration_seconds": round(duration, 3),
         "rate_rows_per_sec": round(rate, 1),
         "idempotence": True,
         "acks": "all",
         "parquet_source": args.parquet_source,
-        "match": rows_sent == rows_expected,
+        "empty_shard": False,
     }
     # The summary is ALWAYS the last stdout line, machine-readable JSON.
     print(json.dumps(summary), flush=True)
 
-    if rows_sent != rows_expected:
-        die(f"COUNT MISMATCH: rows_sent={rows_sent} != "
-            f"rows_expected(offsets)={rows_expected}. Idempotence should make "
-            f"these equal; a mismatch means the pre-load is INVALID.", code=2)
+    # Shard-local sanity: a non-empty shard must have produced something. The
+    # empty-shard case (files_in_shard == 0) already returned above with exit 0.
+    if rows_sent == 0:
+        die(f"shard {shard_index}/{shard_count} had {len(shard_files)} file(s) "
+            f"but produced 0 rows (empty/corrupt shard files?)", code=3)
 
-    if rows_expected == 0:
-        die("rows_expected == 0: produced nothing (empty/wrong parquet source?)",
-            code=3)
-
-    log("OK: rows_sent == rows_expected; pre-load is valid.")
+    log(f"OK: shard {shard_index}/{shard_count} produced rows_sent={rows_sent} "
+        f"from {len(shard_files)} file(s).")
     sys.exit(0)
 
 

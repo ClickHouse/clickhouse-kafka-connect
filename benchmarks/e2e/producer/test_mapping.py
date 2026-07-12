@@ -104,6 +104,92 @@ def build_binary_parquet(path, avsc, with_null_in=None):
     pq.write_table(pa.table(arrays, schema=pa.schema(fields)), path)
 
 
+def test_sharding_selection():
+    """Stride-N shard selection: disjoint + complete + N=1 degenerate + empty."""
+    files = [f"s3://b/hits/part-{i:04d}.parquet" for i in range(12)]
+
+    # N=1 degenerates to today's behaviour: one shard, every file.
+    assert producer.select_shard_files(files, 0, 1) == files
+
+    # N=3 over 12 files: each shard gets 4, disjoint, and together == all files.
+    shards = [producer.select_shard_files(files, i, 3) for i in range(3)]
+    assert [len(s) for s in shards] == [4, 4, 4]
+    seen = [f for s in shards for f in s]
+    assert sorted(seen) == sorted(files), "shards must be complete"
+    assert len(set(seen)) == len(seen), "shards must be DISJOINT (no dup file)"
+    # stride correctness: shard i holds exactly files[i], files[i+3], ...
+    assert shards[0] == [files[0], files[3], files[6], files[9]]
+    assert shards[1] == [files[1], files[4], files[7], files[10]]
+    assert shards[2] == [files[2], files[5], files[8], files[11]]
+
+    # Uneven: 12 files over N=5 -> sizes 3,3,2,2,2 (still disjoint + complete).
+    shards5 = [producer.select_shard_files(files, i, 5) for i in range(5)]
+    assert [len(s) for s in shards5] == [3, 3, 2, 2, 2]
+    seen5 = [f for s in shards5 for f in s]
+    assert sorted(seen5) == sorted(files) and len(set(seen5)) == len(seen5)
+
+    # Empty-shard edge: files < N -> the high-index shards get NO files.
+    two = files[:2]
+    empties = [producer.select_shard_files(two, i, 4) for i in range(4)]
+    assert [len(s) for s in empties] == [1, 1, 0, 0]
+    assert empties[2] == [] and empties[3] == []
+    print("PASS sharding: stride disjoint+complete, N=1 degenerate, empty-shard edge")
+
+
+def test_list_dataset_files_is_stable_sorted():
+    """Every pod must see the SAME file ordering (stable lexicographic sort) or
+    two pods could produce the same file / a file could be skipped."""
+    with tempfile.TemporaryDirectory() as td:
+        schema_str, field_order, i16, sf = producer.load_avro_schema(SCHEMA_PATH)
+        avsc = json.loads(schema_str)
+        # Write files out of lexical order; list_dataset_files must sort them.
+        names = ["part-0002.parquet", "part-0000.parquet", "part-0001.parquet"]
+        for n in names:
+            build_binary_parquet(os.path.join(td, n), avsc)
+        dataset = ds.dataset(td, format="parquet")
+        listed = producer.list_dataset_files(dataset)
+        assert listed == sorted(listed), "files must be lexicographically sorted"
+        # deterministic across repeated calls (same ordering every pod)
+        assert producer.list_dataset_files(dataset) == listed
+        base = [os.path.basename(p) for p in listed]
+        assert base == sorted(names)
+    print("PASS list_dataset_files: stable lexicographic sort, deterministic")
+
+
+def test_read_shard_env(monkeypatch_env):
+    """JOB_COMPLETION_INDEX/SHARD_COUNT parsing + range validation."""
+    # defaults: index 0, count 1 (single-producer degenerate)
+    monkeypatch_env({})
+    assert producer.read_shard_env() == (0, 1)
+    monkeypatch_env({"JOB_COMPLETION_INDEX": "2", "SHARD_COUNT": "3"})
+    assert producer.read_shard_env() == (2, 3)
+    # index out of range for the count -> die (SystemExit)
+    monkeypatch_env({"JOB_COMPLETION_INDEX": "3", "SHARD_COUNT": "3"})
+    for bad in ({"JOB_COMPLETION_INDEX": "3", "SHARD_COUNT": "3"},
+                {"SHARD_COUNT": "0"}):
+        monkeypatch_env(bad)
+        failed = False
+        try:
+            producer.read_shard_env()
+        except SystemExit:
+            failed = True
+        assert failed, f"read_shard_env must reject {bad}"
+    print("PASS read_shard_env: defaults (0,1), parse, out-of-range/zero rejected")
+
+
+def _monkeypatch_env():
+    """Minimal env-swapper (no pytest dependency — this file runs as a script)."""
+    saved = {}
+    def setter(mapping):
+        for k in ("JOB_COMPLETION_INDEX", "SHARD_COUNT"):
+            if k in os.environ:
+                saved.setdefault(k, os.environ[k])
+                del os.environ[k]
+        for k, v in mapping.items():
+            os.environ[k] = v
+    return setter
+
+
 def main():
     schema_str, field_order, int16_fields, string_fields = \
         producer.load_avro_schema(SCHEMA_PATH)
@@ -193,6 +279,11 @@ def main():
     assert "rows_produced_so_far=500000" not in out, out
     print("PASS breadcrumb: FINAL trailer reports the live row count (512345), "
           "not the 500k-throttled _last_progress")
+
+    # --- sharding (parallel preload) -----------------------------------------
+    test_sharding_selection()
+    test_list_dataset_files_is_stable_sorted()
+    test_read_shard_env(_monkeypatch_env())
 
     print("ALL MAPPING TESTS PASSED")
 

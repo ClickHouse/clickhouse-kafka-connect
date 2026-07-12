@@ -32,7 +32,7 @@ poller, capture, sql) into ONE nightly end-to-end two-arm pair, per
 | Plan §5 | run_pair.sh |
 |---------|-------------|
 | 1. Scale up | `phase_scale_up` → `infra/scale-up.sh` |
-| 2. Pre-load | `phase_preload` → KafkaTopic CR (broker-verified 3-partition assert) → producer Job (**terminal watch: Complete OR Failed** — Failed dies fast with the pod's last logs) → parse `rows_expected`; then `phase_poller_host` (in-cluster sampler pod) |
+| 2. Pre-load | `phase_preload` → KafkaTopic CR (broker-verified 3-partition assert) → **Indexed** producer Job (`completions == parallelism == SHARD_COUNT`, default 3 — parallel sharded preload, ~5-6 min vs ~20 min; **terminal watch: Complete OR Failed** — Failed dies fast with the pods' last logs) → derive `rows_expected` from **broker offsets** (`broker_topic_row_count`: `kafka-get-offsets.sh` in the broker pod, Σ latest−earliest per partition — producer-count-agnostic, authoritative) → best-effort cross-check `producer_rows_sent_sum` (Σ per-shard `rows_sent`, per completion-index pod log) == broker offsets else FAIL; then `phase_poller_host` (in-cluster sampler pod) |
 | 3. Per arm (alternating order) | `phase_arm` × 2, Tier 0 then Tier 1 each |
 | 3c. Delete connector + group | `delete_connector` |
 | 4. Capture | `finalize_and_insert_metrics` (poller scalars → METRICS service) then `capture_and_record` (gated CH-side capture SQL → runs row) |

@@ -27,21 +27,73 @@ only costs wall-clock, never accuracy (plan decision 6).
 
 Deps are pinned in [`requirements.txt`](requirements.txt).
 
+## Parallel sharded preload (why it is fast, and safe)
+
+The single-producer preload took ~20 min for the 10M-row dataset. To cut that to
+~5-6 min the producer runs as a Kubernetes **Indexed Job** of `SHARD_COUNT` pods
+(default 3, `completions == parallelism == SHARD_COUNT`). Each pod:
+
+1. reads its `JOB_COMPLETION_INDEX` (K8s-injected, `0..SHARD_COUNT-1`) and
+   `SHARD_COUNT`;
+2. lists the parquet files under `PARQUET_SOURCE` and **stable-sorts** them
+   lexicographically (every pod sees the identical ordering);
+3. produces **only** the files at `i % SHARD_COUNT == index` (stride-N).
+
+The file partition is therefore **disjoint and complete** — each file is
+produced by exactly one pod, no file twice. `SHARD_COUNT=1` degenerates to the
+original single-producer behaviour. If `files < SHARD_COUNT` the high-index pods
+get an **empty shard**: they produce nothing and exit `0` with a summary
+`{"empty_shard": true, "rows_sent": 0}` (an empty shard is not a failure). The
+canonical single `hits.parquet` gives one non-empty shard and N-1 empty shards,
+so **partitioned sources are required for real parallelism** (the staged
+`us-east-2` copy should be multi-file).
+
+Every pod is otherwise identical — own idempotent producer, same
+schema/serializer, same **bounded memory** (each pod streams only its shard, so
+the `1×1` pyarrow readahead + 128 MiB rdkafka-queue caps from the OOM fix are
+unchanged and now apply per-pod). The preload is **unmeasured**, so this
+parallelism never touches the instrument.
+
+**Produce-rate / broker expectation.** N pods produce ~N× the aggregate rate
+against one RF1 topic. RF1 (no replication traffic) absorbs a 3-4× produce burst
+on the bench broker trivially — no topic or broker change is needed. Backpressure
+is per-pod (`BufferError` → poll-and-retry the same row), so a pod never outruns
+the broker; a slow broker simply flattens each pod's throughput without breaking
+correctness.
+
 ## The `rows_expected` contract (why offsets, not send counts)
 
-`rows_expected` is derived from the topic's **committed end offsets** after the
-producer flushes:
+`rows_expected` is the **authoritative** count of the pre-loaded topic. Under
+sharding it is derived by the **orchestrator** (`run_pair.sh phase_preload`)
+from the **broker's committed offsets** *after the whole Indexed Job completes*:
 
 ```
-rows_expected = Σ_partitions (high_watermark − low_watermark)
+rows_expected = Σ_partitions (end_offset − beginning_offset)
 ```
 
-read via the consumer API — **never** from producer-side send counts. The
-producer also emits `rows_sent` (delivery-callback confirmations). If the two
-disagree the Job **fails** (exit 2): idempotence should make them equal, so a
-mismatch means the pre-load is invalid and must not feed a benchmark run. The
-orchestrator (task 31) parses `rows_expected` from the JSON summary and uses it
-as the integrity target for the Tier 1 drain (`count()` / `uniqExact(WatchID)`).
+read via `kafka-get-offsets.sh` inside the broker pod (`--time -1` latest,
+`--time -2` earliest) — **never** from producer-side send counts. This is
+**producer-count-agnostic**: it is the property that keeps preload *speed*
+irrelevant to *accuracy* (the whole point of the offsets contract).
+
+Under sharding the **per-pod global-offsets check is removed**: each pod sends
+`1/N` of the data, but the topic end offsets reflect the global total, so a
+per-pod compare against them is nonsense. Each pod instead reports **its own
+shard's** `rows_sent` (delivery-callback count) in its summary, with shard
+fields (`shard_index`, `shard_count`, `files_in_shard`). The per-pod sanity is
+**shard-local**: a non-empty shard that produced 0 rows fails (exit `3`).
+
+After the Job completes, the orchestrator does a best-effort **cross-check**: it
+sums the N pods' `rows_sent` (parsing each *completion-index* pod's last JSON
+line — the interleaved whole-Job log cannot be used) and:
+
+- Σ `rows_sent` **== broker offsets** → OK;
+- a clean sum that **disagrees** with broker offsets → **FAIL** the preload
+  (duplicate or lost records — the pre-load is invalid);
+- a log **parse problem** → WARN only (broker offsets remain authoritative).
+
+`rows_expected` is the integrity target for the Tier 1 drain (`count()` /
+`uniqExact(WatchID)`).
 
 ## Idempotence rationale
 
@@ -93,21 +145,38 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 
 All flags also read from env (`BOOTSTRAP`, `REGISTRY_URL`, `TOPIC`,
 `PARTITIONS`, `PARQUET_SOURCE`, `CREATE_TOPIC`, `SCHEMA_PATH`,
-`PARQUET_BATCH_ROWS`, `ROW_LIMIT`). `--create-topic` is for standalone/local
-runs only; in the benchmark the orchestrator creates the fresh topic per run
-(decision 6) and the Job leaves `CREATE_TOPIC=false`.
+`PARQUET_BATCH_ROWS`, `ROW_LIMIT`). Sharding is env-only: `SHARD_COUNT` (default
+`1`) and `JOB_COMPLETION_INDEX` (default `0`, K8s-injected in-cluster). To
+exercise 3-way sharding locally, run three processes against one topic:
 
-The last stdout line is always the machine-readable JSON summary:
-
-```json
-{"topic":"hits","partitions":3,"rows_sent":300,"rows_expected":300,
- "per_partition":{"0":{"low":0,"high":7,"count":7}, ...},
- "duration_seconds":1.0,"rate_rows_per_sec":299.1,
- "idempotence":true,"acks":"all","parquet_source":"...","match":true}
+```bash
+for i in 0 1 2; do
+  JOB_COMPLETION_INDEX=$i SHARD_COUNT=3 ./venv/bin/python producer.py \
+    --bootstrap localhost:9092 --registry-url http://localhost:8081 \
+    --topic hits --partitions 3 --parquet-source /path/to/hits_dir/ &
+done; wait
 ```
 
-Exit codes: `0` OK · `2` count mismatch (invalid pre-load) · `3` produced
-nothing · `1` any other failure.
+`--create-topic` is for standalone/local runs only; in the benchmark the
+orchestrator creates the fresh topic per run (decision 6) and the Job leaves
+`CREATE_TOPIC=false`.
+
+The last stdout line of **each pod** is a machine-readable JSON summary scoped to
+that pod's shard:
+
+```json
+{"topic":"hits","shard_index":0,"shard_count":3,"files_in_shard":4,
+ "rows_sent":100,"duration_seconds":1.0,"rate_rows_per_sec":99.1,
+ "idempotence":true,"acks":"all","parquet_source":"...","empty_shard":false}
+```
+
+An empty shard emits `"empty_shard":true,"rows_sent":0` and exits `0`. The
+authoritative global `rows_expected` is **not** in the pod summary — the
+orchestrator derives it from broker offsets after the Job completes (see the
+`rows_expected` contract above).
+
+Per-pod exit codes: `0` OK (incl. an empty shard) · `3` a non-empty shard that
+produced zero rows · `1` any other failure (send/delivery error, bad input).
 
 ## Build the image
 
@@ -134,16 +203,23 @@ export PRODUCER_IMAGE       # repo@sha256:...  (KAFKA_ALLOW_TAG=1 bypasses, loca
 
 ## How the Job is invoked per run
 
-[`job.yaml`](job.yaml) is a `batch/v1` Job in namespace `kafka-bench`:
+[`job.yaml`](job.yaml) is a `batch/v1` **Indexed** Job in namespace
+`kafka-bench`:
 
-- **`backoffLimit: 0` + `restartPolicy: Never`** — a retried, half-complete
-  pre-load would corrupt `rows_expected` (a second invocation re-produces the
-  whole dataset on top of the first, doubling end offsets; idempotence dedups
-  *records within one run*, not *whole re-runs*). The orchestrator handles retry
-  by recreating the topic and creating a fresh Job — never by letting K8s
-  restart this one.
+- **`completionMode: Indexed`, `completions == parallelism == SHARD_COUNT`** —
+  `SHARD_COUNT` pods run in parallel, each with a distinct `JOB_COMPLETION_INDEX`
+  producing its disjoint stride-N slice. `render_producer_job.py` patches all
+  three from a single `--shard-count` (default 3) and refuses to render a
+  non-indexed job (which would give every pod the whole dataset).
+- **`backoffLimit: 0` + `restartPolicy: Never`** — **any** pod failure is
+  terminal (`Job Failed`). A retried, half-complete pre-load would corrupt the
+  offset-derived count (a re-run re-produces a shard on top of the first,
+  inflating end offsets; idempotence dedups *records within one pod*, not *whole
+  re-runs*). The orchestrator handles retry by recreating the topic and creating
+  a fresh Job — never by letting K8s restart pods.
 - Env-driven config; `image:` is a placeholder replaced by CI with the ECR ref.
-- Resources sized for an m6i.large node; streaming parquet keeps memory flat.
+- Resources sized for an m6i.large node; streaming parquet keeps memory flat
+  per-pod (each pod streams only its shard).
 
 Per nightly run (plan §5): scale up → **producer Job runs to completion,
 `rows_expected` recorded** → per-arm drains → capture → teardown.

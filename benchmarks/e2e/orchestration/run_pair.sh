@@ -386,9 +386,15 @@ failure policy  : PRE-drain-start failures (scale-up/topic/producer/deploy/
 PHASE 1  scale up          eksctl node group 0->${SCALE_UP_NODES}; Kafka CR + Schema Registry Ready
 PHASE 2  pre-load          create topic (${EXPECTED_PARTITIONS} partitions RF1)
                            -> ASSERT broker-reported partition count==${EXPECTED_PARTITIONS} (kafka-topics.sh --describe)
-                           -> producer Job -> watch BOTH terminal conditions (Complete|Failed;
-                              Failed dies fast + dumps last logs — backoffLimit=0 is terminal)
-                           -> capture rows_expected from JSON summary
+                           -> render + apply INDEXED producer Job (completions==parallelism==SHARD_COUNT=${SHARD_COUNT:-3}
+                              shard pods; each produces a disjoint stride-N slice of the parquet files
+                              — parallel preload, ~5-6min vs ~20min; UNMEASURED so no instrument impact)
+                           -> watch BOTH terminal conditions (Complete|Failed; Failed dies fast +
+                              dumps last logs — backoffLimit=0: first pod failure is terminal)
+                           -> derive rows_expected from BROKER offsets (kafka-get-offsets.sh in broker
+                              pod: Σ latest−earliest per partition; producer-count-agnostic, authoritative)
+                           -> best-effort cross-check: Σ per-shard rows_sent (per completion-index pod log)
+                              == broker offsets else FAIL (dup/lost records); parse problems only WARN
 PHASE 2b poller host       in-cluster poller pod (${POLLER_POD}) — broker/REST/JMX are internal-only
 PHASE 3  per arm, in order [ ${order[0]} , ${order[1]} ]:
   for arm in ${order[0]} ${order[1]}:
@@ -555,27 +561,34 @@ phase_preload() {
     || die "broker reports partition count '${parts}' for ${TOPIC}, expected ${EXPECTED_PARTITIONS} (one-task-per-partition invariant broken)"
   log "  topic ${TOPIC} Ready with ${parts} partitions (broker-verified)"
 
-  # Producer Job (fresh; backoffLimit 0). Overseer directive e: parameterize an
-  # IRSA serviceAccountName for S3 read (PRODUCER_SA). IAM role is a provisioning
-  # TODO (see README). Image ref + parquet source come from the workflow env.
+  # Producer Job (fresh; backoffLimit 0). PARALLEL SHARDED PRELOAD: an INDEXED
+  # Job of SHARD_COUNT pods, each producing a disjoint stride-N slice of the
+  # parquet files (cuts the ~20min single-producer preload to ~5-6min). The
+  # preload is UNMEASURED, so this parallelism never touches the instrument.
+  # Overseer directive e: parameterize an IRSA serviceAccountName for S3 read
+  # (PRODUCER_SA). Image ref + parquet source come from the workflow env.
   kubectl -n "${NS}" delete job hits-producer --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
   local job_yaml="${ARTIFACT_DIR}/producer-job.yaml"
   mkdir -p "${ARTIFACT_DIR}"
-  # Patch image + serviceAccountName + PARQUET_SOURCE into a copy of job.yaml.
+  local shard_count="${SHARD_COUNT:-3}"
+  # Patch image + SA + PARQUET_SOURCE + completions/parallelism/SHARD_COUNT into
+  # a copy of job.yaml (render enforces completions==parallelism==SHARD_COUNT).
   python3 "${SCRIPT_DIR}/render_producer_job.py" \
       --job "${PRODUCER_DIR}/job.yaml" \
       --image "${PRODUCER_IMAGE:?PRODUCER_IMAGE required}" \
       --service-account "${PRODUCER_SA:-hits-producer}" \
       --parquet-source "${PARQUET_SOURCE:?PARQUET_SOURCE required}" \
+      --shard-count "${shard_count}" \
       --out "${job_yaml}" || die "producer job render failed"
   kubectl apply -f "${job_yaml}" || die "producer job apply failed"
+  log "  producer Job applied (Indexed, ${shard_count} shard pod(s))"
 
   # Wait for a TERMINAL state — Complete OR Failed (live fix). The previous
   # one-sided `kubectl wait --for=condition=complete` could not see Failed:
-  # with backoffLimit=0 the FIRST failure is terminal by design, and waiting
-  # out the full PRODUCER_TIMEOUT (6h default) on an already-failed pre-load
-  # burns cluster-hours for nothing. Poll both Job conditions and die fast on
-  # Failed, dumping the producer pod's last log lines for diagnosis.
+  # with backoffLimit=0 the FIRST pod failure is terminal (Indexed Job), and
+  # waiting out the full PRODUCER_TIMEOUT (6h default) on an already-failed
+  # pre-load burns cluster-hours for nothing. Poll both Job conditions and die
+  # fast on Failed, dumping the failed pods' last log lines for diagnosis.
   log "  waiting for producer Job (terminal: Complete OR Failed; timeout ${PRODUCER_TIMEOUT:-21600}s)"
   local jdeadline=$(( $(date +%s) + ${PRODUCER_TIMEOUT:-21600} ))
   while :; do
@@ -584,17 +597,17 @@ phase_preload() {
                 -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}' 2>/dev/null)"
     case " ${jconds}" in
       *" Complete=True"*)
-        log "  producer Job Complete"
-        # Observability (best-effort): relay the pod's final progress line —
-        # which carries peak_rss — into the runner log so the operator sees the
-        # producer's memory high-water mark without digging into pod logs.
-        { kubectl -n "${NS}" logs job/hits-producer --tail=40 2>/dev/null \
-            | grep -i "peak_rss" | tail -1 \
+        log "  producer Job Complete (${shard_count} shard(s))"
+        # Observability (best-effort): relay each pod's final peak_rss line into
+        # the runner log so the operator sees every shard's memory high-water
+        # mark. --prefix tags each line with its pod so the shards are separable.
+        { kubectl -n "${NS}" logs job/hits-producer --tail=-1 --prefix 2>/dev/null \
+            | grep -i "peak_rss" \
             | sed 's/^/  producer final: /' >&2; } || true
         break ;;
       *" Failed=True"*)
-        warn "producer Job FAILED (backoffLimit=0: first failure is terminal). Last log lines:"
-        kubectl -n "${NS}" logs job/hits-producer --tail=40 2>/dev/null | sed 's/^/    | /' >&2 || true
+        warn "producer Job FAILED (backoffLimit=0: first pod failure is terminal). Last log lines:"
+        kubectl -n "${NS}" logs job/hits-producer --tail=40 --prefix 2>/dev/null | sed 's/^/    | /' >&2 || true
         die "producer Job failed — pre-load invalid, aborting the pair before any measured drain" ;;
     esac
     [ "$(date +%s)" -ge "${jdeadline}" ] \
@@ -602,19 +615,131 @@ phase_preload() {
     sleep 15
   done
 
-  # rows_expected from the producer's JSON summary (last stdout line; exit 0 only).
-  local plog; plog="$(kubectl -n "${NS}" logs job/hits-producer --tail=-1 2>/dev/null)"
-  echo "${plog}" > "${ARTIFACT_DIR}/producer.log"
-  # Take the LAST JSON line, not the last line: the producer prints a final
-  # human-readable "[producer] OK: ..." line AFTER the JSON summary (live-run
-  # finding 2026-07-08 — tail -1 grabbed it and the parse died on a PERFECT
-  # 10M/10M pre-load).
-  ROWS_EXPECTED="$(echo "${plog}" | grep '^{' | tail -1 | python3 -c 'import sys,json; print(json.load(sys.stdin)["rows_expected"])' 2>/dev/null)"
-  [ -n "${ROWS_EXPECTED}" ] && [ "${ROWS_EXPECTED}" != "None" ] \
-    || die "could not parse rows_expected from producer summary"
+  # ------------------------------------------------------------------------- #
+  # GLOBAL rows_expected — the AUTHORITATIVE count contract (overseer
+  # directive 2), computed by the ORCHESTRATOR from the BROKER after the whole
+  # Job completes, NOT from producer send counts. Under sharding each pod sends
+  # 1/N of the data but the topic END OFFSETS reflect the global total, so the
+  # per-pod offset check was removed; this is the one true count.
+  #
+  #   rows_expected = Σ_partitions (end_offset − beginning_offset)
+  #
+  # via kafka-get-offsets.sh inside the broker pod — the SAME bin/ broker-exec
+  # convention already used for kafka-topics.sh (partition assert above) and
+  # kafka-consumer-groups.sh (delete_consumer_group.sh). The Strimzi 0.46 /
+  # Kafka 3.9 image ships bin/kafka-get-offsets.sh. This is producer-count-
+  # agnostic — the property that keeps preload SPEED irrelevant to accuracy.
+  # ------------------------------------------------------------------------- #
+  ROWS_EXPECTED="$(broker_topic_row_count "${TOPIC}")" \
+    || die "could not derive rows_expected from broker offsets for ${TOPIC}"
+  case "${ROWS_EXPECTED}" in
+    ''|*[!0-9]*) die "broker offset derivation returned non-numeric rows_expected='${ROWS_EXPECTED}'" ;;
+  esac
+  [ "${ROWS_EXPECTED}" -gt 0 ] 2>/dev/null \
+    || die "rows_expected=${ROWS_EXPECTED} from broker offsets — the pre-load produced nothing (empty/wrong parquet source?)"
   export ROWS_EXPECTED
   export SOURCE_ROWS_EXPECTED="${ROWS_EXPECTED}"
-  log "  rows_expected = ${ROWS_EXPECTED}"
+  log "  rows_expected = ${ROWS_EXPECTED} (broker end-minus-beginning offsets)"
+
+  # Best-effort cross-check: sum the N pods' rows_sent (last JSON line PER
+  # completion index) and WARN on mismatch. run_pair's old "last JSON line of
+  # the whole Job log" cannot survive N interleaved pods, so parse per-index.
+  # This is a diagnostic only: parse problems NEVER fail the pair (offsets are
+  # authoritative). It fails the preload ONLY when a clean per-pod sum is
+  # available AND disagrees with the broker offsets (that means duplicate or
+  # lost records — the pre-load IS invalid).
+  local plog; plog="$(kubectl -n "${NS}" logs job/hits-producer --tail=-1 --prefix 2>/dev/null)"
+  echo "${plog}" > "${ARTIFACT_DIR}/producer.log"
+  local sum_sent
+  sum_sent="$(producer_rows_sent_sum "${shard_count}")"
+  if [ -n "${sum_sent}" ] && [ "${sum_sent}" != "PARSE_FAIL" ]; then
+    if [ "${sum_sent}" = "${ROWS_EXPECTED}" ]; then
+      log "  cross-check OK: Σ rows_sent over ${shard_count} shard(s) = ${sum_sent} == broker offsets"
+    else
+      die "COUNT MISMATCH: Σ rows_sent over shards = ${sum_sent} != broker offsets = ${ROWS_EXPECTED}. Idempotence should make these equal; a mismatch means the pre-load is INVALID (duplicate or lost records)."
+    fi
+  else
+    warn "could not cleanly sum per-shard rows_sent (log parse) — relying on broker offsets alone (authoritative); NOT failing the pair"
+  fi
+}
+
+# --------------------------------------------------------------------------- #
+# Broker-derived topic row count (the authoritative rows_expected). Sums
+# (latest − earliest) over every partition using kafka-get-offsets.sh inside
+# the broker pod. --time -1 = latest (end) offset, --time -2 = earliest
+# (beginning) offset; output lines are "topic:partition:offset". A fresh RF1
+# topic has earliest 0 on every partition, but we subtract it explicitly so a
+# retained/compacted topic still counts correctly. Echoes the integer sum on
+# stdout; returns non-zero (no output) if either offset read fails.
+# --------------------------------------------------------------------------- #
+broker_topic_row_count() {
+  local topic="$1"
+  local latest earliest
+  latest="$(kubectl -n "${NS}" exec "${BROKER_POD}" -- \
+              bin/kafka-get-offsets.sh --bootstrap-server localhost:9092 \
+              --topic "${topic}" --time -1 2>/dev/null)" || return 1
+  earliest="$(kubectl -n "${NS}" exec "${BROKER_POD}" -- \
+                bin/kafka-get-offsets.sh --bootstrap-server localhost:9092 \
+                --topic "${topic}" --time -2 2>/dev/null)" || return 1
+  [ -n "${latest}" ] || return 1
+  # Pure text math in python (portable; no bc). Sums latest, subtracts earliest,
+  # keyed by partition so a differing line order between the two reads is safe.
+  printf 'LATEST\n%s\nEARLIEST\n%s\n' "${latest}" "${earliest}" | python3 -c '
+import sys
+section = None
+end = {}
+beg = {}
+for line in sys.stdin:
+    line = line.strip()
+    if line in ("LATEST", "EARLIEST"):
+        section = line
+        continue
+    if not line:
+        continue
+    # topic:partition:offset  (offset may be empty for a partition with no leader)
+    parts = line.split(":")
+    if len(parts) != 3:
+        continue
+    _, p, off = parts
+    if off == "":
+        continue
+    (end if section == "LATEST" else beg)[p] = int(off)
+total = sum(end.get(p, 0) - beg.get(p, 0) for p in end)
+print(total)
+' || return 1
+}
+
+# --------------------------------------------------------------------------- #
+# Sum the N shard pods rows_sent from the producer Job log. Each pod prints its
+# summary as the LAST JSON line of its OWN log; with N interleaved pods in one
+# `logs job/...` stream we cannot take "the last JSON line" globally. We fetch
+# each completion index's pod log separately (label
+# batch.kubernetes.io/job-completion-index=<i>) and parse that pod's last JSON
+# line. Echoes the integer sum on success; echoes "PARSE_FAIL" (never fails the
+# caller) if any pod's summary is unreadable — the broker offsets are
+# authoritative, this is only a cross-check.
+# --------------------------------------------------------------------------- #
+producer_rows_sent_sum() {
+  local shard_count="$1"
+  local i total=0 pod plog rs
+  for (( i=0; i<shard_count; i++ )); do
+    pod="$(kubectl -n "${NS}" get pod \
+             -l "job-name=hits-producer,batch.kubernetes.io/job-completion-index=${i}" \
+             -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
+    [ -n "${pod}" ] || { echo "PARSE_FAIL"; return 0; }
+    plog="$(kubectl -n "${NS}" logs "${pod}" --tail=-1 2>/dev/null)"
+    rs="$(printf '%s\n' "${plog}" | grep '^{' | tail -1 \
+          | python3 -c 'import sys,json
+try:
+    print(json.load(sys.stdin)["rows_sent"])
+except Exception:
+    print("")' 2>/dev/null)"
+    case "${rs}" in
+      ''|*[!0-9]*) echo "PARSE_FAIL"; return 0 ;;
+    esac
+    total=$(( total + rs ))
+  done
+  echo "${total}"
 }
 
 # --------------------------------------------------------------------------- #

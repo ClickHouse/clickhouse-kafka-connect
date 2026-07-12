@@ -1009,3 +1009,245 @@ def test_producer_success_relays_peak_rss():
     assert "kubectl -n \"${NS}\" logs job/hits-producer" in tail
     assert "grep -i \"peak_rss\"" in tail
     assert "|| true" in tail
+
+
+# =========================================================================== #
+# PARALLEL SHARDED PRODUCER PRELOAD
+#   * render_producer_job.py patches completions == parallelism == SHARD_COUNT
+#     and the SHARD_COUNT env; refuses a non-Indexed job.
+#   * phase_preload derives rows_expected from the BROKER (kafka-get-offsets.sh),
+#     not a producer JSON summary; cross-checks Σ per-shard rows_sent.
+#   * broker_topic_row_count (offset math) + producer_rows_sent_sum (per-index
+#     log parse) exercised directly with a stubbed kubectl.
+# =========================================================================== #
+RENDER = os.path.join(ORCH, "render_producer_job.py")
+PRODUCER_JOB = os.path.abspath(os.path.join(ORCH, "..", "producer", "job.yaml"))
+
+
+def _render_job(shard_count=3, extra_args=None):
+    args = ["python3", RENDER, "--job", PRODUCER_JOB,
+            "--image", "repo@sha256:" + "a" * 64,
+            "--service-account", "hits-producer",
+            "--parquet-source", "s3://bkt/clickbench/hits/",
+            "--shard-count", str(shard_count), "--out", "-"]
+    if extra_args:
+        args += extra_args
+    return subprocess.run(args, capture_output=True, text=True)
+
+
+def test_render_patches_completions_parallelism_and_shard_env():
+    """The rendered Indexed Job must have completions == parallelism ==
+    SHARD_COUNT env — all three from a single --shard-count input."""
+    for n in (1, 3, 5):
+        r = _render_job(n)
+        assert r.returncode == 0, r.stderr
+        doc = yaml.safe_load(r.stdout)
+        spec = doc["spec"]
+        assert spec["completionMode"] == "Indexed"
+        assert spec["completions"] == n
+        assert spec["parallelism"] == n
+        env = {e["name"]: e.get("value")
+               for e in spec["template"]["spec"]["containers"][0]["env"]}
+        assert env["SHARD_COUNT"] == str(n)
+        assert env["PARQUET_SOURCE"] == "s3://bkt/clickbench/hits/"
+        # JOB_COMPLETION_INDEX is K8s-injected per pod — never templated in.
+        assert "JOB_COMPLETION_INDEX" not in env
+        # image + SA still patched
+        c = spec["template"]["spec"]["containers"][0]
+        assert c["image"].endswith("@sha256:" + "a" * 64)
+        assert spec["template"]["spec"]["serviceAccountName"] == "hits-producer"
+
+
+def test_render_defaults_shard_count_three():
+    r = subprocess.run(
+        ["python3", RENDER, "--job", PRODUCER_JOB, "--image", "r@sha256:" + "b"*64,
+         "--service-account", "sa", "--parquet-source", "s3://x/", "--out", "-"],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    spec = yaml.safe_load(r.stdout)["spec"]
+    assert spec["completions"] == 3 and spec["parallelism"] == 3
+
+
+def test_render_rejects_bad_shard_count():
+    r = _render_job(0)
+    assert r.returncode != 0
+    assert "shard-count" in r.stderr
+
+
+def test_committed_job_yaml_is_indexed():
+    """The committed producer job.yaml is the render's input — it MUST declare
+    completionMode: Indexed (a NonIndexed job would give every pod the whole
+    dataset = N-fold duplicate end offsets)."""
+    doc = yaml.safe_load(open(PRODUCER_JOB))
+    spec = doc["spec"]
+    assert spec["completionMode"] == "Indexed"
+    assert spec["backoffLimit"] == 0
+    assert spec["template"]["spec"]["restartPolicy"] == "Never"
+    env = {e["name"]: e.get("value")
+           for e in spec["template"]["spec"]["containers"][0]["env"]}
+    assert env["SHARD_COUNT"] == str(spec["completions"]) == str(spec["parallelism"])
+
+
+def test_render_refuses_non_indexed_job(tmp_path):
+    """If the input job.yaml were downgraded to a non-indexed job, the renderer
+    must FAIL rather than silently ship N whole-dataset pods."""
+    doc = yaml.safe_load(open(PRODUCER_JOB))
+    doc["spec"]["completionMode"] = "NonIndexed"
+    bad = tmp_path / "job.yaml"
+    bad.write_text(yaml.safe_dump(doc))
+    r = subprocess.run(
+        ["python3", RENDER, "--job", str(bad), "--image", "r@sha256:" + "c"*64,
+         "--service-account", "sa", "--parquet-source", "s3://x/",
+         "--shard-count", "3", "--out", "-"],
+        capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "Indexed" in r.stderr
+
+
+# ---- broker offset derivation (the authoritative rows_expected) ------------ #
+def _run_shell_fn(call, kubectl_script, extra_env=None):
+    """Source run_pair.sh, put a fake `kubectl` on PATH, and run `call`.
+
+    kubectl_script is the body of a bash function named kubectl (receives the
+    kubectl args as "$@"); it emits whatever the stub should return on stdout.
+    """
+    import tempfile, stat
+    env = dict(os.environ)
+    env["BROKER_POD"] = "bench-combined-0"
+    env["K8S_NAMESPACE"] = "kafka-bench"
+    if extra_env:
+        env.update(extra_env)
+    with tempfile.TemporaryDirectory() as td:
+        kube = os.path.join(td, "kubectl")
+        with open(kube, "w") as f:
+            f.write("#!/usr/bin/env bash\n" + kubectl_script + "\n")
+        os.chmod(kube, os.stat(kube).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        env["PATH"] = td + os.pathsep + env["PATH"]
+        script = f'source "{RUN_PAIR}"; {call}'
+        r = subprocess.run(["bash", "-c", script],
+                           capture_output=True, text=True, env=env)
+    return r.returncode, r.stdout.strip(), r.stderr
+
+
+# A kubectl stub that answers kafka-get-offsets.sh --time -1 / -2 for 3 partitions.
+_OFFSETS_STUB = r'''
+args="$*"
+case "$args" in
+  *kafka-get-offsets.sh*"--time -1"*) printf 'hits:0:100\nhits:1:200\nhits:2:150\n' ;;
+  *kafka-get-offsets.sh*"--time -2"*) printf 'hits:0:0\nhits:1:0\nhits:2:0\n' ;;
+  *) exit 0 ;;
+esac
+'''
+
+
+def test_broker_topic_row_count_sums_end_minus_beginning():
+    rc, out, err = _run_shell_fn('broker_topic_row_count hits', _OFFSETS_STUB)
+    assert rc == 0, err
+    assert out == "450", out  # (100-0)+(200-0)+(150-0)
+
+
+def test_broker_topic_row_count_subtracts_nonzero_beginning():
+    stub = r'''
+args="$*"
+case "$args" in
+  *kafka-get-offsets.sh*"--time -1"*) printf 'hits:0:110\nhits:1:220\n' ;;
+  *kafka-get-offsets.sh*"--time -2"*) printf 'hits:0:10\nhits:1:20\n' ;;
+esac
+'''
+    rc, out, err = _run_shell_fn('broker_topic_row_count hits', stub)
+    assert rc == 0, err
+    assert out == "300", out  # (110-10)+(220-20)
+
+
+def test_broker_topic_row_count_fails_when_offsets_unreadable():
+    stub = 'exit 1'
+    rc, out, err = _run_shell_fn('broker_topic_row_count hits', stub)
+    assert rc != 0, (out, err)
+
+
+def test_phase_preload_derives_rows_expected_from_broker_not_summary():
+    """The count contract redesign: rows_expected comes from broker offsets
+    (kafka-get-offsets.sh), NOT from a producer JSON summary. The old
+    'rows_expected' JSON key does not exist per-pod under sharding."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_preload")
+    assert "broker_topic_row_count" in body, \
+        "rows_expected must be derived from the broker"
+    assert "kafka-get-offsets.sh" in src, "must use kafka-get-offsets.sh"
+    # ROWS_EXPECTED is exported for downstream (integrity target) as before
+    assert "export ROWS_EXPECTED" in body
+    assert "export SOURCE_ROWS_EXPECTED" in body
+    # The per-pod global-offsets JSON parse must be gone (rows_expected is no
+    # longer a producer summary field).
+    assert 'json.load(sys.stdin)["rows_expected"]' not in body
+
+
+def test_phase_preload_renders_indexed_job_with_shard_count():
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_preload")
+    assert "--shard-count" in body, "must pass shard count to the renderer"
+    assert "SHARD_COUNT" in body
+
+
+def test_phase_preload_cross_checks_per_shard_sum():
+    """Cross-check: Σ per-shard rows_sent (per completion-index pod) vs broker
+    offsets; parse failure only WARNs, a clean mismatch FAILs."""
+    src = open(RUN_PAIR).read()
+    body = _extract_function(src, "phase_preload")
+    assert "producer_rows_sent_sum" in body
+    # a clean mismatch is fatal (the pre-load is invalid)
+    assert "COUNT MISMATCH" in body
+    # a parse problem does NOT fail the pair (offsets authoritative)
+    assert "PARSE_FAIL" in body
+    assert "NOT failing the pair" in body
+
+
+# ---- per-index rows_sent sum (cross-check) --------------------------------- #
+def test_producer_rows_sent_sum_parses_per_index_logs():
+    """Each completion index's pod log is parsed for its OWN last JSON line;
+    the interleaved whole-Job log cannot be used under N pods."""
+    # Stub: `get pod -l ...job-completion-index=<i>` -> a pod name; `logs <pod>`
+    # -> that shard's summary (last JSON line) with rows_sent=100 each.
+    stub = r'''
+args="$*"
+case "$args" in
+  *"get pod"*"job-completion-index=0"*) echo "hits-producer-0-abc" ;;
+  *"get pod"*"job-completion-index=1"*) echo "hits-producer-1-def" ;;
+  *"get pod"*"job-completion-index=2"*) echo "hits-producer-2-ghi" ;;
+  *logs*hits-producer-0*) printf '[producer] noise\n{"shard_index":0,"rows_sent":100}\n[producer] OK\n' ;;
+  *logs*hits-producer-1*) printf '{"shard_index":1,"rows_sent":100}\n[producer] OK\n' ;;
+  *logs*hits-producer-2*) printf '{"shard_index":2,"rows_sent":100}\n' ;;
+esac
+'''
+    rc, out, err = _run_shell_fn('producer_rows_sent_sum 3', stub)
+    assert rc == 0, err
+    assert out == "300", out
+
+
+def test_producer_rows_sent_sum_takes_last_json_line_per_pod():
+    """A pod prints a human 'OK' line AFTER its JSON summary — the parse must
+    take the last JSON ('{') line, not the last line (2026-07-08 lesson)."""
+    stub = r'''
+args="$*"
+case "$args" in
+  *"get pod"*"job-completion-index=0"*) echo "p0" ;;
+  *logs*p0*) printf '{"rows_sent":42}\n[producer] OK: shard done.\n' ;;
+esac
+'''
+    rc, out, err = _run_shell_fn('producer_rows_sent_sum 1', stub)
+    assert rc == 0, err
+    assert out == "42", out
+
+
+def test_producer_rows_sent_sum_parse_fail_is_soft():
+    """A missing pod / unreadable summary returns PARSE_FAIL, NOT a hard error
+    (broker offsets are authoritative; this is only a cross-check)."""
+    stub = r'''
+args="$*"
+case "$args" in
+  *"get pod"*) echo "" ;;   # pod not found
+esac
+'''
+    rc, out, err = _run_shell_fn('producer_rows_sent_sum 3', stub)
+    assert rc == 0, err            # soft: the function itself succeeds
+    assert out == "PARSE_FAIL", out
