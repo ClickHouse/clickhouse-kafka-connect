@@ -156,38 +156,58 @@ def test_list_dataset_files_is_stable_sorted():
     print("PASS list_dataset_files: stable lexicographic sort, deterministic")
 
 
-def test_read_shard_env(monkeypatch_env):
-    """JOB_COMPLETION_INDEX/SHARD_COUNT parsing + range validation."""
+def _set_shard_env(mapping):
+    """Set exactly the given shard env vars, clearing the rest (plain-script
+    helper — this file runs standalone; no pytest fixtures involved)."""
+    for k in ("JOB_COMPLETION_INDEX", "SHARD_COUNT"):
+        os.environ.pop(k, None)
+    for k, v in mapping.items():
+        os.environ[k] = v
+
+
+def _shard_env_must_die(mapping, why):
+    _set_shard_env(mapping)
+    failed = False
+    try:
+        producer.read_shard_env()
+    except SystemExit:
+        failed = True
+    assert failed, f"read_shard_env must reject {mapping} ({why})"
+
+
+def test_read_shard_env():
+    """JOB_COMPLETION_INDEX/SHARD_COUNT parsing + range validation + the F1
+    missing-index guard: SHARD_COUNT>1 with NO index must DIE, never default
+    to shard 0 — N pods silently on shard 0 produce N copies of 1/N of the
+    data, and the offsets cross-check is mathematically blind to it
+    (Σ rows_sent == broker offsets, both N x shard 0)."""
     # defaults: index 0, count 1 (single-producer degenerate)
-    monkeypatch_env({})
+    _set_shard_env({})
     assert producer.read_shard_env() == (0, 1)
-    monkeypatch_env({"JOB_COMPLETION_INDEX": "2", "SHARD_COUNT": "3"})
+    _set_shard_env({"JOB_COMPLETION_INDEX": "2", "SHARD_COUNT": "3"})
     assert producer.read_shard_env() == (2, 3)
-    # index out of range for the count -> die (SystemExit)
-    monkeypatch_env({"JOB_COMPLETION_INDEX": "3", "SHARD_COUNT": "3"})
-    for bad in ({"JOB_COMPLETION_INDEX": "3", "SHARD_COUNT": "3"},
-                {"SHARD_COUNT": "0"}):
-        monkeypatch_env(bad)
-        failed = False
-        try:
-            producer.read_shard_env()
-        except SystemExit:
-            failed = True
-        assert failed, f"read_shard_env must reject {bad}"
-    print("PASS read_shard_env: defaults (0,1), parse, out-of-range/zero rejected")
+    # SHARD_COUNT=1 with no index is still fine (standalone/local run)
+    _set_shard_env({"SHARD_COUNT": "1"})
+    assert producer.read_shard_env() == (0, 1)
 
+    # F1 THE CRITICAL CASE: SHARD_COUNT>1 but JOB_COMPLETION_INDEX unset.
+    _shard_env_must_die({"SHARD_COUNT": "3"},
+                        "missing index with N>1 would triple-produce shard 0")
 
-def _monkeypatch_env():
-    """Minimal env-swapper (no pytest dependency — this file runs as a script)."""
-    saved = {}
-    def setter(mapping):
-        for k in ("JOB_COMPLETION_INDEX", "SHARD_COUNT"):
-            if k in os.environ:
-                saved.setdefault(k, os.environ[k])
-                del os.environ[k]
-        for k, v in mapping.items():
-            os.environ[k] = v
-    return setter
+    # out-of-range / zero / garbage env all die loudly
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "3", "SHARD_COUNT": "3"},
+                        "index out of range")
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "-1", "SHARD_COUNT": "3"},
+                        "negative index")
+    _shard_env_must_die({"SHARD_COUNT": "0"}, "zero count")
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "abc", "SHARD_COUNT": "3"},
+                        "garbage index")
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "0", "SHARD_COUNT": "x"},
+                        "garbage count")
+
+    _set_shard_env({})  # leave the env clean for anything running after
+    print("PASS read_shard_env: defaults (0,1), parse, F1 missing-index guard "
+          "(SHARD_COUNT>1 w/o index dies), out-of-range/garbage rejected")
 
 
 def main():
@@ -283,7 +303,7 @@ def main():
     # --- sharding (parallel preload) -----------------------------------------
     test_sharding_selection()
     test_list_dataset_files_is_stable_sorted()
-    test_read_shard_env(_monkeypatch_env())
+    test_read_shard_env()
 
     print("ALL MAPPING TESTS PASSED")
 

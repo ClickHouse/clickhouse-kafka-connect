@@ -55,7 +55,10 @@ jobs:
       K8S_NAMESPACE: kafka-bench
       CLUSTER_NAME: kafka-bench
       NODEGROUP_NAME: bench-ng
-      SCALE_UP_NODES: "2"
+      # 4 bench nodes: sharded-preload capacity (review F5) — broker+registry
+      # node + 3 nodes each fitting one 4Gi-request producer shard pod. Keep in
+      # sync with infra/env.sh + cluster.yaml bench-ng maxSize.
+      SCALE_UP_NODES: "4"
       # Arm images from the images job (benchmark-images.yml outputs).
       HEAD_IMAGE: ${{ needs.images.outputs.head_image }}
       PINNED_IMAGE: ${{ needs.images.outputs.pinned_image }}

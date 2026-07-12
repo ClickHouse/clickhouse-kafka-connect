@@ -30,9 +30,16 @@ export AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-796575137974}"
 export STRIMZI_VERSION="${STRIMZI_VERSION:-0.46.0}"
 
 # --- Scale defaults ---------------------------------------------------------
-# Node count a run scales up to. Two nodes spread broker / registry / connect /
-# producer across hosts.
-export SCALE_UP_NODES="${SCALE_UP_NODES:-2}"
+# Node count a run scales up to. FOUR bench nodes (sharded-preload capacity,
+# review F5): broker+registry share one node (~2.9Gi free after them — no 4Gi
+# producer pod fits), and each of the other 3 nodes fits exactly ONE 4Gi-request
+# producer shard pod, so SHARD_COUNT=3 runs truly in parallel. Keep in sync with
+# cluster.yaml bench-ng maxSize (4). Cost delta vs the old 2: +2 m6i.large x
+# pair duration (~+$0.40/pair) — accepted cost-for-speed (preload ~20min ->
+# ~5-6min); the extra nodes just idle during the drains (broker/registry/poller
+# placement unchanged, Connect worker on its own connect-ng node), so the
+# measured path is unaffected.
+export SCALE_UP_NODES="${SCALE_UP_NODES:-4}"
 
 # --- Directory of this script tree ------------------------------------------
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

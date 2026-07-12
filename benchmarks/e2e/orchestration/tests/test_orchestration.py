@@ -1251,3 +1251,62 @@ esac
     rc, out, err = _run_shell_fn('producer_rows_sent_sum 3', stub)
     assert rc == 0, err            # soft: the function itself succeeds
     assert out == "PARSE_FAIL", out
+
+
+# ---- preload capacity (review F5): 4 bench nodes, consistent everywhere ---- #
+# Fit arithmetic on m6i.large (~7.1Gi allocatable): the broker+registry node
+# has ~2.9Gi free (a 4Gi-request producer pod does NOT fit); each other bench
+# node fits exactly ONE such pod. SHARD_COUNT=3 shard pods therefore need
+# 1 broker node + 3 producer nodes = 4 bench nodes — at 2 nodes, 2 shard pods
+# sit Pending and the "parallel" preload runs serially. All four sources of
+# the node count must agree or one path silently under-provisions.
+INFRA = os.path.abspath(os.path.join(ORCH, "..", "infra"))
+WORKFLOW = os.path.abspath(os.path.join(ORCH, "..", "..", "..",
+                                        ".github", "workflows",
+                                        "benchmark-nightly.yml"))
+
+
+def test_preload_capacity_four_bench_nodes_everywhere():
+    # run_pair.sh default
+    src = open(RUN_PAIR).read()
+    m = re.search(r'^SCALE_UP_NODES="\$\{SCALE_UP_NODES:-(\d+)\}"', src, re.M)
+    assert m, "run_pair.sh must default SCALE_UP_NODES"
+    assert m.group(1) == "4", f"run_pair.sh SCALE_UP_NODES default is {m.group(1)}, want 4"
+    # infra/env.sh default
+    env_src = open(os.path.join(INFRA, "env.sh")).read()
+    m = re.search(r'SCALE_UP_NODES="\$\{SCALE_UP_NODES:-(\d+)\}"', env_src)
+    assert m and m.group(1) == "4", "infra/env.sh SCALE_UP_NODES default must be 4"
+    # cluster.yaml bench-ng maxSize must ADMIT 4 (eksctl scale bumps max at
+    # runtime, but the provisioned config must not contradict the fleet size)
+    cluster = yaml.safe_load(open(os.path.join(INFRA, "cluster.yaml")))
+    bench = next(g for g in cluster["managedNodeGroups"] if g["name"] == "bench-ng")
+    assert bench["maxSize"] >= 4, f"bench-ng maxSize {bench['maxSize']} < 4"
+    # nightly workflow env pin (would override every default in CI)
+    wf = yaml.safe_load(open(WORKFLOW))
+    for job in wf.get("jobs", {}).values():
+        env = job.get("env", {}) or {}
+        if "SCALE_UP_NODES" in env:
+            assert str(env["SCALE_UP_NODES"]) == "4", \
+                f"workflow pins SCALE_UP_NODES={env['SCALE_UP_NODES']}, want 4"
+
+
+def test_preload_capacity_fits_shard_pods():
+    """The default shard count's 4Gi-request pods must fit the non-broker bench
+    nodes: SHARD_COUNT default (3) needs SCALE_UP_NODES default (4) = 1 broker+
+    registry node + 3 producer-capable nodes. Producer requests must stay 4Gi —
+    the peak is buffer-driven, shrinking them is NOT a capacity fix."""
+    # producer job.yaml: SHARD_COUNT default + the 4Gi request that sizes the fit
+    job = yaml.safe_load(open(PRODUCER_JOB))
+    shard_count = job["spec"]["completions"]
+    res = job["spec"]["template"]["spec"]["containers"][0]["resources"]
+    assert res["requests"]["memory"] == "4Gi", \
+        "producer memory request must stay 4Gi (buffer-driven peak)"
+    src = open(RUN_PAIR).read()
+    m = re.search(r'^SCALE_UP_NODES="\$\{SCALE_UP_NODES:-(\d+)\}"', src, re.M)
+    nodes = int(m.group(1))
+    # 1 node hosts broker+registry (no 4Gi pod fits beside them); each other
+    # node fits exactly one 4Gi-request producer pod.
+    assert nodes - 1 >= shard_count, (
+        f"SCALE_UP_NODES={nodes} gives {nodes - 1} producer-capable node(s) "
+        f"but SHARD_COUNT={shard_count} shard pods need one each — "
+        f"pods would sit Pending (serial preload)")

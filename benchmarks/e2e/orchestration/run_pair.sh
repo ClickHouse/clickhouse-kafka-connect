@@ -105,7 +105,20 @@ M6I_LARGE_USD_PER_HR="${M6I_LARGE_USD_PER_HR:-0.096}"    # us-east-2 on-demand
 M6I_XLARGE_USD_PER_HR="${M6I_XLARGE_USD_PER_HR:-0.192}"  # us-east-2 on-demand (2x large)
 EBS_GP3_USD_PER_GB_MO="${EBS_GP3_USD_PER_GB_MO:-0.08}"
 BROKER_EBS_GB="${BROKER_EBS_GB:-70}"
-SCALE_UP_NODES="${SCALE_UP_NODES:-2}"
+# 4 bench nodes (sharded-preload capacity, review F5). Fit arithmetic on
+# m6i.large (~7.1Gi allocatable): the broker+registry node has ~2.9Gi free (no
+# 4Gi-request producer pod fits there); each OTHER bench node fits exactly ONE
+# 4Gi-request shard pod — so SHARD_COUNT=3 needs 1 broker node + 3 producer
+# nodes = 4. The per-pod peak (~4.4Gi) is BUFFER-driven (pyarrow readahead +
+# rdkafka queue), not shard-size-driven, so shrinking requests is NOT the fix.
+# At the old 2 nodes, 2 of 3 shard pods sat Pending => serial "parallel"
+# preload (~20min + churn). Cost delta ~+2 m6i.large x pair duration
+# (~+$0.40/pair) — accepted cost-for-speed; the extra nodes idle during the
+# drains (broker/registry/poller placement unchanged, Connect worker on its
+# dedicated connect-ng node), so the MEASURED path is unaffected. Keep in sync
+# with infra/env.sh SCALE_UP_NODES + cluster.yaml bench-ng maxSize. The
+# phase_pair_cost calc below charges all ${SCALE_UP_NODES} honestly.
+SCALE_UP_NODES="${SCALE_UP_NODES:-4}"
 # Dedicated Connect nodegroup count (baseline 1 m6i.xlarge; keep in sync with
 # infra/env.sh CONNECT_NODES). Scale-out is the #37 sweep's variable.
 CONNECT_NODES="${CONNECT_NODES:-1}"

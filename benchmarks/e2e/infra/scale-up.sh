@@ -8,7 +8,12 @@
 # the dedicated connect-ng m6i.xlarge node (2026-07-08 rebuild).
 #
 # Usage:  ./scale-up.sh [N]      (N = bench-ng nodes; defaults to $SCALE_UP_NODES,
-#                                 i.e. 2. connect-ng scales to $CONNECT_NODES=1.)
+#                                 i.e. 4 — sharded-preload capacity, review F5:
+#                                 broker+registry node + 3 nodes fitting one
+#                                 4Gi-request producer shard pod each. The
+#                                 label-filtered Ready wait below expects
+#                                 N bench + $CONNECT_NODES=1 connect (4+1 at
+#                                 the defaults). connect-ng scales to 1.)
 #
 # Requires live AWS credentials, eksctl, kubectl.
 

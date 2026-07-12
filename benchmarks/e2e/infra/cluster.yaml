@@ -62,15 +62,22 @@ vpc:
 # scale-down.sh, which set desiredCapacity at runtime.
 managedNodeGroups:
   - name: bench-ng
-    # m6i.large = 2 vCPU / 8 GiB. Two nodes give headroom for the Strimzi
-    # broker pod (~2Gi heap), the Connect worker, Schema Registry, and the
-    # per-run producer Job on separate nodes.
+    # m6i.large = 2 vCPU / 8 GiB. FOUR nodes max (sharded-preload capacity,
+    # review F5): the parallel producer preload runs SHARD_COUNT=3 pods at 4Gi
+    # request each. The per-pod peak (~4.4Gi) is BUFFER-driven (pyarrow
+    # readahead + rdkafka queue), NOT shard-size-driven, so the request must
+    # not shrink with the shard. Fit arithmetic on m6i.large (~7.1Gi
+    # allocatable): the broker node has ~2.9Gi free after broker+registry (0
+    # producer pods fit there); each other bench node fits exactly ONE
+    # 4Gi-request producer pod. 3 shard pods => broker+registry node + 3
+    # producer-capable nodes = 4 bench nodes. At the old maxSize 2, two shard
+    # pods sat Pending and the "parallel" preload ran serially (~20min + churn).
     instanceType: m6i.large
     # scale-to-zero: minSize 0 so scale-down.sh can drop the group to no nodes.
     # desiredCapacity starts at 0 — provision creates the group empty; a run
     # scales it up. This means `provision.sh` never leaves paid compute running.
     minSize: 0
-    maxSize: 2
+    maxSize: 4
     desiredCapacity: 0
     volumeSize: 40
     volumeType: gp3

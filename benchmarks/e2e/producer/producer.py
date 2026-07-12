@@ -158,13 +158,39 @@ def read_shard_env():
 
     ``JOB_COMPLETION_INDEX`` is injected by K8s into every pod of an Indexed
     Job (0..completions-1). ``SHARD_COUNT`` is set from the Job's completions/
-    parallelism (default 3). Standalone/local runs default index 0 / count 1
-    (=> the original single-producer whole-dataset behaviour).
+    parallelism. Standalone/local runs default index 0 / count 1 (=> the
+    original single-producer whole-dataset behaviour).
+
+    CRITICAL guard (review F1): when SHARD_COUNT > 1, JOB_COMPLETION_INDEX
+    MUST be present — it must NEVER default. If N pods all silently defaulted
+    to index 0 (e.g. a non-Indexed Job, or the env projection missing), every
+    pod would produce shard 0: the topic would hold N copies of 1/N of the
+    data, and the orchestrator's cross-check would be MATHEMATICALLY BLIND to
+    it (Σ rows_sent == broker offsets stays self-consistent — both are N x
+    shard 0), so integrity would run against a wrong-but-consistent count.
+    Die loudly instead. Garbage (non-integer) env values also die loudly.
     """
-    idx = int(os.environ.get("JOB_COMPLETION_INDEX", "0"))
-    cnt = int(os.environ.get("SHARD_COUNT", "1"))
+    idx_raw = os.environ.get("JOB_COMPLETION_INDEX")
+    cnt_raw = os.environ.get("SHARD_COUNT", "1")
+    try:
+        cnt = int(cnt_raw)
+    except ValueError:
+        die(f"SHARD_COUNT={cnt_raw!r} is not an integer")
     if cnt < 1:
         die(f"SHARD_COUNT={cnt} is invalid (must be >= 1)")
+    if idx_raw is None:
+        if cnt > 1:
+            die(f"SHARD_COUNT={cnt} but JOB_COMPLETION_INDEX is NOT set — "
+                f"refusing to default to shard 0: with {cnt} pods that would "
+                f"produce {cnt} copies of shard 0 (a wrong-but-self-consistent "
+                f"count the offsets cross-check cannot detect). Run as an "
+                f"Indexed Job (K8s injects the index) or set it explicitly.")
+        idx = 0  # single-shard standalone/local run
+    else:
+        try:
+            idx = int(idx_raw)
+        except ValueError:
+            die(f"JOB_COMPLETION_INDEX={idx_raw!r} is not an integer")
     if idx < 0 or idx >= cnt:
         die(f"JOB_COMPLETION_INDEX={idx} out of range for SHARD_COUNT={cnt}")
     return idx, cnt

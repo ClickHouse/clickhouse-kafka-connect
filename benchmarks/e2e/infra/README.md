@@ -92,7 +92,9 @@ the Strimzi operator. After this the only cost is the EKS control plane.
 ### 2. Scale up (start of a run)
 
 ```bash
-./scale-up.sh          # -> $SCALE_UP_NODES bench nodes (default 2) + $CONNECT_NODES connect node (default 1)
+./scale-up.sh          # -> $SCALE_UP_NODES bench nodes (default 4: broker+registry node + 3 nodes for the
+                       #    4Gi-request producer shard pods — sharded-preload capacity, review F5;
+                       #    ~+$0.40/pair vs 2 nodes, extra nodes idle during drains) + $CONNECT_NODES connect node (default 1)
 # or ./scale-up.sh 2
 ```
 
