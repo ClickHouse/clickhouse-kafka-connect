@@ -92,18 +92,26 @@ log "applying poller RBAC (bench-poller-sa + nodes/proxy get for the cadvisor CP
 kubectl delete clusterrolebinding bench-poller-cadvisor --ignore-not-found
 kubectl apply -f "${INFRA_DIR}/poller-rbac.yaml"
 
-# Preflight (fail loud BEFORE a drain pays for it): the RBAC objects can look
-# correct yet not grant the SA anything (stale binding, propagation lag). Assert
-# the SA can actually GET nodes/proxy — the exact permission the cadvisor scrape
-# needs. If NO, the CPU gate would be blind for the whole pair; die here so the
-# operator fixes RBAC instead of discovering it in the dashboard as NO_DATA.
+# Preflight (fail loud BEFORE a drain pays for it): assert the SA's REAL access
+# with a live token + raw request. Do NOT use `kubectl auth can-i` in any form —
+# on this EKS cluster SSAR-style checks (impersonated OR token'd) return a false
+# "no" for nodes/proxy while the actual GET is authorized (verified 2026-07-12:
+# raw request -> NotFound [authorized past authz], can-i -> no). The sampler does
+# raw GETs, so the raw probe is the truth. NotFound on the dummy node = authorized
+# (403 Forbidden = genuinely denied). pods get is probed the same way (nodeName
+# resolution — the ACTUAL cause of the 2026-07-09 blind gate).
 SA="system:serviceaccount:${K8S_NAMESPACE}:bench-poller-sa"
-log "preflight: verifying ${SA} can get nodes/proxy (cadvisor CPU gate)"
-if [ "$(kubectl auth can-i --as="${SA}" get nodes/proxy 2>/dev/null || echo no)" != "yes" ]; then
+log "preflight: probing ${SA} real access (cadvisor CPU gate)"
+SA_TOKEN="$(kubectl create token bench-poller-sa -n "${K8S_NAMESPACE}" --duration=10m)"
+proxy_probe="$(kubectl --token="${SA_TOKEN}" get --raw "/api/v1/nodes/preflight-dummy-node/proxy/metrics/cadvisor" 2>&1 || true)"
+if echo "${proxy_probe}" | grep -qi "forbidden"; then
   kubectl describe clusterrolebinding bench-poller-cadvisor 2>&1 | sed 's/^/    | /' >&2 || true
-  die "poller RBAC preflight FAILED: ${SA} cannot 'get nodes/proxy' — the cadvisor CPU gate would be BLIND for the whole pair. Check poller-rbac.yaml (ClusterRoleBinding roleRef/subject) before running run_pair.sh."
+  die "poller RBAC preflight FAILED: ${SA} raw GET nodes/proxy is Forbidden — the cadvisor CPU gate would be BLIND for the whole pair. Check poller-rbac.yaml before running run_pair.sh."
 fi
-log "  preflight OK: ${SA} can get nodes/proxy"
+if ! kubectl --token="${SA_TOKEN}" get pods -n "${K8S_NAMESPACE}" -o name >/dev/null 2>&1; then
+  die "poller RBAC preflight FAILED: ${SA} cannot list pods in ${K8S_NAMESPACE} — nodeName resolution would fail and the CPU gate would be BLIND (the 2026-07-09 failure mode). Ensure the bench-poller-pods Role+RoleBinding exist (poller-rbac.yaml)."
+fi
+log "  preflight OK: ${SA} raw nodes/proxy authorized + pods listable"
 
 log "applying Kafka (KRaft, 1 broker RF1) + Schema Registry manifests"
 kubectl apply -f "${INFRA_DIR}/kafka.yaml"

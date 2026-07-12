@@ -65,3 +65,37 @@ subjects:
   - kind: ServiceAccount
     name: bench-poller-sa
     namespace: kafka-bench
+---
+# Namespace-scoped pods read: the sampler resolves the Connect worker pod's
+# .spec.nodeName before it can build the node-proxy cadvisor URL. Without this
+# the source never arms ("node unresolved") — the ACTUAL cause of the
+# 2026-07-09 blind CPU gate (nodes/proxy itself was authorized all along; SSAR
+# `can-i` checks false-negative on this cluster, so verify with a real
+# token+request probe, never can-i — see scale-up.sh preflight).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bench-poller-pods
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bench-poller-pods
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bench-poller-pods
+subjects:
+  - kind: ServiceAccount
+    name: bench-poller-sa
+    namespace: kafka-bench
