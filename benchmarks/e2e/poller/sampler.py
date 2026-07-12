@@ -99,12 +99,45 @@ def sample_connect_status(requests_mod, base_url: str, connector: str) -> Dict[s
 # the MBeans to (verified against that file). Standard Kafka Connect/consumer
 # MBeans surface with the exporter's default naming; the sink's own MBeans
 # surface as clickhouse_kafka_connect{attribute="..."}.
-_PROM_LINE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+([-+0-9.eE]+|NaN|\+?Inf)\s*$')
+# Prometheus text-exposition line: `name{labels} value [timestamp]`.
+#
+# The value may be followed by an OPTIONAL trailing timestamp (integer ms),
+# which the kubelet cadvisor endpoint ALWAYS emits (`... } 12345.678 1720…`).
+# The previous pattern anchored the value to end-of-line (`…\s*$`), so every
+# real cadvisor line failed to match and was silently dropped — the sampler
+# saw zero series despite a 419KB body (pair-2/-3 CPU blindness). The label
+# block deliberately allows any character except `}` (so `/ @ : . _ -` inside
+# id/image/name values are fine); label VALUES are parsed spec-correctly by
+# _LABEL_KV below, which permits any char except an unescaped `"`.
+_PROM_LINE = re.compile(
+    r'^([a-zA-Z_:][a-zA-Z0-9_:]*)'          # metric name
+    r'(\{[^}]*\})?'                          # optional label block
+    r'\s+([-+0-9.eE]+|NaN|[-+]?Inf)'         # value
+    r'(?:\s+[-+0-9.eE]+)?'                   # optional trailing timestamp
+    r'\s*$')
+
+# A single label: `name="value"`. The value is any run of characters that are
+# neither an unescaped `"` nor `\` (`[^"\\]`) OR an escape sequence (`\\.`),
+# per the Prometheus text format spec. Label NAMES may contain underscores and
+# digits (never a leading digit, but cadvisor names never do).
+_LABEL_KV = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:[^"\\]|\\.)*)"')
+
+# Prometheus escape sequences inside a double-quoted label value: only \\, \"
+# and \n are defined. Unescape in ONE left-to-right pass so an escaped
+# backslash (`\\`) is never re-interpreted as the start of a further escape
+# (the old two-`.replace()` approach mis-decoded `\\"` -> `\"` -> `"`).
+_UNESCAPE = re.compile(r'\\(.)')
+_ESCAPE_MAP = {'\\': '\\', '"': '"', 'n': '\n'}
+
+
+def _unescape_label_value(v: str) -> str:
+    return _UNESCAPE.sub(lambda m: _ESCAPE_MAP.get(m.group(1), m.group(1)), v)
 
 
 def _parse_prometheus(text: str) -> List[Dict[str, Any]]:
     """Minimal Prometheus text-exposition parser: [{name,labels,value}, ...].
-    Ignores # comments and unparseable lines."""
+    Ignores # comments and unparseable lines. Tolerates the optional trailing
+    timestamp the kubelet cadvisor endpoint appends to every sample line."""
     out = []
     for line in text.splitlines():
         line = line.strip()
@@ -121,8 +154,8 @@ def _parse_prometheus(text: str) -> List[Dict[str, Any]]:
         labels = {}
         if labelblock:
             inner = labelblock[1:-1]
-            for kv in re.findall(r'([a-zA-Z0-9_]+)="((?:[^"\\]|\\.)*)"', inner):
-                labels[kv[0]] = kv[1].replace('\\"', '"').replace('\\\\', '\\')
+            for kv in _LABEL_KV.findall(inner):
+                labels[kv[0]] = _unescape_label_value(kv[1])
         out.append({"name": name, "labels": labels, "value": val})
     return out
 

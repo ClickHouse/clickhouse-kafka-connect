@@ -401,3 +401,109 @@ def test_cadvisor_forwards_headers_and_verify_to_get():
     assert call["headers"] == {"Authorization": "Bearer tok"}
     assert call["verify"] == "/ca.crt"
     assert call["timeout"] == 10
+
+
+# --------------------------------------------------------------------------- #
+# REAL cadvisor lines from the live node (pair-3, 2026-07-12): byte-exact.
+# --------------------------------------------------------------------------- #
+# These three series are the actual bytes the in-cluster self-check received
+# (HTTP 200, 419KB) yet reported "0 series matched" for. Two defects combined:
+#   1. Every kubelet cadvisor line carries a TRAILING TIMESTAMP after the value
+#      (`… } 12345.678901 1720…`); the old value-anchored regex dropped them all.
+#   2. The pause container carries container="" here (NOT "POD"), so it AND the
+#      pod-aggregate must both be excluded to avoid the 3.78-cores over-count.
+# The id/image labels also contain '/', '@', ':', '.', '_', '-' — none may
+# cause a line to be rejected. Value + trailing timestamp are appended per the
+# task's note that real lines end with a float value.
+_REAL_CADVISOR_TEXT = (
+    'container_cpu_usage_seconds_total{container="",cpu="total",'
+    'id="/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-podefb76c0a_cc9a_494d_b5d2_e510f163b208.slice",'
+    'image="",name="",namespace="kafka-bench",pod="bench-connect-connect-0"} 1042.113456 1720000000000\n'
+    'container_cpu_usage_seconds_total{container="",cpu="total",'
+    'id="/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-podefb76c0a_cc9a_494d_b5d2_e510f163b208.slice/cri-containerd-d83a0aa2b531c1ad2966fe2a168f795406cc782d5e4ae6a0068792c5be6b4725.scope",'
+    'image="602401143452.dkr.ecr.us-west-2.amazonaws.com/eks/pause:3.10",'
+    'name="d83a0aa2b531c1ad2966fe2a168f795406cc782d5e4ae6a0068792c5be6b4725",'
+    'namespace="kafka-bench",pod="bench-connect-connect-0"} 0.512345 1720000000000\n'
+    'container_cpu_usage_seconds_total{container="bench-connect-connect",cpu="total",'
+    'id="/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-podefb76c0a_cc9a_494d_b5d2_e510f163b208.slice/cri-containerd-e12c0c505a25520a1ba90d80c71d8ab17b872d46c45902dfcc44f736414ce49f.scope",'
+    'image="796575137974.dkr.ecr.us-east-2.amazonaws.com/connect-bench@sha256:18c9cb1c4c51ee53e038771f8de8adf201150625eddcb1ead4c5ad26d923195a",'
+    'name="e12c0c505a25520a1ba90d80c71d8ab17b872d46c45902dfcc44f736414ce49f",'
+    'namespace="kafka-bench",pod="bench-connect-connect-0"} 873.246802 1720000000000\n'
+    # jvm-format + memory analogues (same label shapes) for completeness.
+    'container_memory_working_set_bytes{container="",cpu="total",'
+    'id="/kubepods.slice/…pod….slice",image="",name="",namespace="kafka-bench",'
+    'pod="bench-connect-connect-0"} 1073741824 1720000000000\n'
+    'container_memory_working_set_bytes{container="",cpu="total",'
+    'id="/kubepods.slice/…pause.scope",'
+    'image="602401143452.dkr.ecr.us-west-2.amazonaws.com/eks/pause:3.10",'
+    'name="pause",namespace="kafka-bench",pod="bench-connect-connect-0"} 524288 1720000000000\n'
+    'container_memory_working_set_bytes{container="bench-connect-connect",cpu="total",'
+    'id="/kubepods.slice/…connect.scope",'
+    'image="796575137974.dkr.ecr.us-east-2.amazonaws.com/connect-bench@sha256:18c9cb1c4c51ee53e038771f8de8adf201150625eddcb1ead4c5ad26d923195a",'
+    'name="e12c0c505a25520a1ba90d80c71d8ab17b872d46c45902dfcc44f736414ce49f",'
+    'namespace="kafka-bench",pod="bench-connect-connect-0"} 268435456 1720000000000\n'
+)
+
+_REAL_POD = "bench-connect-connect-0"
+_REAL_CONTAINER = "bench-connect-connect"
+
+
+def test_real_cadvisor_lines_parse_despite_trailing_timestamp():
+    # Regression for the pair-3 blindness: every real line carries a trailing
+    # ms timestamp. All six must parse (3 cpu + 3 mem); the old regex parsed 0.
+    series = sampler._parse_prometheus(_REAL_CADVISOR_TEXT)
+    cpu = [s for s in series if s["name"] == "container_cpu_usage_seconds_total"]
+    assert len(cpu) == 3, "trailing-timestamp lines must not be dropped"
+    # The complex id/image/name label values survive intact.
+    real = next(s for s in cpu if s["labels"].get("container") == _REAL_CONTAINER)
+    assert real["labels"]["pod"] == _REAL_POD
+    assert real["labels"]["image"].startswith("796575137974.dkr.ecr.us-east-2")
+    assert "@sha256:" in real["labels"]["image"]
+    assert real["labels"]["id"].startswith("/kubepods.slice/")
+    assert real["value"] == pytest.approx(873.246802)
+
+
+def test_real_cadvisor_selects_exactly_the_one_real_container():
+    # parse -> match -> exactly the real container series, value extracted.
+    res = sampler.sample_pod_cadvisor(
+        _FakeReq(_REAL_CADVISOR_TEXT), "http://kubelet/metrics/cadvisor",
+        pod=_REAL_POD, container=_REAL_CONTAINER)
+    assert res["unavailable"] is False
+    assert res["cpu_seconds_total"] == pytest.approx(873.246802)
+    assert res["memory_working_set_bytes"] == pytest.approx(268435456)
+
+
+def test_real_cadvisor_no_filter_excludes_both_empty_container_series():
+    # Both the pod-aggregate AND the pause container carry container="" on the
+    # live node — with no explicit filter both must be excluded (no over-count).
+    res = sampler.sample_pod_cadvisor(
+        _FakeReq(_REAL_CADVISOR_TEXT), "http://kubelet/metrics/cadvisor",
+        pod=_REAL_POD, container="")
+    assert res["cpu_seconds_total"] == pytest.approx(873.246802)   # NOT 1042+0.5+873
+    assert res["memory_working_set_bytes"] == pytest.approx(268435456)
+
+
+def test_probe_cadvisor_real_lines_reports_armed_not_zero():
+    # The self-check must use the SAME parse+match path as the sampler: against
+    # the real bytes it now reports 1 matched / ARMED, not "0 … series matched".
+    lines, log = _capture_log()
+    res = sampler.probe_cadvisor(
+        _StatusReq(_REAL_CADVISOR_TEXT, 200), "https://k/proxy/metrics/cadvisor",
+        pod=_REAL_POD, container=_REAL_CONTAINER, log=log)
+    assert res["ok"] is True and res["matched"] == 1
+    assert any("ARMED" in l for l in lines)
+    assert not any("0 container_cpu_usage_seconds_total" in l for l in lines)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (r'a\"b', 'a"b'),          # escaped quote
+    (r'a\\b', 'a\\b'),          # escaped backslash
+    (r'a\nb', 'a\nb'),          # escaped newline
+    (r'\\\"', '\\"'),           # escaped backslash THEN escaped quote (not "\"")
+    ('/p@t:h.v_1-2', '/p@t:h.v_1-2'),  # the punctuation class, unescaped
+])
+def test_label_value_escape_sequences(raw, expected):
+    text = 'm{k="%s"} 1.0' % raw
+    series = sampler._parse_prometheus(text)
+    assert len(series) == 1
+    assert series[0]["labels"]["k"] == expected
