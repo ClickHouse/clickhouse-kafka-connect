@@ -98,4 +98,10 @@ spec:
               memory: 4Gi
             limits:
               cpu: "2"
-              memory: 6Gi
+              # 7Gi (was 6Gi): 6Gi OOMKilled nondeterministically at ~2.5M rows
+              # (2026-07-12 pair-3 attempt) while an identical run passed at 6Gi
+              # (pair-2) — the peak (rdkafka queue near its 1GiB cap + a pyarrow
+              # row-group spike) sits right at the old limit. Limit-only bump:
+              # scheduling (requests) unchanged; m6i.large allocatable ~7.1Gi.
+              # Durable fix (queued): halve queue.buffering.max in producer.py.
+              memory: 7Gi
