@@ -85,6 +85,31 @@ INSERT INTO perf.ch_inserts (run_id, event_time, query_duration_ms, written_rows
  ('2026-07-11T09-00-00Z-pair4-pinned-t1', '2026-07-11 09:01:15', 145, 500000, 5000000, 1000, 1000, 100, 0);
 SQL
 
+# ---- second, OLDER clean pair (pair3, one day earlier) -----------------------
+#  Present ONLY so the latest-pair self-scope (pair_seq = 1) has something to
+#  exclude: a tile filtered to pair_seq=1 must return pair4's rows ALONE, not the
+#  sum of pair3 + pair4. Also seeds a spread of written_rows to exercise the
+#  batch-size buckets (0-10k / 10-25k / 25-50k / 50-100k / 100k+).
+ch --multiquery <<'SQL'
+INSERT INTO perf.runs (run_id, run_started_at, run_ended_at, git_sha, connector, connector_version, clickhouse_version, runtime, notes) VALUES
+ ('2026-07-10T09-00-00Z-pair3-head-t1',   '2026-07-10 09:00:00','2026-07-10 09:05:00','pair3','kafka-connect','v2','25.1', {'arm':'head','tier':'1','pair_id':'2026-07-10T09-00-00Z-pair3'}, ''),
+ ('2026-07-10T09-00-00Z-pair3-pinned-t1', '2026-07-10 09:00:00','2026-07-10 09:05:00','pair3','kafka-connect','v2','25.1', {'arm':'pinned','tier':'1','pair_id':'2026-07-10T09-00-00Z-pair3'}, '');
+
+INSERT INTO perf.metrics (run_id, metric_name, value, recorded_at) VALUES
+ ('2026-07-10T09-00-00Z-pair3-head-t1',   'drain_rows_per_sec', 900000, now()),
+ ('2026-07-10T09-00-00Z-pair3-pinned-t1', 'drain_rows_per_sec', 900000, now()),
+ ('2026-07-10T09-00-00Z-pair3-head-t1',   'rows_expected',      1000000, now());
+
+-- pair3 head-t1 inserts with written_rows across every bucket edge:
+--   5000 -> 0-10k ; 20000 -> 10-25k ; 40000 -> 25-50k ; 80000 -> 50-100k ; 150000 -> 100k+
+INSERT INTO perf.ch_inserts (run_id, event_time, query_duration_ms, written_rows, written_bytes, memory_usage, network_bytes, cpu_microseconds, exception_code) VALUES
+ ('2026-07-10T09-00-00Z-pair3-head-t1', '2026-07-10 09:00:10', 100,   5000, 50000, 1000, 1000, 100, 0),
+ ('2026-07-10T09-00-00Z-pair3-head-t1', '2026-07-10 09:00:20', 100,  20000, 50000, 1000, 1000, 100, 0),
+ ('2026-07-10T09-00-00Z-pair3-head-t1', '2026-07-10 09:00:30', 100,  40000, 50000, 1000, 1000, 100, 0),
+ ('2026-07-10T09-00-00Z-pair3-head-t1', '2026-07-10 09:00:40', 100,  80000, 50000, 1000, 1000, 100, 0),
+ ('2026-07-10T09-00-00Z-pair3-head-t1', '2026-07-10 09:00:50', 100, 150000, 50000, 1000, 1000, 100, 0);
+SQL
+
 # ---- transform + create the three views (perf.* substitution) ----------------
 mk_local() {
   local src="$1" out="$2"
@@ -93,10 +118,14 @@ mk_local() {
 mk_local "$SCRIPT_DIR/v_kc_run_drill.sql"     "$CH_STATE/run_drill.sql"
 mk_local "$SCRIPT_DIR/v_kc_drain_curve.sql"   "$CH_STATE/drain_curve.sql"
 mk_local "$SCRIPT_DIR/v_kc_inserts_drill.sql" "$CH_STATE/inserts_drill.sql"
+# v_kc_runs is REUSED (Tab 1) but Tab-4 tiles now self-scope on the pair_seq column
+# it gained in fix #2, so create it here to exercise that self-scope end-to-end.
+mk_local "$SCRIPT_DIR/v_kc_runs.sql"          "$CH_STATE/runs.sql"
 ch --multiquery < "$CH_STATE/run_drill.sql"
 ch --multiquery < "$CH_STATE/drain_curve.sql"
 ch --multiquery < "$CH_STATE/inserts_drill.sql"
-echo "OK  : all three views CREATE without error"
+ch --multiquery < "$CH_STATE/runs.sql"
+echo "OK  : all four views CREATE without error"
 
 fails=0
 check() { # label expected actual
@@ -105,27 +134,32 @@ check() { # label expected actual
 }
 
 # --- 1. arm view: pair-4 head-t1 drain ratio ~1.032 (known value) -------------
-ratio="$(ch --query "SELECT round(ratio,3) FROM perf.v_kc_run_drill WHERE metric_name='drain_rows_per_sec' AND tier='1'")"
+#   NOTE: two pairs now exist (pair4 latest, pair3 older), so the known-value
+#   checks are scoped to the LATEST pair via pair_seq = 1 (which must be pair4).
+P4="metric_name='drain_rows_per_sec' AND tier='1' AND pair_seq=1"
+ratio="$(ch --query "SELECT round(ratio,3) FROM perf.v_kc_run_drill WHERE $P4")"
 check "arm view drain_rows_per_sec ratio (pair-4 head-t1 story)" "1.032" "$ratio"
-delta="$(ch --query "SELECT round(delta_pct,1) FROM perf.v_kc_run_drill WHERE metric_name='drain_rows_per_sec' AND tier='1'")"
+delta="$(ch --query "SELECT round(delta_pct,1) FROM perf.v_kc_run_drill WHERE $P4")"
 check "arm view delta_pct = +3.2" "3.2" "$delta"
 
 # NULL-safe ratio: cost charged to one arm only => ratio NULL (not 0/false).
-cost_ratio_null="$(ch --query "SELECT ratio IS NULL FROM perf.v_kc_run_drill WHERE metric_name='run_cost_usd' AND tier='1'")"
+cost_ratio_null="$(ch --query "SELECT ratio IS NULL FROM perf.v_kc_run_drill WHERE metric_name='run_cost_usd' AND tier='1' AND pair_seq=1")"
 check "arm view one-sided metric (run_cost_usd) => NULL ratio" "1" "$cost_ratio_null"
 
 # legacy-name coalesce: head parts_per_insert + pinned ch_parts_per_insert fold
 # into ONE metric row named parts_per_insert with a ratio of 1.0.
-parts_row="$(ch --query "SELECT count() FROM perf.v_kc_run_drill WHERE metric_name='parts_per_insert' AND tier='1'")"
+parts_row="$(ch --query "SELECT count() FROM perf.v_kc_run_drill WHERE metric_name='parts_per_insert' AND tier='1' AND pair_seq=1")"
 check "arm view legacy coalesce -> single parts_per_insert row" "1" "$parts_row"
-parts_ratio="$(ch --query "SELECT round(ratio,3) FROM perf.v_kc_run_drill WHERE metric_name='parts_per_insert' AND tier='1'")"
+parts_ratio="$(ch --query "SELECT round(ratio,3) FROM perf.v_kc_run_drill WHERE metric_name='parts_per_insert' AND tier='1' AND pair_seq=1")"
 check "arm view parts_per_insert ratio (both sides 1.0)" "1" "$parts_ratio"
 no_legacy="$(ch --query "SELECT count() FROM perf.v_kc_run_drill WHERE metric_name='ch_parts_per_insert'")"
 check "arm view leaks NO ch_-prefixed legacy metric name" "0" "$no_legacy"
 
-# pair_seq present and = 1 for the (only) pair.
-pseq="$(ch --query "SELECT DISTINCT pair_seq FROM perf.v_kc_run_drill")"
-check "arm view pair_seq = 1 for the latest (only) pair" "1" "$pseq"
+# pair_seq: latest pair (pair4) ranks 1, the older pair (pair3) ranks 2.
+pseq4="$(ch --query "SELECT DISTINCT pair_seq FROM perf.v_kc_run_drill WHERE pair_id='2026-07-11T09-00-00Z-pair4'")"
+check "arm view pair_seq = 1 for the LATEST pair (pair4)" "1" "$pseq4"
+pseq3="$(ch --query "SELECT DISTINCT pair_seq FROM perf.v_kc_run_drill WHERE pair_id='2026-07-10T09-00-00Z-pair3'")"
+check "arm view pair_seq = 2 for the OLDER pair (pair3)" "2" "$pseq3"
 
 # --- 2. drain-curve bucketing math on the head-t1 run -------------------------
 rps0="$(ch --query "SELECT toUInt64(rows_per_sec) FROM perf.v_kc_drain_curve WHERE run_id='2026-07-11T09-00-00Z-pair4-head-t1' AND minute_index=0")"
@@ -136,9 +170,9 @@ lag="$(ch --query "SELECT groupArray(toInt64(remaining_lag)) FROM (SELECT remain
 check "drain remaining_lag = expected - cumulative -> 0" "[2000000,1000000,0]" "$lag"
 midx="$(ch --query "SELECT groupArray(minute_index) FROM (SELECT DISTINCT minute_index FROM perf.v_kc_drain_curve WHERE run_id='2026-07-11T09-00-00Z-pair4-head-t1' ORDER BY minute_index)")"
 check "drain minute_index is 0-based, dense" "[0,1,2]" "$midx"
-# both arms overlaid: two run_ids for the t1 pair.
-arms="$(ch --query "SELECT uniqExact(run_id) FROM perf.v_kc_drain_curve WHERE tier='1'")"
-check "drain curve carries BOTH arms of the t1 pair" "2" "$arms"
+# both arms overlaid: two run_ids for the latest t1 pair (pair_seq=1 = pair4).
+arms="$(ch --query "SELECT uniqExact(run_id) FROM perf.v_kc_drain_curve WHERE tier='1' AND pair_seq=1")"
+check "drain curve carries BOTH arms of the latest t1 pair" "2" "$arms"
 
 # --- 3. inserts-drill grain: one row per synthetic insert ---------------------
 n_head="$(ch --query "SELECT count() FROM perf.v_kc_inserts_drill WHERE run_id='2026-07-11T09-00-00Z-pair4-head-t1'")"
@@ -150,7 +184,47 @@ check "inserts drill first insert elapsed_s = 0" "0" "$el0"
 wr="$(ch --query "SELECT DISTINCT written_rows FROM perf.v_kc_inserts_drill WHERE run_id='2026-07-11T09-00-00Z-pair4-head-t1'")"
 check "inserts drill written_rows (batch size) passthrough" "500000" "$wr"
 
-# --- 4. scope guards: fixture / failed / non-kafka never leak ------------------
+# --- 4. FIX #1: batch-size bucket expression bins correctly -------------------
+#   pair3 head-t1 seeded five inserts, one per bucket edge:
+#     5000->0-10k, 20000->10-25k, 40000->25-50k, 80000->50-100k, 150000->100k+
+b_5k="$(ch --query "SELECT written_rows_bucket FROM perf.v_kc_inserts_drill WHERE written_rows=5000")"
+check "bucket: written_rows 5000 -> '0-10k'" "0-10k" "$b_5k"
+b_20k="$(ch --query "SELECT written_rows_bucket FROM perf.v_kc_inserts_drill WHERE written_rows=20000")"
+check "bucket: written_rows 20000 -> '10-25k'" "10-25k" "$b_20k"
+b_40k="$(ch --query "SELECT written_rows_bucket FROM perf.v_kc_inserts_drill WHERE written_rows=40000")"
+check "bucket: written_rows 40000 -> '25-50k'" "25-50k" "$b_40k"
+b_80k="$(ch --query "SELECT written_rows_bucket FROM perf.v_kc_inserts_drill WHERE written_rows=80000")"
+check "bucket: written_rows 80000 -> '50-100k'" "50-100k" "$b_80k"
+b_150k="$(ch --query "SELECT written_rows_bucket FROM perf.v_kc_inserts_drill WHERE written_rows=150000")"
+check "bucket: written_rows 150000 -> '100k+'" "100k+" "$b_150k"
+# boundary is exclusive on the upper edge: exactly 100000 falls in '100k+', not '50-100k'.
+b_edge="$(ch --query "SELECT multiIf(x<10000,'0-10k',x<25000,'10-25k',x<50000,'25-50k',x<100000,'50-100k','100k+') FROM (SELECT toUInt64(100000) AS x)")"
+check "bucket: boundary 100000 -> '100k+' (upper edge exclusive)" "100k+" "$b_edge"
+# the bar chart's category sort key rises with the bucket.
+sort_order="$(ch --query "SELECT groupArray(written_rows_bucket_sort) FROM (SELECT DISTINCT written_rows_bucket_sort FROM perf.v_kc_inserts_drill WHERE run_id='2026-07-10T09-00-00Z-pair3-head-t1' ORDER BY written_rows_bucket_sort)")"
+check "bucket sort key monotone (0,10k,25k,50k,100k)" "[0,10000,25000,50000,100000]" "$sort_order"
+
+# --- 5. FIX #2: a tile self-scoped to pair_seq=1 returns ONE pair, not all -----
+#   Two clean pairs exist (pair4 latest = 3,000,000 rows_expected sums; pair3 older).
+#   The rows_verified tile query (self-scoped pair_seq=1) must see ONLY pair4.
+distinct_pairs_all="$(ch --query "SELECT uniqExact(pair_id) FROM perf.v_kc_runs WHERE pair_id != ''")"
+check "self-scope precheck: >1 pair exists (so the guard is meaningful)" "2" "$distinct_pairs_all"
+distinct_pairs_scoped="$(ch --query "SELECT uniqExact(pair_id) FROM perf.v_kc_runs WHERE pair_seq=1")"
+check "tile self-scope pair_seq=1 sees exactly ONE pair" "1" "$distinct_pairs_scoped"
+scoped_pair="$(ch --query "SELECT DISTINCT pair_id FROM perf.v_kc_runs WHERE pair_seq=1")"
+check "tile self-scope pair_seq=1 -> the LATEST pair (pair4)" "2026-07-11T09-00-00Z-pair4" "$scoped_pair"
+# and the tile arithmetic self-scopes: rows_verified over pair_seq=1 is pair4 ALONE
+# (pair4 seeded no rows_delivered metric -> 0/NULL; the POINT is it is not summing
+# pair3+pair4, which a missing predicate would do). Prove via run count instead:
+n_runs_scoped="$(ch --query "SELECT count() FROM perf.v_kc_runs WHERE pair_seq=1")"
+check "tile self-scope pair_seq=1 -> pair4's 4 runs only (not 6 across both pairs)" "4" "$n_runs_scoped"
+# same self-scope holds on the drain-curve + inserts-drill datasets (all 4 carry pair_seq).
+dc_pairs="$(ch --query "SELECT uniqExact(pair_id) FROM perf.v_kc_drain_curve WHERE pair_seq=1")"
+check "drain_curve self-scope pair_seq=1 sees exactly ONE pair" "1" "$dc_pairs"
+id_pairs="$(ch --query "SELECT uniqExact(pair_id) FROM perf.v_kc_inserts_drill WHERE pair_seq=1")"
+check "inserts_drill self-scope pair_seq=1 sees exactly ONE pair" "1" "$id_pairs"
+
+# --- 6. scope guards: fixture / failed / non-kafka never leak ------------------
 ch --query "INSERT INTO perf.runs (run_id, run_started_at, run_ended_at, git_sha, connector, connector_version, runtime) VALUES ('fix-1','2026-07-11 09:00:00','2026-07-11 09:05:00','x','__verdict_fixture__','v2', {'arm':'head','tier':'1','pair_id':'fixp'})"
 ch --query "INSERT INTO perf.runs (run_id, run_started_at, run_ended_at, git_sha, connector, connector_version, runtime) VALUES ('spark-1','2026-07-11 09:00:00','2026-07-11 09:05:00','x','spark','v2', {'arm':'head','tier':'1','pair_id':'sparkp'})"
 ch --query "INSERT INTO perf.runs (run_id, run_started_at, run_ended_at, git_sha, connector, connector_version, runtime) VALUES ('failrun','2026-07-11 09:00:00','2026-07-11 09:05:00','x','kafka-connect','v2', {'arm':'head','tier':'1','pair_id':'failp','outcome':'failed'})"

@@ -120,7 +120,26 @@ SELECT
       (p.rows_delivered = p.rows_expected AND p.unique_delivered = p.unique_expected),
     NULL
   )                                                      AS integrity_ok,
-  (integrity_ok IS NULL OR integrity_ok = 1)             AS headline_ok
+  (integrity_ok IS NULL OR integrity_ok = 1)             AS headline_ok,
+
+  -- ---- pair recency presentation columns (§ Tab-4 fix #2: latest-pair default) ----
+  -- pair_ts parsed from the pair_id 'YYYY-MM-DDTHH-MM-SSZ' prefix, NULL-safe, exactly
+  -- as v_kc_pair_ratios / v_kc_run_drill derive it. ADDITIVE columns: existing Tab 1/2/3
+  -- consumers ignore them; Tab-4 tiles use pair_seq = 1 to self-scope to the latest
+  -- pair so an unset native filter still shows the newest pair (not an all-pair sum).
+  if(
+    extract(pair_id, '^(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})Z') = '',
+    NULL,
+    parseDateTimeBestEffortOrNull(
+      replaceRegexpOne(
+        extract(pair_id, '^(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})Z'),
+        'T(\\d{2})-(\\d{2})-(\\d{2})$', 'T\\1:\\2:\\3'
+      )
+    )
+  )                                                      AS pair_ts,
+  -- dense rank over pair_ts DESC (1 = newest pair), tab-wide (NOT partitioned by
+  -- tier — a Tab-4 tile sums a whole pair across arm+tier).
+  dense_rank() OVER (ORDER BY pair_ts DESC)              AS pair_seq
 
 FROM raw_connectors_load_testing.runs AS r
 LEFT JOIN pivot AS p ON r.run_id = p.run_id

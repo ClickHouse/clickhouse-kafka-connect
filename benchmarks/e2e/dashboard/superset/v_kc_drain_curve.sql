@@ -122,7 +122,24 @@ SELECT
      re.rows_expected - sum(pm.minute_rows) OVER (
        PARTITION BY pm.run_id ORDER BY pm.minute
        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-     ))                                                    AS remaining_lag
+     ))                                                    AS remaining_lag,
+  -- ---- pair recency presentation columns (Tab-4 fix #2: latest-pair default) ----
+  -- pair_ts parsed from the pair_id 'YYYY-MM-DDTHH-MM-SSZ' prefix, NULL-safe, exactly
+  -- as v_kc_run_drill / v_kc_pair_ratios derive it. ADDITIVE: existing Tab 2/4 curve
+  -- charts ignore them; the Tab-4 drain_s tile uses pair_seq = 1 to self-scope to the
+  -- latest pair so an unset native filter still shows the newest pair.
+  if(
+    extract(r.pair_id, '^(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})Z') = '',
+    NULL,
+    parseDateTimeBestEffortOrNull(
+      replaceRegexpOne(
+        extract(r.pair_id, '^(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})Z'),
+        'T(\\d{2})-(\\d{2})-(\\d{2})$', 'T\\1:\\2:\\3'
+      )
+    )
+  )                                                        AS pair_ts,
+  -- dense rank over pair_ts DESC (1 = newest pair), tab-wide (NOT partitioned by tier).
+  dense_rank() OVER (ORDER BY pair_ts DESC)                AS pair_seq
 FROM per_minute AS pm
 INNER JOIN runs_scoped AS r ON r.run_id = pm.run_id
 LEFT  JOIN rows_expected AS re ON re.run_id = pm.run_id

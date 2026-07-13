@@ -258,9 +258,59 @@ The whole tab is scoped by ONE Superset **native filter** on `pair_id`:
   carry `pair_id` with identical spelling per contract §1.2, so one filter scopes the
   whole tab).
 - **Default = the latest pair**: set the filter's default value to the newest
-  `pair_id` (max `pair_ts`, i.e. `pair_seq = 1`) at build time. Tile queries also fall
-  back to the latest pair (`argMax(pair_id, …)`) so an unset filter still shows the
-  newest pair.
+  `pair_id` (max `pair_ts`, i.e. `pair_seq = 1`) at build time.
+- **Latest-pair default is enforced in the QUERIES, not just the filter (fix #2).**
+  Every Tab-4 chart carries an adhoc filter `pair_seq == 1` so a fresh load (nothing
+  selected in the native filter) shows the latest pair, **never an all-pair
+  aggregate**. This is the robust mechanism chosen over relying solely on a native
+  filter default (see below). The native `pair_id` filter is the **interactive
+  override** for drilling an older pair.
+
+## Two live-deployment fixes (Task 34, dashboard 432 — redeploy)
+
+The initial deploy of this tab on **432** (datasets 1541/1542/1543, charts 5780-5790)
+surfaced two defects, corrected here for a clean redeploy:
+
+### Fix #1 — batch-size distribution viz error (`kc_t4_batch_size_distribution`)
+
+- **Symptom:** the chart threw a Superset viz error.
+- **Root cause:** it used the **native `histogram` viz** (`all_columns_x=['written_rows']`,
+  `link_length`, `groupby=['arm']`). Superset's native histogram is finicky and
+  version-sensitive.
+- **Fix (chosen: PRE-BIN + BAR chart, not the native histogram):** `v_kc_inserts_drill`
+  now emits a deterministic `written_rows_bucket` (`0-10k` / `10-25k` / `25-50k` /
+  `50-100k` / `100k+`, upper edge exclusive) plus `written_rows_bucket_sort` (the
+  numeric lower edge, for size-ordered categories). The chart is now
+  `echarts_timeseries_bar`: `x_axis = written_rows_bucket`, `metric = COUNT(*)`,
+  `series = arm`, sorted by `written_rows_bucket_sort`. **Why:** pre-binning in the
+  view is deterministic and version-proof — it renders identically on any Superset
+  version, unlike the native histogram. The raw `written_rows` column is still
+  surfaced (the latency sequence and ad-hoc analysis still read it); the bucket columns
+  are purely **additive**, so Tab 2's existing head-arm histogram chart on the same
+  view is unaffected (it simply ignores the new columns; the coordinator may migrate it
+  to the same bar shape later, out of Task-34 scope).
+
+### Fix #2 — tiles/arm-table aggregated across ALL pairs
+
+- **Symptom:** the big-number tiles and the arm-comparison table showed data
+  summed/mixed across all 4 pairs instead of the single drilled pair.
+- **Root cause:** the chart specs' original `pair_id = (SELECT argMax(pair_id, …))`
+  self-scoping **subqueries cannot be expressed as Superset adhoc filters**, so at
+  deploy time they were dropped and every chart shipped with **no pair predicate**;
+  with the native `pair_id` filter unset (no default wired), all pairs aggregated.
+  Only `v_kc_run_drill` carried a `pair_seq` rank column — `v_kc_runs`,
+  `v_kc_drain_curve` and `v_kc_inserts_drill` did **not**, so there was no plain
+  column filter the deploy could use to self-scope.
+- **Fix (chosen: SELF-SCOPING QUERIES via `pair_seq = 1`, not filter-default-only):**
+  all three of those views were **ALTERed to add `pair_ts` + `pair_seq`** (`dense_rank`
+  over `pair_ts DESC`, `1 = newest pair`) — the same NULL-safe expression
+  `v_kc_pair_ratios` / `v_kc_run_drill` already use, so "latest pair" agrees tab-wide
+  byte-for-byte. Every chart now carries an adhoc filter `pair_seq == 1`. **Why
+  self-scoping over relying on the native filter default:** a fresh page load is
+  correct (latest pair) **even if the native filter default is cleared or not wired**,
+  which is exactly the failure that shipped. The native filter remains the interactive
+  override. These are **additive columns** — existing Tab 1/2/3 consumers of `v_kc_runs`
+  ignore them, so no existing chart changes.
 
 ## Layout grid (Tab 4 — 12-wide, `tab4_charts.json`)
 
@@ -279,7 +329,7 @@ Row 3 (2 x width 6):
   kc_t4_remaining_lag        <- v_kc_drain_curve (expected-cumulative, H vs P)
 Row 4:
   kc_t4_insert_latency_sequence  (w6) <- v_kc_inserts_drill (duration_ms vs elapsed_s)
-  kc_t4_batch_size_distribution  (w4) <- v_kc_inserts_drill (written_rows histogram)
+  kc_t4_batch_size_distribution  (w4) <- v_kc_inserts_drill (written_rows_bucket BAR, per arm)
   kc_t4_config_panel             (w2) <- v_kc_runs          (batch_size, versions, git_sha)
 Row 5 (width 12):
   kc_t4_per_sample_lag_placeholder <- markdown (planned; pending perf.samples)
@@ -320,14 +370,21 @@ Prep (done, this package):
 - [x] `v_kc_run_drill.sql`, `v_kc_drain_curve.sql`, `v_kc_inserts_drill.sql` created;
       each CREATEs + SELECTs against clickhouse-local (perf.* swap) with 0 rows and
       no error when empty (`verify_tab4.sh`).
-- [x] `verify_tab4.sh` render-shape acceptance green: arm-view H/P shape + NULL-safe
-      ratio; the pair-4 head-t1 `drain_rows_per_sec` ratio lands at **1.032**
+- [x] `verify_tab4.sh` render-shape acceptance green (**31/31**): arm-view H/P shape +
+      NULL-safe ratio; the pair-4 head-t1 `drain_rows_per_sec` ratio lands at **1.032**
       (delta_pct +3.2); legacy-name coalesce folds `ch_parts_per_insert`→
       `parts_per_insert`; drain bucketing math (rows/s=minute_rows/60, monotone
       cumulative, remaining_lag→0, 0-based dense minute_index); inserts grain = one
-      row per insert with per-run seq; fixture/non-kafka/failed excluded.
-- [x] `tab4_charts.json` parses; all 12 charts carry a `description` (#42 standard).
-- [x] Existing `verify_verdict_dwh.sh` still **31/31** (contract-sync untouched).
+      row per insert with per-run seq; fixture/non-kafka/failed excluded. **Fix-#1**:
+      `written_rows_bucket` bins each edge correctly (5k→0-10k … 150k→100k+, upper
+      edge exclusive at 100000) and `written_rows_bucket_sort` is monotone. **Fix-#2**:
+      with two seeded pairs, a tile self-scoped to `pair_seq=1` returns the LATEST pair
+      ALONE (pair4: 4 runs, 1 pair_id) on `v_kc_runs`, `v_kc_drain_curve` and
+      `v_kc_inserts_drill` — not the 6-run all-pair aggregate.
+- [x] `tab4_charts.json` parses; all 12 charts carry a `description` (#42 standard);
+      the deploy payload `deploy/tab4_deploy.json` parses (fixes applied).
+- [x] Other harnesses still green: `verify_tab23.sh` **17/17**, `verify_tab5.sh`
+      **26/26**, `verify_verdict_dwh.sh` **31/31**; contract-sync PASSES (untouched).
 
 Stage B (gated on the coordinator's GO):
 
@@ -347,6 +404,53 @@ Stage B (gated on the coordinator's GO):
 - [ ] `kc_t4_per_sample_lag_placeholder` renders as **markdown** (not an empty chart).
 - [ ] Existing Tab 1 datasets/charts and dashboard 424 (Spark) untouched; screenshot
       evidence of the two tabs.
+
+## Coordinator RE-DEPLOY checklist (dashboard 432 — fixes #1 + #2, IN PLACE)
+
+The tab is **already live** on 432 (datasets 1541/1542/1543, charts 5780-5790). This
+is an **in-place fix**, NOT a re-create — do **not** recreate the tab, the datasets,
+or the charts (their ids/positions stay). Apply, in order:
+
+1. **ALTER the datasets (re-run the view SQL on `DWH`, connection `dc93cd97`) — do NOT
+   drop/recreate the dataset objects, keep their Superset ids:**
+   - `v_kc_inserts_drill` (id **1543**): re-run `v_kc_inserts_drill.sql` — adds
+     `written_rows_bucket`, `written_rows_bucket_sort`, `pair_ts`, `pair_seq`. Then in
+     Superset **edit the dataset → Sync columns from source** so the four new columns
+     become selectable.
+   - `v_kc_drain_curve` (id **1542**): re-run `v_kc_drain_curve.sql` — adds `pair_ts`,
+     `pair_seq`. Sync columns.
+   - `v_kc_run_drill` (id **1541**): re-run `v_kc_run_drill.sql` — unchanged shape
+     (already had `pair_seq`); no re-sync needed unless the body drifted.
+   - `v_kc_runs` (existing Tab-1 dataset, **reused**): re-run `v_kc_runs.sql` — adds
+     `pair_ts`, `pair_seq` (additive; Tab 1/2/3 unaffected). Sync columns so the Tab-4
+     tiles can filter on `pair_seq`. **Do not create a second `v_kc_runs`.**
+2. **Edit charts IN PLACE (same slice ids 5780-5790):**
+   - Every Tab-4 chart: add adhoc filter **`pair_seq = 1`** (fix #2). Tiles/tables in
+     raw/aggregate mode, the two line charts, the scatter, and the bar all take it.
+   - `kc_t4_batch_size_distribution` (fix #1): change **viz type `Histogram` →
+     `Bar Chart` (`echarts_timeseries_bar`)**; set `X-axis = written_rows_bucket`,
+     `Metric = COUNT(*)`, `Series/Dimensions = arm`, and sort the x categories by
+     `written_rows_bucket_sort` ascending. Remove the old `all_columns_x` /
+     `link_length` histogram config.
+   - `kc_t4_tile_cost`: confirm it reads **`v_kc_run_drill`**
+     (`sum(coalesce(head_value,0)+coalesce(pinned_value,0))`, `metric_name='run_cost_usd'`)
+     — `run_cost_usd` is not a `v_kc_runs` column. (Already so in the live deploy;
+     just add `pair_seq=1`.)
+   - `kc_t4_arm_comparison`: columns stay `tier, metric_name, head_value, pinned_value,
+     ratio, delta_pct, flagged, flag_reason` (raw mode; the `if(flagged,…)` computed
+     column is not expressible — leave the real `flagged`+`flag_reason`).
+3. **Native `pair_id` filter:** keep it (default = latest pair) as the interactive
+   override. With `pair_seq=1` in the queries, a fresh load is already correct even if
+   the default is cleared.
+4. **Verify on 432:** fresh load shows the **latest pair only** on every tile + the arm
+   table (not an all-pair aggregate); the batch-size chart renders as a per-arm bar
+   over the five buckets with no viz error; selecting an older pair in the native
+   filter drills that pair. The deploy payload `deploy/tab4_deploy.json` carries all of
+   the above (patched viz + `pair_seq==1` filters + updated view SQL) for a scripted
+   redeploy.
+
+**Do NOT:** recreate the Tab-4 tab, delete/recreate datasets 1541/1542/1543 or charts
+5780-5790, or touch Tab 1's charts (only `v_kc_runs`'s SQL is re-run, additively).
 
 ---
 
