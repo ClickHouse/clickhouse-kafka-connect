@@ -48,6 +48,9 @@ public class ClickHouseWriterColumnContextTest {
         assertFalse(message.contains(recordValue), "must not leak the record value into the error: " + message);
         assertNotNull(thrown.getCause(), "should preserve the original failure as the cause");
         assertInstanceOf(ClassCastException.class, thrown.getCause(), "cause should be the original cast failure");
+        // Asserting DataException above is itself the non-retryable guarantee: DataException extends
+        // ConnectException, not RetriableException, so the framework routes a bad record to the DLQ
+        // rather than retrying it forever.
     }
 
     @Test

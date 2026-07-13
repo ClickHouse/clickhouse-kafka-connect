@@ -80,12 +80,6 @@ public class ClickHouseWriter implements DBWriter {
 
     private static final long TIMEOUT_FOR_SHUTDOWN = 5; // seconds
 
-    // Prefix of the message attached to conversion/cast failures in doWriteColValue so the failing
-    // column and its types are surfaced to Kafka Connect (REST status, DLQ headers, JMX error
-    // metrics) instead of living only in the connector logs. Also used to detect an already
-    // contextualized exception when unwinding nested types, so the innermost column is reported once.
-    private static final String COLUMN_WRITE_ERROR_PREFIX = "Failed to write column";
-
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
@@ -655,19 +649,20 @@ public class ClickHouseWriter implements DBWriter {
                     // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
                     LOGGER.error("Cannot serialize unsupported type {}", columnType);
             }
-        } catch (Exception e) {
-            // Preserve retry semantics, and don't re-wrap a failure an inner type (Array/Map/Tuple
-            // element) already contextualized — keep the innermost (most specific) column, reported once.
-            if (e instanceof RetriableException
-                    || (e instanceof DataException && e.getMessage() != null && e.getMessage().startsWith(COLUMN_WRITE_ERROR_PREFIX))) {
-                throw e;
-            }
+        } catch (ClassCastException e) {
+            // A type mismatch (e.g. a java.util.Date reaching the UInt64 cast) otherwise throws a bare
+            // ClassCastException naming only Java types. Rethrow with the failing column and its types
+            // as a non-retryable DataException so the context reaches Connect status / DLQ / JMX metrics
+            // instead of only the logs. Record values are never included.
             String sourceType = value == null ? "null" : String.valueOf(value.getFieldType());
-            String context = String.format(
-                    "%s `%s`: cannot convert Kafka value of type %s to ClickHouse type %s",
-                    COLUMN_WRITE_ERROR_PREFIX, col.getName(), sourceType, columnType);
-            LOGGER.error(context, e);
-            throw new DataException(context, e);
+            String message = String.format(
+                    "Failed to write column `%s`: cannot convert Kafka value of type %s to ClickHouse type %s",
+                    col.getName(), sourceType, columnType);
+            LOGGER.error(message, e);
+            throw new DataException(message, e);
+        } catch (Exception e) {
+            LOGGER.error("Error writing value of " + (value == null ? "<value null>" : value.getFieldType() ) + " to the column `" + col.getName() + "` of type " + columnType, e);
+            throw e;
         }
     }
 
