@@ -1143,7 +1143,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         assertEquals(firstBatch.size(), ClickHouseTestHelpers.countRows(chc, topic));
 
         ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN num32_default Int32 DEFAULT 42 AFTER string", topic, ClickHouseTestHelpers.getClusterClauseOrEmpty()));
-        Thread.sleep(5000);
 
         // Keep writing records with the old schema (without num32_default).
         // Connector should write default markers for the new column.
