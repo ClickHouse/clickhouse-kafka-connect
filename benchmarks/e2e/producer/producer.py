@@ -199,8 +199,10 @@ def read_shard_env():
 def list_dataset_files(dataset):
     """Stable, lexicographically-sorted list of the dataset's parquet files.
 
-    ``ds.dataset(...).files`` returns the fully-qualified file paths (local or
-    ``s3://``). We sort them so the stride assignment is DETERMINISTIC and
+    ``ds.dataset(...).files`` returns local paths for local datasets but
+    BUCKET-RELATIVE paths (no ``s3://`` scheme) for S3 datasets — any consumer
+    rebuilding a dataset from this list MUST pass the parent dataset's
+    ``.filesystem``. We sort them so the stride assignment is DETERMINISTIC and
     IDENTICAL across all N pods — every pod must see the same ordering or two
     pods could produce the same file (or a file could be skipped). A single
     parquet file (the canonical ClickBench ``hits.parquet``) yields a one-item
@@ -574,7 +576,13 @@ def main():
     # Restrict the scan to THIS pod's files. A dataset built from an explicit
     # file list reads only those files (the readahead bounds below are unchanged
     # and now apply per-shard).
-    shard_dataset = ds.dataset(shard_files, format="parquet")
+    #
+    # filesystem= is REQUIRED (2026-07-13 pair-5 abort): for an S3-backed
+    # dataset, .files returns BUCKET-RELATIVE paths (no s3:// scheme), so
+    # rebuilding without the parent dataset's filesystem makes pyarrow resolve
+    # them against LOCAL disk -> FileNotFoundError on the first shard file.
+    shard_dataset = ds.dataset(shard_files, format="parquet",
+                               filesystem=dataset.filesystem)
 
     t0 = time.time()
     read = 0
