@@ -348,6 +348,270 @@ Stage B (gated on the coordinator's GO):
 - [ ] Existing Tab 1 datasets/charts and dashboard 424 (Spark) untouched; screenshot
       evidence of the two tabs.
 
+---
+
+# Tab 2 — PERFORMANCE (issue #35)
+
+Additive extension of this package with the Tab 2 "PERFORMANCE" build (dashboard
+**432**, prod DWH Superset). Tab 2 is the **absolute history** view of the
+**code-under-test (arm = head)**: how fast the current connector drains, what it
+costs the server per row, and the full server-interaction + consume-side picture —
+trended over the campaign. Strictly **additive** — no existing chart, dataset, or the
+Tab-1/Tab-4 content is modified.
+
+Tab 2 is **descriptive absolute history, NOT a gate**: it carries NO
+verdict/band/alert column. Tab 1's `v_kc_pair_ratios` remains the single source of
+verdict + alert truth, so Tab 2 cannot drift from the alerting logic.
+
+## Arm scoping (plan §8 global-filter note)
+
+The **whole tab is arm = head**. Every trend chart reads `v_kc_metric_trends`
+filtered `arm='head'`; the tab carries a dashboard-level native filter pinning
+`arm='head'` so no chart re-derives it. (Tab 3 is the arm=pinned twin.) The one
+exception is the **cost/run** headline, which is per-PAIR by construction (§2.1
+two-arm attribution charges the full pair cost to one arm), so it sums across the
+pair and divides by pair count rather than arm-scoping — documented on the tile.
+
+## Datasets (Tab 2 — additive; `DWH` connection `dc93cd97`, no DB connection created)
+
+| Dataset SQL | New/Reused | Role | Feeds |
+|---|---|---|---|
+| `v_kc_metric_trends.sql` | **NEW** | tall per-run metric series (run × metric) with arm/tier/pair_ts/pair_seq + covariate scope columns; legacy ch_-names folded to pinned (§7) | every Tab-2 trend line (~12 charts) + all Tab-3 trends |
+| `v_kc_runs.sql` | **REUSED** (Tab 1/4, unchanged) | one wide row per run | 3 headline big-number tiles (30d medians, cost/pair) |
+| `v_kc_inserts_drill.sql` | **REUSED** (Tab 4, unchanged) | raw per-insert grain from ch_inserts | head-arm batch-size distribution |
+
+Only **`v_kc_metric_trends`** is new for Tab 2. It is the tall (run × metric) shape
+that lets ONE dataset feed ~12 trend charts and absorb new metric names with zero
+DDL — see its header for why neither `v_kc_runs` (wide) nor `v_kc_run_drill` /
+`v_kc_pair_ratios` (H-vs-P pair views) is the right grain for an absolute single-arm
+history trend.
+
+### Why a tall trends view (not one wide column per chart)
+
+`v_kc_runs` is one wide row per run; a time-series over an arbitrary metric would need
+a hard-coded column per chart and a base-view edit for every new metric (the
+server-interaction family, consume-side JMX, gc_share, …). A tall `(run, metric)`
+view scopes by `metric_name` and carries `unit`, so the same dataset renders every
+trend and new metrics land as rows, not schema.
+
+## Layout grid (Tab 2 — 12-wide, `tab2_charts.json`)
+
+```
+Row 1 (3 headline tiles, width 4 each):
+  kc_t2_tile_med_drain_rps_30d      <- v_kc_runs (head t1, median 30d)
+  kc_t2_tile_med_drain_seconds_30d  <- v_kc_runs (head t1, median 30d)
+  kc_t2_tile_cost_per_run           <- v_kc_runs (per-PAIR: sum cost / #pairs)
+Row 2 (TIER 0 · SINK PIPELINE, width 4 each):
+  kc_t2_null_drain_trend            <- v_kc_metric_trends (null_drain_rows_per_sec)
+  kc_t2_connect_cpu_gc_trend        <- v_kc_metric_trends (connect_cpu + gc_time_share)
+  kc_t2_sink_overhead_decomposition_placeholder <- MARKDOWN (needs sink_overhead_share)
+Row 3 (TIER 1 · THROUGHPUT & COST-PER-ROW, 2×6):
+  kc_t2_verified_drain_trend        <- v_kc_metric_trends (drain_rows_per_sec, integrity marks)
+  kc_t2_parts_merge_dual_axis       <- v_kc_metric_trends (parts_per_insert + merge_amplification)
+Row 4 (2×6):
+  kc_t2_drain_rate_stability_placeholder <- MARKDOWN (excluded; pre-fix values not comparable)
+  kc_t2_partition_skew_trend        <- v_kc_metric_trends (partition_skew)
+Row 5 (SERVER INTERACTION, width 4 each):
+  kc_t2_insert_p50_p99_trend        <- v_kc_metric_trends (ch_insert_duration_p50/p99_ms)
+  kc_t2_delayed_fraction_trend      <- v_kc_metric_trends (inserts_delayed_fraction)
+  kc_t2_error_counts_241_252_trend  <- v_kc_metric_trends (ch_memory_limit / ch_too_many_parts_errors)
+Row 6 (width 4 each):
+  kc_t2_merge_pool_pct_trend        <- v_kc_metric_trends (merge_pool_peak_pct)
+  kc_t2_memory_vs_cap_trend         <- v_kc_metric_trends (ch_peak_server_memory_bytes + cap line)
+  kc_t2_batch_size_distribution_head <- v_kc_inserts_drill (written_rows histogram, head)
+Row 7 (CONSUME SIDE, 2×6):
+  kc_t2_fetch_latency_consumed_rate_trend <- v_kc_metric_trends (fetch_latency_avg + records_consumed_rate)
+  kc_t2_put_batch_time_trend        <- v_kc_metric_trends (put_batch_avg_time_ms)
+```
+
+18 chart entries = **16 charts + 2 honest markdown placeholders** (matching the plan's
+"~16 charts" plus the two deferred slots below).
+
+### The two Tab-2 placeholder slots (honest markdown, not empty charts)
+
+1. **SINK OVERHEAD DECOMPOSITION** (`kc_t2_sink_overhead_decomposition_placeholder`)
+   — the plan's centerpiece stacked-area (server insert time vs sink-pipeline time).
+   Needs the `sink_overhead_share` metric =
+   `(put_batch_time − ch_insert_duration) / put_batch_time`, a JMX × query_log join
+   that is **not yet computed** (deferred since #29). Rendered as markdown until it
+   lands (#35 constraint 4).
+2. **`drain_rate_stability` trend** (`kc_t2_drain_rate_stability_placeholder`) —
+   **excluded from charts** (principal ruling, #35 constraint 2). The bucketing fix
+   (`d2aff99`) landed, but values **before 2026-07-13** are 10s-bucket and **not
+   comparable** to the post-fix metric; trending them would draw a false step.
+   Markdown placeholder until post-fix pairs accumulate.
+
+### Watch-only, covariate, and sighted-gate notes (must show in descriptions)
+
+- **`merge_amplification`** is **WATCH-ONLY** (contract §2/§3): charted + trended on
+  the parts/merge dual-axis, but carries **no verdict and does not gate** — its
+  description says *watch-only*, not gated. `parts_per_insert` IS the Tier-1 tripwire
+  (verdict on Tab 1).
+- **`connect_cpu_seconds_per_Mrows`** (and `ch_insert_cpu_share_tier0`) exist only
+  from **pair 4 (2026-07-12)** onward — the sighted-gate Tier-0 build landed then
+  (#35 constraint 5). Their trend lines **start 2026-07-12**; the descriptions say so.
+- The server-interaction + consume-side charts are **diagnostic covariates**, not
+  gates — each description says so and gives the direction of goodness.
+- **Calibration caveat (n=3):** the 30d-median headline tiles are noisy at n=3 clean
+  pairs; every tile description carries *provisional until n≈20* (#35 constraint 9).
+
+## Acceptance checklist (Tab 2 — Stage B)
+
+Prep (done, this package):
+
+- [x] `v_kc_metric_trends.sql` created; CREATEs + SELECTs against clickhouse-local
+      (perf.* swap), 0 rows + no error when empty (`verify_tab23.sh`).
+- [x] `verify_tab23.sh` green: trends returns the pair-4 `connect_cpu_seconds_per_Mrows`
+      value on the **right arm/tier (head/t0)**; legacy `ch_parts_per_insert` folds to
+      `parts_per_insert` (no ch_-prefixed leak); conformant capture-family names pass
+      through; both arms exposed; fixture/failed/non-kafka excluded.
+- [x] `tab2_charts.json` parses; all 18 entries carry a `description` (#42 standard);
+      the 2 placeholder slots render as markdown.
+- [x] Existing `verify_verdict_dwh.sh` (31/31) and `verify_tab4.sh` (17/17) still green.
+
+Stage B (gated on the coordinator's GO):
+
+- [ ] Create `v_kc_metric_trends` on `DWH` (`dc93cd97`); reuse `v_kc_runs` +
+      `v_kc_inserts_drill` (no duplicates); do NOT create a DB connection.
+- [ ] Add Tab 2 as a new `TAB` node on 432 (existing tabs untouched); pin `arm='head'`
+      via a Tab-2-scoped native filter.
+- [ ] Build the 16 charts + 2 markdown placeholders (de-dupe chart ids before layout —
+      bug #2; never bind a metric alias == column — bug #1), each with its `description`.
+- [ ] Verify every trend renders with the 3 clean pairs (n=3); the two placeholders
+      render as **markdown**, not empty charts.
+- [ ] Confirm merge_amplification reads as **watch-only** in its description, and the
+      connect_cpu / parse-watch series **start 2026-07-12** (no back-fill, no zeros).
+- [ ] Existing Tab 1/Tab 4 datasets/charts and dashboard 424 (Spark) untouched;
+      screenshot evidence.
+
+---
+
+# Tab 3 — ENVIRONMENT (issue #35)
+
+Additive extension with the Tab 3 "ENVIRONMENT" build (dashboard **432**). Tab 3 is
+the **instrument-health** view of the **stable reference (arm = pinned)**: is the
+benchmark's own measuring apparatus steady, and what environment events (CH upgrades,
+restarts, memory pressure) moved it? Strictly **additive**; carries **no
+verdict/alert** truth.
+
+## Arm scoping
+
+The **whole tab is arm = pinned**. The pinned arm is the fixed reference build, so
+its trends should be flat — any movement is the ENVIRONMENT, not the code. Every
+trend reads `v_kc_metric_trends` filtered `arm='pinned'`; `v_kc_env_events` is
+pinned-only by construction. **Head rows never appear on Tab 3** (asserted in
+`verify_tab23.sh`).
+
+## Datasets (Tab 3 — additive)
+
+| Dataset SQL | New/Reused | Role | Feeds |
+|---|---|---|---|
+| `v_kc_metric_trends.sql` | **REUSED** (from Tab 2) | tall per-run metric series | pinned drain-rate, pre-run RSS + active parts, parse-watch, CoV inputs |
+| `v_kc_env_events.sql` | **NEW** | kafka-local environment-annotation source derived inline from consecutive PINNED runs, carrying the §4 scope tuple | annotation overlay on the pinned drain trend + CH version timeline |
+| `v_kc_runs.sql` | **REUSED** | one wide row per run | throughput-vs-uptime scatter + per-tier CoV noise gauge |
+
+Only **`v_kc_env_events`** is new for Tab 3.
+
+## Annotation layer — `v_env_annotations` does not exist yet (derived inline)
+
+The plan §8 sketches a **shared** `v_env_annotations` across Spark and Kafka. **That
+shared view does not exist yet for Kafka** (#35 constraint 6). Per **contract §4** an
+**unscoped** shared annotation view is **PROHIBITED** — it would paint a Spark-target
+restart (production, us-east-2) onto Kafka charts (staging) and vice versa,
+manufacturing false correlations. So Tab-3's annotation layer is derived **inline**
+from `v_kc_env_events`:
+
+- **CH upgrade** — `clickhouse_version` changed vs the previous pinned run.
+- **Server restart** — `ch_uptime` dropped vs the previous pinned run (contract §2.1:
+  a drop ⇒ the service restarted between runs).
+
+Every emitted row carries the **contract §4 scope tuple**
+`(connector, target_service, environment_class)` as columns. `connector` =
+`'kafka-connect'`; `environment_class` = `runtime['environment_class']`;
+`target_service` = `runtime['target_service']` **if present**, else a stable
+`environment_class/target_region` composite (e.g. `staging/us-east-2`) — because the
+runtime map does **not** yet carry a dedicated `target_service` key (the mandatory
+identity keys today are `target_region` + `environment_class`, §1.1). The composite
+uniquely names this benchmark's target among the connectors' targets; when a
+dedicated key is added upstream the coalesce picks it up with no edit.
+
+**Consumers MUST filter the scope tuple** (contract §4): the annotation overlay on
+`kc_t3_pinned_drain_trend_annotated` filters
+`connector='kafka-connect' AND environment_class='staging' AND target_service=<this
+target>` so a Spark-target event is never rendered here.
+
+> **Future work:** a **shared cross-connector annotation view** that UNIONs both
+> connectors' *already-scoped* events is explicitly deferred. When it lands,
+> `v_kc_env_events` becomes its kafka-connect branch unchanged (it is already scoped).
+
+## Layout grid (Tab 3 — 12-wide, `tab3_charts.json`)
+
+```
+Row 1 (2×6):
+  kc_t3_pinned_drain_trend_annotated <- v_kc_metric_trends (drain_rows_per_sec, pinned)
+                                        + annotation overlay from v_kc_env_events (scoped)
+  kc_t3_ch_version_timeline          <- v_kc_metric_trends (clickhouse_version over time)
+Row 2 (2×6):
+  kc_t3_throughput_vs_uptime_scatter <- v_kc_runs (drain_rows_per_sec vs ch_uptime, pinned)
+  kc_t3_pre_run_state_trends         <- v_kc_metric_trends (pre_run_rss + pre_run_active_parts)
+Row 3 (2×6):
+  kc_t3_cov_noise_gauge_per_tier     <- v_kc_runs (CoV of rate per tier, pinned)
+  kc_t3_parse_watch_tier0            <- v_kc_metric_trends (ch_insert_cpu_share_tier0 + 50% line)
+```
+
+6 charts (the plan's Tab-3 count exactly).
+
+### Tier-0 parse-watch threshold (decision-9 revisit)
+
+`kc_t3_parse_watch_tier0` carries a **threshold line at 50%** (#35 constraint 8 — the
+decision-9 revisit level). `ch_insert_cpu_share_tier0` is the share of Tier-0
+wall-clock the Null target spends in server-side insert CPU; observed values are
+**1.6–2.75%**, leaving huge headroom. The **50% line is the documented revisit
+trigger**: if the line trends toward and crosses it, the Null target is materially
+parse-bound and decision 9 (whether Tier 0 is a fair connector ceiling on the 3 vCPU
+box) MUST be revisited. The metric exists only from **pair 4 (2026-07-12)** onward
+(sighted-gate — constraint 5), so the line **starts 2026-07-12**.
+
+### CoV noise-gauge invariant
+
+`kc_t3_cov_noise_gauge_per_tier` enforces the instrument-sanity rule: **Tier 0 CoV
+must be ≪ Tier 1 CoV**. Tier 0 (Null target) removes server/merge variance, so if
+Tier 0 is as noisy as Tier 1 the *instrument itself* is unstable and no band can be
+trusted. The gauge shows `n_runs` so its **provisional at n=3** status (constraint 9)
+is visible at a glance.
+
+## Acceptance checklist (Tab 3 — Stage B)
+
+Prep (done, this package):
+
+- [x] `v_kc_env_events.sql` created; CREATEs + SELECTs against clickhouse-local, 0
+      rows + no error when <2 pinned runs (`verify_tab23.sh`).
+- [x] `verify_tab23.sh` green: env-events emits a `ch_version_change` row when
+      synthetic pinned versions differ (25.1→25.2) and a `server_restart` when
+      `ch_uptime` drops, each with the §4 scope tuple
+      (`kafka-connect|staging/us-east-2|staging`); the first pinned run (no
+      predecessor) emits nothing; **no head-derived rows** (pinned scoping);
+      fixture/failed/non-kafka excluded.
+- [x] `tab3_charts.json` parses; all 6 charts carry a `description` (#42 standard),
+      including the 50% parse-watch threshold and the CoV invariant.
+
+Stage B (gated on the coordinator's GO):
+
+- [ ] Create `v_kc_env_events` on `DWH` (`dc93cd97`); reuse `v_kc_metric_trends`
+      (created in the Tab-2 step) + `v_kc_runs`; no DB connection.
+- [ ] Add Tab 3 as a new `TAB` node on 432 (existing tabs untouched); pin
+      `arm='pinned'` via a Tab-3-scoped native filter.
+- [ ] Build the 6 charts (bug #1 / #2 avoidance), each with its `description`; wire the
+      annotation overlay filtered to the §4 scope tuple.
+- [ ] Verify trends render with the 3 clean pairs (pinned arm); the parse-watch shows
+      the 50% threshold line and the ~2% observed series (starting 2026-07-12); the
+      CoV gauge shows `n_runs` and reads as provisional.
+- [ ] Confirm the annotation overlay is **scope-filtered** (no Spark-target events on
+      Kafka charts); document the shared-annotation-view future work.
+- [ ] Existing tabs and dashboard 424 (Spark) untouched; screenshot evidence.
+
+---
+
 ## Files
 
 | File | Purpose |
@@ -357,10 +621,15 @@ Stage B (gated on the coordinator's GO):
 | `v_kc_flagged_log.sql` | flagged/failed run log |
 | `v_kc_run_drill.sql` | **Tab 4** arm-comparison long view (all metrics H/P/delta, no verdict) |
 | `v_kc_drain_curve.sql` | **Tab 4/2** per-minute drain shape + remaining lag from ch_inserts |
-| `v_kc_inserts_drill.sql` | **Tab 4** raw per-insert grain (latency sequence + batch-size dist) |
+| `v_kc_inserts_drill.sql` | **Tab 4/2** raw per-insert grain (latency sequence + batch-size dist) |
+| `v_kc_metric_trends.sql` | **Tab 2/3** tall per-run metric series (run × metric, arm/tier scoped) |
+| `v_kc_env_events.sql` | **Tab 3** kafka-local environment annotations (§4-scoped, derived inline) |
 | `tab1_charts.json` | 8 Tab-1 chart specs, each with its description |
 | `tab4_charts.json` | **12 Tab-4** chart specs, each with its description |
+| `tab2_charts.json` | **16 Tab-2** charts + 2 markdown placeholders, each with its description |
+| `tab3_charts.json` | **6 Tab-3** chart specs, each with its description |
 | `visibility_precheck.sql` | Stage-B pre-flight queries (run first; abort on failure) |
 | `verify_verdict_dwh.sh` | fixture acceptance for the adapted verdict view (31/31) |
 | `verify_tab4.sh` | **Tab 4** render-shape acceptance (datasets parse + bucketing math) |
+| `verify_tab23.sh` | **Tab 2/3** render-shape acceptance (trends + env-events shape) |
 | `DASHBOARD.md` | this file |
