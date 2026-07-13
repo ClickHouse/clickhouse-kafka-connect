@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+import "google/protobuf/timestamp.proto";
+
+message TimestampMillis {
+  int32 id = 1;
+  google.protobuf.Timestamp created_at = 2;
+}

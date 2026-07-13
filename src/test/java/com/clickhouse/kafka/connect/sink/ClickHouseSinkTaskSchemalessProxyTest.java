@@ -2,9 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
-import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
+import com.clickhouse.kafka.connect.sink.helper.*;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -15,7 +13,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
-import org.testcontainers.containers.ToxiproxyContainer;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -57,14 +55,27 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     public void setup() throws IOException {
         super.setup();
 
-        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(isCloud ? Network.newNetwork() : db.getNetwork()).withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
+        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME)
+                .withNetwork(isCluster || isCloud ? Network.newNetwork() : db.getNetwork())
+                .withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
+        if (isCluster) {
+            toxiproxy = toxiproxy.withExtraHost("host.docker.internal", "host-gateway");
+        }
         toxiproxy.start();
 
         log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
 
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, isCloud ? String.format("%s:%d", csc.getHostname(), csc.getPort()) : String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
+        String upstream;
+        if (isCloud) {
+            upstream = String.format("%s:%d", csc.getHostname(), csc.getPort());
+        } else if (isCluster) {
+            upstream = String.format("host.docker.internal:%d", cluster.getPort());
+        } else {
+            upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
+        }
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
         log.info("Proxy configured {}", proxy.getListen());
     }
 
@@ -111,7 +122,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     public void primitiveTypesTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = "schemaless_primitive_types_table_test";
+        String topic = createTopicName("schemaless_primitive_types_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
@@ -127,7 +138,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     public void withEmptyDataRecordsTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = "schemaless_empty_records_table_test";
+        String topic = createTopicName("schemaless_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createWithEmptyDataRecords(topic, 1);
@@ -143,7 +154,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     public void NullableValuesTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = "schemaless_nullable_values_table_test";
+        String topic = createTopicName("schemaless_nullable_values_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic)
@@ -165,7 +176,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "schemaless_array_string_table_test";
+        String topic = createTopicName("schemaless_array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic)
@@ -190,7 +201,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "schemaless_map_table_test";
+        String topic = createTopicName("schemaless_map_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
 
@@ -210,7 +221,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "special-char-table-test";
+        String topic = createTopicName("special-char-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -228,7 +239,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "emojis_table_test";
+        String topic = createTopicName("emojis_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic).column("off16", "Int16").column("str", "String")
@@ -245,11 +256,11 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
     @Test
     public void tableMappingTest() {
         Map<String, String> props = getTestProperties();
-        props.put(ClickHouseSinkConfig.TABLE_MAPPING, "mapping_table_test=table_mapping_test");
+        String topic = "mapping_table_test";
+        String tableName = createTopicName("table_mapping_test");
+        props.put(ClickHouseSinkConfig.TABLE_MAPPING, topic + "=" + tableName);
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "mapping_table_test";
-        String tableName = "table_mapping_test";
         ClickHouseTestHelpers.dropTable(chc, tableName);
         new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(tableName).execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
@@ -266,7 +277,7 @@ public class ClickHouseSinkTaskSchemalessProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "decimal_table_test";
+        String topic = createTopicName("decimal_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .tableName(topic).column("num", "String").column("decimal_14_2", "Decimal(14, 2)")

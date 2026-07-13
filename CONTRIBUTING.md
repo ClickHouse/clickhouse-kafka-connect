@@ -3,17 +3,24 @@ So you want to get started developing with our Kafka Connect Sink Connector, eh?
 
 ## Prerequisites
 * [OpenJDK 17](https://aws.amazon.com/corretto/) or some other equivalent for compiling the connector code
-* [Docker Desktop](https://docs.docker.com/engine/install/) for running tests
+* [Docker](https://docs.docker.com/engine/install/) for running tests
 * [Github Desktop](https://desktop.github.com/) or some other equivalent git to download the repo
 * A local copy of the repo, pulled from git
 
-## Building and Running Unit Tests
-You can compile and run the unit tests locally by going to the root project folder and running `./gradlew clean test`. _Note: this doesn't produce a release artifact, you'll have to execute a later step for that._
+## Building and Running Feature Tests
+You can compile and run the feature tests locally by going to the root project folder and running one of the following:
+- `./gradlew clean test`: run tests against a 1-node (standalone) ClickHouse instance.
+- `CLICKHOUSE_CLUSTER_NAME=... ./gradlew clean test`: run tests against two possible ClickHouse clusters:
+  - `CLICKHOUSE_CLUSTER_NAME=three_shards_one_replica_each`: a cluster with three shards and one replica per shard
+  - `CLICKHOUSE_CLUSTER_NAME=one_shard_three_replicas`: a cluster with one shard and three replicas
+
+_Note: this doesn't produce a release artifact, you'll have to execute a later step for that._
 
 ## Building and Running Integration Tests
 Integration tests run against both Docker and ClickHouse Cloud. You can compile and run the integration test suite locally by going to the root project folder and running:
 
 ```bash
+# optional: export CLICKHOUSE_CLUSTER_NAME=...
 ./gradlew clean integrationTest \
   -Dclickhouse.host=<YOUR_CH_HOST> \
   -Dclickhouse.port=<YOUR_CH_PORT> \

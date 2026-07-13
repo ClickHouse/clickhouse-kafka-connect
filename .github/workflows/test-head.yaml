@@ -10,24 +10,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        clickhouse: [ "head" ]
-    name: ClickHouse ${{ matrix.clickhouse }} tests
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          architecture: x64
-      - name: Setup and execute Gradle 'test' task
-        uses: gradle/gradle-build-action@v2
-        env:
-          CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
-        with:
-          arguments: test
+  # Run the CI test suite against the head (nightly) build of the ClickHouse server.
+  clickhouse-head:
+    name: ClickHouse head
+    uses: ./.github/workflows/tests.yaml
+    with:
+      clickhouse_version: head
+    secrets: inherit
 
+  # Build the head of clickhouse-java from source and run the CI test suite against it.
+  clickhouse-java-head:
+    name: clickhouse-java head
+    uses: ./.github/workflows/tests.yaml
+    with:
+      clickhouse_version: latest
+      clickhouse_java: main
+      run_cloud_tests: true
+    secrets: inherit

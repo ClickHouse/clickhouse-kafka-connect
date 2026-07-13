@@ -1,0 +1,17 @@
+{
+  "name": "%s",
+  "config": {
+    "name": "%s",
+    "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "tasks.max": "%d",
+    "topics": "%s",
+    "hostname": "%s",
+    "port": "%s",
+    "database": "%s",
+    "username": "%s",
+    "password": "%s",
+    "ssl": "%b",
+    "exactlyOnce" : "%b",
+    "keeperOnCluster" : "%s"
+  }
+}

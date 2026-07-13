@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message ArrayOfRecords {
+  int32 id = 1;
+  repeated Item items = 2;
+
+  message Item {
+    string name = 1;
+    int32 qty = 2;
+  }
+}

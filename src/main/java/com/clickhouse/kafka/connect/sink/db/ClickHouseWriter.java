@@ -20,6 +20,7 @@ import com.clickhouse.data.format.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
+import com.clickhouse.kafka.connect.sink.data.SchemaType;
 import com.clickhouse.kafka.connect.sink.data.StructToJsonMap;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
@@ -34,7 +35,6 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
-import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,9 +64,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -86,6 +88,8 @@ public class ClickHouseWriter implements DBWriter {
     private final SinkTaskStatistics statistics;
 
     private ScheduledExecutorService scheduledExecutor;
+    private static final Set<Integer> UPDATE_TABLE_ERROR_CODES_V2 = Set.of(33, 131);
+    @Deprecated private static final Map<String, Integer> UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE = Map.of("ClickHouseException: Code: 33", 33, "ClickHouseException: Code: 131", 131);
 
     public ClickHouseWriter(SinkTaskStatistics statistics) {
         this.mapping = new ConcurrentHashMap<>();
@@ -113,6 +117,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
                 .setSslSocketSni(csc.getSslSocketSni())
+                .setClusterClause(csc.getClusterName())
                 .build();
 
         if (!chc.ping()) {
@@ -234,6 +239,7 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.debug("Trying to insert [{}] records to table name [{}] (QueryId: [{}])", records.size(), table.getName(), queryId.getQueryId());
         switch (first.getSchemaType()) {
             case SCHEMA:
+            case DEBEZIUM_CDC:
                 if (csc.isBypassRowBinary()) {
                     doInsertJson(records, table, queryId);
                 } else {
@@ -317,7 +323,7 @@ public class ClickHouseWriter implements DBWriter {
                                     continue;
                                 }
 
-                                if (("DECIMAL".equalsIgnoreCase(colTypeName) && objSchema.name().equals("org.apache.kafka.connect.data.Decimal")))
+                                if (("DECIMAL".equalsIgnoreCase(colTypeName) && "org.apache.kafka.connect.data.Decimal".equals(objSchema.name())))
                                     continue;
 
                                 if (type == Type.JSON) {
@@ -488,10 +494,12 @@ public class ClickHouseWriter implements DBWriter {
                 case INT16:
                 case INT32:
                 case INT64:
+                case INT128:
                 case UINT8:
                 case UINT16:
                 case UINT32:
                 case UINT64:
+                case UINT128:
                 case FLOAT32:
                 case FLOAT64:
                 case BOOLEAN:
@@ -515,7 +523,10 @@ public class ClickHouseWriter implements DBWriter {
                         BinaryStreamUtils.writeNull(stream);
                         return;
                     } else {
-                        BigDecimal decimal = (BigDecimal) value.getObject();
+                        Object rawDecimal = value.getObject();
+                        BigDecimal decimal = (rawDecimal instanceof BigDecimal)
+                                ? (BigDecimal) rawDecimal
+                                : new BigDecimal(rawDecimal.toString());
                         BinaryStreamUtils.writeDecimal(stream, decimal, col.getPrecision(), col.getScale());
                     }
                     break;
@@ -616,6 +627,10 @@ public class ClickHouseWriter implements DBWriter {
                     }
                     break;
                 case JSON:
+                    if (value.getObject() == null) {
+                        BinaryStreamUtils.writeNull(stream);
+                        break;
+                    }
                     if (csc.isBinaryFormatWrtiteJsonAsString()) {
                         if (value.getFieldType() == Schema.Type.STRUCT) {
                             byte[] jsonBytes = OBJECT_MAPPER.writeValueAsBytes(value);
@@ -780,6 +795,16 @@ public class ClickHouseWriter implements DBWriter {
                 case Enum16:
                     BinaryStreamUtils.writeEnum16(stream, col.convertEnumValues((String) value).intValue());
                     break;
+                case INT128:
+                    BinaryStreamUtils.writeInt128(stream, value instanceof java.math.BigInteger
+                            ? (java.math.BigInteger) value
+                            : new java.math.BigInteger(value.toString()));
+                    break;
+                case UINT128:
+                    BinaryStreamUtils.writeUnsignedInt128(stream, value instanceof java.math.BigInteger
+                            ? (java.math.BigInteger) value
+                            : new java.math.BigInteger(value.toString()));
+                    break;
             }
         }
     }
@@ -932,22 +957,23 @@ public class ClickHouseWriter implements DBWriter {
                 doInsertRawBinaryV1(records, table, queryId, supportDefaults);
             }
         } catch (ServerException e) {
-            LOGGER.error("Error inserting records can cause by schema changes", e);
-            if (e.getCode() == 33 && retry == true) {
-                LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
+            if (UPDATE_TABLE_ERROR_CODES_V2.contains(e.getCode()) && retry) {
+                LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", e.getCode());
                 Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
+                LOGGER.error("Error inserting records", e);
                 throw e;
             }
         } catch (Exception e) {
             // Note: this part will be removed once V1 is deprecated
-            LOGGER.error("Error inserting records", e);
-            if (e.getMessage() != null && e.getMessage().contains("ClickHouseException: Code: 33") && retry) {
-                LOGGER.error("Error code 33: ClickHouse server error. Trying to update table mapping.");
+            Optional<String> updateTableException = UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().filter(code -> e.getMessage().contains(code)).findFirst();
+            if (e.getMessage() != null && updateTableException.isPresent() && retry) {
+                LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.get(updateTableException.get()));
                 Table tableTmp = urgentTableUpdate(table);
                 doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
             } else {
+                LOGGER.error("Error inserting records", e);
                 throw e;
             }
         }
@@ -956,10 +982,10 @@ public class ClickHouseWriter implements DBWriter {
     private Table urgentTableUpdate(Table table) {
         Table tableTmp;
         if (updateMapping(table.getDatabase())) {
-            LOGGER.debug("urgentTableUpdate({}): update complete", table.getName());
+            LOGGER.warn("urgentTableUpdate({}): update complete", table.getName());
             tableTmp = getTable(table.getDatabase(), table.getName());
         } else {
-            LOGGER.debug("urgentTableUpdate({}): update still running", table.getName());
+            LOGGER.warn("urgentTableUpdate({}): update still running", table.getName());
             tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
             if (tableTmp == null) {
                 LOGGER.error("Failed to describe table {}.{} via ClickHouseHelperClient.describeTable(); falling back to existing mapping.",
@@ -970,6 +996,7 @@ public class ClickHouseWriter implements DBWriter {
         if (tableTmp == null) {
             throw new IllegalStateException("Unable to refresh table mapping for " + table.getDatabase() + "." + table.getName());
         }
+        Utils.logDiffBetweenNewAndOldTable(table, tableTmp);
         return tableTmp;
     }
 
@@ -981,7 +1008,9 @@ public class ClickHouseWriter implements DBWriter {
         String topic = first.getSinkRecord().topic();
         String partition = first.getSinkRecord().kafkaPartition().toString();
 
-        if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
+        if (!csc.isBypassSchemaValidation()
+                && first.getSchemaType() != SchemaType.DEBEZIUM_CDC
+                && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
@@ -1027,7 +1056,7 @@ public class ClickHouseWriter implements DBWriter {
             format = ClickHouseFormat.RowBinaryWithDefaults;
         }
 
-        try (InsertResponse insertResponse = client.insert(table.getName(), data, format, insertSettings).get()) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), data, format, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
@@ -1043,7 +1072,9 @@ public class ClickHouseWriter implements DBWriter {
         String topic = first.getSinkRecord().topic();
         String partition = first.getSinkRecord().kafkaPartition().toString();
 
-        if (!csc.isBypassSchemaValidation() && !validateDataSchema(table, first, false))
+        if (!csc.isBypassSchemaValidation()
+                && first.getSchemaType() != SchemaType.DEBEZIUM_CDC
+                && !validateDataSchema(table, first, false))
             throw new RuntimeException("Data schema validation failed.");
         // Let's test first record
         // Do we have all elements from the table inside the record
@@ -1141,6 +1172,10 @@ public class ClickHouseWriter implements DBWriter {
                                     data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
                                 }
                                 break;
+                            case DEBEZIUM_CDC:
+                                data = new HashMap<>(record.getJsonMap().size());
+                                record.getJsonMap().forEach((k, v) -> data.put(k, v.getObject()));
+                                break;
                             default:
                                 data = (Map<String, Object>) record.getSinkRecord().value();
                                 break;
@@ -1218,6 +1253,10 @@ public class ClickHouseWriter implements DBWriter {
                             data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
                         }
                         break;
+                    case DEBEZIUM_CDC:
+                        data = new HashMap<>(record.getJsonMap().size());
+                        record.getJsonMap().forEach((k, v) -> data.put(k, v.getObject()));
+                        break;
                     default:
                         data = (Map<String, Object>) record.getSinkRecord().value();
                         break;
@@ -1242,7 +1281,7 @@ public class ClickHouseWriter implements DBWriter {
 
         InputStream data = new ByteArrayInputStream(stream.toByteArray());
         long s2 = System.currentTimeMillis();
-        try (InsertResponse insertResponse = client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings).get()) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
@@ -1406,7 +1445,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         long s2 = System.currentTimeMillis();
-        try (InsertResponse insertResponse = client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), clickHouseFormat, insertSettings).get()) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), clickHouseFormat, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
@@ -1422,6 +1461,28 @@ public class ClickHouseWriter implements DBWriter {
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
     }
+
+    /**
+     * Awaits an in-flight V2 insert with a bounded timeout.
+     *
+     * <p>An unbounded wait can stall the SinkTask thread past {@code consumer.override.max.poll.interval.ms}
+     * and trigger a Kafka consumer rebalance when ClickHouse hangs. On timeout we cancel the future and
+     * throw a {@link RetriableException} so the Connect framework retries the batch (consistent with how
+     * socket timeouts are treated in {@link com.clickhouse.kafka.connect.util.Utils#handleException}).
+     * In exactly-once mode the retry reconstructs the same block (deterministic offsets +
+     * insert_deduplication_token), so ClickHouse drops duplicates.
+     */
+    private InsertResponse awaitInsertResponse(Future<InsertResponse> future, QueryIdentifier queryId)
+            throws ExecutionException, InterruptedException {
+        long timeoutMs = csc.getClickhouseClientInsertTimeoutMs();
+        try {
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw new RetriableException("ClickHouse insert timed out after " + timeoutMs
+                    + " ms (QueryId: [" + queryId.getQueryId() + "])", e);
+        }
+    }
     private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String database, QueryIdentifier queryId) {
 
         ClickHouseHelperClient chcTmp = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
@@ -1433,6 +1494,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
                 .setSslSocketSni(csc.getSslSocketSni())
+                .setClusterClause(csc.getClusterName())
                 .build();
 
         ClickHouseNode server = chcTmp.getServer();

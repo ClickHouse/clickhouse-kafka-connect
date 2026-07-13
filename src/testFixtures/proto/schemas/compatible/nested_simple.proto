@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message NestedSimple {
+  int32 id = 1;
+  Info info = 2;
+
+  message Info {
+    string label = 1;
+    int32 count = 2;
+  }
+}

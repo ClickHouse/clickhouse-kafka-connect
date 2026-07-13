@@ -1,0 +1,21 @@
+{
+  "description": "Combination: nullable google.protobuf.Timestamp inside a nested message",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "event": "Tuple(name String, occurred_at Nullable(DateTime64(3)))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "event": {"name": "login", "occurred_at": "2023-11-14T22:13:20Z"}},
+    {"id": 2, "event": {"name": "logout"}},
+    {"id": 3, "event": {"name": "click", "occurred_at": "2023-11-14T22:13:22Z"}},
+    {"id": 4, "event": {"name": "view"}},
+    {"id": 5, "event": {"name": "submit", "occurred_at": "2023-11-14T22:13:24Z"}},
+    {"id": 6, "event": {"name": "cancel", "occurred_at": "2023-11-14T22:13:25Z"}},
+    {"id": 7, "event": {"name": "refresh"}},
+    {"id": 8, "event": {"name": "search", "occurred_at": "2023-11-14T22:13:27Z"}},
+    {"id": 9, "event": {"name": "download", "occurred_at": "2023-11-14T22:13:28Z"}},
+    {"id": 10, "event": {"name": "upload"}}
+  ],
+  "expected_row_count": 10
+}

@@ -1,7 +1,6 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
-import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -11,10 +10,7 @@ import org.apache.kafka.connect.sink.SinkTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class ClickHouseSinkTask extends SinkTask {
@@ -25,13 +21,9 @@ public class ClickHouseSinkTask extends SinkTask {
     private ClickHouseSinkConfig clickHouseSinkConfig;
     private ErrorReporter errorReporter;
 
-    // Internal buffering
-    private List<SinkRecord> buffer;
-    private long lastFlushTime;
-    private int bufferCount;
-    private long bufferFlushTime;
-    private boolean bufferingEnabled;
-    private Map<TopicPartition, OffsetAndMetadata> flushedOffsets;
+    // One of the three delivery semantics, chosen at start() from the config.
+    // See "Internal Buffering" section of docs/DESIGN.md.
+    private DeliveryStrategy deliveryStrategy;
 
     @Override
     public String version() {
@@ -50,132 +42,97 @@ public class ClickHouseSinkTask extends SinkTask {
             throw new ConnectException("Failed to start new task" , e);
         }
 
-        // Validate config before heavy initialization
-        int configBufferCount = clickHouseSinkConfig.getBufferCount();
-        if (configBufferCount > 0 && clickHouseSinkConfig.isExactlyOnce()) {
-            throw new ConnectException(
-                    "Internal buffering (bufferCount > 0) is not compatible with exactly-once mode. " +
-                    "Buffering changes batch boundaries, which breaks ClickHouse block deduplication and the offset state machine. " +
-                    "To resolve this, either disable exactly-once mode by setting 'exactlyOnce=false' in your connector config, " +
-                    "or disable buffering by setting 'bufferCount=0'."
-            );
-        }
+        validateBufferConfig(clickHouseSinkConfig);
 
         this.proxySinkTask = new ProxySinkTask(clickHouseSinkConfig, errorReporter);
         this.proxySinkTask.start();
 
-        // Initialize buffering
-        this.bufferCount = configBufferCount;
-        this.bufferFlushTime = clickHouseSinkConfig.getBufferFlushTime();
-        this.bufferingEnabled = this.bufferCount > 0;
-        this.buffer = this.bufferingEnabled ? new ArrayList<>(this.bufferCount) : new ArrayList<>();
-        this.lastFlushTime = System.currentTimeMillis();
-        this.flushedOffsets = new HashMap<>();
+        this.deliveryStrategy = createDeliveryStrategy(clickHouseSinkConfig, proxySinkTask, errorReporter);
+    }
 
-        if (this.bufferFlushTime > 0 && this.bufferCount == 0) {
+    /**
+     * Picks the delivery strategy from the config flag matrix: direct (no
+     * buffer), at-least-once buffered, or exactly-once buffered (strict
+     * chunking).
+     */
+    private static DeliveryStrategy createDeliveryStrategy(ClickHouseSinkConfig cfg,
+                                                           ProxySinkTask proxySinkTask,
+                                                           ErrorReporter errorReporter) {
+        if (cfg.getBufferFlushTime() > 0 && cfg.getBufferCount() == 0) {
             LOGGER.warn("bufferFlushTime is set but will be ignored because bufferCount is 0");
+        }
+        ChunkFlusher flusher = new ChunkFlusher(proxySinkTask, cfg, errorReporter);
+        if (!isBufferingEnabled(cfg)) {
+            return new DirectDeliveryStrategy(proxySinkTask, cfg, flusher);
+        }
+        if (isExactlyOnceAndBufferingEnabled(cfg)) {
+            return new ExactlyOnceBufferStrategy(flusher, cfg.getBufferCount());
+        }
+        return new AtLeastOnceBufferStrategy(flusher, cfg.getBufferCount(), cfg.getBufferFlushTime());
+    }
+
+    /**
+     * @return {@code true} when the connector should use the internal record buffer
+     *         to coalesce multiple {@code put()} calls into larger ClickHouse inserts.
+     *         Activated by {@code bufferCount > 0}.
+     */
+    static boolean isBufferingEnabled(ClickHouseSinkConfig cfg) {
+        return cfg.getBufferCount() > 0;
+    }
+
+    /**
+     * @return {@code true} when buffering must enforce per-partition,
+     *         fixed {@code bufferCount}-sized flush boundaries because the user
+     *         opted into exactly-once delivery alongside buffering.
+     *         Combination of {@link #isBufferingEnabled} and
+     *         {@link ClickHouseSinkConfig#isExactlyOnce}.
+     *
+     * <p>If the public flag matrix is later replaced by a single {@code deliveryMode}
+     * enum, this predicate collapses into {@code mode == EXACTLY_ONCE_BUFFERED}.
+     */
+    static boolean isExactlyOnceAndBufferingEnabled(ClickHouseSinkConfig cfg) {
+        return isBufferingEnabled(cfg) && cfg.isExactlyOnce();
+    }
+
+    /**
+     * Validates buffer + exactly-once compatibility. EO with buffering is supported
+     * only under strict-chunking constraints that preserve batch-boundary determinism.
+     * Throws {@link ConnectException} if the connector is configured in a combination
+     * that would silently break dedup-token reuse on retry.
+     */
+    static void validateBufferConfig(ClickHouseSinkConfig cfg) {
+        if (cfg.getBufferCount() <= 0 || !cfg.isExactlyOnce()) {
+            return;
+        }
+        if (cfg.getBufferFlushTime() > 0) {
+            throw new ConnectException(
+                    "Buffering with exactlyOnce=true requires bufferFlushTime=0. " +
+                    "Time-based flush triggers break batch-boundary determinism required for " +
+                    "ClickHouse insert_deduplication_token reuse across retries."
+            );
+        }
+        if (cfg.isIgnorePartitionsWhenBatching()) {
+            throw new ConnectException(
+                    "Buffering with exactlyOnce=true requires ignorePartitionsWhenBatching=false. " +
+                    "When partitions are ignored, the dedup token has no partition component (null) " +
+                    "and offset-range deduplication cannot fire."
+            );
         }
     }
 
 
     @Override
     public void put(Collection<SinkRecord> records) {
-        if (!bufferingEnabled) {
-            // Original behavior - no buffering
-            putDirect(records);
-            return;
-        }
-
-        // Buffering mode: accumulate records
-        if (!records.isEmpty()) {
-            buffer.addAll(records);
-            LOGGER.debug("Buffered {} records, total buffer size: {}", records.size(), buffer.size());
-        }
-
-        // Check if we should flush
-        boolean sizeThreshold = buffer.size() >= bufferCount;
-        boolean timeThreshold = bufferFlushTime > 0
-                && (System.currentTimeMillis() - lastFlushTime) >= bufferFlushTime
-                && !buffer.isEmpty();
-
-        if (sizeThreshold || timeThreshold) {
-            LOGGER.debug("Buffer flush triggered: size={}, sizeThreshold={}, timeThreshold={}, lastFlushTime={}", buffer.size(), sizeThreshold, timeThreshold, lastFlushTime);
-            flushBuffer();
-        }
-    }
-
-    private void flushBuffer() {
-        if (buffer.isEmpty()) {
-            return;
-        }
-        List<SinkRecord> toFlush = new ArrayList<>(buffer);
-        putDirect(toFlush);
-        // Track the max flushed offset per topic/partition so preCommit() only
-        // allows the framework to commit offsets for data written to ClickHouse
-        for (SinkRecord record : toFlush) {
-            TopicPartition tp = new TopicPartition(record.topic(), record.kafkaPartition());
-            long offset = record.kafkaOffset() + 1; // +1 because committed offset = next offset to consume
-            OffsetAndMetadata current = flushedOffsets.get(tp);
-            if (current == null || offset > current.offset()) {
-                flushedOffsets.put(tp, new OffsetAndMetadata(offset));
-            }
-        }
-        buffer.clear();
-        lastFlushTime = System.currentTimeMillis();
-    }
-
-    private void putDirect(Collection<SinkRecord> records) {
-        try {
-            long putStat = System.currentTimeMillis();
-            this.proxySinkTask.put(records);
-            long putEnd = System.currentTimeMillis();
-            if (!records.isEmpty()) {
-                LOGGER.info("Put records: {} in {} ms", records.size(), putEnd - putStat);
-            }
-        } catch (Exception e) {
-            LOGGER.trace("Passing the exception to the exception handler.");
-            boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.isErrorsTolerance();
-            Utils.handleException(e, errorTolerance, records);
-            if (errorTolerance && errorReporter != null) {
-                LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
-                records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
-            }
-        }
+        deliveryStrategy.put(records);
     }
 
     @Override
     public Map<TopicPartition, OffsetAndMetadata> preCommit(Map<TopicPartition, OffsetAndMetadata> currentOffsets) {
-        if (!bufferingEnabled) {
-            LOGGER.debug("preCommit: {}", currentOffsets);
-            if (!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()) {
-                // link to com.clickhouse.kafka.connect.sink.processing.Processing.doLogic
-                LOGGER.debug("preCommit: returning currentOffsets back");
-                return currentOffsets; // there is another way to reconcile data
-            }
-            if (!clickHouseSinkConfig.isReportInsertedOffsets()) {
-                LOGGER.debug("preCommit: reportInsertedOffsets=false, returning currentOffsets");
-                return currentOffsets;
-            }
-            Map<TopicPartition, OffsetAndMetadata> inserted = proxySinkTask.getInsertedOffsetsSnapshot();
-            if (inserted.keySet().removeIf(key -> !currentOffsets.containsKey(key))) {
-                LOGGER.debug("preCommit: inserted offsets doesn't match currentOffsets. This is ok - seems result of rebalance.");
-            }
-
-            LOGGER.debug("preCommit: returned {}", inserted);
-            return inserted;
-        }
-        // Only commit offsets for records that have been successfully written to ClickHouse.
-        // Records still in the buffer have NOT been written, so their offsets must not be committed.
-        // This guarantees at-least-once delivery: on crash/rebalance, Kafka redelivers buffered records.
-        // Pattern follows Confluent S3 Sink Connector: flush() is no-op, preCommit() manages offsets.
-        if (flushedOffsets.isEmpty()) {
-            LOGGER.info("preCommit: no offsets to commit (all records still buffered)");
-            return new HashMap<>();
-        }
-        Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>(flushedOffsets);
-        flushedOffsets.clear();
-        LOGGER.debug("preCommit: committing offsets for flushed data: {}", offsetsToCommit);
-        return offsetsToCommit;
+        // Buffered strategies commit offsets only for data actually written to
+        // ClickHouse — records still buffered are redelivered on crash/rebalance
+        // (at-least-once). Pattern follows the Confluent S3 Sink Connector:
+        // flush() is a no-op, preCommit() manages offsets.
+        return deliveryStrategy.preCommit(currentOffsets);
     }
 
     @Override
@@ -184,26 +141,9 @@ public class ClickHouseSinkTask extends SinkTask {
         if (proxySinkTask != null) {
             proxySinkTask.onPartitionRemoved(partitions);
         }
-        if (!bufferingEnabled) {
-            return;
+        if (deliveryStrategy != null) {
+            deliveryStrategy.close(partitions);
         }
-        // Remove buffered records for revoked partitions to prevent duplicates.
-        // Their offsets were never committed via preCommit(), so the new owner
-        // will redeliver them — no data loss.
-        if (!buffer.isEmpty()) {
-            int before = buffer.size();
-            buffer.removeIf(record -> {
-                TopicPartition tp = new TopicPartition(record.topic(), record.kafkaPartition());
-                return partitions.contains(tp);
-            });
-            if (buffer.size() != before) {
-                LOGGER.info("Rebalance: removed {} buffered records for revoked partitions {}",
-                        before - buffer.size(), partitions);
-            }
-        }
-        // Always clean up flushed offsets for revoked partitions so preCommit()
-        // doesn't return offsets that this task no longer owns.
-        flushedOffsets.keySet().removeAll(partitions);
     }
 
     @Override
@@ -213,13 +153,12 @@ public class ClickHouseSinkTask extends SinkTask {
 
     @Override
     public void stop() {
-        // Note: close() is called before stop() by the framework, which already
-        // removes buffered records. Unflushed records' offsets were never committed
-        // via preCommit(), so Kafka will redeliver them on restart (at-least-once).
-        if (bufferingEnabled && buffer != null && !buffer.isEmpty()) {
-            LOGGER.warn("Stop called with {} buffered records still in buffer — " +
-                    "these will be redelivered on restart since offsets were not committed", buffer.size());
-            buffer.clear();
+        // close() is called before stop() by the framework, which already removes
+        // buffered records for revoked partitions. Any remaining buffered records'
+        // offsets were never committed via preCommit(), so Kafka redelivers them on
+        // restart (at-least-once).
+        if (deliveryStrategy != null) {
+            deliveryStrategy.stop();
         }
         if (this.proxySinkTask != null) {
             this.proxySinkTask.stop();

@@ -1,16 +1,65 @@
+# 1.3.11, (unreleased)
+## New Features
+* Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0` and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
+
+## Internal Changes
+* Refactored `ClickHouseSinkTask` to delegate to a `DeliveryStrategy` per delivery semantic (`DirectDeliveryStrategy`, `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`), with a shared `ChunkFlusher` for the insert + offset-tracking path. The buffering and non-buffering flows now live in separate, cohesive units instead of interleaved branches on the task. Behavior is unchanged.
+# 1.3.11, 2026-06-24
+
+## Bug Fixes
+* Fixed `NullPointerException` when writing a `null` value into a `Nullable(JSON)` column via the binary
+insert path with `input_format_binary_read_json_as_string=1`. The JSON case in `ClickHouseWriter` cast the
+field straight to `String` without checking for `null` first, unlike every other nullable-aware type in the
+same switch. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/562)
+
+# 1.3.10, 2026-06-24
+
+## New Features
+* Added `clusterName` configuration option. When set, the connector includes an `ON CLUSTER '<name>'`
+clause in the distributed DDL it runs (e.g. the `ALTER TABLE ... ADD COLUMN` statements issued by
+`auto.evolve`), so schema evolution propagates across all replicas in a clustered deployment. Empty by
+default. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/716, https://github.com/ClickHouse/clickhouse-kafka-connect/issues/738)
+
+## Bug Fixes
+* Inserts now time out instead of blocking forever when ClickHouse becomes unresponsive (network partition,
+server hang, long GC pause). Previously a stuck insert could hold the task past
+`consumer.override.max.poll.interval.ms`, causing Kafka to rebalance the partitions mid-insert. The new
+`clickhouseClientInsertTimeoutMs` setting (default `240000`) bounds the wait; on timeout a retriable
+exception is thrown so the Connect framework retries the batch. Set this below
+`consumer.override.max.poll.interval.ms`. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/756)
+
+## Improvements
+* Reduced log noise: messages about unhandled complex sub-types encountered while building table mappings
+are now logged at `DEBUG` instead of `WARN`, since they are expected and not errors.
+(https://github.com/ClickHouse/clickhouse-kafka-connect/pull/767)
+
+## Dependencies
+* Bumped `org.projectlombok:lombok` from `1.18.38` to `1.18.46`.
+* Bumped `org.apache.httpcomponents.client5:httpclient5` (test scope) from `5.5` to `5.6.1`.
+
+## Build
+* Upgraded Gradle from `7.4.2` to `9.5.1` and migrated dependency management to a Gradle version catalog
+(`gradle/libs.versions.toml`) and the `jvm-test-suite` plugin.
+
+# 1.3.9, 2026-05-21
+
+## Bug Fixes
+* To gracefully handle live schema drift between the connector and ClickHouse, refresh the table mappings when connector encounters `Code: 131. DB::Exception: Too large string size` and log column-level schema updates. Now, the connector refreshes its table mappings automatically when ClickHouse returns either `Code: 33` or `Code: 131` and retries the insert. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/751)
+
+
 # 1.3.8, 2026-05-08
 
 ## New Features
 * Added `auto.evolve` configuration option for automatic table schema evolution. When enabled, the connector
-detects new fields in incoming records and issues `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` against ClickHouse.
-Disabled by default. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/277)
+  detects new fields in incoming records and issues `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` against ClickHouse.
+  Disabled by default. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/277)
 
 ## Bug Fixes
 * Fixed RowBinary serialization for Map columns with Nullable value types. The nullable marker byte was missing
-when writing map values, causing `CANNOT_READ_ALL_DATA` errors for `Map(K, Nullable(V))` columns. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/687)
+  when writing map values, causing `CANNOT_READ_ALL_DATA` errors for `Map(K, Nullable(V))` columns. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/687)
 * Fixed `com.clickhouse.kafka.connect.transforms.KeyToValue` transformation to handle different schemas. Before
-this fix, the value schema was cached and not updated, making the transformation incompatible with evolving
-schemas. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/718)
+  this fix, the value schema was cached and not updated, making the transformation incompatible with evolving
+  schemas. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/718)
 
 ## Dependencies
 * Updated clickhouse-java version from `0.9.4` to `0.9.5`
@@ -26,32 +75,32 @@ schemas. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/718)
 # 1.3.6, 2026-03-18
 
 ## New Features
-* Added internal record buffering support via `bufferCount` and `bufferFlushTime` configuration options. 
-When enabled, records from multiple `poll()` calls are accumulated and flushed as a single large batch, 
-reducing the number of insert operations to ClickHouse. Buffering is disabled by default (bufferCount=0) for full backward compatibility. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/658)
+* Added internal record buffering support via `bufferCount` and `bufferFlushTime` configuration options.
+  When enabled, records from multiple `poll()` calls are accumulated and flushed as a single large batch,
+  reducing the number of insert operations to ClickHouse. Buffering is disabled by default (bufferCount=0) for full backward compatibility. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/658)
 
 ## Improvements
-* Report inserted offsets in `preCommit()` method. Previously connector was returning same map that is passed to 
-the method. This may lead to missed offsets in a situation of partition rebalance. Feature is turned off 
-by default and `reportInsertedOffsets` property should be set to `true` to enable. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/669)
+* Report inserted offsets in `preCommit()` method. Previously connector was returning same map that is passed to
+  the method. This may lead to missed offsets in a situation of partition rebalance. Feature is turned off
+  by default and `reportInsertedOffsets` property should be set to `true` to enable. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/669)
 
-## Bug Fixes 
-* Fixed invalid concurrency handling in `ClickHouseWriter.updateMapping`. Previously flag was set not in atomic way. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/678) 
-* Fixes handling server error "Code 33" after schema is updated. Previously logic did not wait for target table to be updated. 
-After the fix logic will use describe of a single table when detects that `updateMapping` is running. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/680)
+## Bug Fixes
+* Fixed invalid concurrency handling in `ClickHouseWriter.updateMapping`. Previously flag was set not in atomic way. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/678)
+* Fixes handling server error "Code 33" after schema is updated. Previously logic did not wait for target table to be updated.
+  After the fix logic will use describe of a single table when detects that `updateMapping` is running. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/680)
 
 # 1.3.5, 2025-10-11
 
 ## Improvements
 * Added topic metrics to JMX and extended task metrics. Topic metrics have partition granularity - each partition has its own metrics (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/612)
-* Improved failure handling when messages should be sent to DLQ. Previous implementation was sending whole batch to DLQ 
-when one message failed. Now it sends only failed group of messages to DLQ. If failed because of schema validation then 
-logs error message contains field name and schema type. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/590)
+* Improved failure handling when messages should be sent to DLQ. Previous implementation was sending whole batch to DLQ
+  when one message failed. Now it sends only failed group of messages to DLQ. If failed because of schema validation then
+  logs error message contains field name and schema type. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/590)
 * Added support for writing boolean values to number columns. This is allowed because boolean fits into any number type. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/633)
 ## Bug Fixes
 * Fixed error message about unhandled complex type in array (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/608)
-* Fixed logging in schema validation logic. Message "Got non-root column, but its parent was not found to be updated" 
-was logged as error but should be a warning. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/645)
+* Fixed logging in schema validation logic. Message "Got non-root column, but its parent was not found to be updated"
+  was logged as error but should be a warning. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/645)
 * Fixed writing Avro timestamp value. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/599)
 * Fixed negative timestamp in logs. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/614)
 ## Dependencies
@@ -178,7 +227,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 # 1.0.17, 2024-04-10
 ## New Features
 * Added support for ClickHouse Enum type #370
-* Added extra break down of time measurement for insert operations 
+* Added extra break down of time measurement for insert operations
 
 # 1.0.16, 2024-04-02
 ## Improvements
@@ -236,7 +285,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 # 1.0.7, 2023-12-02
 ## Bug Fixes
 * Fix Handle ClickHouse JDBC Client Timeout Exception by @ygrzjh in #252
-* Make sure an HTTP request is successfully processed by ClickHouse 
+* Make sure an HTTP request is successfully processed by ClickHouse
 
 # 1.0.6, 2023-11-22
 ## New Features
@@ -277,7 +326,7 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 
 # 0.0.18, 2023-07-18
 ## New Features
-* Support inline schema with org.apache.kafka.connect.data.Timestamp type 
+* Support inline schema with org.apache.kafka.connect.data.Timestamp type
 * Support inline schema with org.apache.kafka.connect.data.Time type
 
 # 0.0.17, 2023-07-13
@@ -288,12 +337,12 @@ was logged as error but should be a warning. (https://github.com/ClickHouse/clic
 * Updated state handling so that warnings are posted, rather than errors + exceptions.
 * Adding 285 TOO_FEW_LIVE_REPLICAS to the retry list
 * Tweaking the code to switch to JSON handling when default values are present. This should be more reliable (if the
-data structure is simple enough) while supporting defaults. This is a temporary solution until we can implement a
-longer-term fix in core code.
+  data structure is simple enough) while supporting defaults. This is a temporary solution until we can implement a
+  longer-term fix in core code.
 
 # 0.0.15, 2023-06-02
 ## Bug Fixes
-* Added 202 (TOO_MANY_SIMULTANEOUS_QUERIES) Code to retry list [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/109) 
+* Added 202 (TOO_MANY_SIMULTANEOUS_QUERIES) Code to retry list [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/109)
 * Added 252 (TOO_MANY_PARTS) to the retry list
 
 # 0.0.14, 2023-05-26
@@ -311,8 +360,8 @@ longer-term fix in core code.
 # 0.0.11, 2023-04-20
 ## Improvements
 * Implemented retry mechanism to fix [Issue](https://github.com/ClickHouse/clickhouse-kafka-connect/issues/74)
-** Some ClickHouse errors (159 - TIMEOUT_EXCEEDED; 164 - READONLY; 203 - NO_FREE_CONNECTION; 209 - SOCKET_TIMEOUT; 210 - NETWORK_ERROR; 425 - SYSTEM_ERROR) as well as SocketTimeoutException and UnknownHostException will result in the connector retrying the operation (based on configuration).
-This should help mitigate temporary (but unavoidable) hiccups in network operations, though this list will likely be tweaked over time as well.
+  ** Some ClickHouse errors (159 - TIMEOUT_EXCEEDED; 164 - READONLY; 203 - NO_FREE_CONNECTION; 209 - SOCKET_TIMEOUT; 210 - NETWORK_ERROR; 425 - SYSTEM_ERROR) as well as SocketTimeoutException and UnknownHostException will result in the connector retrying the operation (based on configuration).
+  This should help mitigate temporary (but unavoidable) hiccups in network operations, though this list will likely be tweaked over time as well.
 
 # 0.0.10, 2023-04-10
 ## Bug Fixes

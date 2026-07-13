@@ -1,10 +1,9 @@
 package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
-import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
-import com.clickhouse.kafka.connect.sink.helper.SchemaTestData;
+import com.clickhouse.kafka.connect.sink.helper.*;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -21,7 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
-import org.testcontainers.containers.ToxiproxyContainer;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -79,14 +78,27 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void setup() throws IOException {
         super.setup();
 
-        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME).withNetwork(isCloud ? Network.newNetwork() : db.getNetwork()).withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
+        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME)
+                .withNetwork(isCluster || isCloud ? Network.newNetwork() : db.getNetwork())
+                .withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
+        if (isCluster) {
+            toxiproxy = toxiproxy.withExtraHost("host.docker.internal", "host-gateway");
+        }
         toxiproxy.start();
 
         log.info("Started proxy container: {}", toxiproxy.getControlPort());
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
 
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, isCloud ? String.format("%s:%d", csc.getHostname(), csc.getPort()) : String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort()));
+        String upstream;
+        if (isCloud) {
+            upstream = String.format("%s:%d", csc.getHostname(), csc.getPort());
+        } else if (isCluster) {
+            upstream = String.format("host.docker.internal:%d", cluster.getPort());
+        } else {
+            upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
+        }
+        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
         log.info("Proxy configured {}", proxy.getListen());
     }
 
@@ -135,7 +147,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "array_string_table_test";
+        String topic = createTopicName("array_string_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -154,7 +166,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "map_table_test";
+        String topic = createTopicName("map_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -173,11 +185,20 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void materializedViewsBug() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String clusterClause = ClickHouseTestHelpers.getClusterClauseOrEmpty();
 
-        String topic = "m_array_string_table_test";
+        String topic = createTopicName("m_array_string_table_test");
+        // Drop the MV and its target table before the source table to avoid orphaned dependencies
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("DROP VIEW IF EXISTS `%s_mv`%s", topic, clusterClause));
+        ClickHouseTestHelpers.dropTable(chc, topic + "_mate");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).execute(chc);
-        ClickHouseTestHelpers.runQuery(chc, String.format("CREATE MATERIALIZED VIEW %s ( `off16` Int16 ) Engine = MergeTree ORDER BY `off16` POPULATE AS SELECT off16 FROM m_array_string_table_test ", topic + "mate"));
+        new CreateTableStatement()
+                .tableName(topic + "_mate")
+                .column("off16", "Int16")
+                .engine("Null")
+                .execute(chc);
+        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("CREATE MATERIALIZED VIEW `%s_mv`%s TO `%s_mate` AS SELECT off16 FROM `%s`", topic, clusterClause, topic, topic));
         Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -194,7 +215,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "special-char-table-test";
+        String topic = createTopicName("special-char-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -214,7 +235,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "null-value-table-test";
+        String topic = createTopicName("null-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
@@ -237,7 +258,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "support-dates-table-test";
+        String topic = createTopicName("support-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("date_number", "Nullable(Date)").column("date32_number", "Nullable(Date32)")
@@ -262,7 +283,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "support-unsupported-dates-table-test";
+        String topic = createTopicName("support-unsupported-dates-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("date_number", "Date").column("date32_number", "Date32")
@@ -286,7 +307,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "schema_empty_records_table_test";
+        String topic = createTopicName("schema_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("p_int64", "Int64")
@@ -305,7 +326,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "schema_empty_records_lc_table_test";
+        String topic = createTopicName("schema_empty_records_lc_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("p_int64", "Int64")
@@ -325,7 +346,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "schema_empty_records_lc_table_test";
+        String topic = createTopicName("schema_empty_records_lc_uuid_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("uuid", "UUID")
@@ -344,7 +365,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "default-value-table-test";
+        String topic = createTopicName("default-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("default_value_data", "DateTime DEFAULT now()")
@@ -365,7 +386,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "decimal-value-table-test";
+        String topic = createTopicName("decimal-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16").column("decimal_14_2", "Decimal(14, 2)")
@@ -385,7 +406,7 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
     public void schemaWithBytesTest() {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = "bytes-value-table-test";
+        String topic = createTopicName("bytes-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("string", "String")
@@ -407,13 +428,13 @@ public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
         Map<String, String> props = getTestProperties();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = "tuple-like-influx-value-table-test";
+        String topic = createTopicName("tuple-like-influx-value-table-test");
         ClickHouseTestHelpers.dropTable(chc, topic);
         new CreateTableStatement()
                 .column("off16", "Int16")
                 .column("payload", "Tuple(fields Map(String, Variant(Float64, Int64, String)), tags Map(String, String))")
                 .engine("MergeTree").orderByColumn("off16")
-                .settings(Map.of("allow_experimental_variant_type", 1))
+                .settings(Map.of(ClientConfigProperties.serverSetting("allow_experimental_variant_type"), 1))
                 .tableName(topic).execute(chc);
 
         Collection<SinkRecord> sr = SchemaTestData.createTupleLikeInfluxValueData(topic, 1);

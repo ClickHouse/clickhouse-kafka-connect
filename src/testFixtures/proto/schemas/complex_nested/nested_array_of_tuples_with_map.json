@@ -1,0 +1,14 @@
+{
+  "description": "Nested: array of tuples with a map inside",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "items": "Array(Tuple(item_id Int32, attributes Map(String, String)))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "items": [{"item_id": 100, "attributes": {"k1": "v1", "k2": "v2"}}, {"item_id": 200, "attributes": {}}]},
+    {"id": 2, "items": []},
+    {"id": 3, "items": [{"item_id": 300, "attributes": {"k3": "v3"}}]}
+  ],
+  "expected_row_count": 3
+}

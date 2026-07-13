@@ -2,10 +2,12 @@ package com.clickhouse.kafka.connect.sink.db.helper;
 
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 @ExtendWith(FromVersionConditionExtension.class)
@@ -46,7 +49,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
         try {
             List<Table> table = chc.showTables(chc.getDatabase());
-            List<String> tableNames = table.stream().map(item -> item.getCleanName()).collect(Collectors.toList());
+            List<String> tableNames = table.stream().map(Table::getCleanName).collect(Collectors.toList());
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);
@@ -93,13 +96,24 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String nestedTopic = createTopicName("nested_unflattened_table_test");
         String normalTopic = createTopicName("normal_unflattened_table_test");
         String testUsername = createTestUsername("unflatten");
+
+        String randomNums = new Random().ints(5, 0, 9).mapToObj(String::valueOf).collect(Collectors.joining(""));
+        String randomSpecialChar = List.of("!", "?", "^", "&", "*").get(new Random().nextInt(5));
+        String testPassword = randomSpecialChar + RandomStringUtils.secure().nextAlphanumeric(15) + randomNums;
+        String clusterClause = ClickHouseTestHelpers.getClusterClauseOrEmpty();
         ClickHouseHelperClient adminChc = chc;
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s` IDENTIFIED BY '123FOURfive^&*91011' SETTINGS flatten_nested=0", testUsername));
-        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
+        ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("CREATE USER IF NOT EXISTS `%s`%s IDENTIFIED BY '%s' SETTINGS flatten_nested=0", testUsername, clusterClause, testPassword));
+        if (isCluster) {
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s CREATE ON *.* TO `%s`", clusterClause, testUsername));
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s DROP ON *.* TO `%s`", clusterClause, testUsername));
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT%s SHOW ON *.* TO `%s`", clusterClause, testUsername));
+        } else {
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("GRANT CURRENT GRANTS ON *.* TO `%s`", testUsername));
+        }
 
         Map<String, String> props = getBaseProps();
         props.put("username", testUsername);
-        props.put("password", "123FOURfive^&*91011");
+        props.put("password", testPassword);
         chc = ClickHouseTestHelpers.createClient(props);
 
         new CreateTableStatement()
@@ -118,7 +132,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         } finally {
             ClickHouseTestHelpers.dropTable(adminChc, nestedTopic);
             ClickHouseTestHelpers.dropTable(adminChc, normalTopic);
-            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`", testUsername));
+            ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`%s", testUsername, clusterClause));
         }
     }
 

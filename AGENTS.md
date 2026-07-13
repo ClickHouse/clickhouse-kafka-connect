@@ -174,6 +174,10 @@ The connector handles four Kafka record formats, each with its own converter:
 **Environment variables**:
 - CLICKHOUSE_VERSION: one of `yq '.jobs.build.strategy.matrix.clickhouse' .github/workflows/tests.yaml` (default: `latest`)
 - CLIENT_VERSION: one of [`V1`, `V2`] (default: `V2`)
+- CLICKHOUSE_CLUSTER_NAME: one of [`three_shards_one_replica_each`, `one_shard_three_replicas`] -> runs tests against one of two possible ClickHouse clusters in docker
+  - Note: see `ClickHouseCluster.java` for a description of these clusters
+
+**Note: both `CLICKHOUSE_CLUSTER_NAME=...` and `CLICKHOUSE_VERSION=cloud` cannot be set at the same time**
 
 ### Writing Tests
 
