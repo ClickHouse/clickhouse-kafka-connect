@@ -612,6 +612,183 @@ Stage B (gated on the coordinator's GO):
 
 ---
 
+# Tab 5 — CROSS-CONNECTOR (issue #36)
+
+Additive extension with the Tab 5 "CROSS-CONNECTOR" build (dashboard **432**, prod
+DWH Superset). Tab 5 is the **payoff tab**: Spark vs Kafka Connect on the *shared*
+perf schema — same metric definitions, same integrity rules, same server-cost
+accounting — the argument for having kept one spec, dataset, and schema across both
+benchmarks (plan §8). Strictly **additive** — no existing chart, dataset, or the
+earlier tabs are modified.
+
+Tab 5 is **descriptive, not a gate**: it carries NO verdict/band/alert column. Each
+connector's own Tab 1 (`v_kc_pair_ratios` here; the Spark dashboard's `v_pair_ratios`
+on 424) remains the single source of verdict + alert truth, so this tab cannot drift
+from the alerting logic. Tab 5 lives **only** on the Kafka dashboard (contract §6);
+the Spark dashboard does not duplicate it.
+
+## Two structural caveats (both surfaced permanently on the tab)
+
+**1. Same spec, NOT same instance (environment_class differs).** The connectors run
+against dedicated targets: **Spark = `production`**, **Kafka Connect = `staging`**
+(contract §6, §1.4). Each connector's own H/P *ratio* gate is unaffected (both arms
+share one target), but the **absolute** cross-connector numbers on this tab straddle
+a production/staging boundary. Every chart surfaces `environment_class` beside
+`clickhouse_version`; a permanent markdown **banner** (`kc_t5_banner_caveat`) states
+the caveat. Banner text is in `tab5_charts.json` (the `markdown` field) — reproduced
+in the acceptance checklist below.
+
+**2. Matched-dataset only — HONESTLY EMPTY today (ACCEPTED).** A cross-connector
+comparison is valid **only** on a **matched dataset**, where matched = equal
+`(dataset, rows_expected)` (contract §5/§6, Amendment 2026-07-09d). `dataset` alone
+cannot discriminate volume (`'hits'`@10M vs `'hits'`@100M both read `'hits'`), so the
+comparison bucket is the pair `(dataset, rows_expected)`; a bucket is **matched iff it
+holds ≥2 distinct connectors**. Today **Kafka runs `hits`@10,000,000 and Spark runs
+`hits`@~99,997,497**, so **no bucket is matched** and the comparison charts +
+efficiency table render **empty** — this is **correct and ACCEPTED** (structure first).
+A Kafka **100M graduation** is a deliberate future instrument event; when it lands the
+matched side populates **automatically** (the rule self-maintains, no dashboard edit —
+`rows_expected` un-matches a volume change on its own). Meanwhile the empty-state note
++ the **UNMATCHED CONTEXT** table keep the tab honest and useful.
+
+## Matched-join SQL shape (the mechanism)
+
+`v_xconn` carries every in-scope run's `dataset` + its `rows_expected` metric, keys a
+comparison bucket, and counts distinct connectors per bucket with a window:
+
+```sql
+concat(dataset, '@', ifNull(toString(toUInt64(rows_expected)), 'unknown')) AS comp_bucket,
+uniqExact(connector) OVER (PARTITION BY dataset, rows_expected)             AS bucket_connectors,
+(isNotNull(rows_expected)
+ AND uniqExact(connector) OVER (PARTITION BY dataset, rows_expected) >= 2)   AS matched_dataset
+```
+
+Rows missing `rows_expected` are `matched_dataset = 0` (safe-default UNMATCHED, §6).
+The comparison charts + `v_xconn_efficiency` default-filter `matched_dataset = 1`; the
+context table pins `matched_dataset = 0`. A mismatched row **never** reaches a shared
+comparison series (§6) — it appears only in the clearly-labelled context table.
+
+## Grounded connector scope (discovered, not guessed)
+
+- **Spark = connector VALUE `'spark'`** — grounded in the deployed Spark dashboard SQL
+  (`spark-clickhouse-connector/benchmarks/dashboard/v2/v_runs_enriched.sql:293`
+  `WHERE r.connector = 'spark'`; write-side default
+  `benchmarks/scripts/insert_run_record.py:70` and schema `DEFAULT 'spark'` in
+  `benchmarks/sql/perf/02_create_runs.sql:19`). NOT `'clickhouse-spark'` (that string
+  is only a Grafana title / superset tag).
+- **Kafka = connector VALUE `'kafka-connect'`** (this repo's own scope value).
+- Fixtures excluded for **both spellings**: Kafka `'__verdict_fixture__'` and Spark
+  `'verdict_fixture'` (grounded: spark `v_verdict_fixture_check.sql:60`).
+- **§2.2 aliasing** (view-only, never a stored rename): Spark `throughput_rows_per_sec`
+  + Kafka `drain_rows_per_sec` (and the Tier-0 `null_*` analogues) fold to one
+  `rows_per_sec` series. Server-cost headline is the PINNED
+  `ch_insert_cpu_seconds_per_Mrows` (NOT the plan sketch's `server_cpu_per_Mrows`).
+
+## Deployed flagged predicate (deployment deviation — REPLICATED)
+
+`v_xconn` tests the validity flag as `runtime['flagged'] IN ('1','true')` to match the
+deployed Tab-1/Tab-2 datasets (the harness has emitted both spellings). `flagged` is
+carried as a **presentation** column (an integrity mark): a flagged run is
+**shown-and-marked**, not dropped — Tab 5 is descriptive history, verdict/exclusion
+truth stays on each connector's Tab 1. Failed-outcome runs ARE excluded by value.
+
+## Datasets (Tab 5 — additive; `DWH` connection `dc93cd97`, no DB connection created)
+
+| Dataset | Grain / purpose |
+|---|---|
+| `v_xconn` | tall per-run cross-connector view (per run × canonical metric): `value`, `metric_name`, `connector`/`connector_label`, `arm`/`tier`, `dataset`, `rows_expected`, `comp_bucket`, `bucket_connectors`, `matched_dataset`, `environment_class`, `clickhouse_version`, `target_region`, `compute_region`, `flagged`, `flag_reason`, `pair_ts`, `pair_seq`. BOTH connectors, arm=head, tier=1; §2.2 headlines aliased to `rows_per_sec`. This is the ONLY connector-unscoped view in the package. |
+| `v_xconn_efficiency` | latest-30d MEDIAN per `(metric, connector)` + ratio, built ON `v_xconn`, matched-only: `metric_name`, `unit`, `spark_median`, `kafka_median`, `ratio_spark_over_kafka`, `spark`/`kafka_environment_class`, `spark`/`kafka_clickhouse_version`, `spark_n`, `kafka_n`. Feeds the efficiency table; EMPTY today (no matched bucket). |
+
+## Layout grid (Tab 5 — 12-wide, `tab5_charts.json`)
+
+```
+Row 0 (width 12):
+  kc_t5_banner_caveat            <- markdown (PERMANENT caveat: env_class + matched-only/empty)
+Row 1 (2 x width 6):
+  kc_t5_rows_per_sec_trend       <- v_xconn (rows_per_sec, 2 series by connector, matched)
+  kc_t5_server_cpu_trend         <- v_xconn (ch_insert_cpu_seconds_per_Mrows, 2 series, matched)
+Row 2 (2 x width 6):
+  kc_t5_parts_per_insert_trend   <- v_xconn (parts_per_insert, 2 series, matched)
+  kc_t5_merge_amplification_trend<- v_xconn (merge_amplification watch-only, 2 series, matched)
+Row 3 (width 12):
+  kc_t5_efficiency_table         <- v_xconn_efficiency (metric|Spark|Kafka|ratio, 30d medians)
+Row 4 (width 12):
+  kc_t5_unmatched_context        <- v_xconn (matched=0: each connector's numbers, NON-COMPARABLE)
+```
+
+7 nodes (1 markdown banner + 4 two-series trends + efficiency table + unmatched
+context table). The 4 trend charts key their two series by `connector_label` ('Spark',
+'Kafka Connect'). All comparison surfaces default-filter `matched_dataset = 1` and are
+honestly empty today; the banner + context table document why.
+
+## Tabs conversion (dashboard 432 — the coordinator executes; ADDITIVE-ONLY)
+
+Assumes 432 is already TABS after Tabs 4/2/3. To add Tab 5:
+
+1. **Create the 2 NEW datasets first** (`v_xconn`, then `v_xconn_efficiency` — the
+   efficiency view reads `v_xconn`, so order matters) on `DWH` (`dc93cd97`). Do NOT
+   create a DB connection. No existing dataset is reused or edited.
+2. **Add a `TAB` node** titled "Tab 5 — CROSS-CONNECTOR" and lay out the 7 nodes per
+   the grid. De-dupe chart ids before appending (build_superset.py bug #2 — a chart id
+   must appear once in `position_json`).
+3. **Set the comparison charts' default** to `matched_dataset = 1` (in each chart's
+   `filters`); the context table pins `matched_dataset = 0`.
+
+**Additive-only invariants (MUST hold):** no existing dataset SQL is edited; no
+existing chart's `slice_name`/query/position changes; only NEW nodes are appended.
+Avoid build_superset.py bug #1 (never bind a metric alias equal to its column) in the
+new chart params.
+
+## Acceptance checklist (Tab 5 — Stage B)
+
+Prep (done, this package):
+
+- [x] `v_xconn.sql` + `v_xconn_efficiency.sql` created; each CREATEs + SELECTs against
+      clickhouse-local (perf.* swap) with 0 rows and no error when empty
+      (`verify_tab5.sh`). Connector scope grounded (`'spark'` / `'kafka-connect'`).
+- [x] `verify_tab5.sh` render-shape + rule acceptance green (all assertions): §2.2
+      aliasing folds the four headline spellings to one `rows_per_sec` series (no
+      stored name leaks); §7 `ch_parts_per_insert`→`parts_per_insert` fold; the pinned
+      `ch_insert_cpu_seconds_per_Mrows` present and `server_cpu_per_Mrows` never
+      appears; **matched_dataset=1 only when two connectors share equal
+      `(dataset, rows_expected)`**; a genuinely matched bucket DOES produce a
+      comparable ratio (proves the mechanism, not just the empty state); mismatched
+      volumes (10M vs 100M) excluded from the efficiency medians by default;
+      `environment_class` + `clickhouse_version` present (both-sided on the efficiency
+      table); fixtures (both spellings)/failed/off-scope excluded, flagged carried +
+      marked; and the **honest-empty** reproduction (10M vs 100M ⇒ zero matched rows,
+      empty efficiency table, but the unmatched context still shows both connectors).
+- [x] `tab5_charts.json` parses; all charts carry a `description` (#42 standard) with
+      direction-of-goodness; the permanent caveat banner is present.
+- [x] Existing `verify_tab23.sh` (17/17), `verify_tab4.sh` (17/17), and
+      `verify_verdict_dwh.sh` (31/31) still green (contract-sync untouched).
+
+Stage B (gated on the coordinator's GO):
+
+- [ ] Create the 2 new datasets on `DWH` (`dc93cd97`) in order (`v_xconn` then
+      `v_xconn_efficiency`); do NOT create a DB connection.
+- [ ] Add the Tab 5 tab; confirm every existing tab still renders unchanged.
+- [ ] Build the 7 nodes (de-dupe chart ids — bug #2), each with its `description`.
+- [ ] The **caveat banner** renders as markdown with BOTH caveats (env_class prod/
+      staging + matched-only/empty-today).
+- [ ] **ACCEPTED HONESTLY EMPTY:** the 4 comparison trends + the efficiency table
+      render **empty** today (no matched `(dataset, rows_expected)` bucket) WITHOUT
+      error — a graceful empty state, not a broken chart; the empty-state note is
+      visible.
+- [ ] The **UNMATCHED CONTEXT** table renders NON-EMPTY (each connector's headline
+      numbers on its own volume), clearly labelled non-comparable, carrying
+      `rows_expected` + `environment_class` + `clickhouse_version`.
+- [ ] Existing tabs and dashboard 424 (Spark) untouched; screenshot evidence.
+
+> **Coordinator note (concurrence-sensitive):** the matched-dataset mechanism is the
+> **kafka-manager recommendation** and is **pending spark-manager concurrence**. It
+> adds no new keys and mutates no rows (it joins the existing `dataset` runtime key
+> with the existing `rows_expected` metric), so it is safe to ship the structure now;
+> if spark-manager prefers a different matched-key definition, only `v_xconn`'s
+> `matched_dataset` expression changes (the charts/efficiency view are unaffected).
+
+---
+
 ## Files
 
 | File | Purpose |
@@ -624,12 +801,16 @@ Stage B (gated on the coordinator's GO):
 | `v_kc_inserts_drill.sql` | **Tab 4/2** raw per-insert grain (latency sequence + batch-size dist) |
 | `v_kc_metric_trends.sql` | **Tab 2/3** tall per-run metric series (run × metric, arm/tier scoped) |
 | `v_kc_env_events.sql` | **Tab 3** kafka-local environment annotations (§4-scoped, derived inline) |
+| `v_xconn.sql` | **Tab 5** cross-connector tall view (BOTH connectors, arm=head/tier=1, §2.2 aliased, matched-dataset rule) |
+| `v_xconn_efficiency.sql` | **Tab 5** 30d-median ratio table built ON `v_xconn` (matched-only; metric\|Spark\|Kafka\|ratio) |
 | `tab1_charts.json` | 8 Tab-1 chart specs, each with its description |
 | `tab4_charts.json` | **12 Tab-4** chart specs, each with its description |
 | `tab2_charts.json` | **16 Tab-2** charts + 2 markdown placeholders, each with its description |
 | `tab3_charts.json` | **6 Tab-3** chart specs, each with its description |
+| `tab5_charts.json` | **7 Tab-5** nodes (caveat banner + 4 two-series trends + efficiency table + unmatched context), each with its description |
 | `visibility_precheck.sql` | Stage-B pre-flight queries (run first; abort on failure) |
 | `verify_verdict_dwh.sh` | fixture acceptance for the adapted verdict view (31/31) |
 | `verify_tab4.sh` | **Tab 4** render-shape acceptance (datasets parse + bucketing math) |
 | `verify_tab23.sh` | **Tab 2/3** render-shape acceptance (trends + env-events shape) |
+| `verify_tab5.sh` | **Tab 5** cross-connector render-shape + matched-rule acceptance (aliasing/fold/matched/empty-state) |
 | `DASHBOARD.md` | this file |
