@@ -88,9 +88,35 @@ that sequence:
 
 | # | Crash window | On recovery, stored state is… | Reconciliation branch |
 |---|---|---|---|
-| **W1** | after `BEFORE_PROCESSING` set, **before** insert starts | `BEFORE_PROCESSING` for [min,max]; **no rows in CH yet** | Re-delivered batch hits `case BEFORE_PROCESSING` → `SAME`/`NEW` → `dropRecords(minOffset)` then `doInsert` the trimmed batch (Processing.java:173-189). Rows land once. |
-| **W2** | **mid-insert** (insert in flight when the pod/network dies) | `BEFORE_PROCESSING` for [min,max]; CH may hold a **partial or whole** copy of the block | Same `BEFORE_PROCESSING` branch re-inserts the batch; **block dedup** (§2.3) absorbs whatever already landed. This is the window that most needs the dedup token. |
-| **W3** | after insert succeeds, **before** `AFTER_PROCESSING` set | `BEFORE_PROCESSING` for [min,max]; CH holds the **full** block | Re-insert of an identical batch; block dedup drops it entirely (0 net rows). State advances to `AFTER_PROCESSING`. |
+| **W1** | after `BEFORE_PROCESSING` set, **before** insert starts | `BEFORE_PROCESSING` for [min,max]; **no rows in CH yet** | Re-delivered batch hits `case BEFORE_PROCESSING`; the branch taken depends on the re-polled boundaries (see below — `OVER_LAPPING` is the common shape). Rows land once. |
+| **W2** | **mid-insert** (insert in flight when the pod/network dies) | `BEFORE_PROCESSING` for [min,max]; CH may hold a **partial or whole** copy of the block | `BEFORE_PROCESSING` branch re-inserts; **block dedup** (§2.3) absorbs whatever already landed *when the re-inserted chunk reproduces the stored boundaries*. This is the window that most needs the dedup token. |
+| **W3** | after insert succeeds, **before** `AFTER_PROCESSING` set | `BEFORE_PROCESSING` for [min,max]; CH holds the **full** block | Re-insert: `SAME` boundaries → block dedup drops the whole block (0 net rows); `OVER_LAPPING` → left chunk re-inserted under the stored boundaries (dedup-absorbed), right chunk inserted fresh. State advances to `AFTER_PROCESSING`. |
+
+**Which `BEFORE_PROCESSING` branch fires on recovery — `OVER_LAPPING` is the
+common one, not `SAME`.** `RangeContainer.getOverLappingState`
+(RangeContainer.java:57-68) returns `SAME` only when the re-polled batch's max
+offset **exactly equals** the stored max (`actualMax == storedMax && actualMin
+<= storedMin`). A post-crash re-poll starts from the last committed offset with
+whatever `max.poll.records` yields, so its max typically **exceeds** the stored
+max → `OVER_LAPPING` (RangeContainer.java:67): the batch is split at the stored
+max (Processing.java:195-216); the left chunk is re-inserted only if its
+boundaries reproduce the stored range exactly (then dedup-absorbed), **otherwise
+it goes to the DLQ** (Processing.java:205-210 — a path the harness must watch:
+DLQ'd records land nowhere, and the oracle sees that as loss); the right chunk
+is inserted fresh under a new state record. Two further recovery shapes are
+**transient, self-healing task errors** — not failures:
+
+- **`CONTAINS` throws** (Processing.java:191-194): a re-polled batch **smaller**
+  than the stored range raises a RuntimeException → task error → the framework
+  retries → a later, larger poll exits the CONTAINS shape and the pipeline
+  self-heals.
+- The `ERROR` overlap default (Processing.java:217-219) likewise throws and
+  retries.
+
+The **recovery watcher** (§8.3) must therefore tolerate transient task
+FAILED→RUNNING cycles during legitimate W1–W3 recovery (recorded in
+`task_restart_count`, §6, not treated as cell failure), while still alerting on
+the OVER_LAPPING left-boundary-mismatch DLQ path.
 
 A fourth, coarser window — crash **after** `AFTER_PROCESSING` but before the
 Kafka offset commit — lands the re-delivery in `case AFTER_PROCESSING`
@@ -116,21 +142,42 @@ return String.format("%s-%s-%s-%s", topic, partition, minOffset, maxOffset);
 ```
 
 It is applied per insert as `insert_deduplication_token`
-(`ClickHouseWriter.java:1003-1005, 1204-1206, 1363-1365, 1473-1474`). Because
+(`ClickHouseWriter.java:1003-1005, 1204-1206, 1363-1365, 1473-1475`). Because
 the token is a **deterministic function of (topic, partition, offset range)**, a
-re-delivered batch with the same boundaries reproduces the same token, and
-ClickHouse drops the duplicate block. This is why at-least-once + dedup is
-duplicate-free under crash-and-retry.
+re-delivered batch with the **same boundaries** reproduces the same token, and
+ClickHouse drops the duplicate block.
+
+**Scope of that protection — boundary drift.** Token determinism only covers
+re-deliveries that **reproduce the original batch boundaries** (framework
+retries of the same put, and exactly-once recovery re-inserts bounded by the
+stored range). In plain at-least-once, a **post-restart re-delivery is not
+guaranteed to reproduce boundaries**: the consumer re-polls from the last
+committed offset and poll composition can drift, so a batch whose insert
+*completed* but whose offsets were never committed can be re-delivered under
+**different boundaries → a new token → the rows double-land**. This is inherent
+to at-least-once (there is no state store to trim against). The at-least-once
+crash cells (F1/F8, §3.4) therefore carry an explicit
+**boundary-drift caveat**: they are *expected*-PASS, and a duplicate observed
+there is **signal about the delivery mode, not a harness error** — recorded as
+a MISMATCH per the oracle, with `fault_window`/`redelivered_offsets` attached
+for diagnosis.
 
 **Critical edge the matrix must cover.** When `ignorePartitionsWhenBatching=true`
 (at-least-once only), records are batched across partitions and the
 `QueryIdentifier` is constructed **without** partition/offsets → `partition==-1`
 → `getDeduplicationToken()` returns **`null`** (QueryIdentifier.java:57-58), so
 **no dedup token is set**. In that config the only duplicate defence is offset
-commit timing. This flag is **unavailable under exactlyOnce**
-(`ClickHouseSinkTask.java:150`; also gated with `bufferCount`, `:55-58`). The
-matrix pins `ignorePartitionsWhenBatching=false` for the primary cells and adds
-one **watch cell** with it true (at-least-once only) to characterise the
+commit timing. Under `exactlyOnce=true` this flag is **silently ignored, not
+rejected**: every guard reads `!isExactlyOnce() && isIgnorePartitionsWhenBatching()`
+(ClickHouseSinkTask.java:150, Processing.java:143, ProxySinkTask.java:87) and no
+config validation flags the combination — unlike `bufferCount > 0` +
+`exactlyOnce`, which **throws** a ConnectException at task start
+(ClickHouseSinkTask.java:54-62). The harness must therefore **assert the config
+combination itself** (fail fast if a cell config pairs
+`ignorePartitionsWhenBatching=true` with `exactlyOnce=true` — the run would
+silently test something other than what its runtime keys claim). The matrix pins
+`ignorePartitionsWhenBatching=false` for the primary cells and adds one
+**watch cell** with it true (at-least-once only) to characterise the
 weaker-guarantee path — flagged as expected-may-duplicate, not a failure.
 
 ### 2.4 KeeperMap state table lifecycle
@@ -188,11 +235,12 @@ target-vs-source formula.
   `exactly_once='1'` (exactly-once + KeeperMap). Encoded **as string** `'0'`/`'1'`
   per the Map-value convention (contract §1, all runtime Map values are strings).
 - **Kill timing** = `fault_at_pct ∈ {10, 50, 90}` (fraction of `rows_expected`
-  drained when the fault fires), plus, for the crash-class primitives, the
-  **KeeperMap crash windows W1/W2/W3** (§2.2) as a finer timing axis — the
-  harness picks the window by racing the fault against the connector log line
-  that marks `BEFORE_PROCESSING` / insert start / `AFTER_PROCESSING` for a
-  target partition (best-effort; window landed is recorded, not assumed).
+  drained when the fault fires). For the crash-class primitives the
+  **KeeperMap crash windows W1/W2/W3** (§2.2) are a finer *sub-selection within
+  a pct point, not a multiplier on run count*: at the chosen pct the harness
+  races the fault against the connector's state-transition log markers to land
+  inside a specific window (best-effort; the window actually landed is
+  recorded in `fault_window`, not assumed).
 - **Cell** = expected semantics + what the oracle asserts (§3.4).
 
 ### 3.2 Fault primitives
@@ -202,8 +250,8 @@ target-vs-source formula.
 | F1 | `connect_pod_kill` | `kubectl delete pod bench-connect-connect-0` mid-drain; Strimzi recreates it, tasks rebalance | ECOSYSTEM §9 kill table row 1 |
 | F2 | `task_restart` | Connect REST `POST /connectors/bench-clickhouse-sink/tasks/<n>/restart` via the poller host | ECOSYSTEM §9 row 2 |
 | F3 | `broker_pod_kill` | `kubectl delete pod bench-combined-0` (RF=1: topic briefly unavailable; PVC persists, clients reconnect) | ECOSYSTEM §9 row 3 |
-| F4 | `netpol_connect_ch` | NetworkPolicy denying Connect→CH egress for `recovery_seconds` T, then removed | ECOSYSTEM §9 row 4 |
-| F5 | `netpol_connect_broker` | NetworkPolicy denying Connect→broker for T | ECOSYSTEM §9 row 4 |
+| F4 | `netpol_connect_ch` | **default-deny egress** NetworkPolicy on the Connect pod with explicit **broker + DNS carve-outs** (allow `bench-kafka-bootstrap` + kube-dns; everything else — including the CH endpoint — denied) for `recovery_seconds` T, then removed. Denying the Cloud endpoint by `ipBlock` is deliberately avoided: the Cloud LB IPs are dynamic and egress leaves via public subnets, so an ipBlock deny is fragile. **Enforcement prerequisite below.** | ECOSYSTEM §9 row 4 (corrected) |
+| F5 | `netpol_connect_broker` | NetworkPolicy on the Connect pod denying egress to the broker (allow DNS + CH; deny `bench-kafka-bootstrap`) for T. **Enforcement prerequisite below.** | ECOSYSTEM §9 row 4 (corrected) |
 | F6 | `ch_user_revoke` | `ALTER USER`/revoke or drop grants on the CH target mid-run, restored after T | ECOSYSTEM §9 CH option (a) |
 | F7 | `ch_stop_merges` | `SYSTEM STOP MERGES` (+ optional quota) to induce back-pressure, `START MERGES` after T | ECOSYSTEM §9 option (b) |
 | F8 | `ch_cloud_restart` | `ClickHouseCloudAPI.restartService()` on the staging service (§2.5) — the strongest CH-side primitive available on Cloud without self-hosting | ExactlyOnceTest.java:221 |
@@ -213,6 +261,23 @@ Cloud-managed CH nodes **cannot** be killed directly (ECOSYSTEM §9); F8 (whole-
 service restart) and F9 (self-hosted node kill) are the two ways to get
 CH-side hard-failure semantics. F9 is the only way to get true single-node loss
 while other nodes serve.
+
+**⚠ F4/F5 enforcement prerequisite (BLOCKING for those cells).** The
+`kafka-bench` cluster is provisioned with **vanilla EKS + VPC CNI**
+(`infra/cluster.yaml` — its only addon is `aws-ebs-csi-driver`; no
+`vpc-cni` `configurationValues` with `enableNetworkPolicy: "true"`, no network
+policy node agent, no Calico/Cilium). On such a cluster a NetworkPolicy object
+is **accepted by the API server and silently unenforced**: the F4/F5 cell would
+drain completely unfaulted and record a **false-green PASS**. Before F4/F5 can
+run, the cluster needs a NetworkPolicy enforcer — preferred: the managed
+`vpc-cni` addon with `configurationValues: '{"enableNetworkPolicy": "true"}'`
+(which deploys the AWS network policy node agent); alternative: Cilium. This is
+an **infra change to `cluster.yaml`/provisioning and requires approval** —
+raised as open question §11.7. Until it lands, F4/F5 cells are **not runnable**
+and must be excluded from any sweep (never recorded as PASS). The
+fault-took-effect rule (§5) is the systemic backstop: even with an enforcer
+installed, an F4/F5 cell that shows **no observed fault effect** inside the
+injection window is `integrity_unverified`, never PASS.
 
 ### 3.3 Deliberate dup-bearing dataset (REQUIRED matrix extension)
 
@@ -231,35 +296,44 @@ includes a source variant with **known duplicate WatchIDs**:
   `duplicate_rows==0`, `unique_delivered==U`). A crash run on it must still PASS.
   A negative-control run (deliberately double-delivered without dedup) must
   produce `duplicate_rows>0` and FAIL — this is the fixture that proves the
-  oracle can fail (§8, fail-then-pass discipline).
+  oracle can fail (§10, fail-then-pass discipline).
 
 ### 3.4 Cells — expected semantics per (primitive × mode)
 
 Notation: **PASS** = oracle asserts zero loss + zero dup and expects it;
 **PASS(dedup-absorbed)** = duplicates are produced on the wire but ClickHouse
-drops them, net zero; **WATCH** = characterisation cell, may show residual
-duplicates, flagged not failed.
+drops them, net zero; **PASS(drift-caveat)** = expected-PASS **with the
+boundary-drift caveat** (§2.3): a post-restart at-least-once re-delivery under
+drifted batch boundaries can double-land a completed-but-uncommitted insert
+under a new token — a duplicate in these cells is delivery-mode signal, not a
+harness error (still recorded as MISMATCH per the oracle); **WATCH** =
+characterisation cell, may show residual duplicates, flagged not failed. Every
+cell additionally carries the **fault-took-effect assertion** (§5).
 
 | Primitive | at-least-once (`'0'`) | exactly-once (`'1'`) |
 |---|---|---|
-| F1 connect_pod_kill | PASS(dedup-absorbed): rebalance re-delivers from last commit; token drops dup blocks | PASS: KeeperMap `BEFORE_PROCESSING` bounds replay to recorded range; block dedup backs it |
-| F2 task_restart | PASS(dedup-absorbed) | PASS |
+| F1 connect_pod_kill | PASS(drift-caveat): rebalance re-delivers from last commit; token drops dup blocks when boundaries reproduce | PASS: KeeperMap `BEFORE_PROCESSING` bounds replay to recorded range; block dedup backs it |
+| F2 task_restart | PASS(dedup-absorbed): framework retry of the same put reproduces boundaries | PASS |
 | F3 broker_pod_kill | PASS: no data acked-then-lost (RF=1 PVC persists); on reconnect, re-consume + dedup | PASS: same, state reconciles |
-| F4 netpol_connect_ch | PASS(dedup-absorbed): inserts fail during partition → framework retries same batch → same token | PASS: retries reuse token; W2 is the interesting window |
-| F5 netpol_connect_broker | PASS: consumer stalls, resumes; no insert attempted during partition | PASS |
+| F4 netpol_connect_ch (default-deny egress + carve-outs; prerequisite §3.2) | PASS(dedup-absorbed): inserts fail during partition → framework retries same batch → same token | PASS: retries reuse token; W2 is the interesting window |
+| F5 netpol_connect_broker (prerequisite §3.2) | PASS: consumer stalls, resumes; no insert attempted during partition | PASS |
 | F6 ch_user_revoke | PASS-after-restore: inserts error while revoked (run marked `outcome='failed'` if ingest never completes); on restore, retries + dedup → integrity holds. Tests the CHECK_ERROR path (§5). | PASS-after-restore |
 | F7 ch_stop_merges | PASS: back-pressure only; correctness unaffected (merges resume) | PASS |
-| F8 ch_cloud_restart | PASS(dedup-absorbed): mirrors `checkSpottyNetwork` | PASS: the canonical exactly-once + Cloud-restart cell |
+| F8 ch_cloud_restart | PASS(drift-caveat): mirrors `checkSpottyNetwork`, but the restart also bounces the connector's view — post-restart re-polls may drift boundaries | PASS: the canonical exactly-once + Cloud-restart cell |
 | F9 ch_node_kill (self-hosted) | PASS(dedup-absorbed) | PASS |
 | dup-dataset (§3.3), any fault | PASS: `rows_delivered==N`, `unique==U`, `dup_rows==0` | PASS |
 | `ignorePartitionsWhenBatching=true` watch (§2.3) | **WATCH**: token null → no block dedup; duplicates possible under W2/W3, flagged | N/A (flag unavailable under exactlyOnce) |
 
 ### 3.5 Run count
 
-Full matrix = 9 primitives × 2 modes × 3 `fault_at_pct` = 54 cells, minus F6/F7
-timing-invariant cells that need only 1 pct point (≈ −8), plus the dup-dataset
-extension (F1/F8 × 2 modes = 4) and the 1 WATCH cell and 1 negative control ≈
-**~50 chaos runs** for the full sweep. The smoke subset (§7) is 4 runs.
+Full matrix arithmetic: 9 primitives × 2 modes × 3 `fault_at_pct` = 54 cells;
+F6/F7 are timing-invariant and need only 1 pct point each (2 primitives × 2
+modes × 2 dropped pct points = **−8**); plus the dup-dataset extension (F1/F8 ×
+2 modes = **+4**), the 1 WATCH cell (**+1**) and 1 negative control (**+1**):
+54 − 8 + 4 + 1 + 1 = **52 chaos runs** for the full sweep (the W1/W2/W3 axis
+selects within a pct point and does not multiply this count, §3.1; F4/F5 cells
+— 12 of the 52 — are gated on the NetworkPolicy enforcement prerequisite,
+§3.2). The smoke subset (§7) is 4 runs.
 
 ---
 
@@ -328,6 +402,17 @@ the dup-bearing dataset §3.3 introduces. The in-repo `checkSpottyNetwork` oracl
 - **Uniqueness** = `unique_delivered != SOURCE_UNIQUE_EXPECTED` ⇒ MISMATCH.
   Asserted against the **source** constant (U for the dup dataset, N for the
   clean dataset), never against the target's own count.
+- **Fault-took-effect (GENERAL RULE, every timed/injected fault cell).** A
+  chaos PASS is only meaningful if the fault demonstrably fired. **Every cell
+  must additionally assert an observed fault effect inside the injection
+  window** — at least one of: insert errors (`perf.ch_inserts` exception codes
+  / `insert_errors_during_fault > 0`), a consumer-lag stall or spike in the
+  poller samples, task FAILED/restart transitions, or (pod-kill class) the pod
+  actually recreated. A cell whose integrity numbers are clean but which shows
+  **no observed fault effect** is **invalid — classified
+  `integrity_unverified` (fault-not-observed), NEVER PASS**. This is the
+  systemic defence against silently-unenforced fault primitives (the F4/F5
+  NetworkPolicy trap, §3.2) and against injectors that raced past the drain.
 
 **CHECK_ERROR vs MISMATCH discipline** (the load-bearing distinction). A chaos
 test deliberately induces the exact failure classes that once mislabeled a
@@ -434,13 +519,27 @@ A `run_pair.sh` sibling in `orchestration/`, sourcing `lib_bench.sh`:
   `fault_ch_cloud_restart`, `fault_ch_node_kill`. Each takes `recovery_seconds`
   and cleans up its own fault (removes the NetworkPolicy, restores the grant,
   `START MERGES`, etc.) in a nested trap so a mid-fault failure never leaves the
-  cluster wedged.
+  cluster wedged. The netpol injectors **preflight the enforcement
+  prerequisite** (§3.2: verify the network-policy node agent / enforcer is
+  running) and refuse to run the cell otherwise — never rely on the API
+  accepting the policy object.
 - **Recovery watcher** — polls consumer lag + Connect task status until lag=0
-  and 3/3 RUNNING, records `recovery_seconds` and the §6 diagnostics.
+  and 3/3 RUNNING, records `recovery_seconds` and the §6 diagnostics. Tolerates
+  transient task FAILED→RUNNING cycles during legitimate W1–W3 recovery (the
+  CONTAINS/ERROR retry shapes, §2.2) without failing the cell; it also collects
+  the **fault-took-effect evidence** (§5) for the oracle.
 - **Window racer** — for the crash-class faults, watches the connector log for
-  the `BEFORE_PROCESSING` / insert / `AFTER_PROCESSING` markers (Processing.java
-  emits INFO/DEBUG at 152, 169-171 etc.) to fire the kill inside W1/W2/W3;
-  records `fault_window` actually landed.
+  the state-transition markers to fire the kill inside W1/W2/W3; records
+  `fault_window` actually landed. **Log-level reality**: the per-batch
+  insert-start marker on the partitioned path is **DEBUG**
+  (`doInsert` — Processing.java:67), so the racer either (a) runs the Connect
+  worker with DEBUG for `com.clickhouse.kafka.connect.sink.processing`, or
+  (b) races on `KeeperStateProvider.setStateRecord`'s **INFO**
+  `"Write state record: …"` lines (KeeperStateProvider.java:141) — the
+  BEFORE/AFTER state writes bracket the insert, so two consecutive
+  state-write lines delimit W1/W2/W3 without a log-level change (exactly-once
+  cells only; at-least-once cells have no state writes and fall back to (a) or
+  pct-only timing).
 - **KeeperMap reset** (exactly-once cells) — before each exactly-once cell,
   `DROP TABLE IF EXISTS <zkDatabase>` on the target (drops the KeeperMap state)
   and verify the KeeperMap path is clear, per §2.4 stale-state trap. Recreated
@@ -451,8 +550,13 @@ A `run_pair.sh` sibling in `orchestration/`, sourcing `lib_bench.sh`:
   scale down at the end.
 - **Chaos config template** — a `kafkaconnector.json.tmpl` variant (or
   parameters) setting `exactlyOnce`, `zkPath`/`zkDatabase`/`keeperOnCluster`,
-  and pinning `bufferCount`/`ignorePartitionsWhenBatching` appropriately per §2.3
-  (both unavailable under exactlyOnce — `ClickHouseSinkTask.java:55-58,150`).
+  and pinning `bufferCount=0`/`ignorePartitionsWhenBatching=false` per §2.3.
+  The harness **validates the combination itself** before deploy:
+  `bufferCount>0`+`exactlyOnce` would throw at task start
+  (ClickHouseSinkTask.java:54-62), but
+  `ignorePartitionsWhenBatching=true`+`exactlyOnce` is **silently ignored** by
+  the connector (§2.3) — the harness must reject it so a cell never silently
+  tests a different config than its runtime keys record.
 
 ---
 
@@ -519,7 +623,10 @@ The harness task is accepted when:
    proving the oracle can both pass and fail.
 4. The integrity checker's **CHECK_ERROR vs MISMATCH** hardening is in place: an
    injected infra exception during the check yields `integrity_unverified`, not
-   a false MISMATCH/FAIL (fixture-tested).
+   a false MISMATCH/FAIL (fixture-tested). The **fault-took-effect rule** (§5)
+   is likewise fixture-tested fail-then-pass: a cell with clean integrity but no
+   observed fault effect classifies `integrity_unverified` (fault-not-observed),
+   never PASS.
 5. KeeperMap reset between exactly-once cells is verified (no stale-state
    carryover; a second cell on the same `zkPath` after a reset starts from
    NONE state).
@@ -567,3 +674,12 @@ The harness task is accepted when:
 6. **Checker hardening ownership**: is the CHECK_ERROR/`integrity_unverified`
    hardening (ECOSYSTEM §8, "in progress") landing under this task, or is the
    harness task allowed to depend on it landing separately first?
+7. **NetworkPolicy enforcement — infra change approval** (§3.2 prerequisite,
+   BLOCKING for F4/F5 only): the cluster's vanilla VPC CNI does **not** enforce
+   NetworkPolicy; F4/F5 need the managed `vpc-cni` addon with
+   `configurationValues: '{"enableNetworkPolicy": "true"}'` (+ its node agent)
+   — or Cilium — added to `infra/cluster.yaml`/provisioning. This is a
+   substrate change to the shared benchmark cluster (agent runs on the same
+   nodes as the nightly pair): approve the change, or defer F4/F5 and run the
+   other 40 cells first? Either way F4/F5 must not run (and must never record
+   PASS) until an enforcer is verified present.
