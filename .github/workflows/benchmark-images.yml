@@ -1,24 +1,37 @@
 name: Benchmark v2 Connect images
 
-# Builds BOTH benchmark arm images (plan section 3, phase 2):
+# Builds ALL THREE benchmark images (plan section 3, phase 2):
 #   - arm H (head)   : plugin built from the checked-out sha
 #   - arm P (pinned) : the immutable RELEASED plugin artifact for the tag in
 #                      benchmarks/e2e/docker/PINNED_REF (downloaded + sha256-verified,
 #                      never rebuilt)
-# and pushes them to GHCR. The nightly orchestrator (task 31) calls this via
-# workflow_call; it can also be run by hand via workflow_dispatch.
+#   - producer       : the parquet -> Avro -> topic pre-loader (benchmarks/e2e/producer)
+# and pushes them to the benchmark ECR (the registry the EKS cluster actually
+# pulls from). The nightly orchestrator (task 31) calls this via workflow_call;
+# it can also be run by hand via workflow_dispatch.
 #
-# DIGEST-PINNED BY DEFAULT (stale-tag class fix): build-arm.sh --push resolves
-# the registry digest after each push, and the workflow_call outputs
-# (head_image / pinned_image) are the immutable repo@sha256:... references — NOT
-# the mutable tags. A live run once served a STALE image twice because a reused
-# tag was cached at the node/registry; consuming the digest downstream makes that
-# impossible. run_pair.sh additionally re-validates that whatever it is handed is
-# a digest ref (fails loud on a bare tag).
+# DIGEST-PINNED BY DEFAULT (stale-tag class fix): every push resolves the
+# registry digest, and the workflow outputs are the immutable repo@sha256:...
+# references — NOT the mutable tags. A live run once served a STALE image twice
+# because a reused tag was cached at the node/registry; consuming the digest
+# downstream makes that impossible. run_pair.sh additionally re-validates that
+# whatever it is handed is a digest ref (fails loud on a bare tag).
 #
-# No new secrets: pushes use the built-in GITHUB_TOKEN.
+# AUTH (2026-07-13, replaces GHCR/GITHUB_TOKEN): OIDC AssumeRoleWithWebIdentity
+# into the shared CI role (secrets.CLICKBENCH_AWS_ROLE_ARN =
+# clickbench-load-test-ci; its trust lists this repo's benchmark branches), then
+# ECR login. Rationale: the cluster pulls from ECR, and building anywhere else
+# leaves the pipeline dependent on a workstation Docker (the 2026-07-13 outage).
+#
+# REGISTRATION TRIGGER: GitHub only indexes (and allows dispatching) workflows
+# that exist on the default branch OR have at least one run. This workflow lives
+# on a feature branch, so a push touching this file creates a (skipped) run that
+# registers it for workflow_dispatch. The build job is guarded to non-push events.
 
 on:
+  push:
+    branches: [benchmark-v2, benchmark-v2-ci-images]
+    paths: [".github/workflows/benchmark-images.yml"]
   workflow_dispatch:
   workflow_call:
     outputs:
@@ -28,21 +41,30 @@ on:
       pinned_image:
         description: "DIGEST ref (repo@sha256:...) of the pushed pinned-arm image"
         value: ${{ jobs.build.outputs.pinned_image }}
+      producer_image:
+        description: "DIGEST ref (repo@sha256:...) of the pushed producer image"
+        value: ${{ jobs.build.outputs.producer_image }}
 
 permissions:
   contents: read
-  packages: write
+  id-token: write   # OIDC token for AssumeRoleWithWebIdentity (ECR push)
 
 env:
-  REGISTRY: ghcr.io
+  AWS_REGION: us-east-2
+  ECR_REGISTRY: 796575137974.dkr.ecr.us-east-2.amazonaws.com
+  CONNECT_REPO: connect-bench
+  PRODUCER_REPO: producer-bench
 
 jobs:
   build:
-    name: build-arm-images
+    name: build-benchmark-images
+    # push events exist only to register the workflow for dispatch — skip the job.
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     outputs:
       head_image: ${{ steps.export.outputs.head_image }}
       pinned_image: ${{ steps.export.outputs.pinned_image }}
+      producer_image: ${{ steps.export.outputs.producer_image }}
     steps:
       - name: Checkout (full history + tags so the pinned tag sha resolves)
         uses: actions/checkout@v4
@@ -58,16 +80,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          role-to-assume: ${{ secrets.CLICKBENCH_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Lowercase repository owner
-        id: repo
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       # build-arm.sh --push builds, pushes, and resolves the registry DIGEST,
       # emitting `image_digest_ref=<repo>@sha256:...` on stdout and writing it to
@@ -75,11 +95,11 @@ jobs:
       - name: Build + push head arm image (resolve digest)
         id: head
         env:
-          IMAGE_BASE: ${{ env.REGISTRY }}/${{ github.repository }}
+          IMAGE_BASE: ${{ env.ECR_REGISTRY }}/${{ env.CONNECT_REPO }}
         run: |
           set -euo pipefail
           SHA_SHORT="${GITHUB_SHA:0:12}"
-          IMAGE_TAG="${IMAGE_BASE,,}:benchmark-head-${SHA_SHORT}"
+          IMAGE_TAG="${IMAGE_BASE}:benchmark-head-${SHA_SHORT}"
           ./benchmarks/e2e/docker/build-arm.sh --arm head --image-tag "${IMAGE_TAG}" \
             --push --digest-out head.digest | tee head.out
           DIGEST="$(cat head.digest)"
@@ -93,12 +113,12 @@ jobs:
       - name: Build + push pinned arm image (resolve digest)
         id: pinned
         env:
-          IMAGE_BASE: ${{ env.REGISTRY }}/${{ github.repository }}
+          IMAGE_BASE: ${{ env.ECR_REGISTRY }}/${{ env.CONNECT_REPO }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           PINNED_REF="$(grep -v '^[[:space:]]*#' benchmarks/e2e/docker/PINNED_REF | grep -v '^[[:space:]]*$' | head -1 | tr -d '[:space:]')"
-          IMAGE_TAG="${IMAGE_BASE,,}:benchmark-pinned-${PINNED_REF}"
+          IMAGE_TAG="${IMAGE_BASE}:benchmark-pinned-${PINNED_REF}"
           ./benchmarks/e2e/docker/build-arm.sh --arm pinned --image-tag "${IMAGE_TAG}" \
             --push --digest-out pinned.digest | tee pinned.out
           DIGEST="$(cat pinned.digest)"
@@ -109,20 +129,47 @@ jobs:
           echo "tag=${IMAGE_TAG}"     >> "$GITHUB_OUTPUT"
           echo "digest=${DIGEST}"     >> "$GITHUB_OUTPUT"
 
+      # The producer has no build-arm.sh wrapper: plain buildx from the e2e
+      # context (the Dockerfile COPYs schema/), push, then resolve the digest
+      # from ECR (same digest-pinning discipline as the arms).
+      - name: Build + push producer image (resolve digest)
+        id: producer
+        env:
+          IMAGE_BASE: ${{ env.ECR_REGISTRY }}/${{ env.PRODUCER_REPO }}
+        run: |
+          set -euo pipefail
+          SHA_SHORT="${GITHUB_SHA:0:12}"
+          IMAGE_TAG="${IMAGE_BASE}:benchmark-producer-${SHA_SHORT}"
+          docker buildx build --platform linux/amd64 \
+            -t "${IMAGE_TAG}" --push \
+            -f benchmarks/e2e/producer/Dockerfile benchmarks/e2e/
+          DIGEST_SHA="$(aws ecr describe-images --repository-name "${PRODUCER_REPO}" \
+            --image-ids imageTag="benchmark-producer-${SHA_SHORT}" \
+            --query 'imageDetails[0].imageDigest' --output text)"
+          DIGEST="${IMAGE_BASE}@${DIGEST_SHA}"
+          case "${DIGEST}" in
+            *@sha256:*) ;;
+            *) echo "::error::producer image did not resolve to a digest ref: '${DIGEST}'"; exit 1 ;;
+          esac
+          echo "tag=${IMAGE_TAG}"     >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}"     >> "$GITHUB_OUTPUT"
+
       - name: Export image DIGEST refs + provenance summary
         id: export
         run: |
           set -euo pipefail
           # The workflow_call outputs are DIGEST references, not tags (stale-tag
           # class fix): downstream (benchmark-nightly.yml -> run_pair.sh) deploys
-          # the arms by digest so a cached mutable tag can never be served stale.
-          echo "head_image=${{ steps.head.outputs.digest }}"     >> "$GITHUB_OUTPUT"
-          echo "pinned_image=${{ steps.pinned.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          # by digest so a cached mutable tag can never be served stale.
+          echo "head_image=${{ steps.head.outputs.digest }}"         >> "$GITHUB_OUTPUT"
+          echo "pinned_image=${{ steps.pinned.outputs.digest }}"     >> "$GITHUB_OUTPUT"
+          echo "producer_image=${{ steps.producer.outputs.digest }}" >> "$GITHUB_OUTPUT"
           {
-            echo "### Benchmark v2 arm images (DIGEST-pinned)"
+            echo "### Benchmark v2 images (DIGEST-pinned, ECR)"
             echo ""
-            echo "| arm | tag (build handle) | digest (deployed ref) |"
-            echo "|-----|--------------------|-----------------------|"
+            echo "| image | tag (build handle) | digest (deployed ref) |"
+            echo "|-------|--------------------|-----------------------|"
             echo "| head | \`${{ steps.head.outputs.tag }}\` | \`${{ steps.head.outputs.digest }}\` |"
             echo "| pinned | \`${{ steps.pinned.outputs.tag }}\` | \`${{ steps.pinned.outputs.digest }}\` |"
+            echo "| producer | \`${{ steps.producer.outputs.tag }}\` | \`${{ steps.producer.outputs.digest }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
