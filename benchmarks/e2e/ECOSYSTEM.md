@@ -5,8 +5,9 @@ specifically as the handoff for the **chaos / "monkey" exactly-once test**
 (kill ClickHouse ingestion and Connect workers mid-processing and prove no row
 is lost or duplicated), but general to any e2e task.
 
-**State as of 2026-07-13.** Everything below is live and battle-tested by five
-benchmark pairs (~50M rows delivered with perfect integrity on every clean run).
+**State as of 2026-07-13.** Everything below is live and battle-tested across five benchmark pairs —
+eight tier-1 drains × 10M rows each with PERFECT integrity (pairs 2–4 clean +
+quarantined pair 1; pair 5 in flight), plus the same volumes through Tier-0.
 
 ---
 
@@ -50,7 +51,7 @@ deleted**.
 |---|---|
 | Cluster | `kafka-bench`, EKS 1.36, us-east-2, account 796575137974 |
 | Nodegroups | `bench-ng` m6i.large, min 0 / max 4 (broker+registry+producer shards+poller); `connect-ng` m6i.xlarge, min 0 / max 1, **taint `dedicated=connect:NoSchedule`** — the Connect worker runs alone |
-| Cost | ~$0.48/hr fully scaled (4+1 nodes), **control plane only (~$0.10/hr) at rest**. A benchmark pair ≈ $0.87. |
+| Cost | ~$0.58/hr compute fully scaled (4×m6i.large $0.384 + 1×m6i.xlarge $0.192) + gp3, **control plane only (~$0.10/hr) at rest**. A pair ≈ $0.87 at the pre-2026-07-13 2+1 shape; ≈ $1.10–1.25 at 4+1 (accepted cost-for-speed; preload 3× faster). |
 | Registry | ECR `796575137974.dkr.ecr.us-east-2.amazonaws.com/{connect-bench,producer-bench}` |
 | Parquet staging | `s3://shimons/clickbench-kafka-bench/hits-10m/` — 10 files, exactly 10,000,000 rows, 10,000,000 unique `WatchID`s |
 
@@ -205,8 +206,15 @@ exactly-once oracle*:
 ```
 rows_delivered   = count() FROM target table      == rows_expected (offsets)
 unique_delivered = uniqExact(WatchID)             == SOURCE_UNIQUE_EXPECTED
-duplicate_rows   = rows_delivered − unique_delivered  (must be 0)
+duplicate_rows   = rows_delivered − rows_expected     (must be 0)
 ```
+**⚠ Formula law (contract + SQL 20 header): `duplicate_rows` is the
+target-vs-SOURCE count delta — NEVER `count() − uniqExact()` on the target.**
+The source dataset may legitimately contain duplicate row-ids (full ClickBench
+hits does; our 10M subset happens not to), and the banned formula would
+false-positive every run on such data. Uniqueness is asserted separately
+against the *source* constant. A chaos dataset with duplicate WatchIDs works
+fine under the correct formula and breaks under the banned one.
 Result lands as metrics (`integrity_ok`, `duplicate_rows`, `rows_delivered`)
 on the run's row. **Loss** shows as `rows_delivered < expected`; **duplication**
 as `duplicate_rows > 0`. This is precisely the pass/fail for a chaos run.
@@ -248,7 +256,7 @@ offsets-derived so any subset works), Connect/connector templates, poller,
 | Individual tasks | Connect REST (`/connectors/.../tasks/<n>/restart`) via the poller host | finer-grained than pod kill |
 | Kafka broker | `kubectl delete pod bench-combined-0` | RF=1: the topic is briefly unavailable; PVC persists — data survives, clients must reconnect |
 | Network | NetworkPolicy deny between Connect↔CH or Connect↔broker for T seconds | cleaner "partition" than pod kill |
-| ClickHouse ingestion | **You cannot kill nodes of ClickHouse Cloud** (managed). Options: (a) revoke/alter the CH user mid-run, (b) `SYSTEM STOP MERGES`/quotas to induce pressure, (c) rely on the service's own idling/wake stalls (observed: connection hangs, read timeouts — the exact failure class that already bit `check_integrity`), or (d) for true node-kill semantics, deploy a small self-hosted CH **in-cluster** (a StatefulSet on bench-ng) as the chaos target — the connector doesn't care which CH it points at (`TARGET_CH_HOST`). |
+| ClickHouse ingestion | **You cannot kill nodes of ClickHouse Cloud** (managed). Options: (a) revoke/alter the CH user mid-run, (b) `SYSTEM STOP MERGES`/quotas to induce pressure, (c) rely on the service's own idling/wake stalls (observed: connection hangs, read timeouts — the exact failure class that already bit `check_integrity`), or (d) for true node-kill semantics, deploy a small self-hosted CH **in-cluster** (a StatefulSet on bench-ng) as the chaos target — the connector doesn't care which CH it points at (`TARGET_CH_HOST`). Contract note: runs against an in-cluster CH record `environment_class='self_hosted'` (the 3298da9b scoping amendment covers exactly this). |
 
 **Ground rules learned the hard way**:
 1. Never run chaos concurrently with a benchmark pair (shared broker/target).
