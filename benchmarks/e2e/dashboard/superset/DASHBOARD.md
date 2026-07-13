@@ -172,14 +172,195 @@ Stage B (gated on the browser-window GO):
 - [ ] Confirm verdicts display "provisional — calibrating (n=X/20)" and no band
       alerts are wired while provisional.
 
+---
+
+# Tab 4 — RUN DRILL (issue #34)
+
+Additive extension of this package with the Tab 4 "RUN DRILL" build (dashboard
+**432**, prod DWH Superset). Tab 4 is the **one-pair diagnostic**: pick a pair, see
+its headline numbers, the full HEAD-vs-pinned metric table, and the streaming-sink
+shape (drain curve, remaining lag, per-insert latency, batch-size distribution).
+Strictly **additive** — no existing chart, dataset, or the Tab-1 content is modified.
+
+The drill is **descriptive, not a gate**: it carries NO verdict/band/alert column.
+Tab 1's `v_kc_pair_ratios` remains the single source of verdict + alert truth, so
+this tab cannot drift from the alerting logic.
+
+## Datasets (Tab 4 — additive; `DWH` connection `dc93cd97`, no DB connection created)
+
+| Dataset SQL | New/Reused | Role | Feeds |
+|---|---|---|---|
+| `v_kc_runs.sql` | **REUSED** (from Tab 1, unchanged) | base fact per run | 5 big-number tiles + config panel |
+| `v_kc_run_drill.sql` | **NEW** | arm-comparison long view: per (pair,tier,metric) HEAD/pinned/ratio/delta%, ALL metrics, no verdict | ARM COMPARISON table + the tab's `pair_id` filter |
+| `v_kc_drain_curve.sql` | **NEW** | per-minute drain shape derived from `ch_inserts`: rows/s, cumulative, remaining_lag, minute_index, arm | DRAIN CURVE + REMAINING LAG (H vs P) |
+| `v_kc_inserts_drill.sql` | **NEW** | raw per-insert grain from `ch_inserts`: seq, elapsed_s, duration_ms, written_rows, arm | per-insert latency sequence + batch-size distribution |
+
+Reuse note: the big-number row (rows verified / drain_s / dup=0 / guards OK / cost)
+and the covariates/config panel are built on the EXISTING `v_kc_runs` — no new view.
+Only the all-metrics arm table and the two `ch_inserts`-derived views are new. All
+three new views are Kafka-scoped (`connector='kafka-connect'`), exclude the fixture
+connector, exclude failed-outcome runs by value, and carry the same NULL-safe
+`pair_ts`/`pair_seq` presentation columns as `v_kc_pair_ratios`.
+
+### DWH `ch_inserts` mirror (used by Tab 4; Tab 1 did not use it)
+
+The DWH also carries the `ch_inserts` mirror (`04_create_ch_inserts.sql` — per-insert
+`event_time`, `query_duration_ms`, `written_rows`, ...). Task-34 data reality:
+~380-420 rows per run for all 3 clean pairs (+ pair 1 partially), so the drain/lag
+curves and the per-insert drill are fully buildable from existing capture — **no new
+table** (plan §9: "Drain/lag curves → derived from existing `perf.ch_inserts` … at
+query time").
+
+| Local (`perf.*`) | DWH mirror |
+|---|---|
+| `perf.ch_inserts` | `raw_connectors_load_testing.ch_inserts` |
+
+### Drain-curve bucketing SQL approach (`v_kc_drain_curve`)
+
+Exactly the plan §8 data-foundation sketch ("ch_inserts bucketed per minute:
+sum(written_rows)/60; cumulative sum vs rows_expected → remaining-lag curve"):
+
+- `minute = toStartOfMinute(event_time)` — 60s bucket key per run.
+- `minute_rows = sum(written_rows)` within the bucket.
+- `rows_per_sec = minute_rows / 60.0` — the plan's "/60".
+- `cumulative_rows = sum(minute_rows) OVER (PARTITION BY run_id ORDER BY minute ROWS
+  UNBOUNDED PRECEDING → CURRENT ROW)` — monotone running sum.
+- `remaining_lag = rows_expected − cumulative_rows`, with `rows_expected` LEFT-joined
+  from the run's `rows_expected` metric (argMax by `recorded_at`); NULL-safe (a run
+  with no `rows_expected` → NULL lag, curve simply omits the lag line).
+- `minute_index = intDiv(minute − min(minute) OVER (PARTITION BY run_id), 60)` — a
+  0-based "minutes since drain start" so the HEAD and pinned curves of one pair
+  overlay on a common x-axis even when their wall-clock start times differ.
+
+The last bucket is partial (<60s wall clock) → its rows/s is a lower bound
+(documented; the curve is a shape read, not a gated metric).
+
+## Deployed flagged predicate (deployment deviation — REPLICATED)
+
+The **deployed** Tab-1 datasets on the DWH test the validity flag as
+`runtime['flagged'] IN ('1','true')` (the harness has emitted both spellings),
+whereas the **repo** Tab-1 SQL tests `= '1'`. Tab 4 sits beside the deployed assets,
+so the three new views **replicate the deployed predicate** `IN ('1','true')` for
+consistency. Each new view carries a header note flagging this. On Tab 4 `flagged` is
+only presentation/context (a drilled pair renders even when flagged — that is the
+point of a drill); Tab 1's `v_kc_pair_ratios` still owns verdict/exclusion truth, so
+this deviation does not touch any gate.
+
+> **Coordinator note:** this is an intentional match to the live deployment, NOT a
+> repo bug. If/when the Tab-1 deployed datasets are re-normalized to `= '1'`, align
+> Tab 4 in the same pass.
+
+## Pair filter (tab-wide)
+
+The whole tab is scoped by ONE Superset **native filter** on `pair_id`:
+
+- Filter column: `pair_id`, target dataset `v_kc_run_drill` (all four Tab-4 datasets
+  carry `pair_id` with identical spelling per contract §1.2, so one filter scopes the
+  whole tab).
+- **Default = the latest pair**: set the filter's default value to the newest
+  `pair_id` (max `pair_ts`, i.e. `pair_seq = 1`) at build time. Tile queries also fall
+  back to the latest pair (`argMax(pair_id, …)`) so an unset filter still shows the
+  newest pair.
+
+## Layout grid (Tab 4 — 12-wide, `tab4_charts.json`)
+
+```
+[ Filter: pair_id (native, default = latest pair) ]
+Row 1 (5 big-number tiles, width 2 each):
+  kc_t4_tile_rows_verified   <- v_kc_runs        (sum rows_delivered)
+  kc_t4_tile_drain_s         <- v_kc_drain_curve (head t1 drain span)
+  kc_t4_tile_dup_zero        <- v_kc_runs        (duplicate_rows=0?)
+  kc_t4_tile_guards_ok       <- v_kc_runs        (flagged count)
+  kc_t4_tile_cost            <- v_kc_runs        (sum run_cost_usd, per-pair)
+Row 2 (width 12):
+  kc_t4_arm_comparison       <- v_kc_run_drill   (all metrics H|P|ratio|delta%)
+Row 3 (2 x width 6):
+  kc_t4_drain_curve          <- v_kc_drain_curve (rows/s per min, H vs P)
+  kc_t4_remaining_lag        <- v_kc_drain_curve (expected-cumulative, H vs P)
+Row 4:
+  kc_t4_insert_latency_sequence  (w6) <- v_kc_inserts_drill (duration_ms vs elapsed_s)
+  kc_t4_batch_size_distribution  (w4) <- v_kc_inserts_drill (written_rows histogram)
+  kc_t4_config_panel             (w2) <- v_kc_runs          (batch_size, versions, git_sha)
+Row 5 (width 12):
+  kc_t4_per_sample_lag_placeholder <- markdown (planned; pending perf.samples)
+```
+
+12 charts. `kc_t4_per_sample_lag_placeholder` is a **markdown** panel (dataset:
+null): the plan's richer per-sample / per-partition poller lag curves are OUT of
+scope (samples are runner artifacts, not in the DWH — plan §9), documented honestly
+rather than shown as an empty chart.
+
+## Tabs conversion (dashboard 432 — the coordinator executes; ADDITIVE-ONLY)
+
+Dashboard 432 currently holds the Tab-1 content as a flat (non-tabbed) layout. To add
+Tab 4 without touching Tab 1:
+
+1. **Convert 432's layout to TABS.** In the dashboard `position_json`, wrap the
+   existing top-level layout under a new `TABS` → `TAB` node. That first tab becomes
+   the **default tab** and MUST contain the **existing, unmodified** Tab-1 chart
+   nodes (same slice ids, same grid positions — move the subtree wholesale; do not
+   re-create or re-position any existing chart).
+2. **Add a second `TAB` node** titled "Tab 4 — RUN DRILL" and lay out the 12 Tab-4
+   charts per the grid above. De-dupe chart ids before appending to the layout
+   (build_superset.py bug #2 — a chart id must appear once in `position_json`).
+3. **Add the native `pair_id` filter** scoped to the Tab-4 tab, default = latest pair.
+4. Create the 3 NEW datasets first (`v_kc_run_drill`, `v_kc_drain_curve`,
+   `v_kc_inserts_drill`) on `DWH` (`dc93cd97`); reuse the existing `v_kc_runs`
+   dataset id (do NOT create a second `v_kc_runs`).
+
+**Additive-only invariants (MUST hold):** no existing dataset SQL is edited; no
+existing chart's `slice_name`/query/position changes; the Tab-1 subtree is moved into
+the default tab byte-for-byte; only NEW nodes are appended. Avoid build_superset.py
+bug #1 (never bind a metric alias equal to its column) in the new chart params.
+
+## Acceptance checklist (Tab 4 — Stage B)
+
+Prep (done, this package):
+
+- [x] `v_kc_run_drill.sql`, `v_kc_drain_curve.sql`, `v_kc_inserts_drill.sql` created;
+      each CREATEs + SELECTs against clickhouse-local (perf.* swap) with 0 rows and
+      no error when empty (`verify_tab4.sh`).
+- [x] `verify_tab4.sh` render-shape acceptance green: arm-view H/P shape + NULL-safe
+      ratio; the pair-4 head-t1 `drain_rows_per_sec` ratio lands at **1.032**
+      (delta_pct +3.2); legacy-name coalesce folds `ch_parts_per_insert`→
+      `parts_per_insert`; drain bucketing math (rows/s=minute_rows/60, monotone
+      cumulative, remaining_lag→0, 0-based dense minute_index); inserts grain = one
+      row per insert with per-run seq; fixture/non-kafka/failed excluded.
+- [x] `tab4_charts.json` parses; all 12 charts carry a `description` (#42 standard).
+- [x] Existing `verify_verdict_dwh.sh` still **31/31** (contract-sync untouched).
+
+Stage B (gated on the coordinator's GO):
+
+- [ ] Create the 3 new datasets on `DWH` (`dc93cd97`); reuse `v_kc_runs` (no
+      duplicate); do NOT create a DB connection.
+- [ ] Convert 432 to TABS: existing Tab-1 content = default tab, untouched; Tab 4 =
+      new tab. Confirm every existing Tab-1 chart still renders unchanged.
+- [ ] Add the native `pair_id` filter (default = latest pair) scoped to Tab 4.
+- [ ] Build the 12 Tab-4 charts (de-dupe chart ids before layout — bug #2), each with
+      its `description`.
+- [ ] Each chart renders with **pair-2 / pair-3 / pair-4** data selected in the
+      filter (the 3 clean pairs); the arm table shows the head-t1 code advantage
+      (drain_rows_per_sec ratio ≈ 1.032) on the relevant pair.
+- [ ] Drilling the **quarantined pair 1** renders too (flagged shows in guards tile +
+      arm table flag_reason; curves render from its partial ch_inserts) — a flagged
+      pair is drillable by design.
+- [ ] `kc_t4_per_sample_lag_placeholder` renders as **markdown** (not an empty chart).
+- [ ] Existing Tab 1 datasets/charts and dashboard 424 (Spark) untouched; screenshot
+      evidence of the two tabs.
+
 ## Files
 
 | File | Purpose |
 |---|---|
-| `v_kc_runs.sql` | base-fact virtual dataset |
+| `v_kc_runs.sql` | base-fact virtual dataset (shared: Tab 1 + Tab 4 tiles/config) |
 | `v_kc_pair_ratios.sql` | DWH-adapted verdict view (verbatim verdict map + presentation cols) |
 | `v_kc_flagged_log.sql` | flagged/failed run log |
+| `v_kc_run_drill.sql` | **Tab 4** arm-comparison long view (all metrics H/P/delta, no verdict) |
+| `v_kc_drain_curve.sql` | **Tab 4/2** per-minute drain shape + remaining lag from ch_inserts |
+| `v_kc_inserts_drill.sql` | **Tab 4** raw per-insert grain (latency sequence + batch-size dist) |
 | `tab1_charts.json` | 8 Tab-1 chart specs, each with its description |
+| `tab4_charts.json` | **12 Tab-4** chart specs, each with its description |
 | `visibility_precheck.sql` | Stage-B pre-flight queries (run first; abort on failure) |
 | `verify_verdict_dwh.sh` | fixture acceptance for the adapted verdict view (31/31) |
+| `verify_tab4.sh` | **Tab 4** render-shape acceptance (datasets parse + bucketing math) |
 | `DASHBOARD.md` | this file |

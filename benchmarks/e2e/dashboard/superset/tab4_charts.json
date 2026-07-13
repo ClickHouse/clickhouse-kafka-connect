@@ -1,0 +1,158 @@
+{
+  "_comment": [
+    "Tab 4 (RUN DRILL) chart specs for the Benchmark v2 Kafka dashboard, DWH Superset.",
+    "Consumed by the Stage-B build (script or browser operator). Layout follows",
+    "docs/benchmark-v2-plan.md §8 Tab 4 sketch: a pair_id filter; a 5-tile big-number",
+    "row (rows verified, drain_s, dup=0, guards OK, cost); an ARM COMPARISON table",
+    "(all metrics HEAD|pinned|delta); the DRAIN CURVE + REMAINING LAG pair (H vs P",
+    "overlaid); the per-insert latency sequence; the batch-size distribution; a",
+    "covariates/config panel; and one markdown placeholder for the out-of-scope",
+    "per-sample lag curves.",
+    "EVERY chart carries `description` (what it shows / how to read it / direction of",
+    "goodness where applicable) per the #42 standard. ADDITIVE-ONLY: all new assets;",
+    "this tab reads verdict/alert truth from NOWHERE (the drill is descriptive) — Tab",
+    "1's v_kc_pair_ratios stays the single source of verdict/alert truth.",
+    "PAIR SCOPING: the whole tab is filtered by a Superset native filter on",
+    "v_kc_run_drill.pair_id (equivalently the pair_id present on every Tab-4 dataset).",
+    "DEFAULT = the LATEST pair (pair_seq = 1). See DASHBOARD.md 'Pair filter'.",
+    "DATA REALITY (Task 34): ch_inserts exists in the DWH (~380-420 rows/run for all 3",
+    "clean pairs + partially pair 1), so the per-insert drill + drain/lag curves are",
+    "fully buildable. Per-partition/per-sample POLLER curves are NOT in the DWH",
+    "(runner artifacts only) — that richer view is out of scope and represented by the",
+    "one markdown placeholder chart, honestly labeled 'planned, pending sample",
+    "persistence (perf.samples)'."
+  ],
+  "dashboard_title": "Benchmark v2 — Kafka Connect (REGRESSION)",
+  "tab": "Tab 4 — RUN DRILL",
+  "datasets": {
+    "v_kc_run_drill": "arm-comparison long view (per pair,tier,metric): head_value, pinned_value, ratio, delta_pct, flagged, flag_reason, pair_ts, pair_seq — ALL metrics, no verdict/gate",
+    "v_kc_runs": "base fact (per run): rows_delivered/expected, duplicate_rows, flagged, run_cost_usd + all config keys — feeds the big-number tiles and the config panel",
+    "v_kc_drain_curve": "per-minute drain shape derived from ch_inserts (per run,minute): rows_per_sec, cumulative_rows, remaining_lag, minute_index, arm/tier — feeds drain curve + remaining lag",
+    "v_kc_inserts_drill": "raw per-insert grain from ch_inserts (per insert): seq, elapsed_s, query_duration_ms, written_rows, arm/tier — feeds latency sequence + batch-size distribution"
+  },
+  "pair_filter": {
+    "type": "superset_native_filter",
+    "name": "pair_id",
+    "column": "pair_id",
+    "target_dataset": "v_kc_run_drill",
+    "applies_to_datasets": ["v_kc_run_drill", "v_kc_runs", "v_kc_drain_curve", "v_kc_inserts_drill"],
+    "default": "latest pair (the pair whose pair_seq = 1); the filter default value is set to the max pair_ts / newest pair_id at build time",
+    "note": "All four Tab-4 datasets carry pair_id with identical spelling (contract §1.2), so ONE native filter on pair_id scopes the whole tab. Chart queries below therefore do NOT hard-code a pair; they read the filtered pair. Where a query needs the latest pair as a fallback (tiles), it uses pair_seq=1 so an unset filter still shows the newest pair."
+  },
+  "charts": [
+    {
+      "slice_name": "kc_t4_tile_rows_verified",
+      "viz_type": "big_number_total",
+      "dataset": "v_kc_runs",
+      "row": 1, "width": 2,
+      "query": "SELECT sum(rows_delivered) AS rows_verified FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
+      "subheader_source": "sum of rows_delivered across the pair's runs; compare to rows_expected in the arm table",
+      "description": "ROWS VERIFIED tile for the drilled pair. Total rows_delivered summed across the pair's runs (contract §2.1 ground-truth delivered rows). HOW TO READ: this should equal the pair's rows_expected when integrity is OK; a shortfall means the drain did not complete or lost rows (cross-check the INTEGRITY tile and the REMAINING LAG curve — a lag line that never reaches zero explains a shortfall). DIRECTION OF GOODNESS: matching rows_expected is the only healthy state; this tile is a volume sanity anchor for everything else on the tab."
+    },
+    {
+      "slice_name": "kc_t4_tile_drain_s",
+      "viz_type": "big_number_total",
+      "dataset": "v_kc_drain_curve",
+      "row": 1, "width": 2,
+      "query": "SELECT (max(minute_index) + 1) * 60 AS drain_s FROM v_kc_drain_curve WHERE tier='1' AND arm='head' AND pair_id = (SELECT argMax(pair_id, minute) FROM v_kc_drain_curve)",
+      "query_note": "drain_s = span of the head t1 run's insert minutes: (max minute_index * 60) + 60 (the last bucket rounds up to a full minute). ch_inserts is the only per-insert clock on the DWH, so drain_s is derived from it (no drain_seconds metric exists — contract §2 has settle_seconds, not drain time). If the coordinator prefers, drain_s = dateDiff('second', min(event_time), max(event_time)) over v_kc_inserts_drill for the head t1 run is an equivalent finer derivation.",
+      "description": "DRAIN SECONDS tile for the drilled pair (head arm, Tier 1). Wall-clock span of the head run's inserts, derived from ch_inserts (the plan's drain-curve foundation) because there is no dedicated drain_seconds metric. HOW TO READ: this is how long the sink took to drain the topic on the code-under-test arm; read it alongside ROWS VERIFIED (rows ÷ drain_s ≈ the drain throughput) and the DRAIN CURVE below (which shows whether those seconds were a steady plateau or a slow sawtooth tail). DIRECTION OF GOODNESS: lower is better for the same row volume — but a pinned-vs-head comparison is the honest read (see the arm table's drain_rows_per_sec), since absolute seconds move with environment load."
+    },
+    {
+      "slice_name": "kc_t4_tile_dup_zero",
+      "viz_type": "big_number_total",
+      "dataset": "v_kc_runs",
+      "row": 1, "width": 2,
+      "query": "SELECT if(countIf(duplicate_rows > 0)=0, 'dup=0 OK', concat('DUP ', toString(sum(duplicate_rows)))) AS dup_status FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
+      "description": "DUPLICATES tile for the drilled pair. 'dup=0 OK' iff every run delivered zero duplicate_rows (contract §2.1: duplicate_rows = rows_delivered − rows_expected; >0 means the same logical row landed twice — a retry re-sent committed work the server did not dedup). HOW TO READ: dup=0 is the exactly-once guarantee holding; any DUP N means N duplicated rows were delivered and the run FAILS integrity (contract §3 — the headline numbers are then suspect). DIRECTION OF GOODNESS: dup=0 is the only acceptable state; a non-zero count is a hard integrity stop, not a performance nuance."
+    },
+    {
+      "slice_name": "kc_t4_tile_guards_ok",
+      "viz_type": "big_number_total",
+      "dataset": "v_kc_runs",
+      "row": 1, "width": 2,
+      "query": "SELECT if(countIf(flagged)=0, 'guards OK', toString(countIf(flagged))) AS guards FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
+      "description": "VALIDITY GUARDS tile for the drilled pair (same guard family as Tab 1). 'guards OK' iff no run of the pair tripped a validity guard (task retries, settle timeout, rebalance, task restart, drain incomplete, instrument_resize/shift — contract §1.3). Otherwise shows the count of flagged runs. HOW TO READ: a guard trip means this pair is NON-COMPARABLE — its arm ratios below are informational only, not a verdict (that is why a drilled flagged pair still renders here: you drill it to SEE why it was excluded). DIRECTION OF GOODNESS: 'guards OK' is good; any count means read flag_reason in the arm table and treat the ratios as context, never as a regression."
+    },
+    {
+      "slice_name": "kc_t4_tile_cost",
+      "viz_type": "big_number_total",
+      "dataset": "v_kc_runs",
+      "row": 1, "width": 2,
+      "query": "SELECT sum(run_cost_usd) AS pair_cost_usd FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs)",
+      "description": "COST tile for the drilled pair (USD). Sum of run_cost_usd across the pair's runs. Per contract §2.1 two-arm attribution the FULL pair cost is charged once (on one arm's row) and the other arm omits it, so summing across the pair gives the correct per-PAIR cost — never divide it per arm (per-arm cost is undefined by design). HOW TO READ: the money one nightly pair cost to run; useful for cadence/tier decisions, not a pass/fail. DIRECTION OF GOODNESS: lower is better for the same coverage, but this is a budget signal, not a regression gate."
+    },
+    {
+      "slice_name": "kc_t4_arm_comparison",
+      "viz_type": "table",
+      "dataset": "v_kc_run_drill",
+      "row": 2, "width": 12,
+      "query": "SELECT tier, metric_name, head_value, pinned_value, ratio, delta_pct, if(flagged, flag_reason, '') AS flag_reason FROM v_kc_run_drill WHERE pair_id = (SELECT argMax(pair_id, pair_ts) FROM v_kc_run_drill) ORDER BY tier, metric_name",
+      "columns": ["tier", "metric_name", "head_value", "pinned_value", "ratio", "delta_pct", "flag_reason"],
+      "description": "ARM COMPARISON table — every metric the drilled pair emitted, HEAD vs pinned, with their ratio and delta%. One row per (tier, metric). Unlike Tab 1's gated table this is UN-GATED and carries NO verdict: it is the full descriptive picture, gated and un-gated metrics alike. HOW TO READ: ratio = head_value ÷ pinned_value; delta_pct = (ratio−1)×100. A blank ratio means one arm was missing the metric or pinned was 0 (e.g. run_cost_usd is charged to one arm only, §2.1 — expected blank). For direction, remember the metric's own goodness: throughput names (drain_rows_per_sec, null_drain_rows_per_sec) are higher_better (ratio>1 = head faster); cost/parts names (connect_cpu_seconds_per_Mrows, parts_per_insert, merge_amplification) are lower_better (ratio<1 = head cheaper). SANITY: on a clean pair the Tier-1 drain_rows_per_sec row should show head's code advantage as ratio ≈ 1.032 (delta_pct ≈ +3.2), inside the ±8.5% band → OK on Tab 1. DIRECTION OF GOODNESS: read per-metric as above; the arm table quantifies the story, Tab 1 renders the verdict."
+    },
+    {
+      "slice_name": "kc_t4_drain_curve",
+      "viz_type": "echarts_timeseries_line",
+      "dataset": "v_kc_drain_curve",
+      "row": 3, "width": 6,
+      "x_axis": "minute_index",
+      "metric": "rows_per_sec",
+      "series": "arm",
+      "filters": "tier='1' AND pair_id = (SELECT argMax(pair_id, pair_ts) FROM v_kc_drain_curve)",
+      "series_note": "two series, arm=head and arm=pinned, overlaid on a shared 'minutes since drain start' x-axis (minute_index) so runs that started at different wall-clock times still line up.",
+      "description": "DRAIN CURVE (rows/s per minute, HEAD vs pinned overlaid) — the streaming-sink shape diagnostic Spark's drill never had (plan §8). Derived from ch_inserts: each point is a minute's sum(written_rows)/60 (contract has no drain_seconds; the curve IS the drain). x = minute_index (minutes since that run's first insert), so the two arms align even with different start times. HOW TO READ: a flat PLATEAU means the sink held steady throughput; a SAWTOOTH means batch/commit stalls; a drooping tail means stragglers at the end. Compare head (code under test) to pinned (baseline) — a lower head plateau is a throughput regression the arm table quantifies. NOTE: the final minute bucket is partial (<60s wall clock), so its rows/s is a lower bound — read the shape, not the last point. DIRECTION OF GOODNESS: higher and flatter is better; head at or above pinned is good."
+    },
+    {
+      "slice_name": "kc_t4_remaining_lag",
+      "viz_type": "echarts_timeseries_line",
+      "dataset": "v_kc_drain_curve",
+      "row": 3, "width": 6,
+      "x_axis": "minute_index",
+      "metric": "remaining_lag",
+      "series": "arm",
+      "filters": "tier='1' AND remaining_lag IS NOT NULL AND pair_id = (SELECT argMax(pair_id, pair_ts) FROM v_kc_drain_curve)",
+      "description": "REMAINING LAG curve (rows_expected minus cumulative delivered, HEAD vs pinned) — the tail/straggler view (plan §8). Starts at rows_expected and should descend to zero as the sink drains the topic. HOW TO READ: a straight steady descent = healthy constant-rate drain; a long flat SHELF near the end = stragglers / a slow tail (the last few percent taking disproportionate time); a line that never reaches zero = the drain did not complete (cross-check ROWS VERIFIED and the drain_incomplete guard). Compare the two arms: a head curve that lags pinned late means the code-under-test has a worse tail even if its peak throughput matched. Rows without a rows_expected metric are omitted (NULL lag). DIRECTION OF GOODNESS: reaching zero sooner is better; both arms should terminate at zero."
+    },
+    {
+      "slice_name": "kc_t4_insert_latency_sequence",
+      "viz_type": "echarts_timeseries_scatter",
+      "dataset": "v_kc_inserts_drill",
+      "row": 4, "width": 6,
+      "x_axis": "elapsed_s",
+      "metric": "query_duration_ms",
+      "series": "arm",
+      "filters": "tier='1' AND pair_id = (SELECT argMax(pair_id, event_time) FROM v_kc_inserts_drill)",
+      "series_note": "one point per insert; x = elapsed_s (seconds since the run's first insert) so head and pinned share an origin; y = query_duration_ms; color = arm.",
+      "description": "PER-INSERT LATENCY SEQUENCE (ch_inserts, HEAD vs pinned). Every server-side insert of the drilled pair's Tier-1 runs plotted as latency (query_duration_ms) over elapsed time. HOW TO READ: a warm-up spike at the start then a tight steady band is healthy; a rising trend means latency degrades as the run proceeds (merge pressure, parts piling up); scattered spikes mean intermittent server stalls (retries, delayed inserts). Compare arms — a systematically higher head band is a per-insert cost regression that shows up aggregated as connect_cpu / drain_rows_per_sec in the arm table. DIRECTION OF GOODNESS: lower and flatter latency is better; head at or below pinned is good."
+    },
+    {
+      "slice_name": "kc_t4_batch_size_distribution",
+      "viz_type": "histogram",
+      "dataset": "v_kc_inserts_drill",
+      "row": 4, "width": 4,
+      "column": "written_rows",
+      "series": "arm",
+      "bins": 30,
+      "filters": "tier='1' AND pair_id = (SELECT argMax(pair_id, event_time) FROM v_kc_inserts_drill)",
+      "description": "BATCH-SIZE DISTRIBUTION — a histogram of written_rows (rows per insert) over the drilled pair's Tier-1 inserts, one distribution per arm. HOW TO READ: a tight peak near the configured batch_size (see the config panel) means the connector is batching as intended; a long left tail of tiny inserts means fragmentation (the #1 driver of high parts_per_insert and merge_amplification — cross-check the arm table's parts_per_insert TRIPWIRE on Tab 1). Compare arms: a head distribution shifted toward smaller batches explains a head parts/merge regression. DIRECTION OF GOODNESS: a single tight peak at the target batch size is best; spread or a small-batch tail is worse."
+    },
+    {
+      "slice_name": "kc_t4_config_panel",
+      "viz_type": "table",
+      "dataset": "v_kc_runs",
+      "row": 4, "width": 2,
+      "query": "SELECT arm, tier, batch_size, write_parallelism, async_insert, partition_scheme, connector_version, clickhouse_version, git_sha FROM v_kc_runs WHERE pair_id = (SELECT argMax(pair_id, run_started_at) FROM v_kc_runs) ORDER BY tier, arm",
+      "columns": ["arm", "tier", "batch_size", "write_parallelism", "async_insert", "partition_scheme", "connector_version", "clickhouse_version", "git_sha"],
+      "description": "COVARIATES / CONFIG PANEL — the run-level context for the drilled pair: the config-under-test keys (batch_size, write_parallelism, async_insert, partition_scheme — contract §1.4) plus connector_version, clickhouse_version and git_sha per (arm, tier). HOW TO READ: this is the 'what was different' key that makes the curves and the arm table interpretable — a batch-size distribution centered off-target usually reconciles to the batch_size shown here; a head/pinned drain gap should line up with a connector_version or git_sha difference. Both arms SHOULD share clickhouse_version and config (only the connector code differs between head and pinned); if they don't, the comparison is confounded — treat the arm ratios with caution. No direction of goodness: this panel is descriptive context, not a metric."
+    },
+    {
+      "slice_name": "kc_t4_per_sample_lag_placeholder",
+      "viz_type": "markdown",
+      "dataset": null,
+      "row": 5, "width": 12,
+      "markdown": "### Per-sample / per-partition lag curves — planned (not yet buildable)\n\n**Status: PLANNED, pending sample persistence.** The richer per-sample consumer-lag and per-partition drain curves sketched in the plan are **out of scope for this tab today**: the poller samples are **runner artifacts only** and are **not persisted to the DWH** (contract §9 / plan §9 note — a future `perf.samples` table is the optional extension that would carry them). \n\nThe minute-bucketed **DRAIN CURVE** and **REMAINING LAG** charts above are derived from `perf.ch_inserts` (per-insert `event_time`) and cover the pair-level drain shape. What is missing until `perf.samples` exists is the **per-partition** breakdown and the **sub-minute per-sample** poller lag series.\n\n_This placeholder renders as markdown so the tab honestly documents the gap rather than showing an empty chart. Remove it when `perf.samples` lands._",
+      "description": "PLACEHOLDER (markdown) documenting the one planned-but-not-buildable panel: per-sample / per-partition lag curves. These need poller samples persisted to the DWH (a future perf.samples table); today samples are runner-only artifacts, so this panel is text, not a chart. It renders as markdown by design so the operator sees an honest 'planned' note instead of an empty or broken chart."
+    }
+  ]
+}
