@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message MapStringRecord {
+  int32 id = 1;
+  map<string, MetaValue> metadata = 2;
+
+  message MetaValue {
+    int32 score = 1;
+    string label = 2;
+  }
+}

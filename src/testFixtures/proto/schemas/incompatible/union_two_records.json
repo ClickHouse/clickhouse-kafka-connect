@@ -1,0 +1,18 @@
+{
+  "description": "Oneof { TypeA | TypeB } -> separate Nullable CH tuples. Not always valid because tuples cannot be Nullable before CH version 26.1 (see: https://clickhouse.com/docs/operations/settings/settings#allow_experimental_nullable_tuple_type)",
+  "clickhouse_columns": {
+    "id": "Int32",
+    "type_a": "Nullable(Tuple(label String))",
+    "type_b": "Nullable(Tuple(count Int32))"
+  },
+  "clickhouse_order_by": "id",
+  "records": [
+    {"id": 1, "type_a": {"label": "foo"}},
+    {"id": 3, "type_b": {"count": 42}},
+    {"id": 5, "type_a": {"label": "bar"}},
+    {"id": 6, "type_b": {"count": 99}},
+    {"id": 8, "type_a": {"label": "baz"}},
+    {"id": 9, "type_b": {"count": 7}}
+  ],
+  "expected_row_count": 6
+}

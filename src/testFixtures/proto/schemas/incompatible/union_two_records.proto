@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package com.clickhouse.kafka.connect.proto.test;
+
+message TwoRecords {
+  int32 id = 1;
+  oneof payload {
+    TypeA type_a = 2;
+    TypeB type_b = 3;
+  }
+
+  message TypeA {
+    string label = 1;
+  }
+
+  message TypeB {
+    int32 count = 1;
+  }
+}

@@ -1,0 +1,37 @@
+name: Use ClickHouse Java client override
+description: >-
+  Points the build at a specific ClickHouse Java client by overriding the version in the Gradle
+  version catalog (gradle/libs.versions.toml). When the client was built from a branch it is first
+  installed into the local Maven repository so Gradle can resolve it.
+inputs:
+  version:
+    description: 'ClickHouse Java client version to use. Empty means use the catalog default.'
+    required: false
+    default: ''
+  built:
+    description: 'Whether a branch build was uploaded by the setup job and must be installed locally.'
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Download built ClickHouse Java client
+      if: inputs.built == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: clickhouse-java-m2
+        path: clickhouse-java-m2
+    - name: Install built client into local Maven repository
+      if: inputs.built == 'true'
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.m2/repository/com"
+        cp -r clickhouse-java-m2/clickhouse "$HOME/.m2/repository/com/"
+    - name: Override ClickHouse Java client version in version catalog
+      if: inputs.version != ''
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        sed -i -E "s|^clickHouseDriver = \".*\"|clickHouseDriver = \"${VERSION}\"|" gradle/libs.versions.toml
+        grep '^clickHouseDriver' gradle/libs.versions.toml

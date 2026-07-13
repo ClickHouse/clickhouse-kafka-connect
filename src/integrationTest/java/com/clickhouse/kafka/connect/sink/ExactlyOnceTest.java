@@ -21,7 +21,11 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -243,7 +247,7 @@ public class ExactlyOnceTest {
                     true, true); // ssl=true, exactlyOnce=true
         }
 
-        confluentPlatform.createConnect(jsonString);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, jsonString);
     }
 
     private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {

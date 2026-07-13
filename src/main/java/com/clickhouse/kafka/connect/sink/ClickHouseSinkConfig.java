@@ -54,13 +54,16 @@ public class ClickHouseSinkConfig {
     public static final String IGNORE_PARTITIONS_WHEN_BATCHING = "ignorePartitionsWhenBatching";
     public static final String BUFFER_COUNT = "bufferCount";
     public static final String BUFFER_FLUSH_TIME = "bufferFlushTime";
+    public static final String CLICKHOUSE_CLIENT_INSERT_TIMEOUT_MS = "clickhouseClientInsertTimeoutMs";
     public static final String REPORT_INSERTED_OFFSETS = "reportInsertedOffsets";
+    public static final String DEBEZIUM_CDC_ENABLED = "debeziumCDCEnabled";
     public static final String ERROR_TOLERANCE_ALL = "all";
     public static final String ERROR_TOLERANCE_NONE = "none";
     public static final String AUTO_EVOLVE = "auto.evolve";
     public static final String AUTO_EVOLVE_DDL_REFRESH_RETRIES = "auto.evolve.ddl.refresh.retries";
     public static final String AUTO_EVOLVE_STRUCT_TO_JSON = "auto.evolve.struct.to.json";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
+    public static final String CLUSTER_NAME = "clusterName";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
     public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
@@ -79,6 +82,7 @@ public class ClickHouseSinkConfig {
     public static final Boolean customInsertFormatDefault = Boolean.FALSE;
     public static final Integer bufferCountDefault = 0;
     public static final Long bufferFlushTimeDefault = 0L;
+    public static final Long clickhouseClientInsertTimeoutMsDefault = TimeUnit.MINUTES.toMillis(4);
     public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
 
     private final String hostname;
@@ -112,12 +116,15 @@ public class ClickHouseSinkConfig {
     private final boolean ignorePartitionsWhenBatching;
     private final int bufferCount;
     private final long bufferFlushTime;
+    private final long clickhouseClientInsertTimeoutMs;
     private final boolean reportInsertedOffsets;
+    private final boolean debeziumCDCEnabled;
     private final boolean autoEvolve;
     private final int autoEvolveDdlRefreshRetries;
     private final boolean autoEvolveStructToJson;
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
+    private final String clusterName;
 
     public enum InsertFormats {
         NONE,
@@ -295,8 +302,11 @@ public class ClickHouseSinkConfig {
         this.ignorePartitionsWhenBatching = Boolean.parseBoolean(props.getOrDefault(IGNORE_PARTITIONS_WHEN_BATCHING, "false"));
         this.bufferCount = Integer.parseInt(props.getOrDefault(BUFFER_COUNT, bufferCountDefault.toString()));
         this.bufferFlushTime = Long.parseLong(props.getOrDefault(BUFFER_FLUSH_TIME, bufferFlushTimeDefault.toString()));
+        this.clickhouseClientInsertTimeoutMs = Long.parseLong(props.getOrDefault(CLICKHOUSE_CLIENT_INSERT_TIMEOUT_MS, clickhouseClientInsertTimeoutMsDefault.toString()));
         this.reportInsertedOffsets = Boolean.parseBoolean(props.getOrDefault(REPORT_INSERTED_OFFSETS, reportInsertedOffsetsDefault.toString()));
+        this.debeziumCDCEnabled = Boolean.parseBoolean(props.getOrDefault(DEBEZIUM_CDC_ENABLED, "false"));
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
+        this.clusterName = props.getOrDefault(CLUSTER_NAME, "");
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -324,6 +334,22 @@ public class ClickHouseSinkConfig {
             }
         } catch (Exception e) {
             LOGGER.warn("Failed to validate some configuration", e);
+        }
+
+        try {
+            String maxPollIntervalRaw = props.get("consumer.override.max.poll.interval.ms");
+            if (maxPollIntervalRaw != null && !maxPollIntervalRaw.isBlank()) {
+                long maxPollIntervalMs = Long.parseLong(maxPollIntervalRaw.trim());
+                if (this.clickhouseClientInsertTimeoutMs >= maxPollIntervalMs) {
+                    LOGGER.warn("{} ({} ms) is greater than or equal to consumer.override.max.poll.interval.ms ({} ms). " +
+                                    "A hung ClickHouse insert may trigger a Kafka consumer rebalance before the insert times out. " +
+                                    "Set {} below max.poll.interval.ms.",
+                            CLICKHOUSE_CLIENT_INSERT_TIMEOUT_MS, this.clickhouseClientInsertTimeoutMs,
+                            maxPollIntervalMs, CLICKHOUSE_CLIENT_INSERT_TIMEOUT_MS);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to validate {} against consumer.override.max.poll.interval.ms", CLICKHOUSE_CLIENT_INSERT_TIMEOUT_MS, e);
         }
     }
 
@@ -646,6 +672,19 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Width.SHORT,
                 "Bypass field cleanup."
         );
+        configDef.define(DEBEZIUM_CDC_ENABLED,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.MEDIUM,
+                "Enable Debezium CDC envelope processing. When true, records whose schema name ends with"
+                        + " '.Envelope' are routed through DebeziumRecordConvertor, which extracts op/before/after,"
+                        + " injects _version (from source.lsn / gtid / change_lsn) and is_deleted columns."
+                        + " Requires a ReplacingMergeTree(_version, is_deleted) target table. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Enable Debezium CDC envelope processing."
+        );
         configDef.define(IGNORE_PARTITIONS_WHEN_BATCHING,
                 ConfigDef.Type.BOOLEAN,
                 false,
@@ -679,6 +718,23 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Buffer flush time in ms."
+        );
+        configDef.define(CLICKHOUSE_CLIENT_INSERT_TIMEOUT_MS,
+                ConfigDef.Type.LONG,
+                clickhouseClientInsertTimeoutMsDefault,
+                ConfigDef.Range.atLeast(100),
+                ConfigDef.Importance.LOW,
+                "Maximum time in milliseconds to wait for a single ClickHouse insert response. " +
+                        "Must stay below consumer.override.max.poll.interval.ms: if an insert hangs longer than the " +
+                        "poll interval, Kafka assumes the worker is dead and rebalances the partitions mid-insert. " +
+                        "Leave a comfortable margin (e.g. at least 2x the slowest expected insert) so transient slow " +
+                        "inserts do not race the poll interval. On timeout a RetriableException is thrown, so the Connect " +
+                        "framework retries the batch; in exactly-once mode the retry reuses insert_deduplication_token " +
+                        "and ClickHouse drops duplicates. Default: " + clickhouseClientInsertTimeoutMsDefault + " ms.",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "ClickHouse client insert timeout in ms."
         );
         configDef.define(REPORT_INSERTED_OFFSETS,
                 ConfigDef.Type.BOOLEAN,
@@ -735,6 +791,16 @@ public class ClickHouseSinkConfig {
                 ++ddlOrderInGroup,
                 ConfigDef.Width.SHORT,
                 "Map STRUCT to JSON"
+        );
+        configDef.define(CLUSTER_NAME,
+                ConfigDef.Type.STRING,
+                "",
+                ConfigDef.Importance.MEDIUM,
+                "Cluster name to include in all distributed DDL queries run by the connector",
+                ddlGroup,
+                ++ddlOrderInGroup,
+                ConfigDef.Width.SHORT,
+                "Cluster name for distributed DDL"
         );
         return configDef;
     }
