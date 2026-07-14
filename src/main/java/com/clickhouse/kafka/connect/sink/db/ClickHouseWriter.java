@@ -649,6 +649,18 @@ public class ClickHouseWriter implements DBWriter {
                     // https://github.com/ClickHouse/clickhouse-java/blob/6cbbd8fe3f86ac26d12a95e0c2b964f3a3755fc9/clickhouse-data/src/main/java/com/clickhouse/data/format/ClickHouseRowBinaryProcessor.java#L159
                     LOGGER.error("Cannot serialize unsupported type {}", columnType);
             }
+        } catch (ClassCastException e) {
+            // A type mismatch (e.g. a java.util.Date reaching the UInt64 cast) otherwise throws a bare
+            // ClassCastException naming only Java types. Rethrow with the failing column and its types
+            // as a non-retryable DataException so the context reaches Connect status / DLQ / JMX metrics
+            // instead of only the logs. Record values are never included.
+            String sourceType = value == null ? "null" : String.valueOf(value.getFieldType());
+            String valueClass = (value == null || value.getObject() == null) ? "null" : value.getObject().getClass().getName();
+            String message = String.format(
+                    "Failed to write column `%s`: cannot convert Kafka value of type %s (value class: %s) to ClickHouse type %s",
+                    col.getName(), sourceType, valueClass, columnType);
+            LOGGER.error(message, e);
+            throw new DataException(message, e);
         } catch (Exception e) {
             LOGGER.error("Error writing value of " + (value == null ? "<value null>" : value.getFieldType() ) + " to the column `" + col.getName() + "` of type " + columnType, e);
             throw e;

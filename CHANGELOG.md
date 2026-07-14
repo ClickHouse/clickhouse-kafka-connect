@@ -4,6 +4,16 @@
 
 ## Internal Changes
 * Refactored `ClickHouseSinkTask` to delegate to a `DeliveryStrategy` per delivery semantic (`DirectDeliveryStrategy`, `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`), with a shared `ChunkFlusher` for the insert + offset-tracking path. The buffering and non-buffering flows now live in separate, cohesive units instead of interleaved branches on the task. Behavior is unchanged.
+
+## Improvements
+* Cast/conversion failures in `ClickHouseWriter` now surface the failing column and its types.
+Previously a type mismatch (e.g. a `java.util.Date` reaching a `UInt64` column) threw a bare
+`ClassCastException` that named only Java types, and the useful context — column name, target
+ClickHouse type, source Kafka type — was written to the container logs only. The connector now
+rethrows these as a non-retryable `DataException` carrying that context, so it also reaches the Kafka
+Connect REST status, DLQ record headers, and JMX `task-error-metrics`. Record values are never
+included in the message. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/729)
+
 # 1.3.11, 2026-06-24
 
 ## Bug Fixes
