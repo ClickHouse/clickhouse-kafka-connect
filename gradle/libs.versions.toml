@@ -2,7 +2,7 @@
 clickHouseDriver = "0.9.5"
 kafka = "2.7.0"
 gson = "2.13.1"
-jackson = "2.21.2"
+jackson = "2.21.5"
 jacksonAnnotations = "2.21"
 httpclient = "5.5.1"
 httpclientTest = "5.6.1"

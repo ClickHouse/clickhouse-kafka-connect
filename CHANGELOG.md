@@ -1,16 +1,43 @@
-# 1.3.11, (unreleased)
+# 1.4.0, 2026-07-15
+
+## Security
+
+* Upgraded `com.fasterxml.jackson.core` dependencies to version `2.21.5` to address multiple CVE's in previous releases.
+
 ## New Features
-* Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0` and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
+
+* Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and
+  `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized
+  chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past
+  `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse
+  `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0`
+  and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
+
+## Improvements
+* Cast/conversion failures in `ClickHouseWriter` now surface the failing column and its types.
+  Previously a type mismatch (e.g. a `java.util.Date` reaching a `UInt64` column) threw a bare
+  `ClassCastException` that named only Java types, and the useful context — column name, target
+  ClickHouse type, source Kafka type — was written to the container logs only. The connector now
+  rethrows these as a non-retryable `DataException` carrying that context, so it also reaches the Kafka
+  Connect REST status, DLQ record headers, and JMX `task-error-metrics`. Record values are never
+  included in the message. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/729)
 
 ## Internal Changes
-* Refactored `ClickHouseSinkTask` to delegate to a `DeliveryStrategy` per delivery semantic (`DirectDeliveryStrategy`, `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`), with a shared `ChunkFlusher` for the insert + offset-tracking path. The buffering and non-buffering flows now live in separate, cohesive units instead of interleaved branches on the task. Behavior is unchanged.
-# 1.3.11, 2026-06-24
+
+* Refactored `ClickHouseSinkTask` to delegate to a `DeliveryStrategy` per delivery semantic (`DirectDeliveryStrategy`,
+  `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`), with a shared `ChunkFlusher` for the insert +
+  offset-tracking path. The buffering and non-buffering flows now live in separate, cohesive units instead of
+  interleaved branches on the task. Behavior is unchanged.
 
 ## Bug Fixes
 * Fixed `NullPointerException` when writing a `null` value into a `Nullable(JSON)` column via the binary
 insert path with `input_format_binary_read_json_as_string=1`. The JSON case in `ClickHouseWriter` cast the
 field straight to `String` without checking for `null` first, unlike every other nullable-aware type in the
 same switch. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/562)
+
+## Dependencies
+
+* Bumped `org.json:json` from `20250517` to `20260522`.
 
 # 1.3.10, 2026-06-24
 
