@@ -1,3 +1,14 @@
+# 1.5.0 
+
+## Confluent Archive 
+
+* Now includes shaded `org.lz4` to solve conflict between versions provided by `org.apache.kafka:connect-api > org.apache.kafka:kafka-clients`.
+
+## Dependencies
+
+* Bumped `com.clickhouse:*` from `0.9.5` to `0.9.6`.
+* Fixed resolution of `org.lz4` library.
+
 # 1.3.11, (unreleased)
 ## New Features
 * Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0` and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
