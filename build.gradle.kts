@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -38,12 +39,29 @@ repositories {
 
 val clickhouseDependencies: Configuration by configurations.creating
 
+// The ClickHouse client-v2 depends on the maintained `at.yawk.lz4:lz4-java` fork, while
+// kafka-clients depends on the original `org.lz4:lz4-java`. Both declare the same
+// `org.lz4:lz4-java` capability, so Gradle needs to be told which one to keep. The fork is a
+// drop-in replacement (same `net.jpountz.lz4` package) and newer, so we select it everywhere.
+configurations.all {
+    resolutionStrategy.capabilitiesResolution.withCapability("org.lz4:lz4-java") {
+        val fork = candidates.firstOrNull {
+            (it.id as? ModuleComponentIdentifier)?.group == "at.yawk.lz4"
+        }
+        if (fork != null) {
+            select(fork)
+            because("client-v2 uses the maintained at.yawk.lz4 fork, a drop-in replacement for org.lz4:lz4-java")
+        }
+    }
+}
+
 dependencies {
     implementation(libs.kafka.connect.api)
     implementation(libs.clickhouse.client)
     implementation(libs.clickhouse.http.client)
     implementation(libs.clickhouse.data)
     implementation(libs.clickhouse.client.v2)
+    implementation(libs.lz4.java)
     implementation(libs.gson)
     implementation(libs.httpclient5)
 
@@ -60,6 +78,7 @@ dependencies {
     clickhouseDependencies(libs.httpclient5)
     clickhouseDependencies(libs.clickhouse.client)
     clickhouseDependencies(libs.clickhouse.client.v2)
+    clickhouseDependencies(libs.lz4.java)
     clickhouseDependencies(libs.clickhouse.http.client)
     clickhouseDependencies(libs.gson)
     clickhouseDependencies(libs.jackson.core)
@@ -125,7 +144,7 @@ testing {
                 implementation(libs.okhttp)
                 implementation(libs.json)
                 implementation(libs.httpclient5.test)
-                implementation(libs.clickhouse.jdbc)
+//                implementation(libs.clickhouse.jdbc)
                 implementation(libs.clickhouse.client)
                 implementation(libs.clickhouse.client.v2)
                 implementation(libs.clickhouse.http.client)
