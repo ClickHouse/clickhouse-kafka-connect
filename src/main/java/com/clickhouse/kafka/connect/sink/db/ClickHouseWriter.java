@@ -655,9 +655,10 @@ public class ClickHouseWriter implements DBWriter {
             // as a non-retryable DataException so the context reaches Connect status / DLQ / JMX metrics
             // instead of only the logs. Record values are never included.
             String sourceType = value == null ? "null" : String.valueOf(value.getFieldType());
+            String valueClass = (value == null || value.getObject() == null) ? "null" : value.getObject().getClass().getName();
             String message = String.format(
-                    "Failed to write column `%s`: cannot convert Kafka value of type %s to ClickHouse type %s",
-                    col.getName(), sourceType, columnType);
+                    "Failed to write column `%s`: cannot convert Kafka value of type %s (value class: %s) to ClickHouse type %s",
+                    col.getName(), sourceType, valueClass, columnType);
             LOGGER.error(message, e);
             throw new DataException(message, e);
         } catch (Exception e) {
