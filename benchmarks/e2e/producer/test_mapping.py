@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Producer mapping test — REAL-parquet shape, not the idealised one.
+
+Regression guard for the live-run failure: the real ClickBench hits parquet
+stores its 28 string columns as BINARY, so pyarrow yields ``bytes`` (and real
+hits data contains invalid UTF-8), which crashed fastavro's ``write_utf8``
+("TypeError: must be string on field Title"). The original verification used a
+synthetic parquet with native string columns and never exercised that path.
+
+This test generates (at test time — no real hits data checked in) a small
+parquet whose string columns are BINARY-typed and contain invalid UTF-8 plus
+edge values, then runs it through the ACTUAL producer path:
+
+    pyarrow read -> prepare_batch (columnar bytes->utf8) -> row mapper
+        -> fastavro schemaless_writer against hits.avsc
+
+``schemaless_writer`` is the same encoder confluent's ``AvroSerializer`` uses
+internally, so this exercises the exact ``write_utf8`` requirement without
+needing a live Schema Registry.
+
+Also asserts:
+  * invalid UTF-8 decodes deterministically (errors='replace', U+FFFD);
+  * a None in a (non-nullable) column FAILS LOUDLY with the column name;
+  * Avro round-trip (write + read) preserves values.
+
+Run:  python3 test_mapping.py   (exit 0 = pass)
+
+Follow-up (out of scope here): the #27 sink-side mapping test
+(src/test/.../benchmark/HitsAvroMappingTest) covers AvroConverter -> sink; the
+producer-side BINARY/bytes concern lives in THIS test.
+"""
+
+import datetime
+import io
+import json
+import os
+import sys
+import tempfile
+
+import pyarrow as pa
+import pyarrow.dataset as ds
+import pyarrow.parquet as pq
+import fastavro
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import producer  # noqa: E402  (the module under test)
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SCHEMA_PATH = os.path.join(HERE, "..", "schema", "hits.avsc")
+
+# Invalid UTF-8 sequences that appear in real hits data (lone continuation
+# bytes, truncated multibyte, 0xFF). errors='replace' must map these to U+FFFD
+# deterministically.
+INVALID_UTF8 = [
+    b"\xff\xfebroken",
+    b"caf\xe9",              # latin-1 e-acute, invalid as UTF-8
+    b"\xed\xa0\x80",         # UTF-8-encoded surrogate half
+    b"ok-prefix\x80suffix",  # lone continuation byte
+]
+N = 200
+
+DATETIME = set(producer.DATETIME_COLS)
+DATE = producer.DATE_COL
+
+
+def build_binary_parquet(path, avsc, with_null_in=None):
+    """Small hits-shaped parquet with BINARY string columns (like real hits)."""
+    fields, arrays = [], []
+    for f in avsc["fields"]:
+        name, t = f["name"], f["type"]
+        if name in DATETIME:
+            pat = pa.timestamp("us", tz="UTC")
+            base = datetime.datetime(2013, 7, 15, tzinfo=datetime.timezone.utc)
+            vals = [base + datetime.timedelta(seconds=i) for i in range(N)]
+            vals[0] = datetime.datetime(1970, 1, 1,
+                                        tzinfo=datetime.timezone.utc)
+        elif name == DATE:
+            pat = pa.date32()
+            vals = [datetime.date(2013, 7, 15) + datetime.timedelta(days=i)
+                    for i in range(N)]
+            vals[0] = datetime.date(1970, 1, 1)
+        elif isinstance(t, dict) and t.get("connect.type") == "int16":
+            pat = pa.int16()
+            vals = [-32768, 32767, 0] + [i % 100 for i in range(N - 3)]
+        elif t == "long":
+            pat = pa.int64()
+            vals = [-(2 ** 63), 2 ** 63 - 1, 0] + [i for i in range(N - 3)]
+        elif t == "int":
+            pat = pa.int32()
+            vals = [-(2 ** 31), 2 ** 31 - 1, 0] + [i for i in range(N - 3)]
+        elif t == "string":
+            # THE POINT: BINARY-typed column, bytes values, invalid UTF-8 mixed
+            # with valid edge values (empty, unicode, long).
+            pat = pa.binary()
+            samples = INVALID_UTF8 + [b"", "unicode-é中\U0001f600".encode(),
+                                      b"x" * 500]
+            vals = [samples[i % len(samples)] for i in range(N)]
+        else:
+            raise AssertionError(f"unhandled avro type for {name}: {t}")
+        if with_null_in == name:
+            vals[7] = None
+        arrays.append(pa.array(vals, type=pat))
+        fields.append(pa.field(name, pat, nullable=(with_null_in == name)))
+    pq.write_table(pa.table(arrays, schema=pa.schema(fields)), path)
+
+
+def test_sharding_selection():
+    """Stride-N shard selection: disjoint + complete + N=1 degenerate + empty."""
+    files = [f"s3://b/hits/part-{i:04d}.parquet" for i in range(12)]
+
+    # N=1 degenerates to today's behaviour: one shard, every file.
+    assert producer.select_shard_files(files, 0, 1) == files
+
+    # N=3 over 12 files: each shard gets 4, disjoint, and together == all files.
+    shards = [producer.select_shard_files(files, i, 3) for i in range(3)]
+    assert [len(s) for s in shards] == [4, 4, 4]
+    seen = [f for s in shards for f in s]
+    assert sorted(seen) == sorted(files), "shards must be complete"
+    assert len(set(seen)) == len(seen), "shards must be DISJOINT (no dup file)"
+    # stride correctness: shard i holds exactly files[i], files[i+3], ...
+    assert shards[0] == [files[0], files[3], files[6], files[9]]
+    assert shards[1] == [files[1], files[4], files[7], files[10]]
+    assert shards[2] == [files[2], files[5], files[8], files[11]]
+
+    # Uneven: 12 files over N=5 -> sizes 3,3,2,2,2 (still disjoint + complete).
+    shards5 = [producer.select_shard_files(files, i, 5) for i in range(5)]
+    assert [len(s) for s in shards5] == [3, 3, 2, 2, 2]
+    seen5 = [f for s in shards5 for f in s]
+    assert sorted(seen5) == sorted(files) and len(set(seen5)) == len(seen5)
+
+    # Empty-shard edge: files < N -> the high-index shards get NO files.
+    two = files[:2]
+    empties = [producer.select_shard_files(two, i, 4) for i in range(4)]
+    assert [len(s) for s in empties] == [1, 1, 0, 0]
+    assert empties[2] == [] and empties[3] == []
+    print("PASS sharding: stride disjoint+complete, N=1 degenerate, empty-shard edge")
+
+
+def test_list_dataset_files_is_stable_sorted():
+    """Every pod must see the SAME file ordering (stable lexicographic sort) or
+    two pods could produce the same file / a file could be skipped."""
+    with tempfile.TemporaryDirectory() as td:
+        schema_str, field_order, i16, sf = producer.load_avro_schema(SCHEMA_PATH)
+        avsc = json.loads(schema_str)
+        # Write files out of lexical order; list_dataset_files must sort them.
+        names = ["part-0002.parquet", "part-0000.parquet", "part-0001.parquet"]
+        for n in names:
+            build_binary_parquet(os.path.join(td, n), avsc)
+        dataset = ds.dataset(td, format="parquet")
+        listed = producer.list_dataset_files(dataset)
+        assert listed == sorted(listed), "files must be lexicographically sorted"
+        # deterministic across repeated calls (same ordering every pod)
+        assert producer.list_dataset_files(dataset) == listed
+        base = [os.path.basename(p) for p in listed]
+        assert base == sorted(names)
+    print("PASS list_dataset_files: stable lexicographic sort, deterministic")
+
+
+def _set_shard_env(mapping):
+    """Set exactly the given shard env vars, clearing the rest (plain-script
+    helper — this file runs standalone; no pytest fixtures involved)."""
+    for k in ("JOB_COMPLETION_INDEX", "SHARD_COUNT"):
+        os.environ.pop(k, None)
+    for k, v in mapping.items():
+        os.environ[k] = v
+
+
+def _shard_env_must_die(mapping, why):
+    _set_shard_env(mapping)
+    failed = False
+    try:
+        producer.read_shard_env()
+    except SystemExit:
+        failed = True
+    assert failed, f"read_shard_env must reject {mapping} ({why})"
+
+
+def test_read_shard_env():
+    """JOB_COMPLETION_INDEX/SHARD_COUNT parsing + range validation + the F1
+    missing-index guard: SHARD_COUNT>1 with NO index must DIE, never default
+    to shard 0 — N pods silently on shard 0 produce N copies of 1/N of the
+    data, and the offsets cross-check is mathematically blind to it
+    (Σ rows_sent == broker offsets, both N x shard 0)."""
+    # defaults: index 0, count 1 (single-producer degenerate)
+    _set_shard_env({})
+    assert producer.read_shard_env() == (0, 1)
+    _set_shard_env({"JOB_COMPLETION_INDEX": "2", "SHARD_COUNT": "3"})
+    assert producer.read_shard_env() == (2, 3)
+    # SHARD_COUNT=1 with no index is still fine (standalone/local run)
+    _set_shard_env({"SHARD_COUNT": "1"})
+    assert producer.read_shard_env() == (0, 1)
+
+    # F1 THE CRITICAL CASE: SHARD_COUNT>1 but JOB_COMPLETION_INDEX unset.
+    _shard_env_must_die({"SHARD_COUNT": "3"},
+                        "missing index with N>1 would triple-produce shard 0")
+
+    # out-of-range / zero / garbage env all die loudly
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "3", "SHARD_COUNT": "3"},
+                        "index out of range")
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "-1", "SHARD_COUNT": "3"},
+                        "negative index")
+    _shard_env_must_die({"SHARD_COUNT": "0"}, "zero count")
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "abc", "SHARD_COUNT": "3"},
+                        "garbage index")
+    _shard_env_must_die({"JOB_COMPLETION_INDEX": "0", "SHARD_COUNT": "x"},
+                        "garbage count")
+
+    _set_shard_env({})  # leave the env clean for anything running after
+    print("PASS read_shard_env: defaults (0,1), parse, F1 missing-index guard "
+          "(SHARD_COUNT>1 w/o index dies), out-of-range/garbage rejected")
+
+
+def main():
+    schema_str, field_order, int16_fields, string_fields = \
+        producer.load_avro_schema(SCHEMA_PATH)
+    avsc = json.loads(schema_str)
+    parsed = fastavro.parse_schema(avsc)
+    assert len(string_fields) == 28, f"expected 28 string fields, got {len(string_fields)}"
+    mapper = producer.make_row_mapper(field_order, int16_fields)
+
+    with tempfile.TemporaryDirectory() as td:
+        # --- happy path: BINARY strings + invalid UTF-8 ----------------------
+        p = os.path.join(td, "hits_binary.parquet")
+        build_binary_parquet(p, avsc)
+        dataset = ds.dataset(p, format="parquet")
+        # confirm the fixture really is BINARY-typed (the failure precondition)
+        assert pa.types.is_binary(dataset.schema.field("Title").type), \
+            "fixture must use BINARY string columns"
+
+        encoded = decoded_rows = 0
+        first_rec = None
+        for batch in dataset.to_batches(columns=field_order, batch_size=64):
+            batch = producer.prepare_batch(batch, string_fields)
+            # after prepare_batch every avro-string column must be arrow string
+            for name in string_fields:
+                assert pa.types.is_string(batch.schema.field(name).type), name
+            for row in batch.to_pylist():
+                rec = mapper(row)
+                buf = io.BytesIO()
+                fastavro.schemaless_writer(buf, parsed, rec)  # the write_utf8 path
+                encoded += 1
+                buf.seek(0)
+                back = fastavro.schemaless_reader(buf, parsed)
+                if first_rec is None:
+                    first_rec = back
+                decoded_rows += 1
+        assert encoded == decoded_rows == N, (encoded, decoded_rows)
+        assert len(first_rec) == 105
+        # determinism of errors='replace': invalid byte -> U+FFFD
+        assert first_rec["Title"] == INVALID_UTF8[0].decode("utf-8", "replace")
+        assert "�" in first_rec["Title"]
+        assert isinstance(first_rec["EventTime"], int) and first_rec["EventTime"] == 0
+        assert first_rec["EventDate"] == datetime.date(1970, 1, 1)
+        assert first_rec["JavaEnable"] == -32768
+        print(f"PASS happy path: {N} BINARY-string rows (invalid UTF-8 included) "
+              f"mapped + Avro round-tripped; replace-decode deterministic")
+
+        # --- None in a string column must FAIL LOUDLY with the column name ---
+        p2 = os.path.join(td, "hits_null.parquet")
+        build_binary_parquet(p2, avsc, with_null_in="Referer")
+        dataset2 = ds.dataset(p2, format="parquet")
+        failed = False
+        try:
+            for batch in dataset2.to_batches(columns=field_order, batch_size=64):
+                producer.prepare_batch(batch, string_fields)
+        except SystemExit:
+            failed = True  # producer.die() -> sys.exit
+        assert failed, "None in a non-nullable column must fail the run"
+        print("PASS null guard: None in 'Referer' failed loudly (SystemExit), "
+              "not coerced")
+
+        # --- None in a numeric column too (guard covers all 105) -------------
+        p3 = os.path.join(td, "hits_null_num.parquet")
+        build_binary_parquet(p3, avsc, with_null_in="RegionID")
+        failed = False
+        try:
+            for batch in ds.dataset(p3, format="parquet").to_batches(
+                    columns=field_order, batch_size=64):
+                producer.prepare_batch(batch, string_fields)
+        except SystemExit:
+            failed = True
+        assert failed, "None in a numeric column must fail the run"
+        print("PASS null guard: None in 'RegionID' failed loudly")
+
+    # --- N3: _final_breadcrumb reports the LIVE row count, not the stale
+    #        500k-throttled _last_progress. Simulate the state right before an
+    #        OOMKill: the live counter is well past the last throttled log line.
+    producer._last_progress["read"] = 500000   # last periodic LOG flush
+    producer._live_progress["read"] = 512345    # true rows produced at death
+    cap = io.StringIO()
+    _orig_stderr = sys.stderr
+    try:
+        sys.stderr = cap
+        producer._final_breadcrumb("test")
+    finally:
+        sys.stderr = _orig_stderr
+    out = cap.getvalue()
+    assert "rows_produced_so_far=512345" in out, out
+    assert "rows_produced_so_far=500000" not in out, out
+    print("PASS breadcrumb: FINAL trailer reports the live row count (512345), "
+          "not the 500k-throttled _last_progress")
+
+    # --- sharding (parallel preload) -----------------------------------------
+    test_sharding_selection()
+    test_list_dataset_files_is_stable_sorted()
+    test_read_shard_env()
+
+    print("ALL MAPPING TESTS PASSED")
+
+
+if __name__ == "__main__":
+    main()

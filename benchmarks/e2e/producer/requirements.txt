@@ -1,0 +1,10 @@
+# Benchmark v2 producer — pinned runtime dependencies.
+# confluent-kafka bundles librdkafka (idempotent producer) + the Confluent
+# Schema Registry client and Avro serializer (magic byte + schema-id wire
+# format the sink's AvroConverter expects). The [avro,schemaregistry] extras
+# pull fastavro and the registry HTTP client.
+confluent-kafka[avro,schemaregistry]==2.6.1
+fastavro==1.12.2
+# pyarrow reads the ClickBench hits parquet in bounded row batches (streaming,
+# so ~100M rows never materialise in memory).
+pyarrow==17.0.0
