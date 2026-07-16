@@ -64,6 +64,7 @@ public class ClickHouseSinkConfig {
     public static final String AUTO_EVOLVE_STRUCT_TO_JSON = "auto.evolve.struct.to.json";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
     public static final String CLUSTER_NAME = "clusterName";
+    public static final String USE_ROW_BINARY_WITH_NAMES_AND_TYPES = "useRowBinaryWithNamesAndTypes";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
     public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
@@ -84,6 +85,7 @@ public class ClickHouseSinkConfig {
     public static final Long bufferFlushTimeDefault = 0L;
     public static final Long clickhouseClientInsertTimeoutMsDefault = TimeUnit.MINUTES.toMillis(4);
     public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
+    public static final Boolean useRowBinaryWithNamesAndTypesDefault = Boolean.FALSE;
 
     private final String hostname;
     private final int port;
@@ -125,6 +127,7 @@ public class ClickHouseSinkConfig {
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
     private final String clusterName;
+    private final boolean useRowBinaryWithNamesAndTypes;
 
     public enum InsertFormats {
         NONE,
@@ -307,6 +310,7 @@ public class ClickHouseSinkConfig {
         this.debeziumCDCEnabled = Boolean.parseBoolean(props.getOrDefault(DEBEZIUM_CDC_ENABLED, "false"));
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
         this.clusterName = props.getOrDefault(CLUSTER_NAME, "");
+        this.useRowBinaryWithNamesAndTypes = Boolean.parseBoolean(props.getOrDefault(USE_ROW_BINARY_WITH_NAMES_AND_TYPES, useRowBinaryWithNamesAndTypesDefault.toString()));
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -623,6 +627,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Bypass RowBinary format.");
+        configDef.define(USE_ROW_BINARY_WITH_NAMES_AND_TYPES,
+                ConfigDef.Type.BOOLEAN,
+                useRowBinaryWithNamesAndTypesDefault,
+                ConfigDef.Importance.LOW,
+                "Use the RowBinaryWithNamesAndTypes format instead of RowBinary for schema-based inserts. Doesn't support defaults. default: " +
+                        useRowBinaryWithNamesAndTypesDefault,
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Use RowBinaryWithNamesAndTypes format.");
         configDef.define(DATE_TIME_FORMAT,
                 ConfigDef.Type.LIST,
                 "",

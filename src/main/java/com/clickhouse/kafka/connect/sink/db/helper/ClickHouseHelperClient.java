@@ -65,6 +65,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private boolean useClientV2 = false;
     private final String sslSocketSni;
     private final String clusterClause;
+    private final boolean useRowBinaryWithNamesAndTypes;
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -82,6 +83,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.useClientV2 = builder.useClientV2;
         this.sslSocketSni = builder.sslSocketSni;
         this.clusterClause = builder.clusterClause;
+        this.useRowBinaryWithNamesAndTypes = builder.useRowBinaryWithNamesAndTypes;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -413,6 +415,14 @@ public class ClickHouseHelperClient implements AutoCloseable {
                     return null;
                 }
                 table.addColumn(column);
+                if (useRowBinaryWithNamesAndTypes && !fieldDescriptor.isSubcolumn()) {
+                    table.rememberColumnNameAndType(fieldDescriptor.getName(), fieldDescriptor.getType());
+                }
+            }
+
+            // calculate header
+            if (useRowBinaryWithNamesAndTypes) {
+                table.composeRowBinaryWithNamesAndTypesHeader();
             }
             return table;
         } catch (ClickHouseException | JsonProcessingException e) {
@@ -464,7 +474,13 @@ public class ClickHouseHelperClient implements AutoCloseable {
                         return null;
                     }
                     table.addColumn(column);
+                    if (useRowBinaryWithNamesAndTypes && !fieldDescriptor.isSubcolumn()) {
+                        table.rememberColumnNameAndType(fieldDescriptor.getName(), fieldDescriptor.getType());
+                    }
                 }
+            }
+            if (useRowBinaryWithNamesAndTypes) {
+                table.composeRowBinaryWithNamesAndTypesHeader();
             }
         } catch (Exception e) {
             LOGGER.error("describeTableV2 failed", e);
@@ -566,6 +582,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private boolean useClientV2 = true;
         private String sslSocketSni = "";
         private String clusterClause = "";
+        private boolean useRowBinaryWithNamesAndTypes = false;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -623,6 +640,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder setClusterClause(String clusterName) {
             this.clusterClause = (clusterName == null || clusterName.isEmpty()) ? "" : " ON CLUSTER '" + clusterName + "' ";
+            return this;
+        }
+
+        public ClickHouseClientBuilder useRowBinaryWithNamesAndTypes(boolean useRowBinaryWithNamesAndTypes) {
+            this.useRowBinaryWithNamesAndTypes = useRowBinaryWithNamesAndTypes;
             return this;
         }
 

@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import com.clickhouse.data.format.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.util.Utils;
 import lombok.Getter;
 import lombok.Setter;
@@ -7,6 +8,10 @@ import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -40,6 +45,15 @@ public class Table {
     @Setter
     @Getter
     private int numColumns = 0;
+
+    // column names in the order data is sent
+    private final List<byte[]> rowBinaryHeaderColumnNames = new ArrayList<>();
+    // column types in the order of column names
+    private final List<byte[]> rowBinaryHeaderColumnTypes = new ArrayList<>();
+    // To allocate buffer for pre-baked rowBinaryWithNamesAndTypes header
+    private int estimatedHeaderSize = EST_HEADER_ADDED_LENGTH;
+    // pre-baked names and types header
+    private byte[] rowBinaryWithNamesAndTypesHeader = new byte[0];
 
     public Table(String database, String name) {
         this.database = database;
@@ -80,6 +94,34 @@ public class Table {
             rootColumnsList.add(column);
             rootColumnsMap.put(column.getName(), column);
         }
+    }
+
+    private static final int EST_HEADER_ADDED_LENGTH = 5 /* var int bytes for int */ * 2 /* name and type */;
+    public void rememberColumnNameAndType(String columnName, String columnType) {
+        byte[] nameBytes = columnName.getBytes(StandardCharsets.UTF_8);
+        byte[] typeBytes = columnType.getBytes(StandardCharsets.UTF_8);
+
+        rowBinaryHeaderColumnNames.add(nameBytes);
+        rowBinaryHeaderColumnTypes.add(typeBytes);
+        estimatedHeaderSize += nameBytes.length + typeBytes.length + EST_HEADER_ADDED_LENGTH;
+    }
+
+    public void composeRowBinaryWithNamesAndTypesHeader() {
+        ByteBuffer out = ByteBuffer.allocate(estimatedHeaderSize);
+        BinaryStreamUtils.writeVarInt(out, rowBinaryHeaderColumnNames.size());
+        for (byte[] columnName : rowBinaryHeaderColumnNames) {
+            BinaryStreamUtils.writeVarInt(out, columnName.length);
+            out.put(columnName);
+        }
+        for (byte[] columnType : rowBinaryHeaderColumnTypes) {
+            BinaryStreamUtils.writeVarInt(out, columnType.length);
+            out.put(columnType);
+        }
+        this.rowBinaryWithNamesAndTypesHeader = out.array();
+    }
+
+    public void writeNamesAndTypes(OutputStream out) throws IOException {
+        out.write(rowBinaryWithNamesAndTypesHeader, 0, rowBinaryWithNamesAndTypesHeader.length);
     }
 
     public Set<String> getMissingColumns(Collection<String> fieldNames) {

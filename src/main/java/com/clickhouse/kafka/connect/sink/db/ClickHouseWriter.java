@@ -118,6 +118,7 @@ public class ClickHouseWriter implements DBWriter {
                 .useClientV2(useClientV2)
                 .setSslSocketSni(csc.getSslSocketSni())
                 .setClusterClause(csc.getClusterName())
+                .useRowBinaryWithNamesAndTypes(csc.isUseRowBinaryWithNamesAndTypes())
                 .build();
 
         if (!chc.ping()) {
@@ -1045,8 +1046,13 @@ public class ClickHouseWriter implements DBWriter {
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
 //        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+
+        ClickHouseFormat format = getRowBinaryFormat(supportDefaults);
         long pushStreamTime = 0;
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        if (format == ClickHouseFormat.RowBinaryWithNamesAndTypes) {
+            table.writeNamesAndTypes(stream);
+        }
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
                 for (Column col : table.getRootColumnsList()) {
@@ -1063,10 +1069,6 @@ public class ClickHouseWriter implements DBWriter {
 
         InputStream data = new ByteArrayInputStream(stream.toByteArray());
 
-        ClickHouseFormat format = ClickHouseFormat.RowBinary;
-        if (supportDefaults) {
-            format = ClickHouseFormat.RowBinaryWithDefaults;
-        }
 
         try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), data, format, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
@@ -1094,12 +1096,8 @@ public class ClickHouseWriter implements DBWriter {
         long s2 = System.currentTimeMillis();
         long pushStreamTime = 0;
         try (ClickHouseClient client = getClient()) {
-            ClickHouseRequest.Mutation request;
-            if (supportDefaults) {
-                request = getMutationRequest(client, ClickHouseFormat.RowBinaryWithDefaults, table.getName(), database, queryId);
-            } else {
-                request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), database, queryId);
-            }
+            ClickHouseFormat format = getRowBinaryFormat(supportDefaults);
+            final ClickHouseRequest.Mutation  request = getMutationRequest(client, format, table.getName(), database, queryId);
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
@@ -1108,6 +1106,11 @@ public class ClickHouseWriter implements DBWriter {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
+
+                // header if according format selected
+                if (format == ClickHouseFormat.RowBinaryWithNamesAndTypes) {
+                    table.writeNamesAndTypes(stream);
+                }
 
                 for (Record record : records) {
                     if (record.getSinkRecord().value() != null) {
@@ -1133,6 +1136,19 @@ public class ClickHouseWriter implements DBWriter {
         long s3 = System.currentTimeMillis();
         LOGGER.info("topic :{} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
         statistics.insertTime(s2 - s1, topic);
+    }
+
+    private ClickHouseFormat getRowBinaryFormat(boolean supportDefaults) {
+        ClickHouseFormat format = ClickHouseFormat.RowBinary;
+        if (supportDefaults) {
+            if (csc.isUseRowBinaryWithNamesAndTypes()) {
+                LOGGER.warn("Configured to use RowBinaryWithNamesAndTypes and trying to write RowBinaryWithDefaults.");
+            }
+            format = ClickHouseFormat.RowBinaryWithDefaults;
+        } else if (csc.isUseRowBinaryWithNamesAndTypes()) {
+            format = ClickHouseFormat.RowBinaryWithNamesAndTypes;
+        }
+        return format;
     }
 
     protected void doInsertJson(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
