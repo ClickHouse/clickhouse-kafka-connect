@@ -243,7 +243,7 @@ public class ClickHouseWriter implements DBWriter {
                 if (csc.isBypassRowBinary()) {
                     doInsertJson(records, table, queryId);
                 } else {
-                    doInsertRawBinary(records, table, queryId, table.hasDefaults(), true);
+                    doInsertRawBinary(records, table, queryId, table.hasDefaults());
                 }
                 break;
             case SCHEMA_LESS:
@@ -961,34 +961,49 @@ public class ClickHouseWriter implements DBWriter {
                 "DDL propagation timeout: columns not visible after %d retries", maxRetries));
     }
 
-    protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults, boolean retry) throws IOException, ExecutionException, InterruptedException {
-        try {
-            if (chc.isUseClientV2()) {
-                doInsertRawBinaryV2(records, table, queryId, supportDefaults);
-            } else {
-                doInsertRawBinaryV1(records, table, queryId, supportDefaults);
-            }
-        } catch (ServerException e) {
-            if (UPDATE_TABLE_ERROR_CODES_V2.contains(e.getCode()) && retry) {
-                LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", e.getCode());
-                Table tableTmp = urgentTableUpdate(table);
-                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
-            } else {
-                LOGGER.error("Error inserting records", e);
-                throw e;
-            }
-        } catch (Exception e) {
-            // Note: this part will be removed once V1 is deprecated
-            Optional<String> updateTableException = UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().filter(code -> e.getMessage().contains(code)).findFirst();
-            if (e.getMessage() != null && updateTableException.isPresent() && retry) {
-                LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.get(updateTableException.get()));
-                Table tableTmp = urgentTableUpdate(table);
-                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
-            } else {
+    protected void doInsertRawBinary(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
+        // On a schema-mismatch error the cached column order disagrees with the server, so each retry refreshes
+        // the mapping first. retryOnSchemaMismatchAttempts (1..5, default 1 = previous behavior) bounds the
+        // refresh retries; values above 1 help cluster deployments where the DDL change may not have propagated
+        // to the replica serving the retry yet.
+        int maxRetries = csc.getRetryOnSchemaMismatchAttempts();
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (chc.isUseClientV2()) {
+                    doInsertRawBinaryV2(records, table, queryId, supportDefaults);
+                } else {
+                    doInsertRawBinaryV1(records, table, queryId, supportDefaults);
+                }
+                return;
+            } catch (Exception e) {
+                // Only a schema mismatch with budget left continues the loop; the exception of the final
+                // attempt is always the one thrown.
+                if (isSchemaMismatchError(e) && attempt < maxRetries) {
+                    LOGGER.warn("Schema-mismatch error inserting records ({}); updating table mapping and retrying ({}/{}).",
+                            e.getLocalizedMessage(), attempt + 1, maxRetries);
+                    table = urgentTableUpdate(table);
+                    supportDefaults = table.hasDefaults();
+                    continue;
+                }
                 LOGGER.error("Error inserting records", e);
                 throw e;
             }
         }
+    }
+
+    /**
+     * @return {@code true} if the insert failed because the server's schema disagrees with the cached column
+     *         order (error code 33/131), i.e. refreshing the table mapping and retrying may succeed. Any other
+     *         failure — including a {@link RetriableException} classified further down the stack — must
+     *         propagate immediately instead of consuming refresh retries.
+     */
+    private static boolean isSchemaMismatchError(Exception e) {
+        if (e instanceof ServerException) {
+            return UPDATE_TABLE_ERROR_CODES_V2.contains(((ServerException) e).getCode());
+        }
+        // Note: this part will be removed once V1 is deprecated
+        return e.getMessage() != null
+                && UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().anyMatch(code -> e.getMessage().contains(code));
     }
 
     private Table urgentTableUpdate(Table table) {

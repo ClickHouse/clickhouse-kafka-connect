@@ -64,6 +64,7 @@ public class ClickHouseSinkConfig {
     public static final String AUTO_EVOLVE_STRUCT_TO_JSON = "auto.evolve.struct.to.json";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
     public static final String CLUSTER_NAME = "clusterName";
+    public static final String RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS = "retryOnSchemaMismatchAttempts";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
     public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
@@ -84,6 +85,8 @@ public class ClickHouseSinkConfig {
     public static final Long bufferFlushTimeDefault = 0L;
     public static final Long clickhouseClientInsertTimeoutMsDefault = TimeUnit.MINUTES.toMillis(4);
     public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
+    public static final Integer retryOnSchemaMismatchAttemptsDefault = 1;
+    public static final int RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS_MAX = 5;
 
     private final String hostname;
     private final int port;
@@ -125,6 +128,7 @@ public class ClickHouseSinkConfig {
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
     private final String clusterName;
+    private final int retryOnSchemaMismatchAttempts;
 
     public enum InsertFormats {
         NONE,
@@ -315,6 +319,11 @@ public class ClickHouseSinkConfig {
         this.autoEvolve = Boolean.parseBoolean(props.getOrDefault(AUTO_EVOLVE, "false"));
         this.autoEvolveDdlRefreshRetries = Integer.parseInt(props.getOrDefault(AUTO_EVOLVE_DDL_REFRESH_RETRIES, "3"));
         this.autoEvolveStructToJson = Boolean.parseBoolean(props.getOrDefault(AUTO_EVOLVE_STRUCT_TO_JSON, "false"));
+        this.retryOnSchemaMismatchAttempts = Integer.parseInt(props.getOrDefault(RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS, retryOnSchemaMismatchAttemptsDefault.toString()));
+        if (retryOnSchemaMismatchAttempts < 1 || retryOnSchemaMismatchAttempts > RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS_MAX) {
+            throw new ConfigException(RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS, retryOnSchemaMismatchAttempts,
+                    "must be between 1 and " + RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS_MAX);
+        }
 
         String jsonAsString = getClickhouseSettings().get("input_format_binary_read_json_as_string");
         this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
@@ -801,6 +810,23 @@ public class ClickHouseSinkConfig {
                 ++ddlOrderInGroup,
                 ConfigDef.Width.SHORT,
                 "Cluster name for distributed DDL"
+        );
+        configDef.define(RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS,
+                ConfigDef.Type.INT,
+                retryOnSchemaMismatchAttemptsDefault,
+                ConfigDef.Range.between(1, RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS_MAX),
+                ConfigDef.Importance.MEDIUM,
+                "When a RowBinary insert fails because the ClickHouse table schema changed (server error code 33 or 131), "
+                        + "the connector refreshes its cached table mapping and retries the insert, repeating the "
+                        + "refresh-and-retry cycle up to this many times without delay between attempts. Values above 1 help "
+                        + "cluster deployments where the DDL change has not propagated to every replica yet. Once the budget "
+                        + "is exhausted the failure is terminal (task fails, or the batch goes to the DLQ per errors.tolerance). "
+                        + "Allowed range: 1-" + RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS_MAX + ". default: "
+                        + retryOnSchemaMismatchAttemptsDefault + " (matches the previous single-retry behavior)",
+                ddlGroup,
+                ++ddlOrderInGroup,
+                ConfigDef.Width.SHORT,
+                "Schema mismatch retry attempts"
         );
         return configDef;
     }
