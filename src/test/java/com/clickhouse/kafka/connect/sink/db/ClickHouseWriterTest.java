@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db;
 
+import com.clickhouse.client.api.ServerException;
 import com.clickhouse.data.ClickHouseDataUpdater;
 import com.clickhouse.data.ClickHouseInputStream;
 import com.clickhouse.data.ClickHouseOutputStream;
@@ -18,6 +19,7 @@ import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExt
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -39,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
@@ -342,11 +345,15 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                     System.currentTimeMillis(), TimestampType.CREATE_TIME);
             Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
 
-            // Verify the server actually returns code 131
-            Exception thrown = assertThrows(Exception.class, () ->
-                    writer.doInsertRawBinary(List.of(record), cachedBefore,
-                            new QueryIdentifier(topic, "code131-direct-" + System.nanoTime()),
-                            cachedBefore.hasDefaults(), false));
+            // Verify the server actually returns code 131 for the raw (retry-free) insert
+            QueryIdentifier rawQueryId = new QueryIdentifier(topic, "code131-direct-" + System.nanoTime());
+            Exception thrown = assertThrows(Exception.class, () -> {
+                if ("V2".equals(clientVersion)) {
+                    writer.doInsertRawBinaryV2(List.of(record), cachedBefore, rawQueryId, cachedBefore.hasDefaults());
+                } else {
+                    writer.doInsertRawBinaryV1(List.of(record), cachedBefore, rawQueryId, cachedBefore.hasDefaults());
+                }
+            });
             assertTrue(exceptionChainContains(thrown, "Code: 131"),
                     "Expected ClickHouse error Code: 131 in exception chain, got: " + thrown);
 
@@ -387,5 +394,101 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             t = t.getCause();
         }
         return false;
+    }
+
+    /** Writer whose insert always fails with the given server error code, counting the attempts. */
+    private static ClickHouseWriter failingWriter(AtomicInteger attempts, int errorCode) {
+        return new ClickHouseWriter(new SinkTaskStatistics(0)) {
+            @Override
+            protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) {
+                attempts.incrementAndGet();
+                throw new ServerException(errorCode, "Code: " + errorCode + ". DB::Exception: simulated failure");
+            }
+
+            @Override
+            protected void doInsertRawBinaryV1(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) {
+                doInsertRawBinaryV2(records, table, queryId, supportDefaults);
+            }
+        };
+    }
+
+    @Test
+    public void retryOnSchemaMismatchAttemptsBoundsRefreshRetries() {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConfig.RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS, "3");
+        String topic = createTopicName("schema_mismatch_retry_budget_test");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
+
+        AtomicInteger attempts = new AtomicInteger();
+        ClickHouseWriter writer = failingWriter(attempts, 33);
+        assertTrue(writer.start(new ClickHouseSinkConfig(props)));
+        try {
+            Table table = writer.getTable(chc.getDatabase(), topic);
+
+            ServerException thrown = assertThrows(ServerException.class, () -> writer.doInsertRawBinary(
+                    List.of(), table, new QueryIdentifier(topic, "budget-" + System.nanoTime()), false));
+            assertEquals(33, thrown.getCode());
+            assertEquals(4, attempts.get(), "initial attempt + 3 configured refresh retries");
+        } finally {
+            writer.stop();
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    @Test
+    public void schemaMismatchRetryDefaultsToSingleRefreshAndIgnoresOtherErrors() {
+        Map<String, String> props = getBaseProps();
+        String topic = createTopicName("schema_mismatch_retry_default_test");
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
+
+        AtomicInteger attempts = new AtomicInteger();
+        ClickHouseWriter mismatchWriter = failingWriter(attempts, 131);
+        assertTrue(mismatchWriter.start(new ClickHouseSinkConfig(props)));
+        try {
+            Table table = mismatchWriter.getTable(chc.getDatabase(), topic);
+            assertThrows(ServerException.class, () -> mismatchWriter.doInsertRawBinary(
+                    List.of(), table, new QueryIdentifier(topic, "default-budget-" + System.nanoTime()), false));
+            assertEquals(2, attempts.get(), "default config must keep the pre-existing single refresh retry");
+        } finally {
+            mismatchWriter.stop();
+        }
+
+        props.put(ClickHouseSinkConfig.RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS, "5");
+        attempts.set(0);
+        ClickHouseWriter syntaxErrorWriter = failingWriter(attempts, 62);
+        assertTrue(syntaxErrorWriter.start(new ClickHouseSinkConfig(props)));
+        try {
+            Table table = syntaxErrorWriter.getTable(chc.getDatabase(), topic);
+            ServerException thrown = assertThrows(ServerException.class, () -> syntaxErrorWriter.doInsertRawBinary(
+                    List.of(), table, new QueryIdentifier(topic, "non-mismatch-" + System.nanoTime()), false));
+            assertEquals(62, thrown.getCode());
+            assertEquals(1, attempts.get(), "non-schema-mismatch errors must not consume refresh retries");
+        } finally {
+            syntaxErrorWriter.stop();
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    @Test
+    public void retryOnSchemaMismatchAttemptsRejectsOutOfRangeValues() {
+        for (String invalid : new String[]{"0", "-1", "6"}) {
+            Map<String, String> props = getBaseProps();
+            props.put(ClickHouseSinkConfig.RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS, invalid);
+            assertThrows(ConfigException.class, () -> new ClickHouseSinkConfig(props),
+                    "value " + invalid + " must be rejected");
+            assertFalse(ClickHouseSinkConfig.CONFIG.validate(props).stream()
+                            .filter(v -> ClickHouseSinkConfig.RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS.equals(v.name()))
+                            .allMatch(v -> v.errorMessages().isEmpty()),
+                    "ConfigDef validation must flag value " + invalid);
+        }
+        for (String valid : new String[]{"1", "5"}) {
+            Map<String, String> props = getBaseProps();
+            props.put(ClickHouseSinkConfig.RETRY_ON_SCHEMA_MISMATCH_ATTEMPTS, valid);
+            assertEquals(Integer.parseInt(valid), new ClickHouseSinkConfig(props).getRetryOnSchemaMismatchAttempts());
+        }
     }
 }

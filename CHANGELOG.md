@@ -1,3 +1,18 @@
+# 1.5.0
+
+## New Features
+
+* Added a `retryOnSchemaMismatchAttempts` connector configuration (allowed range `1`-`5`, default `1`). When a
+  RowBinary insert fails because the table schema changed (server error code `33` or `131`), the connector
+  refreshes its cached table mapping and retries the insert, repeating the refresh-and-retry cycle up to this many
+  times inside `ClickHouseWriter.doInsertRawBinary` (no delay between attempts, and the batch bytes are simply
+  re-sent — the state machine is not re-entered). Values above `1` help cluster deployments where the DDL change
+  has not propagated to the replica serving the retry yet. Non-schema-mismatch failures never consume the budget;
+  once it is exhausted the last failure propagates unchanged (task fails, or the batch is routed to the DLQ per
+  `errors.tolerance`). The default `1` matches the previous single-retry behavior exactly; out-of-range values are
+  rejected at configuration time. See the "Recovering from mid-stream schema changes" section in
+  [`docs/DESIGN.md`](./docs/DESIGN.md).
+
 # 1.4.0, 2026-07-15
 
 ## Security
