@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -52,8 +53,9 @@ public class Table {
     private final List<byte[]> rowBinaryHeaderColumnTypes = new ArrayList<>();
     // To allocate buffer for pre-baked rowBinaryWithNamesAndTypes header
     private int estimatedHeaderSize = EST_HEADER_ADDED_LENGTH;
-    // pre-baked names and types header
-    private byte[] rowBinaryWithNamesAndTypesHeader = new byte[0];
+    // pre-baked names and types header. Stays null until composed so callers can tell
+    // "header was never collected" apart from "header was collected but has no columns".
+    private byte[] rowBinaryWithNamesAndTypesHeader = null;
 
     public Table(String database, String name) {
         this.database = database;
@@ -117,7 +119,10 @@ public class Table {
             BinaryStreamUtils.writeVarInt(out, columnType.length);
             out.put(columnType);
         }
-        this.rowBinaryWithNamesAndTypesHeader = out.array();
+        // estimatedHeaderSize is an upper bound (var ints are assumed to be their max width), so
+        // trim to the bytes actually written. Otherwise trailing zero bytes would be sent to
+        // ClickHouse and corrupt the RowBinaryWithNamesAndTypes stream.
+        this.rowBinaryWithNamesAndTypesHeader = Arrays.copyOf(out.array(), out.position());
     }
 
     public void writeNamesAndTypes(OutputStream out) throws IOException {
