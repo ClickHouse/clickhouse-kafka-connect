@@ -53,9 +53,8 @@ public class Table {
     private final List<byte[]> rowBinaryHeaderColumnTypes = new ArrayList<>();
     // To allocate buffer for pre-baked rowBinaryWithNamesAndTypes header
     private int estimatedHeaderSize = EST_HEADER_ADDED_LENGTH;
-    // pre-baked names and types header. Stays null until composed so callers can tell
-    // "header was never collected" apart from "header was collected but has no columns".
-    private byte[] rowBinaryWithNamesAndTypesHeader = null;
+    // pre-baked names and types header.
+    private byte[] rowBinaryWithNamesAndTypesHeader = new byte[0];
 
     public Table(String database, String name) {
         this.database = database;
@@ -126,6 +125,9 @@ public class Table {
     }
 
     public void writeNamesAndTypes(OutputStream out) throws IOException {
+        if (rowBinaryWithNamesAndTypesHeader.length == 0) {
+            throw new IOException("Bug: Nothing to write - header is empty.");
+        }
         out.write(rowBinaryWithNamesAndTypesHeader, 0, rowBinaryWithNamesAndTypesHeader.length);
     }
 

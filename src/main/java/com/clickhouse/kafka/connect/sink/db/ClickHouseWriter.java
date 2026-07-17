@@ -1140,13 +1140,11 @@ public class ClickHouseWriter implements DBWriter {
 
     private ClickHouseFormat getRowBinaryFormat(boolean supportDefaults) {
         ClickHouseFormat format = ClickHouseFormat.RowBinary;
-        if (supportDefaults) {
-            if (csc.isUseRowBinaryWithNamesAndTypes()) {
-                LOGGER.warn("Configured to use RowBinaryWithNamesAndTypes and trying to write RowBinaryWithDefaults.");
-            }
-            format = ClickHouseFormat.RowBinaryWithDefaults;
-        } else if (csc.isUseRowBinaryWithNamesAndTypes()) {
+        if (csc.isUseRowBinaryWithNamesAndTypes()) {
+            // event with defaults we can use RowBinaryWithNamesAndTypes because server will insert default value for missing fields
             format = ClickHouseFormat.RowBinaryWithNamesAndTypes;
+        } else if (supportDefaults) {
+             format = ClickHouseFormat.RowBinaryWithDefaults;
         }
         return format;
     }

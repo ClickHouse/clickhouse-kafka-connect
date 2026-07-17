@@ -1,7 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
 import com.clickhouse.client.api.data_formats.internal.BinaryStreamReader;
-import com.clickhouse.data.format.BinaryStreamUtils;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
@@ -12,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TableTest extends ClickHouseBase {
 
@@ -164,7 +165,7 @@ class TableTest extends ClickHouseBase {
         add(table, "off16", "Int16");
         add(table, "name", "String");
 
-        assertNull(table.getRowBinaryWithNamesAndTypesHeader());
+        assertEquals(0, table.getRowBinaryWithNamesAndTypesHeader().length);
         assertEquals(2, table.getRootColumnsList().size());
     }
 
@@ -220,7 +221,7 @@ class TableTest extends ClickHouseBase {
     public void describeDoesNotCollectRowBinaryHeaderWhenDisabled() {
         Table table = describeOff16DateTable(getBaseProps(), "rbwnat-header-disabled-test");
         assertNotNull(table);
-        assertNull(table.getRowBinaryWithNamesAndTypesHeader());
+        assertEquals(0, table.getRowBinaryWithNamesAndTypesHeader().length);
     }
 
     private static final class HeaderContents {
@@ -235,14 +236,14 @@ class TableTest extends ClickHouseBase {
 
     private static HeaderContents decodeHeader(byte[] header) throws Exception {
         InputStream in = new ByteArrayInputStream(header);
-        int columns = BinaryStreamUtils.readVarInt(in);
+        int columns = readVarInt(in);
         List<String> names = new ArrayList<>();
         List<String> types = new ArrayList<>();
         for (int i = 0; i < columns; i++) {
-            names.add(BinaryStreamReader.readString(in));
+            names.add(readString(in));
         }
         for (int i = 0; i < columns; i++) {
-            types.add(BinaryStreamReader.readString(in));
+            types.add(readString(in));
         }
         return new HeaderContents(names, types);
     }
@@ -265,5 +266,13 @@ class TableTest extends ClickHouseBase {
         Column stringColumn = tuple.getTupleFields().get(0).getTupleFields().get(0).getTupleFields().get(0);
         assertEquals("tuple.tuple.tuple.string", stringColumn.getName());
         assertEquals(Type.STRING, stringColumn.getType());
+    }
+
+    private static int readVarInt(InputStream in) throws IOException {
+        return BinaryStreamReader.readVarInt(in);
+    }
+
+    private static String readString(InputStream in) throws IOException {
+        return BinaryStreamReader.readString(in);
     }
 }
