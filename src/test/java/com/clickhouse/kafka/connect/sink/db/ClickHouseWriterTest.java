@@ -438,6 +438,69 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"json", "csv", "tsv"})
+    public void doInsertStringUsesEquivalentWirePathAcrossClients(String insertFormat) {
+        List<String> v1Rows = runStringInsertAndReadRows("V1", insertFormat);
+        List<String> v2Rows = runStringInsertAndReadRows("V2", insertFormat);
+        assertEquals(v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for format " + insertFormat);
+    }
+
+    private List<String> runStringInsertAndReadRows(String clientVersion, String insertFormat) {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+        props.put(ClickHouseSinkConfig.INSERT_FORMAT, insertFormat);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String topic = createTopicName("string_parity_" + insertFormat + "_" + clientVersion.toLowerCase());
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("off16", "Int16")
+                .column("str", "String")
+                .engine("MergeTree")
+                .orderByColumn("off16")
+                .execute(chc);
+
+        List<String> payloads;
+        switch (insertFormat) {
+            case "csv":
+                payloads = List.of("1,alpha\n", "2,beta-no-newline");
+                break;
+            case "tsv":
+                payloads = List.of("1\talpha\n", "2\tbeta-no-newline");
+                break;
+            default:
+                payloads = List.of("{\"off16\":1,\"str\":\"alpha\"}\n", "{\"off16\":2,\"str\":\"beta-no-newline\"}");
+                break;
+        }
+
+        try {
+            runWithWriter(props, (chw) -> {
+                for (int i = 0; i < payloads.size(); i++) {
+                    SinkRecord sr = new SinkRecord(topic, 0, null, null, null, payloads.get(i), i,
+                            System.currentTimeMillis(), TimestampType.CREATE_TIME);
+                    Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+                    try {
+                        chw.doInsert(List.of(record), new QueryIdentifier(topic, "string-parity-" + clientVersion + "-" + insertFormat + "-" + i));
+                    } catch (Exception e) {
+                        fail("Failed to insert string record for client=" + clientVersion + ", format=" + insertFormat, e);
+                    }
+                }
+            });
+
+            List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+            List<String> normalizedRows = new ArrayList<>(rows.size());
+            for (JSONObject row : rows) {
+                normalizedRows.add(row.getInt("off16") + "|" + row.getString("str"));
+            }
+            normalizedRows.sort(String::compareTo);
+            return normalizedRows;
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
     private static boolean exceptionChainContains(Throwable t, String target) {
         while (t != null) {
             if (t.getMessage() != null && t.getMessage().contains(target)) {

@@ -1325,8 +1325,49 @@ public class ClickHouseWriter implements DBWriter {
             doInsertStringV1(records, table, queryId);
         }
     }
-    protected void doInsertStringV1(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
+    private ClickHouseFormat getStringInsertFormat() {
+        switch (csc.getInsertFormat()) {
+            case NONE:
+                throw new RuntimeException("using org.apache.kafka.connect.storage.StringConverter, but did not enable.");
+            case CSV:
+                return ClickHouseFormat.CSV;
+            case TSV:
+                return ClickHouseFormat.TSV;
+            default:
+                return ClickHouseFormat.JSONEachRow;
+        }
+    }
+
+    private long writeRecordsString(List<Record> records, OutputStream stream) throws IOException {
         byte[] endingLine = new byte[]{'\n'};
+        long pushStreamTime = 0;
+        for (Record record : records) {
+            if (record.getSinkRecord().value() != null) {
+                String data = (String) record.getSinkRecord().value();
+                LOGGER.debug(String.format("data: %s", data));
+                byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                statistics.bytesInserted(bytes.length);
+                long beforePushStream = System.currentTimeMillis();
+                BinaryStreamUtils.writeBytes(stream, bytes);
+                pushStreamTime += System.currentTimeMillis() - beforePushStream;
+                switch (csc.getInsertFormat()) {
+                    case CSV:
+                    case TSV:
+                        if (bytes[bytes.length - 1] != '\n') {
+                            BinaryStreamUtils.writeBytes(stream, endingLine);
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            } else {
+                LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
+            }
+        }
+        return pushStreamTime;
+    }
+
+    protected void doInsertStringV1(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
 
         Record first = records.get(0);
@@ -1336,19 +1377,7 @@ public class ClickHouseWriter implements DBWriter {
 
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
-        ClickHouseFormat clickHouseFormat = null;
-        switch (csc.getInsertFormat()) {
-            case NONE:
-                throw new RuntimeException("using org.apache.kafka.connect.storage.StringConverter, but did not enable.");
-            case CSV:
-                clickHouseFormat = ClickHouseFormat.CSV;
-                break;
-            case TSV:
-                clickHouseFormat = ClickHouseFormat.TSV;
-                break;
-            default:
-                clickHouseFormat = ClickHouseFormat.JSONEachRow;
-        }
+        ClickHouseFormat clickHouseFormat = getStringInsertFormat();
 
         long s2;
         long pushStreamTime = 0;
@@ -1361,27 +1390,7 @@ public class ClickHouseWriter implements DBWriter {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
-                for (Record record : records) {
-                    if (record.getSinkRecord().value() != null) {
-                        String data = (String)record.getSinkRecord().value();
-                        LOGGER.debug(String.format("data: %s", data));
-                        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
-                        statistics.bytesInserted(bytes.length);
-                        long beforePushStream = System.currentTimeMillis();
-                        BinaryStreamUtils.writeBytes(stream, bytes);
-                        pushStreamTime += System.currentTimeMillis() - beforePushStream;
-                        switch (csc.getInsertFormat()) {
-                            case CSV:
-                            case TSV:
-                                if (bytes[bytes.length-1] != '\n')
-                                    BinaryStreamUtils.writeBytes(stream, endingLine);
-                                break;
-                        }
-
-                    } else {
-                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
-                    }
-                }
+                pushStreamTime = writeRecordsString(records, stream);
 
                 stream.close();
                 s2 = System.currentTimeMillis();
@@ -1396,7 +1405,6 @@ public class ClickHouseWriter implements DBWriter {
         statistics.insertTime(s2 - s1, topic);
     }
     protected void doInsertStringV2(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
-        byte[] endingLine = new byte[]{'\n'};
         long s1 = System.currentTimeMillis();
 
         Record first = records.get(0);
@@ -1417,54 +1425,21 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-//        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
-
-        ByteArrayOutputStream stream = new ByteArrayOutputStream();
-
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
-        ClickHouseFormat clickHouseFormat = null;
-        switch (csc.getInsertFormat()) {
-            case NONE:
-                throw new RuntimeException("using org.apache.kafka.connect.storage.StringConverter, but did not enable.");
-            case CSV:
-                clickHouseFormat = ClickHouseFormat.CSV;
-                break;
-            case TSV:
-                clickHouseFormat = ClickHouseFormat.TSV;
-                break;
-            default:
-                clickHouseFormat = ClickHouseFormat.JSONEachRow;
-        }
-        long pushStreamTime = 0;
-        for (Record record : records) {
-            if (record.getSinkRecord().value() != null) {
-                String data = (String)record.getSinkRecord().value();
-                LOGGER.debug(String.format("data: %s", data));
-                byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
-                statistics.bytesInserted(bytes.length);
-                long beforePushStream = System.currentTimeMillis();
-                BinaryStreamUtils.writeBytes(stream, bytes);
-                pushStreamTime += System.currentTimeMillis() - beforePushStream;
-                switch (csc.getInsertFormat()) {
-                    case CSV:
-                    case TSV:
-                        if (bytes[bytes.length-1] != '\n')
-                            BinaryStreamUtils.writeBytes(stream, endingLine);
-                        break;
-                }
-
-            } else {
-                LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
-            }
-        }
+        ClickHouseFormat clickHouseFormat = getStringInsertFormat();
+        AtomicLong pushStreamTime = new AtomicLong(0);
+        DataStreamWriter dataWriter = out -> {
+            pushStreamTime.set(writeRecordsString(records, out));
+            out.close();
+        };
 
         long s2 = System.currentTimeMillis();
-        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), new ByteArrayInputStream(stream.toByteArray()), clickHouseFormat, insertSettings), queryId)) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), dataWriter, clickHouseFormat, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
-        LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime.get(), s2 - s1, s3 - s2, queryId.getQueryId());
         statistics.insertTime(s2 - s1, topic);
     }
 
