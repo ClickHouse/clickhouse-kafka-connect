@@ -39,10 +39,7 @@ import org.apache.kafka.connect.errors.RetriableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -81,8 +78,6 @@ public class ClickHouseWriter implements DBWriter {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
     private static final long TIMEOUT_FOR_SHUTDOWN = 5; // seconds
-    private static final int INSERT_WRITE_BUFFER_SIZE = 8192; // bytes
-
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
 
@@ -1145,6 +1140,56 @@ public class ClickHouseWriter implements DBWriter {
             doInsertJsonV1(records, table, queryId);
         }
     }
+
+    /**
+     * Serializes records into the given stream in JSONEachRow format.
+     *
+     * @return total time spent serializing, in milliseconds
+     */
+    private long writeRecordsJson(List<Record> records, Table table, OutputStream stream) throws IOException {
+        long dataSerializeTime = 0;
+        for (Record record : records) {
+            if (record.getSinkRecord().value() != null) {
+                LOGGER.trace("Record: {}", record.getTopicAndPartition());
+
+                Map<String, Object> data;
+                switch (record.getSchemaType()) {
+                    case SCHEMA:
+                        data = new HashMap<>(16);
+                        Struct struct = (Struct) record.getSinkRecord().value();
+                        for (Field field : struct.schema().fields()) {
+                            data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
+                        }
+                        break;
+                    case DEBEZIUM_CDC:
+                        data = new HashMap<>(record.getJsonMap().size());
+                        record.getJsonMap().forEach((k, v) -> data.put(k, v.getObject()));
+                        break;
+                    default:
+                        data = (Map<String, Object>) record.getSinkRecord().value();
+                        break;
+                }
+                long beforeSerialize = System.currentTimeMillis();
+                Map<String, Object> cleaned = cleanupExtraFields(data, table);
+                byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(cleaned);
+                dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
+
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace("topic {} partition {} offset {} payload {}",
+                            record.getTopic(),
+                            record.getRecordOffsetContainer().getPartition(),
+                            record.getRecordOffsetContainer().getOffset(),
+                            new String(bytes, StandardCharsets.UTF_8));
+                }
+                statistics.bytesInserted(bytes.length);
+                BinaryStreamUtils.writeBytes(stream, bytes);
+            } else {
+                LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
+            }
+        }
+        return dataSerializeTime;
+    }
+
     protected void doInsertJsonV1(List<Record> records, Table table, QueryIdentifier queryId) throws IOException, ExecutionException, InterruptedException {
         boolean enableDbTopicSplit = csc.isEnableDbTopicSplit();
         String dbTopicSplitChar = csc.getDbTopicSplitChar();
@@ -1173,46 +1218,7 @@ public class ClickHouseWriter implements DBWriter {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
-
-                for (Record record : records) {
-                    if (record.getSinkRecord().value() != null) {
-                        LOGGER.trace("Record: {}", record.getTopicAndPartition());
-
-                        Map<String, Object> data;
-                        switch (record.getSchemaType()) {
-                            case SCHEMA:
-                                data = new HashMap<>(16);
-                                Struct struct = (Struct) record.getSinkRecord().value();
-                                for (Field field : struct.schema().fields()) {
-                                    data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
-                                }
-                                break;
-                            case DEBEZIUM_CDC:
-                                data = new HashMap<>(record.getJsonMap().size());
-                                record.getJsonMap().forEach((k, v) -> data.put(k, v.getObject()));
-                                break;
-                            default:
-                                data = (Map<String, Object>) record.getSinkRecord().value();
-                                break;
-                        }
-                        long beforeSerialize = System.currentTimeMillis();
-                        Map<String, Object> cleaned = cleanupExtraFields(data, table);
-                        byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(cleaned);
-                        dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
-
-                        if (LOGGER.isTraceEnabled()) {
-                            LOGGER.trace("topic {} partition {} offset {} payload {}",
-                                    record.getTopic(),
-                                    record.getRecordOffsetContainer().getPartition(),
-                                    record.getRecordOffsetContainer().getOffset(),
-                                    new String(bytes, StandardCharsets.UTF_8));
-                        }
-                        statistics.bytesInserted(bytes.length);
-                        BinaryStreamUtils.writeBytes(stream, bytes);
-                    } else {
-                        LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
-                    }
-                }
+                dataSerializeTime = writeRecordsJson(records, table, stream);
 
                 stream.close();
                 s2 = System.currentTimeMillis();
@@ -1255,52 +1261,17 @@ public class ClickHouseWriter implements DBWriter {
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
 
-        ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        long dataSerializeTime = 0;
-        for (Record record : records) {
-            if (record.getSinkRecord().value() != null) {
-                Map<String, Object> data;
-                switch (record.getSchemaType()) {
-                    case SCHEMA:
-                        data = new HashMap<>(16);
-                        Struct struct = (Struct) record.getSinkRecord().value();
-                        for (Field field : struct.schema().fields()) {
-                            data.put(field.name(), struct.get(field));//Doesn't handle multi-level object depth
-                        }
-                        break;
-                    case DEBEZIUM_CDC:
-                        data = new HashMap<>(record.getJsonMap().size());
-                        record.getJsonMap().forEach((k, v) -> data.put(k, v.getObject()));
-                        break;
-                    default:
-                        data = (Map<String, Object>) record.getSinkRecord().value();
-                        break;
-                }
-                long beforeSerialize = System.currentTimeMillis();
-                Map<String, Object> cleaned = cleanupExtraFields(data, table);
-                byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(cleaned);
-                dataSerializeTime += System.currentTimeMillis() - beforeSerialize;
-                if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("topic {} partition {} offset {} payload {}",
-                            record.getTopic(),
-                            record.getRecordOffsetContainer().getPartition(),
-                            record.getRecordOffsetContainer().getOffset(),
-                            new String(bytes, StandardCharsets.UTF_8));
-                }
-                statistics.bytesInserted(bytes.length);
-                BinaryStreamUtils.writeBytes(stream, bytes);
-            } else {
-                LOGGER.warn(String.format("Getting empty record skip the insert topic[%s] offset[%d]", record.getTopic(), record.getSinkRecord().kafkaOffset()));
-            }
-        }
-
-        InputStream data = new ByteArrayInputStream(stream.toByteArray());
+        AtomicLong dataSerializeTime = new AtomicLong(0);
+        DataStreamWriter dataWriter = out -> {
+            dataSerializeTime.set(writeRecordsJson(records, table, out));
+            out.close();
+        };
         long s2 = System.currentTimeMillis();
-        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), data, ClickHouseFormat.JSONEachRow, insertSettings), queryId)) {
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), dataWriter, ClickHouseFormat.JSONEachRow, insertSettings), queryId)) {
             LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
         }
         long s3 = System.currentTimeMillis();
-        LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime, s2 - s1, s3 - s2, queryId.getQueryId());
+        LOGGER.info("topic: {} partition: {} batchSize: {} serialization ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), dataSerializeTime.get(), s2 - s1, s3 - s2, queryId.getQueryId());
         statistics.insertTime(s2 - s1, topic);
     }
 

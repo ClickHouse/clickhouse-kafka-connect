@@ -446,6 +446,13 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         assertEquals(v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for format " + insertFormat);
     }
 
+    @Test
+    public void doInsertJsonUsesEquivalentWirePathAcrossClients() {
+        List<String> v1Rows = runJsonInsertAndReadRows("V1");
+        List<String> v2Rows = runJsonInsertAndReadRows("V2");
+        assertEquals(v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for JSON inserts");
+    }
+
     private List<String> runStringInsertAndReadRows(String clientVersion, String insertFormat) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
@@ -485,6 +492,52 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                         chw.doInsert(List.of(record), new QueryIdentifier(topic, "string-parity-" + clientVersion + "-" + insertFormat + "-" + i));
                     } catch (Exception e) {
                         fail("Failed to insert string record for client=" + clientVersion + ", format=" + insertFormat, e);
+                    }
+                }
+            });
+
+            List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+            List<String> normalizedRows = new ArrayList<>(rows.size());
+            for (JSONObject row : rows) {
+                normalizedRows.add(row.getInt("off16") + "|" + row.getString("str"));
+            }
+            normalizedRows.sort(String::compareTo);
+            return normalizedRows;
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    private List<String> runJsonInsertAndReadRows(String clientVersion) {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String topic = createTopicName("json_parity_" + clientVersion.toLowerCase());
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("off16", "Int16")
+                .column("str", "String")
+                .engine("MergeTree")
+                .orderByColumn("off16")
+                .execute(chc);
+
+        try {
+            runWithWriter(props, (chw) -> {
+                List<Map<String, Object>> payloads = List.of(
+                        Map.of("off16", (short) 1, "str", "alpha"),
+                        Map.of("off16", (short) 2, "str", "beta"),
+                        Map.of("off16", (short) 3, "str", "gamma")
+                );
+                for (int i = 0; i < payloads.size(); i++) {
+                    SinkRecord sr = new SinkRecord(topic, 0, null, null, null, payloads.get(i), i,
+                            System.currentTimeMillis(), TimestampType.CREATE_TIME);
+                    Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+                    try {
+                        chw.doInsert(List.of(record), new QueryIdentifier(topic, "json-parity-" + clientVersion + "-" + i));
+                    } catch (Exception e) {
+                        fail("Failed to insert JSON record for client=" + clientVersion, e);
                     }
                 }
             });
