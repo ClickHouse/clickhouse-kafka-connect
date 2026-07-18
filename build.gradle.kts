@@ -228,6 +228,33 @@ tasks.register<Zip>("createConfluentArchive") {
     destinationDirectory.set(layout.buildDirectory.dir("confluent"))
 }
 
+tasks.register<Exec>("runClickHouseVersionClientMatrix") {
+    group = "verification"
+    description = "Runs tests for ClickHouse and client version matrix and writes logs to build/"
+    commandLine("bash", "${project.rootDir}/scripts/run-ch-version-client-matrix.sh")
+
+    doFirst {
+        val timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now())
+        val outputDir = layout.buildDirectory.dir("matrix-test-results/$timestamp").get().asFile
+        outputDir.mkdirs()
+
+        val clickhouseVersions = (project.findProperty("matrixClickHouseVersions") as String?) ?: "24.8,25.2,25.8,26.3,latest"
+        val clientVersions = (project.findProperty("matrixClientVersions") as String?) ?: "V1,V2"
+        val testTask = (project.findProperty("matrixTestTask") as String?) ?: "test"
+        val continueOnFailure = (project.findProperty("matrixContinueOnFailure") as String?) ?: "true"
+        val matrixGradleArgs = (project.findProperty("matrixGradleArgs") as String?) ?: ""
+
+        environment("MATRIX_OUTPUT_DIR", outputDir.absolutePath)
+        environment("CH_VERSIONS", clickhouseVersions)
+        environment("CLIENT_VERSIONS", clientVersions)
+        environment("TEST_TASK", testTask)
+        environment("CONTINUE_ON_FAILURE", continueOnFailure)
+        environment("MATRIX_GRADLE_ARGS", matrixGradleArgs)
+
+        logger.lifecycle("Matrix test logs will be written to: ${outputDir.absolutePath}")
+    }
+}
+
 var generateVersionFile = tasks.register<DefaultTask>("generateVersionFile") {
     val outputDir = "generated/sources/version/java/main/com/clickhouse/kafka/connect/sink/";
     outputs.dir(layout.buildDirectory.dir(outputDir))

@@ -379,6 +379,65 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         }
     }
 
+    /**
+     * Client V2 transmits the INSERT statement as an HTTP query parameter (unlike V1, which sends
+     * it in the request body), so table names must survive both SQL backtick quoting and URL
+     * encoding. Covers characters that are special in URLs (space, +, &, =, %, ?, #), SQL quotes,
+     * and non-ASCII characters.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"V1", "V2"})
+    public void doInsertSupportsSpecialCharactersInTableNames(String clientVersion) {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        List<String> tableNames = List.of(
+                createTopicName("dots.in.name"),
+                createTopicName("dashes-in-name"),
+                createTopicName("spaces in name"),
+                createTopicName("plus+in+name"),
+                createTopicName("ampersand&in&name"),
+                createTopicName("equals=in=name"),
+                createTopicName("percent%in%name"),
+                createTopicName("question?in?name"),
+                createTopicName("hash#in#name"),
+                createTopicName("quote'in'name"),
+                createTopicName("двойное_слово_unicode"));
+
+        Schema schema = SchemaBuilder.struct().field("off16", Schema.INT16_SCHEMA).build();
+
+        try {
+            for (String tableName : tableNames) {
+                ClickHouseTestHelpers.dropTable(chc, tableName);
+                new CreateTableStatement(SINGLE_INT16_TABLE).tableName(tableName).execute(chc);
+            }
+
+            runWithWriter(props, (chw) -> {
+                short off16Value = 16;
+                for (String tableName : tableNames) {
+                    Struct value = new Struct(schema).put("off16", off16Value);
+                    SinkRecord sr = new SinkRecord(tableName, 0, null, null, schema, value, 0,
+                            System.currentTimeMillis(), TimestampType.CREATE_TIME);
+                    Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+                    try {
+                        chw.doInsert(List.of(record), new QueryIdentifier(tableName, "special-table-name-" + System.nanoTime()));
+                    } catch (Exception e) {
+                        fail("Failed to insert into table [" + tableName + "]", e);
+                    }
+
+                    List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, tableName);
+                    assertEquals(1, rows.size(), "Expected exactly one row in table [" + tableName + "]");
+                    assertEquals(off16Value, rows.get(0).getInt("off16"), "Unexpected value read back from table [" + tableName + "]");
+                }
+            });
+        } finally {
+            for (String tableName : tableNames) {
+                ClickHouseTestHelpers.dropTable(chc, tableName);
+            }
+        }
+    }
+
     private static boolean exceptionChainContains(Throwable t, String target) {
         while (t != null) {
             if (t.getMessage() != null && t.getMessage().contains(target)) {

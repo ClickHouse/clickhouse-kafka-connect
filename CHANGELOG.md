@@ -1,3 +1,15 @@
+# 1.4.1, 2026-07-17
+
+## Improvements
+* RowBinary inserts with client V2 now stream data directly to the network output stream via the client's
+  `DataStreamWriter` API instead of first serializing the whole batch into an unsized `ByteArrayOutputStream`
+  (which caused repeated internal array reallocations and copies) and then copying it again through a
+  `ByteArrayInputStream`. Serialization is deterministic, so client-level retries resend a byte-identical
+  block and ClickHouse block deduplication (and therefore exactly-once delivery) is unaffected.
+  The record serialization loop is now shared between the V1 and V2 insert paths. Since client V2 transmits
+  the INSERT statement as an HTTP query parameter, feature test coverage was added for table names containing
+  URL-special characters (space, `+`, `&`, `=`, `%`, `?`, `#`), SQL quotes, and non-ASCII characters.
+
 # 1.4.0, 2026-07-15
 
 ## Security

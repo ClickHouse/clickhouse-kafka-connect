@@ -9,6 +9,7 @@ import com.clickhouse.client.ClickHouseRequest;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.ClickHouseResponseSummary;
 import com.clickhouse.client.api.Client;
+import com.clickhouse.client.api.DataStreamWriter;
 import com.clickhouse.client.api.ServerException;
 import com.clickhouse.client.api.insert.InsertResponse;
 import com.clickhouse.client.api.insert.InsertSettings;
@@ -70,6 +71,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.clickhouse.kafka.connect.util.DataJson.OBJECT_MAPPER;
@@ -79,6 +81,7 @@ public class ClickHouseWriter implements DBWriter {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriter.class);
 
     private static final long TIMEOUT_FOR_SHUTDOWN = 5; // seconds
+    private static final int INSERT_WRITE_BUFFER_SIZE = 8192; // bytes
 
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
@@ -1044,38 +1047,50 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
-//        insertSettings.setOption(ClickHouseClientOption.WRITE_BUFFER_SIZE.name(), 8192);
+        ClickHouseFormat format = ClickHouseFormat.RowBinary;
+        if (supportDefaults) {
+            format = ClickHouseFormat.RowBinaryWithDefaults;
+        }
+
+        AtomicLong pushStreamTime = new AtomicLong(0);
+        DataStreamWriter dataWriter = out -> {
+            pushStreamTime.set(writeRecordsRowBinary(records, table, out, supportDefaults));
+            out.close();
+        };
+
+        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), dataWriter, format, insertSettings), queryId)) {
+            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
+        }
+        long s3 = System.currentTimeMillis();
+        LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime.get(), s2 - s1, s3 - s2, queryId.getQueryId());
+        statistics.insertTime(s2 - s1, topic);
+
+    }
+
+    /**
+     * Serializes records into the given stream in RowBinary(WithDefaults) format.
+     * Shared by the V1 and V2 raw binary insert paths.
+     *
+     * @return total time spent serializing, in milliseconds
+     */
+    private long writeRecordsRowBinary(List<Record> records, Table table, OutputStream stream, boolean supportDefaults) throws IOException {
         long pushStreamTime = 0;
-        ByteArrayOutputStream stream = new ByteArrayOutputStream();
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
                 for (Column col : table.getRootColumnsList()) {
                     LOGGER.debug("Writing column: {}", col.getName());
                     long beforePushStream = System.currentTimeMillis();
                     String name = col.getName();
-                    boolean filedExists = record.getJsonMap().containsKey(name);
+                    boolean fieldExists = record.getJsonMap().containsKey(name);
                     Data value = record.getJsonMap().get(name);
-                    doWriteCol(value, filedExists, col, stream, supportDefaults);
+                    doWriteCol(value, fieldExists, col, stream, supportDefaults);
                     pushStreamTime += System.currentTimeMillis() - beforePushStream;
                 }
             }
         }
-
-        InputStream data = new ByteArrayInputStream(stream.toByteArray());
-
-        ClickHouseFormat format = ClickHouseFormat.RowBinary;
-        if (supportDefaults) {
-            format = ClickHouseFormat.RowBinaryWithDefaults;
-        }
-
-        try (InsertResponse insertResponse = awaitInsertResponse(client.insert(table.getName(), data, format, insertSettings), queryId)) {
-            LOGGER.debug("Response Summary - Written Bytes: [{}], Written Rows: [{}] - (QueryId: [{}])", insertResponse.getWrittenBytes(), insertResponse.getWrittenRows(), queryId.getQueryId());
-        }
-        long s3 = System.currentTimeMillis();
-        LOGGER.info("topic: {} partition: {} batchSize: {} push stream ms: {} data ms: {} send ms: {} (QueryId: [{}])", topic, partition, records.size(), pushStreamTime,s2 - s1, s3 - s2, queryId.getQueryId());
-        statistics.insertTime(s2 - s1, topic);
-
+        return pushStreamTime;
     }
+
     protected void doInsertRawBinaryV1(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
         long s1 = System.currentTimeMillis();
 
@@ -1108,19 +1123,7 @@ public class ClickHouseWriter implements DBWriter {
                 // start the worker thread which transfer data from the input into ClickHouse
                 future = request.data(stream.getInputStream()).execute();
                 // write bytes into the piped stream
-
-                for (Record record : records) {
-                    if (record.getSinkRecord().value() != null) {
-                        for (Column col : table.getRootColumnsList()) {
-                            long beforePushStream = System.currentTimeMillis();
-                            String name = col.getName();
-                            boolean filedExists = record.getJsonMap().containsKey(name);
-                            Data value = record.getJsonMap().get(name);
-                            doWriteCol(value, filedExists, col, stream, supportDefaults);
-                            pushStreamTime += System.currentTimeMillis() - beforePushStream;
-                        }
-                    }
-                }
+                pushStreamTime = writeRecordsRowBinary(records, table, stream, supportDefaults);
                 // We need to close the stream before getting a response
                 stream.close();
                 try (ClickHouseResponse response = future.get()) {
