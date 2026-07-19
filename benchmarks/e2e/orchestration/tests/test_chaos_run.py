@@ -616,6 +616,15 @@ def test_oracle_port_forwards_in_cluster_service():
     assert 'kill "${pf_pid}"' in body                # tunnel torn down after read
 
 
+def test_smoke_fault_honors_faults_flag():
+    """smoke picks its single fault from SMOKE_FAULT, else the first --faults
+    entry (so `--faults C4` selects C4, not silently C1). Regression for the
+    live-L2 footgun where --faults was ignored by smoke and defaulted to C1."""
+    body = _extract_function(_src(), "run_smoke")
+    assert 'fault="${SMOKE_FAULT:-${FAULTS%%,*}}"' in body
+    assert '"${SMOKE_FAULT:-C1}"' not in body        # the old ignore-faults default is gone
+
+
 def test_lib_bench_password_allows_empty_but_requires_set():
     """apply_secret_and_metrics: hostname/username REQUIRE non-empty (${VAR:?});
     password requires SET but ALLOWS EMPTY (${VAR?}) for the self-hosted CH."""

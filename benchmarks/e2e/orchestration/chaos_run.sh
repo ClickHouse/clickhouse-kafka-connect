@@ -642,7 +642,9 @@ run_smoke() {
     --probe-lag-cmd "sh ${OUT_DIR}/probe-lag.sh" --timeout "${T_RECOVER}" \
     || warn "smoke drain-progress gate did not reach ${DRAIN_TARGET_PCT}% (continuing to inject)"
 
-  local fault="${SMOKE_FAULT:-C1}"       # smoke set is {C1, C4}; default C1
+  # Smoke injects ONE fault. Prefer SMOKE_FAULT; else the first --faults entry
+  # (so `--faults C4` selects C4 for a smoke cell, not silently C1); else C1.
+  local fault="${SMOKE_FAULT:-${FAULTS%%,*}}"; fault="${fault:-C1}"
   local inject_ts evidence rc rec="${OUT_DIR}/recovery-1.json"
   inject_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   evidence="$(_inject_fault "${fault}")" || warn "smoke fault ${fault} injector returned non-zero"
