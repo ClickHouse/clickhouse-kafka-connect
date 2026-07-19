@@ -1,0 +1,395 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+"""Offline unit tests for the chaos orchestrator assembly (task T11 / IC-3).
+
+No cluster, no creds, no kubeconfig, no network. Everything is exercised through
+chaos_run.sh's --plan dry-run, source-text assertions on its functions, and
+PATH-stub-only invocations — mirroring test_orchestration.py's patterns.
+
+Covered:
+  * --plan goldens for smoke / monkey / quorum-loss / aggressive (execute NOTHING)
+  * flag validation (--quorum-loss forces eo=1; --watch-cell rejected with eo=1;
+    missing --seed in monkey rejected; invalid mode / exactly-once rejected)
+  * source-text law: isolation guard before any mutating phase; image validation
+    before phases; teardown verifies STS gone + nodegroups 0 (§9.8); artifact
+    written on the timeout paths; NO perf.* / DWH export anywhere; digest
+    rejection of bare tags (source the script, call the shared validator — proves
+    the digest law is inherited from lib_bench.sh); cleanup trap present;
+    keeper_map_reset only on the eo=1 path
+  * sourcing chaos_run.sh executes NO phase (zero kubectl invocations)
+"""
+import os
+import re
+import subprocess
+import sys
+
+import pytest
+
+HERE = os.path.dirname(__file__)
+ORCH = os.path.abspath(os.path.join(HERE, ".."))
+CHAOS_RUN = os.path.join(ORCH, "chaos_run.sh")
+
+
+def _src():
+    return open(CHAOS_RUN).read()
+
+
+def _extract_function(src, name):
+    m = re.search(rf"^{re.escape(name)}\(\) \{{\n(.*?)^\}}", src, re.S | re.M)
+    assert m, f"could not extract function {name} from chaos_run.sh"
+    return m.group(1)
+
+
+def _run_plan(args, extra_env=None):
+    env = dict(os.environ)
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(["bash", CHAOS_RUN, "--plan", *args],
+                          capture_output=True, text=True, env=env)
+
+
+# --------------------------------------------------------------------------- #
+# --plan goldens (dry-run; execute NOTHING).
+# --------------------------------------------------------------------------- #
+def test_plan_monkey_exactly_once_golden():
+    r = _run_plan(["--mode", "monkey", "--seed", "1", "--exactly-once", "1"])
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    for line in (
+        "mode            : monkey",
+        "delivery mode   : exactly_once (exactly_once=1)",
+        "chaos_mode      : monkey",
+        "seed            : 1",
+        "rounds          : 20",
+        "faults          : C1,C2,C3,C4,C5",
+        "profile         : default",
+        "quorum-loss     : no",
+        "group=ch-sink-chaos-eo1 connector_cr=chaos-clickhouse-sink connect_cr=bench-connect",
+        "connector=kafka-connect-chaos environment_class=self_hosted",
+        "zkPath=/kafka-connect-chaos zkDatabase=connect_state_chaos",
+        "scale           : bench-ng 0->5 + connect-ng 0->1 (SCALE_UP_NODES=5)",
+        "[eo=1: YES]",
+        "monkey: schedule.py(seed=1,rounds=20)",
+    ):
+        assert line in out, f"missing plan line: {line!r}"
+    # dry-run must not name any executing tool output
+    assert "=== END PHASE PLAN ===" in out
+
+
+def test_plan_smoke_at_least_once_golden():
+    r = _run_plan(["--mode", "smoke", "--exactly-once", "0"])
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    for line in (
+        "mode            : smoke",
+        "delivery mode   : at_least_once (exactly_once=0)",
+        "chaos_mode      : smoke",
+        "seed            : <none>",
+        "group=ch-sink-chaos-eo0 connector_cr=chaos-clickhouse-sink connect_cr=bench-connect",
+        "[eo=0: SKIPPED]",
+        "smoke : drain-progress 50% -> single fault -> recovery gate -> fence",
+    ):
+        assert line in out, f"missing plan line: {line!r}"
+    # smoke plan has no monkey schedule step
+    assert "schedule.py(" not in out
+
+
+def test_plan_quorum_loss_forces_eo1_and_tags_mode():
+    """--quorum-loss forces exactly-once and tags chaos_mode=quorum_loss (§3.7)."""
+    r = _run_plan(["--mode", "monkey", "--seed", "7", "--exactly-once", "0",
+                   "--quorum-loss"])
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "delivery mode   : exactly_once (exactly_once=1)" in out
+    assert "chaos_mode      : quorum_loss" in out
+    assert "faults          : quorum_loss" in out
+    assert "quorum-loss     : yes" in out
+    # the override is surfaced loudly on stderr
+    assert "forces --exactly-once 1" in r.stderr
+
+
+def test_plan_aggressive_profile():
+    r = _run_plan(["--mode", "monkey", "--seed", "3", "--exactly-once", "1",
+                   "--aggressive"])
+    assert r.returncode == 0, r.stderr
+    assert "profile         : aggressive" in r.stdout
+
+
+def test_plan_executes_nothing_without_kubectl(tmp_path):
+    """--plan must not shell out to kubectl/eksctl/aws/docker: it resolves flags
+    and prints, nothing more. Run with a PATH that has NONE of them + a recording
+    stub, and assert zero calls."""
+    calls = tmp_path / "calls.log"
+    for tool in ("kubectl", "eksctl", "aws", "docker", "envsubst"):
+        p = tmp_path / tool
+        p.write_text(f'#!/usr/bin/env bash\necho "{tool} $*" >> "{calls}"\n')
+        p.chmod(0o755)
+    env = dict(os.environ, PATH=f"{tmp_path}:/usr/bin:/bin")
+    r = subprocess.run(["bash", CHAOS_RUN, "--plan", "--mode", "monkey",
+                        "--seed", "1", "--exactly-once", "1"],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert not calls.exists(), f"--plan invoked external tools: {calls.read_text()}"
+
+
+# --------------------------------------------------------------------------- #
+# Flag validation.
+# --------------------------------------------------------------------------- #
+def test_watch_cell_rejected_with_exactly_once():
+    r = _run_plan(["--mode", "smoke", "--exactly-once", "1", "--watch-cell"])
+    assert r.returncode != 0
+    assert "watch-cell" in r.stderr and "exactly-once 1" in r.stderr
+
+
+def test_watch_cell_allowed_at_least_once_sets_ipwb_field():
+    r = _run_plan(["--mode", "smoke", "--exactly-once", "0", "--watch-cell"])
+    assert r.returncode == 0, r.stderr
+    assert "watch-cell      : yes (ignore_partitions_when_batching=1)" in r.stdout
+    assert "--ipwb true" in r.stdout
+
+
+def test_monkey_requires_seed():
+    r = _run_plan(["--mode", "monkey", "--exactly-once", "1"])
+    assert r.returncode != 0
+    assert "requires --seed" in r.stderr
+
+
+def test_invalid_mode_rejected():
+    r = _run_plan(["--mode", "bogus", "--exactly-once", "1"])
+    assert r.returncode != 0
+    assert "--mode must be" in r.stderr
+
+
+@pytest.mark.parametrize("eo", ["2", "yes", ""])
+def test_invalid_exactly_once_rejected(eo):
+    args = ["--mode", "smoke"]
+    if eo != "":
+        args += ["--exactly-once", eo]
+    r = _run_plan(args)
+    assert r.returncode != 0
+
+
+def test_unknown_arg_rejected():
+    r = _run_plan(["--mode", "smoke", "--exactly-once", "0", "--nope"])
+    assert r.returncode != 0
+    assert "unknown arg" in r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Source-text law — ordering, isolation, teardown, artifact-on-every-path.
+# --------------------------------------------------------------------------- #
+def test_isolation_guard_before_any_mutating_phase():
+    """§4 rule 1: the isolation guard must run before ANY cluster-mutating phase
+    (scale-up is the first mutation)."""
+    body = _extract_function(_src(), "main")
+    assert body.index("isolation_guard") < body.index("phase_scale_up"), \
+        "isolation guard must precede phase_scale_up"
+    guard = _extract_function(_src(), "isolation_guard")
+    # it keys off the PAIR's connector (chaos uses a distinct one)
+    assert "PAIR_CONNECTOR_NAME" in guard
+    assert "die" in guard  # refuses (does not merely warn)
+
+
+def test_image_validation_before_phases_and_covers_arm_and_producer():
+    src = _src()
+    body = _extract_function(src, "main")
+    assert body.index("phase_validate_images") < body.index("phase_scale_up"), \
+        "image validation must precede phase_scale_up"
+    ph = _extract_function(src, "phase_validate_images")
+    assert "validate_image_ref ARM_IMAGE" in ph
+    assert "validate_image_ref PRODUCER_IMAGE" in ph
+    # CH image is the IC-8 exception: NOT digest-validated here
+    assert "validate_image_ref CHAOS_CH" not in ph
+    assert "validate_image_ref CH_IMAGE" not in ph
+
+
+def test_isolation_and_images_precede_config_which_precedes_scaleup():
+    body = _extract_function(_src(), "main")
+    assert (body.index("isolation_guard")
+            < body.index("phase_validate_images")
+            < body.index("phase_validate_config")
+            < body.index("phase_scale_up"))
+
+
+def test_config_validation_uses_render_connector_validator():
+    """The §3.2 config-combination gate runs via render_connector.py (which calls
+    validate_chaos_config), reusing T7 rather than re-implementing it."""
+    ph = _extract_function(_src(), "render_chaos_connector")
+    assert "render_connector.py" in ph
+    assert "--exactly-once" in ph and "--ipwb" in ph
+
+
+def test_keeper_map_reset_only_on_exactly_once_path():
+    body = _extract_function(_src(), "phase_ch_cluster")
+    assert body.count("keeper_map_reset") == 1, \
+        "keeper_map_reset must appear exactly once"
+    # it lives inside an `if [ "${EXACTLY_ONCE}" = "1" ]` guard
+    guard = 'if [ "${EXACTLY_ONCE}" = "1" ]'
+    assert guard in body
+    assert body.index(guard) < body.index("keeper_map_reset") < body.index("else")
+
+
+def test_teardown_verifies_sts_gone_and_nodegroups_zero():
+    body = _extract_function(_src(), "teardown_chaos")
+    # STS gone is verified by teardown_ch_cluster; nodegroups 0 by scale-down
+    assert "teardown_ch_cluster" in body
+    assert "phase_scale_down" in body
+    assert "§9.8" in body, "the §9.8 verify-both requirement must be documented"
+
+
+def test_artifact_written_on_recovery_timeout_paths():
+    """A recovery-gate timeout must write the artifact (IC-3: on EVERY path) via
+    abort_with_artifact, mapping 21->fail/t_recover_timeout, 22->unverified."""
+    handler = _extract_function(_src(), "_handle_recovery_rc")
+    assert "abort_with_artifact 1 \"failed\" \"t_recover_timeout\"" in handler
+    assert "abort_with_artifact 3 \"integrity_unverified\" \"t_recover_timeout\"" in handler
+    abort = _extract_function(_src(), "abort_with_artifact")
+    assert "write_result_artifact" in abort
+    assert "teardown_chaos" in abort
+    # abort writes the artifact BEFORE exiting
+    assert abort.index("write_result_artifact") < abort.index('exit "${code}"')
+
+
+def test_artifact_written_on_settle_timeout_path():
+    body = _extract_function(_src(), "phase_quiescence")
+    assert "abort_with_artifact 3 \"integrity_unverified\" \"t_settle_timeout\"" in body
+
+
+def test_oracle_exit_codes_mapped_to_ic3():
+    """oracle 0->PASS(exit 0), 1->MISMATCH(exit 1), else->UNVERIFIED(exit 3)."""
+    body = _extract_function(_src(), "main")
+    region = body[body.index('case "${oracle_rc}" in'):body.index("esac")]
+    assert "0) exit_code=0" in region
+    assert "1) exit_code=1" in region
+    assert "*) exit_code=3" in region
+    # the artifact is written before the final teardown+exit
+    assert body.index("write_result_artifact") < body.index("exit \"${exit_code}\"")
+
+
+def test_cleanup_trap_present_and_installed():
+    src = _src()
+    assert "trap cleanup_trap EXIT INT TERM" in src
+    trap = _extract_function(src, "cleanup_trap")
+    # best-effort artifact + teardown on any abnormal exit
+    assert "write_result_artifact" in trap
+    assert "teardown_chaos" in trap
+    # the trap is installed AFTER the pre-flight gates (which must be able to die
+    # cleanly) and before the first mutating phase
+    main_body = _extract_function(src, "main")
+    assert main_body.index("phase_validate_config") \
+        < main_body.index("trap cleanup_trap") \
+        < main_body.index("phase_scale_up")
+
+
+# --------------------------------------------------------------------------- #
+# Decision §10.2: NO perf.* / DWH export path anywhere in the chaos orchestrator.
+# --------------------------------------------------------------------------- #
+def test_no_perf_or_dwh_export_anywhere():
+    src = _src()
+    for banned in (
+        "perf.",                       # no perf.runs / perf.metrics
+        "export_metrics_to_dwh",
+        "emit_run_cost",
+        "insert_run_record",
+        "run_metrics_sql",
+        "rollback_run_metrics",
+        "capture_and_record",
+        "finalize_and_insert_metrics",
+    ):
+        assert banned not in src, f"chaos_run.sh must not reference {banned!r} (§10.2)"
+
+
+def test_writes_the_ic9_artifact_via_write_artifact_py():
+    body = _extract_function(_src(), "write_result_artifact")
+    assert "write_artifact.py" in body
+    # the IC-9 outcome/run_conclusion vocabulary is what the writer enforces
+    assert "OUTCOME=" in body and "RUN_CONCLUSION=" in body
+
+
+def test_banned_uniqueness_formula_absent():
+    """The oracle formula law (§5): count()-uniqExact() on the target is BANNED.
+    The chaos orchestrator delegates to check_integrity.py and must never inline
+    the banned family."""
+    src = _src()
+    assert "uniqExact" not in src or "count() - uniqExact" not in src
+    assert "count()-uniqExact" not in src
+    assert "count() - uniqExact" not in src
+
+
+# --------------------------------------------------------------------------- #
+# Digest law inheritance: sourcing chaos_run.sh exposes lib_bench's
+# validate_image_ref, and it rejects a bare tag on an unresolvable registry
+# exactly as run_pair.sh does (source the script, call the shared validator).
+# --------------------------------------------------------------------------- #
+def _source_and_validate(ref, allow_tag=False):
+    env = dict(os.environ)
+    env["KAFKA_ALLOW_TAG"] = "1" if allow_tag else "0"
+    script = f'source "{CHAOS_RUN}"; validate_image_ref TESTVAR "{ref}"'
+    r = subprocess.run(["bash", "-c", script],
+                       capture_output=True, text=True, env=env)
+    return r.returncode, r.stdout.strip(), r.stderr
+
+
+def test_sourcing_chaos_run_defines_shared_validator_and_rejects_bare_tag():
+    rc, out, err = _source_and_validate(
+        "registry.example.com/team/connect-bench:chaos-tag", allow_tag=False)
+    assert rc != 0, f"a bare tag must be rejected (digest law), got rc={rc}"
+    assert "MUTABLE TAG" in err
+    assert out == ""
+
+
+def test_sourcing_chaos_run_accepts_digest_ref():
+    ref = "ghcr.io/clickhouse/clickhouse-kafka-connect@sha256:" + "a" * 64
+    rc, out, _ = _source_and_validate(ref, allow_tag=False)
+    assert rc == 0
+    assert out == ref
+
+
+def test_allow_tag_flag_maps_to_escape_hatch():
+    assert "--allow-tag)     export KAFKA_ALLOW_TAG=1" in _src()
+
+
+def test_sourcing_chaos_run_executes_no_phase(tmp_path):
+    """Sourcing the orchestrator must have NO side effect beyond defs/defaults —
+    it must never run a kubectl call (IC-1 invariant, inherited)."""
+    calls = tmp_path / "kubectl.log"
+    stub = tmp_path / "kubectl"
+    stub.write_text(f'#!/usr/bin/env bash\necho "$*" >> "{calls}"\n')
+    stub.chmod(0o755)
+    env = dict(os.environ, PATH=f"{tmp_path}:{os.environ.get('PATH', '')}")
+    r = subprocess.run(["bash", "-c", f'set -u; source "{CHAOS_RUN}"'],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert not calls.exists(), f"sourcing ran kubectl: {calls.read_text()}"
+
+
+# --------------------------------------------------------------------------- #
+# Identities (IC-3) surfaced in the plan and honored as overridable constants.
+# --------------------------------------------------------------------------- #
+def test_identities_match_ic3():
+    r = _run_plan(["--mode", "monkey", "--seed", "1", "--exactly-once", "1"])
+    out = r.stdout
+    assert "topic=hits-chaos" in out
+    assert "dlq=hits-chaos-dlq" in out
+    assert "table=clickbench.hits_chaos" in out
+    assert "connector_cr=chaos-clickhouse-sink" in out
+    assert "connect_cr=bench-connect" in out
+    assert "connector=kafka-connect-chaos" in out
+    assert "environment_class=self_hosted" in out
+
+
+def test_bench_log_prefix_and_scale_up_nodes_retargeted():
+    src = _src()
+    assert 'BENCH_LOG_PREFIX="${BENCH_LOG_PREFIX:-chaos_run}"' in src
+    assert 'SCALE_UP_NODES="${SCALE_UP_NODES:-5}"' in src
