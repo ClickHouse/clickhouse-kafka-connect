@@ -111,6 +111,26 @@ ENVIRONMENT_CLASS_CHAOS="${ENVIRONMENT_CLASS_CHAOS:-self_hosted}"
 # affirm it here so it is honored + self-documenting in the plan/teardown.
 ZK_DATABASE="${ZK_DATABASE:-connect_state_chaos}"
 
+# --------------------------------------------------------------------------- #
+# Self-hosted CH creds + wire (IC-2 / T7). The chaos cluster (chaos/ch-cluster.yaml
+# users.xml, derived from the docker fixture) serves user `default` with an EMPTY
+# password over plaintext 8123, ssl=false (pinned in the T7 chaos connector
+# template). TARGET_CH_HOST/PORT come from lib_ch_cluster.sh; USER/PASSWORD/SECURE
+# are set HERE so they reach every consumer of the chaos target:
+#   * apply_secret_and_metrics (lib_bench) builds the bench-ch-creds Secret the
+#     Connect worker resolves ${env:CH_USERNAME}/${env:CH_PASSWORD} from;
+#   * the oracle (check_integrity.py --direct) reads the SAME target directly.
+# The empty password is LEGITIMATE, so it is exported SET-but-empty (`-`, not
+# `:-`) and lib_bench requires it SET-but-allows-empty (${TARGET_CH_PASSWORD?}).
+# SECURE=false + PORT=8123 keep the oracle off the pair's Cloud 8443/TLS default.
+# HOST/PORT default to the in-cluster Service already resolved by lib_ch_cluster.sh
+# (value-preserving :- defaults; deploy_ch_cluster re-exports them post-deploy).
+export TARGET_CH_HOST="${TARGET_CH_HOST:-${CH_SVC}.${NS}.svc}"
+export TARGET_CH_PORT="${TARGET_CH_PORT:-8123}"
+export TARGET_CH_USER="${TARGET_CH_USER:-default}"
+export TARGET_CH_PASSWORD="${TARGET_CH_PASSWORD-}"
+export TARGET_CH_SECURE="${TARGET_CH_SECURE:-false}"
+
 # Gate timeouts / rates (IC-3 env; passed through to chaos/gates.py + producer).
 T_RECOVER="${T_RECOVER:-600}"
 T_SETTLE="${T_SETTLE:-900}"
@@ -771,7 +791,8 @@ phase_oracle() {
   fi
   ORACLE_FILE="${OUT_DIR}/oracle-${CHAOS_ID}.json"
   TARGET_CH_HOST="${TARGET_CH_HOST}" TARGET_CH_PORT="${TARGET_CH_PORT}" \
-  TARGET_CH_USER="${TARGET_CH_USER:-default}" TARGET_CH_PASSWORD="${TARGET_CH_PASSWORD:-}" \
+  TARGET_CH_SECURE="${TARGET_CH_SECURE:-false}" \
+  TARGET_CH_USER="${TARGET_CH_USER:-default}" TARGET_CH_PASSWORD="${TARGET_CH_PASSWORD-}" \
   CH_DATABASE="${CH_DATABASE}" CH_TABLE="${CH_TABLE}" \
   ROWS_EXPECTED="${ROWS_EXPECTED}" SOURCE_UNIQUE_EXPECTED="${SOURCE_UNIQUE_EXPECTED:?SOURCE_UNIQUE_EXPECTED required (IC-7)}" \
   DLQ_DEPTH="${dlq_depth}" FAULT_OBSERVED="${fault_observed}" \

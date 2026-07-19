@@ -551,3 +551,84 @@ def test_ic3_producer_job_topic_is_threaded_not_pair_default():
     topic (this was the original TOPIC cross-wire bug)."""
     body = _extract_function(_src(), "phase_chaos_preload")
     assert '--topic "${TOPIC}"' in body
+
+
+# --------------------------------------------------------------------------- #
+# #771 wiring: self-hosted CH creds/target must be SET by chaos_run.sh, or the
+# PHASE-5 Connect deploy (apply_secret_and_metrics) and the PHASE-9 oracle
+# (check_integrity.py --direct) fall back to a pair default and fail the live run.
+# The chaos CH is user `default` with an EMPTY password over plaintext 8123, no
+# TLS (ch-cluster.yaml users.xml / T7 connector template).
+# --------------------------------------------------------------------------- #
+LIB_BENCH = os.path.join(ORCH, "lib_bench.sh")
+
+
+def test_target_ch_creds_and_wire_exported_by_chaos_run():
+    """USER=default, PASSWORD SET-but-empty, PORT=8123, SECURE=false — exported so
+    both the Connect Secret and the oracle read the self-hosted target."""
+    src = _src()
+    assert 'export TARGET_CH_USER="${TARGET_CH_USER:-default}"' in src
+    # SET-but-allow-empty: `-` not `:-` (an operator override survives; unset => "")
+    assert 'export TARGET_CH_PASSWORD="${TARGET_CH_PASSWORD-}"' in src
+    assert 'export TARGET_CH_PORT="${TARGET_CH_PORT:-8123}"' in src
+    assert 'export TARGET_CH_SECURE="${TARGET_CH_SECURE:-false}"' in src
+
+
+def test_target_ch_creds_resolve_to_self_hosted_defaults_when_sourced():
+    """Behavioral: sourcing resolves the self-hosted defaults AND leaves the
+    empty password SET (a bare ${TARGET_CH_PASSWORD} would abort under set -u)."""
+    # A CLEAN env (no inherited TARGET_CH_*) so we observe the script's own
+    # defaults, not whatever the caller's shell happened to export.
+    clean = {k: v for k, v in os.environ.items() if not k.startswith("TARGET_CH_")}
+    script = (f'set -u; source "{CHAOS_RUN}"; '
+              'printf "U=%s;PW=[%s];PORT=%s;SEC=%s" '
+              '"${TARGET_CH_USER}" "${TARGET_CH_PASSWORD}" '
+              '"${TARGET_CH_PORT}" "${TARGET_CH_SECURE}"')
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=clean)
+    assert r.returncode == 0, r.stderr
+    assert "U=default" in r.stdout
+    assert "PW=[]" in r.stdout        # SET and empty (no unbound-var abort)
+    assert "PORT=8123" in r.stdout
+    assert "SEC=false" in r.stdout
+
+
+def test_oracle_threads_target_secure_and_port():
+    body = _extract_function(_src(), "phase_oracle")
+    assert 'TARGET_CH_PORT="${TARGET_CH_PORT}"' in body
+    assert 'TARGET_CH_SECURE=' in body
+    # password passed SET-but-empty (not :- which would coerce), matching lib_bench
+    assert 'TARGET_CH_PASSWORD="${TARGET_CH_PASSWORD-}"' in body
+
+
+def test_lib_bench_password_allows_empty_but_requires_set():
+    """apply_secret_and_metrics: hostname/username REQUIRE non-empty (${VAR:?});
+    password requires SET but ALLOWS EMPTY (${VAR?}) for the self-hosted CH."""
+    lib = open(LIB_BENCH).read()
+    assert '--from-literal=hostname="${TARGET_CH_HOST:?}"' in lib
+    assert '--from-literal=username="${TARGET_CH_USER:?}"' in lib
+    assert '--from-literal=password="${TARGET_CH_PASSWORD?}"' in lib
+    # the old empty-rejecting form must be gone
+    assert '--from-literal=password="${TARGET_CH_PASSWORD:?}"' not in lib
+
+
+def test_apply_secret_accepts_empty_password_rejects_unset(tmp_path):
+    """Behavioral: with a kubectl stub, an empty-but-SET password is accepted
+    (self-hosted CH), while an UNSET password aborts (require SET)."""
+    stub = tmp_path / "kubectl"
+    stub.write_text("#!/usr/bin/env bash\ncat >/dev/null 2>&1 || true\nexit 0\n")
+    stub.chmod(0o755)
+    env_base = dict(os.environ, PATH=f"{tmp_path}:{os.environ.get('PATH', '')}",
+                    TARGET_CH_HOST="ch-chaos.kafka-bench.svc", TARGET_CH_USER="default")
+    # Mirror the orchestrator's shell mode: chaos_run.sh / run_pair.sh both run
+    # under `set -uo pipefail`, so a ${VAR?} abort in the first pipeline stage
+    # propagates (pipefail) to the `|| die`.
+    call = f'set -uo pipefail; source "{LIB_BENCH}"; apply_secret_and_metrics'
+    # empty-but-set password -> accepted (exit 0)
+    env_ok = dict(env_base, TARGET_CH_PASSWORD="")
+    r_ok = subprocess.run(["bash", "-c", call], capture_output=True, text=True, env=env_ok)
+    assert r_ok.returncode == 0, r_ok.stderr
+    # unset password -> aborts loudly (require SET)
+    env_bad = dict(env_base)
+    env_bad.pop("TARGET_CH_PASSWORD", None)
+    r_bad = subprocess.run(["bash", "-c", call], capture_output=True, text=True, env=env_bad)
+    assert r_bad.returncode != 0, "an UNSET password must still abort"

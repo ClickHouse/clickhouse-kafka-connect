@@ -85,5 +85,26 @@ def test_garbage_env_falls_back_to_default(monkeypatch, bad):
     assert captured["send_receive_timeout"] == 60
 
 
+def test_port_and_secure_default_to_cloud(monkeypatch):
+    """Every existing (pair) caller passes no port/secure and MUST keep the Cloud
+    endpoint (8443 + TLS) — the #771 change is additive."""
+    ch_common, captured = _load_ch_common(monkeypatch)
+    ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD")
+    assert captured["port"] == 8443
+    assert captured["secure"] is True
+
+
+def test_port_and_secure_overridable_for_self_hosted(monkeypatch):
+    """The chaos oracle reaches the in-cluster self-hosted CH (plaintext 8123, no
+    TLS — IC-2) by overriding port/secure; get_client must honor them."""
+    ch_common, captured = _load_ch_common(monkeypatch)
+    ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD",
+                         port=8123, secure=False)
+    assert captured["port"] == 8123
+    assert captured["secure"] is False
+    # the timeout hardening still applies on the self-hosted path
+    assert captured["connect_timeout"] == 60
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

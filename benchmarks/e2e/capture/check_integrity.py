@@ -185,9 +185,21 @@ def _read_target_direct():
     """One direct read of the chaos target: (rows_delivered, unique_delivered).
 
     Uses select_sequential_consistency=1 (spec §5 replica-read caveat). Raises on
-    any infra/connection/query error — the caller applies the retry envelope."""
+    any infra/connection/query error — the caller applies the retry envelope.
+
+    The chaos target is the in-cluster self-hosted CH (IC-2): plaintext, port 8123,
+    no TLS. TARGET_CH_PORT / TARGET_CH_SECURE are threaded so this read reaches it
+    rather than the pair's Cloud 8443/TLS default baked into ch_common.get_client.
+    Defaults (8443 + secure) match get_client so an unset env is harmless."""
+    try:
+        port = int(os.environ.get("TARGET_CH_PORT", "") or 8443)
+    except ValueError:
+        port = 8443
+    secure = os.environ.get("TARGET_CH_SECURE", "true").strip().lower() in (
+        "1", "true", "yes")
     client = ch_common.get_client(
-        "TARGET_CH_HOST", "TARGET_CH_USER", "TARGET_CH_PASSWORD")
+        "TARGET_CH_HOST", "TARGET_CH_USER", "TARGET_CH_PASSWORD",
+        port=port, secure=secure)
     db = ch_common.require("CH_DATABASE")
     table = ch_common.require("CH_TABLE")
     rows = client.query(DIRECT_COUNT_QUERY.format(db=db, table=table)).result_rows

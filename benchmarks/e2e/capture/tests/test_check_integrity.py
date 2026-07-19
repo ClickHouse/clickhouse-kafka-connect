@@ -219,6 +219,7 @@ def _load_check_integrity_direct(monkeypatch, *, reads=None,
 
     def _get_client(*a, **k):
         state["client_calls"] += 1
+        state["last_client_kwargs"] = dict(k)
         if raise_client:
             raise _OperationalError("connect stall on SELECT version()")
         if raise_query:
@@ -351,6 +352,37 @@ def test_direct_double_delivery_negative_control_is_exit_1(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert '"verdict": "MISMATCH"' in out
     assert '"duplicate_rows": 1000.0' in out
+
+
+# --------------------------------------------------------------------------- #
+# #771 wiring: the --direct oracle must reach the in-cluster self-hosted CH
+# (plaintext 8123, no TLS — IC-2), NOT the pair's Cloud 8443/TLS default that
+# ch_common.get_client bakes in. chaos_run.sh exports TARGET_CH_PORT=8123 +
+# TARGET_CH_SECURE=false; the direct read MUST thread them into get_client. The
+# stubbed ch_common records the kwargs it was called with.
+# --------------------------------------------------------------------------- #
+def test_direct_threads_self_hosted_port_and_no_tls(monkeypatch):
+    _set_direct_env(monkeypatch, _N, _U)
+    monkeypatch.setenv("TARGET_CH_PORT", "8123")
+    monkeypatch.setenv("TARGET_CH_SECURE", "false")
+    mod = _load_check_integrity_direct(monkeypatch, reads=[(_N, _U)])
+    assert _run_direct(mod) == 0
+    kw = mod._STATE["last_client_kwargs"]
+    assert kw["port"] == 8123, "oracle must use the in-cluster port 8123, not 8443"
+    assert kw["secure"] is False, "oracle must not use TLS against in-cluster CH"
+
+
+def test_direct_defaults_to_cloud_port_and_tls_when_unset(monkeypatch):
+    # An unset TARGET_CH_PORT / TARGET_CH_SECURE keeps get_client's pair default
+    # (8443 + TLS) — the change is additive and cannot regress the pair.
+    _set_direct_env(monkeypatch, _N, _U)
+    monkeypatch.delenv("TARGET_CH_PORT", raising=False)
+    monkeypatch.delenv("TARGET_CH_SECURE", raising=False)
+    mod = _load_check_integrity_direct(monkeypatch, reads=[(_N, _U)])
+    assert _run_direct(mod) == 0
+    kw = mod._STATE["last_client_kwargs"]
+    assert kw["port"] == 8443
+    assert kw["secure"] is True
 
 
 if __name__ == "__main__":

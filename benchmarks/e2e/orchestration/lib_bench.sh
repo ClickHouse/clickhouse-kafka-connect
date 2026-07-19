@@ -669,10 +669,14 @@ teardown_poller_pod() {
 
 # Apply the per-run CH-creds Secret (from CI-secret env) + the metrics ConfigMap.
 apply_secret_and_metrics() {
+  # hostname/username REQUIRE a non-empty value (${VAR:?}); password requires the
+  # var to be SET but ALLOWS EMPTY (${VAR?}) — the self-hosted chaos CH uses user
+  # `default` with an empty password (ch-cluster.yaml users.xml). The pair always
+  # sets a non-empty password, so ${TARGET_CH_PASSWORD?} is a no-op there.
   kubectl -n "${NS}" create secret generic bench-ch-creds \
     --from-literal=hostname="${TARGET_CH_HOST:?}" \
     --from-literal=username="${TARGET_CH_USER:?}" \
-    --from-literal=password="${TARGET_CH_PASSWORD:?}" \
+    --from-literal=password="${TARGET_CH_PASSWORD?}" \
     --dry-run=client -o yaml | kubectl apply -f - || die "secret apply failed"
   kubectl apply -f "${TEMPLATES_DIR}/connect-metrics-configmap.yaml" || die "metrics configmap apply failed"
 }
