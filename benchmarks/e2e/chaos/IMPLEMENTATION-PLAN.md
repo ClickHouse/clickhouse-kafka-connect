@@ -20,6 +20,37 @@
 > The remaining work is the **live-EKS downstream phase** (bottom of this doc),
 > gated on the principal's approval.
 
+> **LIVE VALIDATION — L1/L2 findings (2026-07-19).** The offline gate was green;
+> these are runtime-only defects the local tests structurally could not catch,
+> which is why the live gate exists. Both FIXED, each with an added regression
+> test; offline suites re-green.
+> - **F-L1 (ch-cluster.yaml, StatefulSet)**: `podManagementPolicy` was
+>   `OrderedReady`, which **deadlocks the embedded keeper quorum bootstrap** —
+>   pod-0 can't reach Ready until a quorum forms, but OrderedReady won't create
+>   the peer pods until pod-0 is Ready. Fixed to `Parallel` (headless Service
+>   already sets `publishNotReadyAddresses`). Regression test:
+>   `test_statefulset_pod_management_is_parallel`. L1 then passed live: 3/3
+>   Ready, quorum formed, KeeperMap CREATE/DROP OK, ReplicatedMergeTree DDL
+>   applied, teardown verified. **Root-cause note for IC-2**: any k8s
+>   translation of a peer-quorum StatefulSet MUST use `Parallel` — the docker
+>   fixture has no equivalent knob, so the lockstep test alone could not surface
+>   this. IC-2's manifest contract now implies `Parallel` + not-ready-addresses.
+> - **F-L2 (render_producer_job.py)**: the renderer overrode only
+>   `PARQUET_SOURCE` + `SHARD_COUNT`, **not `TOPIC`** — so the chaos preload
+>   wrote to job.yaml's hardcoded `hits` while the run created `hits-chaos`,
+>   yielding `_UNKNOWN_TOPIC` and a failed preload. Fixed: added optional
+>   `--topic` (omitted ⇒ leaves `hits`, so the pair path is unaffected);
+>   `chaos_run.sh` now passes `--topic "${TOPIC}"`. Regression test:
+>   `test_render_topic_override_and_default`. This tightens IC-3's identity
+>   contract: **every chaos-distinct name (topic, group, table, connector) must
+>   be threaded all the way into the rendered producer/connector artifacts** —
+>   a name that lives only in `chaos_run.sh` env but not in a template override
+>   is a silent cross-wire to the pair defaults.
+>
+> Two follow-ups from an L2 operational incident (a killed background run leaked
+> nodes) are folded in as **T15 (`--reap`)** and **F-L2b (smoke preload
+> timeout)** below; see the DOWNSTREAM note and the advice recorded there.
+
 **Authority**: `chaos/DESIGN-771-eks-selfhosted.md` (THE SPEC). All §-references
 below are to that document unless prefixed `ECOSYSTEM`.
 
@@ -635,6 +666,56 @@ Writer hard-fails on any missing mandatory field.
     no phase-1 test path invokes `aws`/`eksctl` or requires a kubeconfig;
     banned formula `count() − uniqExact()` absent from the new code.
 
+### T15 — kill-safe teardown (`--reap` mode) [POST-LIVE, RECOMMENDED]
+
+- **Trigger**: L2 operational incident — a detached background run was SIGKILLed
+  mid-teardown, leaking 5+1 nodes + the CH cluster (~50 min, ~$0.5) until torn
+  down by hand. `chaos_run.sh`'s cleanup trap fires on normal/`die` exit and
+  on INT/TERM, **but not SIGKILL** (nothing can trap SIGKILL) — so a `kill -9`,
+  an OOM-kill, or a CI job hard-timeout leaves the cluster scaled up.
+- **Files**: MOD `benchmarks/e2e/orchestration/chaos_run.sh`; MOD/NEW its test.
+- **What**: a standalone, **idempotent, state-free** teardown path that force-
+  removes every chaos resource regardless of run state. Implement as a
+  `--reap` flag on `chaos_run.sh` (DRY — it already sources the teardown
+  functions; a separate script would duplicate identities). `--reap` parses
+  minimal args, sources `lib_bench.sh` + `chaos/lib_ch_cluster.sh`, and runs
+  ONLY: delete chaos connector/Connect CRs, chaos consumer group(s), topic +
+  DLQ topic, poller pod, `teardown_ch_cluster` (with PVC delete + STS-gone
+  verify), `phase_scale_down`, then assert nodegroups at 0 AND STS gone —
+  each step `--ignore-not-found`/best-effort so it is safe to run any number of
+  times whether or not a run is live. Exits 0 when everything is confirmed
+  absent, non-zero (loud) if a resource survives. This is the operator's
+  belt-and-suspenders after a kill and the recommended body of the CI
+  `if: always()` teardown step (T12), so both the local-detached gap and the
+  CI-timeout gap are covered by one code path.
+- **Tests first** (PATH-stubbed kubectl): `--reap` runs teardown with zero live
+  resources and exits 0 (pure idempotence); `--reap` with a leaked STS present
+  issues the delete + scale-down and verifies gone; `--reap` never touches a
+  running *pair's* CRs (only chaos-namespaced identities); `--reap --plan`
+  prints the reap sequence and executes nothing.
+- **Depends**: T11 (shares its teardown functions). **Concurrent**: no (edits
+  chaos_run.sh). Land before the first unattended/CI live run.
+- **Acceptance**: `pytest .../test_chaos_run.py -q`; `bash -n`; `shellcheck`;
+  `bash chaos_run.sh --reap --plan` exits 0 with the golden reap plan.
+
+### F-L2b — smoke preload timeout (fail-fast) [POST-LIVE, RECOMMENDED]
+
+- **Files**: MOD `benchmarks/e2e/orchestration/chaos_run.sh` (+ test).
+- **What**: `phase_preload` (via `lib_bench.sh`) inherits the pair's
+  `PRODUCER_TIMEOUT` default of **21600 s (6 h)** — correct for a 10M-row pair
+  preload, absurd for a chaos smoke run on a ~2M clean prefix, where a failed
+  preload should fail in minutes. Introduce a chaos-scoped
+  `CHAOS_PRODUCER_TIMEOUT` (default **900 s** for smoke's one-shot base
+  preload) that `chaos_run.sh` exports as `PRODUCER_TIMEOUT` before calling
+  `phase_preload`; the pair default is untouched. (Monkey's long-lived
+  `--stream` producer is not governed by this terminal-wait — it is fenced by
+  SIGTERM, IC-7 — so this only affects the smoke/base one-shot preload.)
+- **Tests first**: `chaos_run.sh` sets `PRODUCER_TIMEOUT` from
+  `CHAOS_PRODUCER_TIMEOUT` (default 900) before preload; overridable; the pair
+  path's 21600 default is unchanged (source-text assertion on run_pair.sh).
+- **Depends**: T11. **Concurrent**: with T15 possible (adjacent edits;
+  coordinate the diff). **Acceptance**: `pytest .../test_chaos_run.py -q`.
+
 ---
 
 ## Concurrency waves
@@ -692,6 +773,13 @@ spend. Stop and report here before the longer runs.
 are independent of each other and may be reordered per the principal's
 priority (L6 = "make it routine", L5 = "extra durability evidence"). None is a
 prerequisite for the core zero-loss claim, which L2+L4 already establish.
+
+**Kill-safety prerequisite (from the L2 incident)**: land **T15 (`--reap`)** and
+**F-L2b (smoke preload timeout)** before any *unattended* live run — mandatory
+before L6 (CI `workflow_dispatch`, where a job hard-timeout SIGKILLs the run)
+and strongly recommended before L4 (long monkey runs launched detached). The
+CI `if: always()` teardown step (T12) should call `chaos_run.sh --reap` so the
+CI-kill path and the local-detached path share one idempotent teardown.
 
 **Deferred beyond this phase** (spec §10.7, unchanged): NetworkPolicy faults
 (`netpol_*`) — blocked on the CNI-enforcement substrate change; ship C1–C5

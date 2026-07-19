@@ -162,6 +162,19 @@ def test_artifact_paths_cover_result_rounds_and_logs():
     )
 
 
+def test_teardown_step_invokes_reap():
+    """T12/T15: the if: always() teardown step must invoke chaos_run.sh --reap so
+    the CI-timeout/SIGKILL gap and the local-kill gap share one code path."""
+    steps = _steps(_load(CHAOS_WF))
+    reap = [s for s in steps if "--reap" in str(s.get("run", ""))]
+    assert reap, "no teardown step invokes chaos_run.sh --reap (T12/T15)"
+    for s in reap:
+        assert "chaos_run.sh --reap" in str(s.get("run", ""))
+        assert str(s.get("if", "")).strip() == "always()", (
+            f"reap teardown step {s.get('name')!r} must carry `if: always()`"
+        )
+
+
 def test_actionlint_clean_if_installed():
     exe = shutil.which("actionlint")
     if not exe:

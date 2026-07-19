@@ -29,6 +29,7 @@ Covered:
     keeper_map_reset only on the eo=1 path
   * sourcing chaos_run.sh executes NO phase (zero kubectl invocations)
 """
+import json
 import os
 import re
 import subprocess
@@ -39,6 +40,10 @@ import pytest
 HERE = os.path.dirname(__file__)
 ORCH = os.path.abspath(os.path.join(HERE, ".."))
 CHAOS_RUN = os.path.join(ORCH, "chaos_run.sh")
+REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
+RENDER_CONNECTOR = os.path.join(ORCH, "render_connector.py")
+CHAOS_CONNECTOR_TMPL = os.path.join(
+    REPO, "benchmarks", "e2e", "chaos", "templates", "chaos-connector.json.tmpl")
 
 
 def _src():
@@ -393,3 +398,156 @@ def test_bench_log_prefix_and_scale_up_nodes_retargeted():
     src = _src()
     assert 'BENCH_LOG_PREFIX="${BENCH_LOG_PREFIX:-chaos_run}"' in src
     assert 'SCALE_UP_NODES="${SCALE_UP_NODES:-5}"' in src
+
+
+# --------------------------------------------------------------------------- #
+# T15 — `--reap`: state-free, idempotent teardown-only mode (kill-safety net).
+# --------------------------------------------------------------------------- #
+def test_reap_accepted_without_mode_or_exactly_once():
+    """--reap is teardown-only: it must NOT require --mode / --exactly-once /
+    --seed (those gate LIVE runs). `--plan --reap` alone resolves + exits 0."""
+    r = _run_plan(["--reap"])
+    assert r.returncode == 0, r.stderr
+    # never complains about the missing run flags
+    assert "--mode must be" not in r.stderr
+    assert "requires --seed" not in r.stderr
+    assert "--exactly-once must be" not in r.stderr
+
+
+def test_plan_reap_prints_reap_plan_and_exits_zero():
+    r = _run_plan(["--reap"])
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "REAP PLAN" in out
+    assert "=== END REAP PLAN ===" in out
+    # it names the cost-critical §9.8 assertion and executes nothing
+    assert "9.8" in out
+    assert "nodegroups" in out.lower()
+    assert "StatefulSet" in out or "ch_sts" in out
+    # the full live phase plan must NOT be printed on the reap path
+    assert "PHASE 6" not in out
+    assert "PHASE PLAN" not in out
+    # it documents that the live-run pre-flight gates are deliberately skipped
+    assert "gates skipped" in out
+
+
+def test_reap_is_reap_only_even_when_combined_with_run_flags():
+    """If --reap is combined with a run, treat as reap-only (reap wins)."""
+    r = _run_plan(["--reap", "--mode", "monkey", "--seed", "1",
+                   "--exactly-once", "1"])
+    assert r.returncode == 0, r.stderr
+    assert "REAP PLAN" in r.stdout
+    assert "PHASE PLAN" not in r.stdout
+
+
+def test_reap_plan_executes_nothing(tmp_path):
+    """--plan --reap resolves + prints; it must shell out to NOTHING."""
+    calls = tmp_path / "calls.log"
+    for tool in ("kubectl", "eksctl", "aws", "docker", "envsubst"):
+        p = tmp_path / tool
+        p.write_text(f'#!/usr/bin/env bash\necho "{tool} $*" >> "{calls}"\n')
+        p.chmod(0o755)
+    env = dict(os.environ, PATH=f"{tmp_path}:/usr/bin:/bin")
+    r = subprocess.run(["bash", CHAOS_RUN, "--plan", "--reap"],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert not calls.exists(), f"--plan --reap invoked external tools: {calls.read_text()}"
+
+
+def test_reap_branch_precedes_and_skips_liverun_gates():
+    """The reap branch must run BEFORE validate_flags and must NOT pass through
+    the PHASE-0 live-run gates (isolation guard / image / config validation)."""
+    body = _extract_function(_src(), "main")
+    assert "run_reap" in body
+    # reap is decided at the very top of main, before flag validation for a run
+    assert body.index("run_reap") < body.index("validate_flags")
+    # and before (thus bypassing) every PHASE-0 live-run gate
+    assert body.index("run_reap") < body.index("isolation_guard")
+    assert body.index("run_reap") < body.index("phase_validate_images")
+    assert body.index("run_reap") < body.index("phase_validate_config")
+
+
+def test_reap_reuses_teardown_and_verifies_sts_and_nodegroups():
+    """run_reap must REUSE teardown_chaos (DRY — it owns the identities) and then
+    assert §9.8: CH StatefulSet gone AND both nodegroups desired=0. It must NOT
+    re-implement the isolation guard / image validation."""
+    body = _extract_function(_src(), "run_reap")
+    assert "teardown_chaos" in body, "reap must reuse teardown_chaos (DRY)"
+    # cost-leak verdict: STS gone + nodegroups 0
+    assert "statefulset" in body.lower()
+    assert "scale-down.sh" in body or "phase_scale_down" in body
+    assert "9.8" in body
+    # reap never runs the live-run pre-flight gates
+    assert "isolation_guard" not in body
+    assert "phase_validate_images" not in body
+    # both chaos consumer groups are reaped (we do not know which eo ran)
+    assert "ch-sink-chaos-eo" in body
+
+
+def test_reap_parses_flag_in_parse_args():
+    pa = _extract_function(_src(), "parse_args")
+    assert "--reap" in pa
+
+
+# --------------------------------------------------------------------------- #
+# F-L2b — scoped one-shot preload timeout (fail-fast; §preload).
+# --------------------------------------------------------------------------- #
+def test_chaos_producer_timeout_default_900_exported_as_producer_timeout():
+    """CHAOS_PRODUCER_TIMEOUT (default 900) must be exported as PRODUCER_TIMEOUT
+    before the one-shot base-preload wait, so a failed smoke/base preload fails
+    fast instead of waiting the pair's 6h default. It is scoped to the chaos
+    preload path (not a global)."""
+    src = _src()
+    assert 'CHAOS_PRODUCER_TIMEOUT="${CHAOS_PRODUCER_TIMEOUT:-900}"' in src
+    body = _extract_function(src, "phase_chaos_preload")
+    assert 'export PRODUCER_TIMEOUT="${CHAOS_PRODUCER_TIMEOUT}"' in body
+    # the wait must use the scoped bound, and the export precedes the wait
+    assert body.index("export PRODUCER_TIMEOUT") < body.index("--for=condition=complete job/hits-producer")
+    # the stream producer is SIGTERM-fenced (IC-7), documented as unaffected
+    assert "IC-7" in body
+
+
+# --------------------------------------------------------------------------- #
+# IC-3 threading audit — chaos-distinct identities must reach the RENDERED
+# artifacts, never fall back to a pair default (the TOPIC-bug class).
+# --------------------------------------------------------------------------- #
+def test_ic3_group_is_threaded_into_rendered_connector(tmp_path):
+    """The consumer GROUP (ch-sink-chaos-eo<0|1>) is the one identity that VARIES
+    per run; it MUST be threaded into the rendered connector via --group, not
+    left to Kafka Connect's connect-<name> default."""
+    out = tmp_path / "cr.json"
+    r = subprocess.run(
+        [sys.executable, RENDER_CONNECTOR, "--template", CHAOS_CONNECTOR_TMPL,
+         "--exactly-once", "1", "--ipwb", "false",
+         "--group", "ch-sink-chaos-eo1", "--out", str(out)],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    cr = json.loads(out.read_text())
+    assert cr["spec"]["config"]["consumer.override.group.id"] == "ch-sink-chaos-eo1"
+    assert cr["spec"]["config"]["exactlyOnce"] == "true"
+
+
+def test_ic3_chaos_connector_template_identities_are_chaos_distinct():
+    """IC-3 audit: the chaos connector template's baked identities must equal the
+    chaos defaults and NEVER a pair default (the TOPIC-bug class: a chaos env that
+    silently renders a pair value). Locks name/topics/topic2TableMap/database/DLQ
+    against drift toward the pair's hits / bench-clickhouse-sink."""
+    tmpl = json.loads(open(CHAOS_CONNECTOR_TMPL).read())
+    cfg = tmpl["spec"]["config"]
+    assert tmpl["metadata"]["name"] == "chaos-clickhouse-sink"
+    assert cfg["topics"] == "hits-chaos"
+    assert cfg["topic2TableMap"] == "hits-chaos=hits_chaos"
+    assert cfg["database"] == "clickbench"
+    assert cfg["errors.deadletterqueue.topic.name"] == "hits-chaos-dlq"
+    # never the PAIR identities
+    blob = json.dumps(tmpl)
+    assert "bench-clickhouse-sink" not in blob
+    assert '"topics": "hits"' not in blob
+
+
+def test_ic3_producer_job_topic_is_threaded_not_pair_default():
+    """The producer Job is rendered from the PAIR's job.yaml (authored 'hits');
+    chaos MUST thread --topic so the producer targets hits-chaos, not the pair
+    topic (this was the original TOPIC cross-wire bug)."""
+    body = _extract_function(_src(), "phase_chaos_preload")
+    assert '--topic "${TOPIC}"' in body

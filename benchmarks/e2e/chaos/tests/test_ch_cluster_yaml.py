@@ -140,6 +140,15 @@ def test_statefulset_replicas_and_governing_service(sts):
     assert sts["spec"]["serviceName"] == HEADLESS_SVC
 
 
+def test_statefulset_pod_management_is_parallel(sts):
+    # REQUIRED: the embedded 3-node keeper quorum can only bootstrap if all pods
+    # start at once (raft pre-vote needs >=2 peers reachable, and a pod is not
+    # Ready until CH finishes startup, which waits on keeper). OrderedReady
+    # deadlocks pod-0 waiting for peers that are never created. Regression guard
+    # for the live-L1 finding (2026-07-19).
+    assert sts["spec"]["podManagementPolicy"] == "Parallel"
+
+
 def test_statefulset_nodeselector_bench(sts):
     ns = sts["spec"]["template"]["spec"]["nodeSelector"]
     assert ns.get("role") == "bench"

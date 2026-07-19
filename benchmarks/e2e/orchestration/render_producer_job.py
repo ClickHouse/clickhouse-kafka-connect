@@ -45,6 +45,11 @@ def main() -> int:
     ap.add_argument("--shard-count", type=int, default=3,
                     help="parallel producer shards; patches completions == "
                          "parallelism == SHARD_COUNT env (default 3)")
+    ap.add_argument("--topic", default=None,
+                    help="override the producer TOPIC env (default: leave "
+                         "job.yaml as authored — the pair's 'hits'). Chaos "
+                         "passes 'hits-chaos' so the producer targets the "
+                         "distinct chaos topic (§4).")
     ap.add_argument("--out", required=True, help="output path ('-' for stdout)")
     args = ap.parse_args()
 
@@ -88,6 +93,11 @@ def main() -> int:
         "PARQUET_SOURCE": args.parquet_source,
         "SHARD_COUNT": str(args.shard_count),
     }
+    # TOPIC is overridden ONLY when --topic is given, so the pair path (no
+    # --topic) keeps job.yaml's authored 'hits'. Chaos must override it or the
+    # producer writes to 'hits' while the run created 'hits-chaos' (UNKNOWN_TOPIC).
+    if args.topic is not None:
+        overrides["TOPIC"] = args.topic
     seen = set()
     for e in env:
         name = e.get("name")

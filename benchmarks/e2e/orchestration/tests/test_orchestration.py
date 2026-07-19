@@ -1086,6 +1086,25 @@ def test_render_rejects_bad_shard_count():
     assert "shard-count" in r.stderr
 
 
+def test_render_topic_override_and_default():
+    """--topic overrides the producer TOPIC env; omitting it leaves job.yaml's
+    authored 'hits' (pair path unaffected). Regression for the live-L2 finding
+    (2026-07-19): chaos created 'hits-chaos' but the producer wrote to 'hits'
+    (UNKNOWN_TOPIC) because the renderer ignored TOPIC."""
+    # override -> chaos topic
+    r = _render_job(3, extra_args=["--topic", "hits-chaos"])
+    assert r.returncode == 0, r.stderr
+    env = {e["name"]: e.get("value")
+           for e in yaml.safe_load(r.stdout)["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["TOPIC"] == "hits-chaos"
+    # no --topic -> pair default preserved
+    r = _render_job(3)
+    assert r.returncode == 0, r.stderr
+    env = {e["name"]: e.get("value")
+           for e in yaml.safe_load(r.stdout)["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["TOPIC"] == "hits"
+
+
 def test_committed_job_yaml_is_indexed():
     """The committed producer job.yaml is the render's input — it MUST declare
     completionMode: Indexed (a NonIndexed job would give every pod the whole

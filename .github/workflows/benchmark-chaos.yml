@@ -172,25 +172,15 @@ jobs:
             benchmarks/e2e/orchestration/artifacts/chaos/
           if-no-files-found: warn
 
-      # These duplicate chaos_run.sh's own cleanup trap so teardown survives even
-      # a hard kill of the script (e.g. a cancelled job). All idempotent. The CR
-      # deletes matter: a chaos KafkaConnector CR that survives would revive on
-      # the next scale-up and pre-consume a fresh topic.
-      - name: Delete chaos CRs + topics + CH cluster (always)
+      # Kill-safety net (T15): chaos_run.sh --reap is the single, state-free,
+      # idempotent teardown path — it deletes every chaos CR / topic / pod /
+      # consumer-group, tears down the self-hosted CH StatefulSet, scales both
+      # nodegroups to 0, and asserts §9.8 (STS gone AND nodegroups desired=0),
+      # exiting non-zero on a cost leak. Running it here (if: always()) closes the
+      # CI-timeout / cancelled-job gap with the SAME code path the operator uses
+      # after a local hard-kill — chaos_run.sh's own cleanup trap cannot fire on
+      # SIGKILL, so this reap is the backstop. Idempotent: safe even if the run
+      # step already tore down cleanly.
+      - name: Reap chaos resources — teardown + scale-to-zero (always)
         if: always()
-        run: |
-          kubectl -n "$K8S_NAMESPACE" delete kafkaconnector chaos-clickhouse-sink --ignore-not-found --wait=false || true
-          kubectl -n "$K8S_NAMESPACE" delete kafkaconnect bench-connect --ignore-not-found --wait=false || true
-          kubectl -n "$K8S_NAMESPACE" delete secret bench-ch-creds --ignore-not-found || true
-          kubectl -n "$K8S_NAMESPACE" delete pod bench-poller hits-chaos-producer --ignore-not-found --wait=false || true
-          kubectl -n "$K8S_NAMESPACE" delete kafkatopic hits-chaos hits-chaos-dlq --ignore-not-found --wait=false || true
-          # Self-hosted CH cluster (IC-2): StatefulSet + Services + ConfigMap + PVCs.
-          kubectl -n "$K8S_NAMESPACE" delete statefulset ch-chaos --ignore-not-found --wait=false || true
-          kubectl -n "$K8S_NAMESPACE" delete service ch-chaos ch-chaos-headless --ignore-not-found || true
-          kubectl -n "$K8S_NAMESPACE" delete configmap ch-chaos-config --ignore-not-found || true
-          kubectl -n "$K8S_NAMESPACE" delete pvc -l app.kubernetes.io/name=ch-chaos --ignore-not-found --wait=false || true
-
-      - name: Scale EKS node groups to zero (always)
-        if: always()
-        working-directory: benchmarks/e2e/infra
-        run: ./scale-down.sh
+        run: benchmarks/e2e/orchestration/chaos_run.sh --reap

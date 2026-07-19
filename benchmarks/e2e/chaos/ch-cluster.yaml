@@ -315,8 +315,13 @@ metadata:
 spec:
   serviceName: ch-chaos-headless
   replicas: 3
-  # OrderedReady so the keeper quorum forms deterministically 0->1->2.
-  podManagementPolicy: OrderedReady
+  # Parallel is REQUIRED for the embedded keeper quorum to bootstrap: the raft
+  # pre-vote needs >=2 of the 3 pods reachable at once, and a pod is not Ready
+  # (/ping on 8123) until CH finishes startup, which itself waits on the keeper.
+  # OrderedReady deadlocks (pod-0 waits for a quorum whose peers are never
+  # created); the headless Service publishes not-ready addresses so the pods
+  # resolve each other during this parallel bootstrap.
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       app: ch-chaos

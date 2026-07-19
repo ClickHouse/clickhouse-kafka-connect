@@ -120,6 +120,11 @@ STREAM_RATE="${STREAM_RATE:-5000}"
 CHAOS_CH_VERSION="${CHAOS_CH_VERSION:-latest}"        # IC-8 (version-selected CH)
 STREAM_PRODUCER_POD="${STREAM_PRODUCER_POD:-hits-chaos-producer}"
 DRAIN_TARGET_PCT="${DRAIN_TARGET_PCT:-50}"            # §3.5 smoke-gate trigger
+# F-L2b: the one-shot base-preload wait bound. The pair's PRODUCER_TIMEOUT
+# default is 6h (21600s) — right for a 10M-row pair preload, catastrophic for a
+# failed smoke/base preload that should fail fast. Scope it to 900s here and
+# export it as PRODUCER_TIMEOUT before the one-shot wait (phase_chaos_preload).
+CHAOS_PRODUCER_TIMEOUT="${CHAOS_PRODUCER_TIMEOUT:-900}"
 
 # CLI-resolved run parameters (defaults per IC-3).
 MODE=""
@@ -134,6 +139,7 @@ AGGRESSIVE=0
 WATCH_CELL=0
 OUT_DIR=""
 PLAN_ONLY=0
+REAP=0
 
 # Run-state (set as the run proceeds; written into the artifact on every path).
 CHAOS_ID=""
@@ -168,6 +174,11 @@ parse_args() {
       --watch-cell)    WATCH_CELL=1; shift ;;
       --out)           OUT_DIR="${2:?--out needs a value}"; shift 2 ;;
       --plan|-n)       PLAN_ONLY=1; shift ;;
+      # --reap (T15): state-free, idempotent teardown-only mode. Needs no
+      # --mode/--exactly-once/--seed; if combined with a run, reap wins (main
+      # branches on REAP before validate_flags). The kill-safety net for the L2
+      # incident (SIGKILL/CI-timeout leaks the cluster; nothing can trap SIGKILL).
+      --reap)          REAP=1; shift ;;
       # --allow-tag: local-hacking escape hatch (== KAFKA_ALLOW_TAG=1), as
       # run_pair.sh. Default is STRICT (digest-pinned); never use it for a real run.
       --allow-tag)     export KAFKA_ALLOW_TAG=1; shift ;;
@@ -295,6 +306,33 @@ PHASE 11 teardown          connector/Connect/groups/topics/poller + teardown_ch_
 EOF
 }
 
+# --plan --reap : print the state-free teardown sequence; execute nothing (T15).
+print_reap_plan() {
+  cat <<EOF
+=== Chaos / monkey test (#771) — REAP PLAN (--reap dry-run, nothing executed) ===
+mode            : reap (state-free, idempotent teardown-only; T15 kill-safety net)
+why             : the cleanup trap cannot fire on SIGKILL/CI-timeout — --reap is the
+                  belt-and-suspenders that force-removes a leaked cluster (§9.8)
+identities      : connector_cr=${CONNECTOR_NAME} connect_cr=${CONNECT_NAME}
+                  groups=ch-sink-chaos-eo0,ch-sink-chaos-eo1
+                  topic=${TOPIC} dlq=${DLQ_TOPIC} stream_pod=${STREAM_PRODUCER_POD}
+                  ch_sts=${CH_STS}
+gates skipped   : NO isolation guard / image validation / config validation
+                  (those gate LIVE runs, not a teardown-only reap)
+
+REAP 1  delete chaos connector CR ${CONNECTOR_NAME} + Connect CR ${CONNECT_NAME}
+REAP 2  delete chaos consumer groups ch-sink-chaos-eo0 + ch-sink-chaos-eo1
+REAP 3  delete stream producer pod ${STREAM_PRODUCER_POD} + poller pod
+REAP 4  delete topics ${TOPIC} + ${DLQ_TOPIC}
+REAP 5  teardown_ch_cluster (STS/Services/ConfigMap/PVCs; verify ${CH_STS} GONE, §9.8)
+REAP 6  phase_scale_down (bench-ng + connect-ng -> desired 0)
+REAP 7  ASSERT §9.8: CH StatefulSet ${CH_STS} gone AND both nodegroups desired=0
+        -> exit 0 if clean, non-zero (loud) on any cost leak
+        (every step ignore-not-found: nothing deployed still exits 0)
+=== END REAP PLAN ===
+EOF
+}
+
 # =========================================================================== #
 # PHASE 0 — pre-flight gates (before any cluster mutation).
 # =========================================================================== #
@@ -412,17 +450,23 @@ phase_chaos_preload() {
   # authoritative count (frozen later at the fence).
   local job_yaml="${OUT_DIR}/chaos-producer-job.yaml"
   mkdir -p "${OUT_DIR}"
-  TOPIC="${TOPIC}" python3 "${SCRIPT_DIR}/render_producer_job.py" \
+  python3 "${SCRIPT_DIR}/render_producer_job.py" \
     --job "${PRODUCER_DIR}/job.yaml" \
     --image "${PRODUCER_IMAGE:?PRODUCER_IMAGE required}" \
     --service-account "${PRODUCER_SA:-hits-producer}" \
     --parquet-source "${PARQUET_SOURCE:?PARQUET_SOURCE required}" \
     --shard-count "${SHARD_COUNT:-3}" \
+    --topic "${TOPIC}" \
     --out "${job_yaml}" || die "chaos producer job render failed"
   kubectl -n "${NS}" delete job hits-producer --ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
   kubectl apply -f "${job_yaml}" || die "chaos producer job apply failed"
-  kubectl -n "${NS}" wait --for=condition=complete job/hits-producer --timeout="${PRODUCER_TIMEOUT:-21600}s" \
-    || die "chaos base preload Job did not complete"
+  # F-L2b: scope the one-shot wait to CHAOS_PRODUCER_TIMEOUT (default 900s) rather
+  # than the pair's 6h PRODUCER_TIMEOUT default, so a failed smoke/base preload
+  # fails FAST. NOTE: monkey's continuous --stream producer (below) is NOT bound
+  # by this — it is SIGTERM-fenced at phase_fence (IC-7), never by a wait timeout.
+  export PRODUCER_TIMEOUT="${CHAOS_PRODUCER_TIMEOUT}"
+  kubectl -n "${NS}" wait --for=condition=complete job/hits-producer --timeout="${PRODUCER_TIMEOUT}s" \
+    || die "chaos base preload Job did not complete within ${PRODUCER_TIMEOUT}s (CHAOS_PRODUCER_TIMEOUT)"
 
   if [ "${MODE}" = "monkey" ]; then
     # Continuous, bounded-rate producer (IC-7): long-lived, single-pass, never
@@ -826,6 +870,47 @@ teardown_chaos() {
   phase_scale_down || warn "phase_scale_down reported non-zero — a nodegroup did NOT reach 0 (cost leak, §9.8)"
 }
 
+# =========================================================================== #
+# --reap (T15): state-free, idempotent teardown-only mode. The kill-safety net
+# for the L2 incident — a SIGKILLed / CI-timed-out run leaks 5+1 nodes + the CH
+# cluster because nothing can trap SIGKILL. --reap force-removes every chaos
+# resource regardless of run state, then asserts the two cost-critical §9.8
+# invariants: the CH StatefulSet is GONE and both nodegroups reach desired 0.
+# Every step is ignore-not-found, so it is safe to run any number of times
+# whether or not a run is live (nothing deployed -> still a clean exit 0).
+# =========================================================================== #
+run_reap() {
+  log "REAP (T15): state-free idempotent chaos teardown + §9.8 cost-leak assertion"
+  # Both delivery-mode consumer groups may exist (we do not know which eo ran, or
+  # if a run got far enough to create one); delete BOTH, then let teardown_chaos
+  # own the rest (DRY — it holds every other chaos identity + teardown function).
+  # GROUP is cleared so teardown_chaos does not also re-issue a single-group delete.
+  local eo
+  for eo in 0 1; do
+    "${SCRIPT_DIR}/delete_consumer_group.sh" "ch-sink-chaos-eo${eo}" 2>/dev/null || true
+  done
+  GROUP=""
+  teardown_chaos
+  # teardown_ch_cluster (inside teardown_chaos) dies loud if the STS survives, so
+  # reaching here already implies it is gone; teardown_chaos's phase_scale_down,
+  # however, SWALLOWS a nodegroup leak into a warn. Re-assert both invariants and
+  # let their exit codes — not the swallowed warns — be the reap verdict (§9.8).
+  local rc=0 sts_left
+  sts_left="$(kubectl -n "${NS}" get statefulset "${CH_STS}" --ignore-not-found -o name 2>/dev/null)"
+  [ -z "${sts_left}" ] \
+    || { warn "reap: CH StatefulSet ${CH_STS} still present (${sts_left}) — cost/data leak (§9.8)"; rc=1; }
+  # scale-down.sh is the authoritative nodegroup=0 verifier (exit non-zero iff a
+  # nodegroup fails to reach desired 0); idempotent, so re-running it is safe.
+  "${INFRA_DIR}/scale-down.sh" \
+    || { warn "reap: a nodegroup did NOT reach desired 0 (cost leak, §9.8)"; rc=1; }
+  if [ "${rc}" = "0" ]; then
+    log "reap: CLEAN — CH StatefulSet ${CH_STS} gone AND both nodegroups desired=0"
+  else
+    warn "reap: INCOMPLETE — a chaos resource survived (see above); rerun --reap or investigate"
+  fi
+  return "${rc}"
+}
+
 # Cleanup trap for any abnormal exit (a lib `die`, a hard kill). Writes a
 # best-effort artifact (if none yet) then tears down — mirrors run_pair.sh's trap.
 cleanup_trap() {
@@ -843,6 +928,20 @@ cleanup_trap() {
 # =========================================================================== #
 main() {
   parse_args "$@"
+
+  # --reap (T15) is teardown-only: it takes NO --mode/--exactly-once/--seed and
+  # bypasses the PHASE-0 live-run gates (isolation guard / image / config
+  # validation). Decided FIRST — if --reap is combined with a run, reap wins.
+  if [ "${REAP}" -eq 1 ]; then
+    if [ "${PLAN_ONLY}" -eq 1 ]; then
+      print_reap_plan
+      exit 0
+    fi
+    command -v kubectl >/dev/null 2>&1 || die "kubectl required"
+    run_reap
+    exit $?
+  fi
+
   validate_flags
   resolve_run_shape
 
