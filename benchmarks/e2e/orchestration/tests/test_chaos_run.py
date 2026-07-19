@@ -594,10 +594,26 @@ def test_target_ch_creds_resolve_to_self_hosted_defaults_when_sourced():
 
 def test_oracle_threads_target_secure_and_port():
     body = _extract_function(_src(), "phase_oracle")
-    assert 'TARGET_CH_PORT="${TARGET_CH_PORT}"' in body
+    # The oracle reads via resolved oracle_host/oracle_port (set from the
+    # port-forward below or TARGET_CH_* directly), not the raw in-cluster host.
+    assert 'TARGET_CH_HOST="${oracle_host}"' in body
+    assert 'TARGET_CH_PORT="${oracle_port}"' in body
+    assert 'oracle_port="${TARGET_CH_PORT}"' in body
     assert 'TARGET_CH_SECURE=' in body
     # password passed SET-but-empty (not :- which would coerce), matching lib_bench
     assert 'TARGET_CH_PASSWORD="${TARGET_CH_PASSWORD-}"' in body
+
+
+def test_oracle_port_forwards_in_cluster_service():
+    """The self-hosted CH client Service DNS is in-cluster-only; the operator-side
+    oracle must port-forward it to localhost (regression for the live-L2 finding
+    2026-07-19: oracle failed to resolve ch-chaos.kafka-bench.svc). Localhost
+    hosts skip the forward; the tunnel is killed after the read."""
+    body = _extract_function(_src(), "phase_oracle")
+    assert 'port-forward "svc/${CH_SVC}"' in body
+    assert "127.0.0.1|localhost)" in body           # already-local short-circuit
+    assert 'oracle_host="127.0.0.1"' in body
+    assert 'kill "${pf_pid}"' in body                # tunnel torn down after read
 
 
 def test_lib_bench_password_allows_empty_but_requires_set():

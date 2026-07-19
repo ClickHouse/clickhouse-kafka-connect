@@ -790,13 +790,38 @@ phase_oracle() {
     fault_observed=1
   fi
   ORACLE_FILE="${OUT_DIR}/oracle-${CHAOS_ID}.json"
-  TARGET_CH_HOST="${TARGET_CH_HOST}" TARGET_CH_PORT="${TARGET_CH_PORT}" \
+
+  # The self-hosted CH client Service DNS (ch-chaos.kafka-bench.svc) is
+  # in-cluster-only; the oracle (check_integrity.py) runs on the OPERATOR machine
+  # and cannot resolve it (unlike the pair's public Cloud host). Port-forward the
+  # Service to localhost so the local oracle can read the target, reusing
+  # check_integrity.py --direct unchanged (its retry/backoff/CHECK_ERROR envelope
+  # still applies). Torn down right after the read.
+  local oracle_host="${TARGET_CH_HOST}" oracle_port="${TARGET_CH_PORT}" pf_pid="" pf_port="${ORACLE_PF_PORT:-18123}"
+  case "${TARGET_CH_HOST}" in
+    127.0.0.1|localhost) : ;;  # already local (tests / manual)
+    *)
+      log "  port-forward svc/${CH_SVC} ${pf_port}:8123 for the local oracle read"
+      kubectl -n "${NS}" port-forward "svc/${CH_SVC}" "${pf_port}:8123" >/dev/null 2>&1 &
+      pf_pid=$!
+      local pf_deadline=$(( $(date +%s) + 30 ))
+      until curl -sf "http://127.0.0.1:${pf_port}/ping" >/dev/null 2>&1; do
+        [ "$(date +%s)" -ge "${pf_deadline}" ] && { warn "oracle port-forward not ready in 30s (oracle will retry/CHECK_ERROR)"; break; }
+        sleep 1
+      done
+      oracle_host="127.0.0.1"; oracle_port="${pf_port}"
+      ;;
+  esac
+
+  TARGET_CH_HOST="${oracle_host}" TARGET_CH_PORT="${oracle_port}" \
   TARGET_CH_SECURE="${TARGET_CH_SECURE:-false}" \
   TARGET_CH_USER="${TARGET_CH_USER:-default}" TARGET_CH_PASSWORD="${TARGET_CH_PASSWORD-}" \
   CH_DATABASE="${CH_DATABASE}" CH_TABLE="${CH_TABLE}" \
   ROWS_EXPECTED="${ROWS_EXPECTED}" SOURCE_UNIQUE_EXPECTED="${SOURCE_UNIQUE_EXPECTED:?SOURCE_UNIQUE_EXPECTED required (IC-7)}" \
   DLQ_DEPTH="${dlq_depth}" FAULT_OBSERVED="${fault_observed}" \
     python3 "${CAPTURE_DIR}/check_integrity.py" --direct > "${ORACLE_FILE}" || rc=$?
+
+  [ -n "${pf_pid}" ] && kill "${pf_pid}" 2>/dev/null || true
   case "${rc}" in
     0) RUN_OUTCOME="passed" ;;
     1) RUN_OUTCOME="failed" ;;
