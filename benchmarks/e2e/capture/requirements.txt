@@ -1,0 +1,6 @@
+# Benchmark v2 CH-side capture pipeline — pinned runtime dependencies (task 30).
+# clickhouse-connect is the HTTPS client used by every capture/insert/rollback
+# script (port of the Spark pipeline's dependency). boto3 is only needed by
+# export_metrics_to_dwh.py (STS assume-role + s3() credential minting).
+clickhouse-connect==0.8.15
+boto3==1.35.76
