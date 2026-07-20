@@ -87,6 +87,13 @@ done
 APP_BASE_NAME=${0##*/}
 # Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
 APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && printf '%s\n' "$PWD" ) || exit
+GRADLE_WRAPPER_JAR="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+if [ ! -f "$GRADLE_WRAPPER_JAR" ]; then
+    GRADLE_WRAPPER_JAR="$APP_HOME/../gradle/wrapper/gradle-wrapper.jar"
+fi
+if [ ! -f "$GRADLE_WRAPPER_JAR" ]; then
+    die "ERROR: gradle-wrapper.jar not found in benchmark or repository root wrapper directories."
+fi
 
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
@@ -210,7 +217,7 @@ DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
 
 set -- \
         "-Dorg.gradle.appname=$APP_BASE_NAME" \
-        -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" \
+        -jar "$GRADLE_WRAPPER_JAR" \
         "$@"
 
 # Stop when "xargs" is not available.

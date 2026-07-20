@@ -70,10 +70,17 @@ goto fail
 :execute
 @rem Setup the command line
 
+set WRAPPER_JAR=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar
+if exist "%WRAPPER_JAR%" goto execute
+set WRAPPER_JAR=%APP_HOME%\..\gradle\wrapper\gradle-wrapper.jar
+if exist "%WRAPPER_JAR%" goto execute
+echo. 1>&2
+echo ERROR: gradle-wrapper.jar not found in benchmark or repository root wrapper directories. 1>&2
+goto fail
 
 
 @rem Execute Gradle
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -jar "%WRAPPER_JAR%" %*
 
 :end
 @rem End local scope for the variables with windows NT shell
