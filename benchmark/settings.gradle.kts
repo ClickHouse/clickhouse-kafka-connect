@@ -7,3 +7,10 @@
  */
 
 rootProject.name = "kafka-connector-benchmark"
+
+includeBuild("..") {
+    dependencySubstitution {
+        substitute(module("com.clickhouse.kafka:clickhouse-kafka-connect"))
+            .using(project(":"))
+    }
+}
