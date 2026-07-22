@@ -1,0 +1,441 @@
+# Self-hosted ClickHouse cluster for the chaos / monkey test (#771), task T2.
+#
+# Authority: chaos/DESIGN-771-eks-selfhosted.md §2 + IMPLEMENTATION-PLAN IC-2/IC-8.
+#
+# This is the chaos target: an in-cluster ClickHouse cluster we own and can kill
+# pods of (no Cloud API). It is a k8s translation of the docker fixture
+# `src/testFixtures/docker/clickhouse/cluster/{config.xml,users.xml}` and stays
+# in LOCKSTEP with it (tests/test_ch_cluster_yaml.py parses both and asserts the
+# invariant elements equal — keeper_map_path_prefix, coordination_settings,
+# ports, macro key names, 3 raft members, internal_replication).
+#
+# Topology: 1 shard x 3 replicas (ReplicatedMergeTree, internal_replication=true)
+# — the survivable-by-design shape, so a single node kill loses no committed
+# data (§2). The 3-shard fixture shape is deliberately NOT carried over. Each
+# pod embeds clickhouse-keeper; the three form a 3-node raft quorum, so KeeperMap
+# state (exactly-once) survives one node loss.
+#
+# Image is the ${CHAOS_CH_IMAGE} placeholder (IC-8: version-selected by design,
+# rendered by chaos_run.sh via
+#   CHAOS_CH_IMAGE=clickhouse/clickhouse-server:${CHAOS_CH_VERSION} envsubst).
+# The container command is envsubst-safe: server_id / REPLICA_NUM / SERVER_INDEX
+# derive from the pod ordinal using $( ) / $(( )) only (which envsubst
+# preserves) — never bare $VAR (which it would clobber).
+#
+# Resource names ARE the IC-2 contract (T8 builds against them): namespace
+# kafka-bench, StatefulSet ch-chaos (pods ch-chaos-{0,1,2}), headless Service
+# ch-chaos-headless, client Service ch-chaos, ConfigMap ch-chaos-config.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ch-chaos-config
+  namespace: kafka-bench
+  labels:
+    app: ch-chaos
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+data:
+  # Derived from src/testFixtures/docker/clickhouse/cluster/config.xml.
+  # Invariant elements (keeper_map_path_prefix, coordination_settings, ports,
+  # macro keys, 3 raft members, internal_replication) are asserted equal to the
+  # fixture by the lockstep test. What changes for k8s: hostnames become the
+  # stable headless-Service DNS names, and only the one_shard_three_replicas
+  # cluster is kept.
+  config.xml: |
+    <clickhouse>
+        <http_port>8123</http_port>
+        <tcp_port>9000</tcp_port>
+        <interserver_http_port>9009</interserver_http_port>
+        <listen_host>0.0.0.0</listen_host>
+        <macros>
+            <shard from_env="SHARD_NUM" />
+            <replica from_env="REPLICA_NUM" />
+            <server_index from_env="SERVER_INDEX" />
+        </macros>
+        <access_control_improvements>
+            <on_cluster_queries_require_cluster_grant>false</on_cluster_queries_require_cluster_grant>
+        </access_control_improvements>
+        <remote_servers replace="1">
+            <one_shard_three_replicas>
+                <shard>
+                    <!-- write to one replica, let ReplicatedMergeTree replicate for consistency -->
+                    <internal_replication>true</internal_replication>
+                    <replica>
+                        <host>ch-chaos-0.ch-chaos-headless.kafka-bench.svc.cluster.local</host>
+                        <port>9000</port>
+                    </replica>
+                    <replica>
+                        <host>ch-chaos-1.ch-chaos-headless.kafka-bench.svc.cluster.local</host>
+                        <port>9000</port>
+                    </replica>
+                    <replica>
+                        <host>ch-chaos-2.ch-chaos-headless.kafka-bench.svc.cluster.local</host>
+                        <port>9000</port>
+                    </replica>
+                </shard>
+            </one_shard_three_replicas>
+        </remote_servers>
+        <keeper_map_path_prefix>/keeper_map_tables</keeper_map_path_prefix>
+        <keeper_server>
+            <tcp_port>9181</tcp_port>
+            <server_id from_env="SERVER_INDEX" />
+
+            <coordination_settings>
+                <operation_timeout_ms>10000</operation_timeout_ms>
+                <session_timeout_ms>30000</session_timeout_ms>
+            </coordination_settings>
+
+            <raft_configuration>
+                <server>
+                    <id>1</id>
+                    <hostname>ch-chaos-0.ch-chaos-headless.kafka-bench.svc.cluster.local</hostname>
+                    <port>9234</port>
+                </server>
+                <server>
+                    <id>2</id>
+                    <hostname>ch-chaos-1.ch-chaos-headless.kafka-bench.svc.cluster.local</hostname>
+                    <port>9234</port>
+                </server>
+                <server>
+                    <id>3</id>
+                    <hostname>ch-chaos-2.ch-chaos-headless.kafka-bench.svc.cluster.local</hostname>
+                    <port>9234</port>
+                </server>
+            </raft_configuration>
+        </keeper_server>
+        <zookeeper>
+            <node index="1">
+                <host>ch-chaos-0.ch-chaos-headless.kafka-bench.svc.cluster.local</host>
+                <port>9181</port>
+            </node>
+            <node index="2">
+                <host>ch-chaos-1.ch-chaos-headless.kafka-bench.svc.cluster.local</host>
+                <port>9181</port>
+            </node>
+            <node index="3">
+                <host>ch-chaos-2.ch-chaos-headless.kafka-bench.svc.cluster.local</host>
+                <port>9181</port>
+            </node>
+        </zookeeper>
+    </clickhouse>
+  # Carried over verbatim from the fixture users.xml.
+  users.xml: |
+    <clickhouse>
+        <users>
+            <default>
+                <access_management>1</access_management>
+            </default>
+        </users>
+    </clickhouse>
+  # clickbench.hits_chaos target table (chaos oracle: count()/uniqExact(WatchID)).
+  # Schema-identical to sql/clickbench/02_create_hits.sql, engine swapped to
+  # ReplicatedMergeTree keyed on the fixture macros {shard}/{replica} so the
+  # 3 replicas actually replicate. Applied by T8's lifecycle (apply_chaos_ddl),
+  # not mounted into the server. ON CLUSTER is unnecessary — the connector
+  # writes to one replica and ReplicatedMergeTree fans out; the harness creates
+  # the table on each replica (or ON CLUSTER one_shard_three_replicas).
+  hits_chaos.sql: |
+    CREATE DATABASE IF NOT EXISTS clickbench;
+    CREATE TABLE IF NOT EXISTS clickbench.hits_chaos
+    (
+        WatchID BIGINT NOT NULL,
+        JavaEnable SMALLINT NOT NULL,
+        Title TEXT NOT NULL,
+        GoodEvent SMALLINT NOT NULL,
+        EventTime TIMESTAMP NOT NULL,
+        EventDate Date NOT NULL,
+        CounterID INTEGER NOT NULL,
+        ClientIP INTEGER NOT NULL,
+        RegionID INTEGER NOT NULL,
+        UserID BIGINT NOT NULL,
+        CounterClass SMALLINT NOT NULL,
+        OS SMALLINT NOT NULL,
+        UserAgent SMALLINT NOT NULL,
+        URL TEXT NOT NULL,
+        Referer TEXT NOT NULL,
+        IsRefresh SMALLINT NOT NULL,
+        RefererCategoryID SMALLINT NOT NULL,
+        RefererRegionID INTEGER NOT NULL,
+        URLCategoryID SMALLINT NOT NULL,
+        URLRegionID INTEGER NOT NULL,
+        ResolutionWidth SMALLINT NOT NULL,
+        ResolutionHeight SMALLINT NOT NULL,
+        ResolutionDepth SMALLINT NOT NULL,
+        FlashMajor SMALLINT NOT NULL,
+        FlashMinor SMALLINT NOT NULL,
+        FlashMinor2 TEXT NOT NULL,
+        NetMajor SMALLINT NOT NULL,
+        NetMinor SMALLINT NOT NULL,
+        UserAgentMajor SMALLINT NOT NULL,
+        UserAgentMinor VARCHAR(255) NOT NULL,
+        CookieEnable SMALLINT NOT NULL,
+        JavascriptEnable SMALLINT NOT NULL,
+        IsMobile SMALLINT NOT NULL,
+        MobilePhone SMALLINT NOT NULL,
+        MobilePhoneModel TEXT NOT NULL,
+        Params TEXT NOT NULL,
+        IPNetworkID INTEGER NOT NULL,
+        TraficSourceID SMALLINT NOT NULL,
+        SearchEngineID SMALLINT NOT NULL,
+        SearchPhrase TEXT NOT NULL,
+        AdvEngineID SMALLINT NOT NULL,
+        IsArtifical SMALLINT NOT NULL,
+        WindowClientWidth SMALLINT NOT NULL,
+        WindowClientHeight SMALLINT NOT NULL,
+        ClientTimeZone SMALLINT NOT NULL,
+        ClientEventTime TIMESTAMP NOT NULL,
+        SilverlightVersion1 SMALLINT NOT NULL,
+        SilverlightVersion2 SMALLINT NOT NULL,
+        SilverlightVersion3 INTEGER NOT NULL,
+        SilverlightVersion4 SMALLINT NOT NULL,
+        PageCharset TEXT NOT NULL,
+        CodeVersion INTEGER NOT NULL,
+        IsLink SMALLINT NOT NULL,
+        IsDownload SMALLINT NOT NULL,
+        IsNotBounce SMALLINT NOT NULL,
+        FUniqID BIGINT NOT NULL,
+        OriginalURL TEXT NOT NULL,
+        HID INTEGER NOT NULL,
+        IsOldCounter SMALLINT NOT NULL,
+        IsEvent SMALLINT NOT NULL,
+        IsParameter SMALLINT NOT NULL,
+        DontCountHits SMALLINT NOT NULL,
+        WithHash SMALLINT NOT NULL,
+        HitColor CHAR NOT NULL,
+        LocalEventTime TIMESTAMP NOT NULL,
+        Age SMALLINT NOT NULL,
+        Sex SMALLINT NOT NULL,
+        Income SMALLINT NOT NULL,
+        Interests SMALLINT NOT NULL,
+        Robotness SMALLINT NOT NULL,
+        RemoteIP INTEGER NOT NULL,
+        WindowName INTEGER NOT NULL,
+        OpenerName INTEGER NOT NULL,
+        HistoryLength SMALLINT NOT NULL,
+        BrowserLanguage TEXT NOT NULL,
+        BrowserCountry TEXT NOT NULL,
+        SocialNetwork TEXT NOT NULL,
+        SocialAction TEXT NOT NULL,
+        HTTPError SMALLINT NOT NULL,
+        SendTiming INTEGER NOT NULL,
+        DNSTiming INTEGER NOT NULL,
+        ConnectTiming INTEGER NOT NULL,
+        ResponseStartTiming INTEGER NOT NULL,
+        ResponseEndTiming INTEGER NOT NULL,
+        FetchTiming INTEGER NOT NULL,
+        SocialSourceNetworkID SMALLINT NOT NULL,
+        SocialSourcePage TEXT NOT NULL,
+        ParamPrice BIGINT NOT NULL,
+        ParamOrderID TEXT NOT NULL,
+        ParamCurrency TEXT NOT NULL,
+        ParamCurrencyID SMALLINT NOT NULL,
+        OpenstatServiceName TEXT NOT NULL,
+        OpenstatCampaignID TEXT NOT NULL,
+        OpenstatAdID TEXT NOT NULL,
+        OpenstatSourceID TEXT NOT NULL,
+        UTMSource TEXT NOT NULL,
+        UTMMedium TEXT NOT NULL,
+        UTMCampaign TEXT NOT NULL,
+        UTMContent TEXT NOT NULL,
+        UTMTerm TEXT NOT NULL,
+        FromTag TEXT NOT NULL,
+        HasGCLID SMALLINT NOT NULL,
+        RefererHash BIGINT NOT NULL,
+        URLHash BIGINT NOT NULL,
+        CLID INTEGER NOT NULL
+    ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/hits_chaos', '{replica}')
+    PARTITION BY toYear(EventDate)
+    ORDER BY (CounterID, EventDate, intHash32(UserID), EventTime)
+    SAMPLE BY intHash32(UserID)
+    SETTINGS index_granularity = 8192;
+---
+# Headless Service — governs the StatefulSet and gives every pod a stable DNS
+# name ch-chaos-N.ch-chaos-headless.kafka-bench.svc.cluster.local (used by the
+# remote_servers / raft / zookeeper config above).
+apiVersion: v1
+kind: Service
+metadata:
+  name: ch-chaos-headless
+  namespace: kafka-bench
+  labels:
+    app: ch-chaos
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: ch-chaos
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: tcp
+      port: 9000
+      targetPort: tcp
+    - name: interserver
+      port: 9009
+      targetPort: interserver
+    - name: keeper
+      port: 9181
+      targetPort: keeper
+    - name: raft
+      port: 9234
+      targetPort: raft
+---
+# Client Service — round-robin over the ready pods. The connector's
+# TARGET_CH_HOST = ch-chaos.kafka-bench.svc, plaintext 8123 (in-cluster, no TLS).
+apiVersion: v1
+kind: Service
+metadata:
+  name: ch-chaos
+  namespace: kafka-bench
+  labels:
+    app: ch-chaos
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  type: ClusterIP
+  selector:
+    app: ch-chaos
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: tcp
+      port: 9000
+      targetPort: tcp
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ch-chaos
+  namespace: kafka-bench
+  labels:
+    app: ch-chaos
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  serviceName: ch-chaos-headless
+  replicas: 3
+  # Parallel is REQUIRED for the embedded keeper quorum to bootstrap: the raft
+  # pre-vote needs >=2 of the 3 pods reachable at once, and a pod is not Ready
+  # (/ping on 8123) until CH finishes startup, which itself waits on the keeper.
+  # OrderedReady deadlocks (pod-0 waits for a quorum whose peers are never
+  # created); the headless Service publishes not-ready addresses so the pods
+  # resolve each other during this parallel bootstrap.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: ch-chaos
+  template:
+    metadata:
+      labels:
+        app: ch-chaos
+        app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+    spec:
+      # Pin to bench-ng (role=bench), same convention as kafka.yaml /
+      # schema-registry.yaml. The 3 CH+keeper pods live here (decision §10.1
+      # bumps bench-ng max to 5 for headroom).
+      nodeSelector:
+        role: bench
+      # Spread the 3 replicas across nodes when possible so one node loss takes
+      # down at most one replica (soft — bench-ng may be smaller than 3 nodes).
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: ch-chaos
+                topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        # clickhouse-server image runs as uid/gid 101.
+        fsGroup: 101
+      containers:
+        - name: clickhouse
+          image: ${CHAOS_CH_IMAGE}
+          imagePullPolicy: IfNotPresent
+          # Derive per-replica identity from the pod ordinal, then hand off to
+          # the image entrypoint. config.xml reads SHARD_NUM / REPLICA_NUM /
+          # SERVER_INDEX via from_env. ENVSUBST-SAFE: only $( ) / $(( )) —
+          # `hostname` yields ch-chaos-N; `cut -d- -f3` extracts N. A bare
+          # $HOSTNAME / ${VAR} would be eaten by `envsubst < ch-cluster.yaml`.
+          command:
+            - /bin/bash
+            - -euo
+            - pipefail
+            - -c
+            - |
+              export SHARD_NUM=1
+              export REPLICA_NUM="$(( $(hostname | cut -d- -f3) + 1 ))"
+              export SERVER_INDEX="$(( $(hostname | cut -d- -f3) + 1 ))"
+              exec /entrypoint.sh
+          env:
+            - name: CLICKHOUSE_SKIP_USER_SETUP
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: tcp
+              containerPort: 9000
+            - name: interserver
+              containerPort: 9009
+            - name: keeper
+              containerPort: 9181
+            - name: raft
+              containerPort: 9234
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: ch-config
+              mountPath: /etc/clickhouse-server/config.d/config.xml
+              subPath: config.xml
+            - name: ch-config
+              mountPath: /etc/clickhouse-server/users.d/users.xml
+              subPath: users.xml
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              memory: 2Gi
+              cpu: "500m"
+            limits:
+              memory: 4Gi
+              cpu: "1"
+      volumes:
+        - name: ch-config
+          configMap:
+            name: ch-chaos-config
+            items:
+              - key: config.xml
+                path: config.xml
+              - key: users.xml
+                path: users.xml
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: ch-chaos
+          app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: gp3-bench
+        resources:
+          requests:
+            # Small — the chaos dataset is ~2M rows (§7). gp3-bench (§10.1).
+            storage: 10Gi

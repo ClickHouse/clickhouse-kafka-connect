@@ -1,0 +1,186 @@
+# Benchmark v2 — chaos / monkey test (#771, task T12).
+#
+# Runs the chaos orchestrator (benchmarks/e2e/orchestration/chaos_run.sh, IC-3)
+# on the self-hosted / credentialed runner with kubectl access to the
+# kafka-bench EKS cluster: the smoke gate always, plus an optional monkey run
+# per the dispatch inputs. Provisions/scales up, runs, uploads the per-run JSON
+# artifact + per-round JSONL + logs, then tears down and scales to zero.
+#
+# STATUS: CODE-COMPLETE / VALIDATION-PENDING (Phase-1). No live cluster or creds
+# exist in this environment; this workflow has NOT been dispatched. The live
+# smoke gate + monkey runs are the downstream, principal-gated phase.
+#
+# Cadence (§7): ON-DEMAND ONLY — workflow_dispatch, never scheduled, never
+# nightly. Chaos is expensive and destructive; it is kicked off deliberately
+# (pre-release / investigation), not on a timer.
+#
+# Concurrency (§4 rule 1): this workflow shares the nightly pair's concurrency
+# group (benchmark-v2-kafka-nightly) so a chaos run and a benchmark pair can
+# NEVER overlap on the target — the same per-file lock that serializes the pair
+# also serializes chaos against it. chaos_run.sh additionally enforces this at
+# runtime via its isolation guard (refuses to start if the pair connector
+# exists), so the CI lock is defence-in-depth.
+#
+# Secret naming mirrors benchmark-nightly.yml: AWS OIDC role
+# KAFKA_BENCH_AWS_ROLE_ARN; CH creds use the KAFKA_*_CH_* names
+# (benchmarks/e2e/sql/README.md is the single source of truth). The chaos
+# target CH is the in-cluster self-hosted StatefulSet (IC-2), so no external
+# TARGET_CH_* secret is needed — chaos_run.sh points TARGET_CH_* at the
+# in-cluster Service.
+
+name: Benchmark v2 chaos test
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode: smoke (single-fault gate) or monkey (seeded R rounds).'
+        type: choice
+        options:
+          - smoke
+          - monkey
+        default: smoke
+      seed:
+        description: 'Monkey RNG seed (required for monkey; the replay key, §3.3).'
+        type: string
+        default: '1'
+      rounds:
+        description: 'Monkey round count (ignored in smoke mode).'
+        type: string
+        default: '20'
+      exactly_once:
+        description: 'Delivery mode: 1 = exactly-once, 0 = at-least-once.'
+        type: choice
+        options:
+          - '0'
+          - '1'
+        default: '1'
+      chaos_ch_version:
+        description: 'Self-hosted ClickHouse image tag (IC-8 / decision §10.3).'
+        type: string
+        default: latest
+      quorum_loss:
+        description: 'Opt-in §3.7 quorum-loss experiment (forces exactly_once=1).'
+        type: boolean
+        default: false
+
+# §4 rule 1 (CI level): MUST match benchmark-nightly.yml's group verbatim so
+# chaos can never overlap a pair. Keep this string in sync with that file.
+concurrency:
+  group: benchmark-v2-kafka-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run-chaos:
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write   # AWS OIDC (mirror the Spark / nightly CI pattern)
+      contents: read
+      packages: read
+    env:
+      AWS_REGION: us-east-2
+      COMPUTE_REGION: us-east-2
+      K8S_NAMESPACE: kafka-bench
+      CLUSTER_NAME: kafka-bench
+      NODEGROUP_NAME: bench-ng
+      # 5 bench nodes: the 3 CH+keeper pods get headroom alongside
+      # broker/registry/producer/poller (decision §10.1). Keep in sync with
+      # infra/env.sh + cluster.yaml bench-ng maxSize.
+      SCALE_UP_NODES: "5"
+      # Dispatch inputs -> chaos_run.sh knobs.
+      CHAOS_MODE: ${{ inputs.mode }}
+      CHAOS_SEED: ${{ inputs.seed }}
+      CHAOS_ROUNDS: ${{ inputs.rounds }}
+      CHAOS_EXACTLY_ONCE: ${{ inputs.exactly_once }}
+      CHAOS_CH_VERSION: ${{ inputs.chaos_ch_version }}
+      CHAOS_QUORUM_LOSS: ${{ inputs.quorum_loss }}
+      # SUT + harness images (digest-pinned; validated by chaos_run.sh). The CH
+      # target is version-selected via CHAOS_CH_VERSION (IC-8), not these.
+      ARM_IMAGE: ${{ vars.KAFKA_CHAOS_ARM_IMAGE }}
+      PRODUCER_IMAGE: ${{ vars.KAFKA_PRODUCER_IMAGE }}
+      PARQUET_SOURCE: ${{ vars.KAFKA_PARQUET_SOURCE }}
+      PRODUCER_SA: ${{ vars.KAFKA_PRODUCER_SA || 'hits-producer' }}
+      # In-cluster self-hosted target CH creds (default user, no external secret).
+      TARGET_CH_USER: default
+      TARGET_CH_PASSWORD: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # lib_runid.sh needs the sha (nogit hard-fails)
+
+      - name: Install deps (kubectl, eksctl, envsubst, python libs)
+        run: |
+          set -euo pipefail
+          curl -fsSLo /usr/local/bin/kubectl \
+            "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x /usr/local/bin/kubectl
+          curl -fsSL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" \
+            | tar xz -C /tmp && sudo mv /tmp/eksctl /usr/local/bin/
+          sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base
+          pip install --quiet -r benchmarks/e2e/capture/requirements.txt
+          pip install --quiet -r benchmarks/e2e/poller/requirements.txt
+          pip install --quiet pyyaml boto3
+
+      - name: Configure AWS credentials (OIDC; mirrors the nightly pair)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.KAFKA_BENCH_AWS_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Update kubeconfig for the kafka-bench cluster
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Phase plan (dry-run, for the run log)
+        run: |
+          set -euo pipefail
+          ARGS=(--mode "$CHAOS_MODE" --exactly-once "$CHAOS_EXACTLY_ONCE")
+          if [ "$CHAOS_MODE" = "monkey" ]; then
+            ARGS+=(--seed "$CHAOS_SEED" --rounds "$CHAOS_ROUNDS")
+          fi
+          if [ "$CHAOS_QUORUM_LOSS" = "true" ]; then
+            ARGS+=(--quorum-loss)
+          fi
+          benchmarks/e2e/orchestration/chaos_run.sh --plan "${ARGS[@]}"
+
+      - name: Run the chaos test (smoke gate; optional monkey per inputs)
+        run: |
+          set -euo pipefail
+          ARGS=(--mode "$CHAOS_MODE" --exactly-once "$CHAOS_EXACTLY_ONCE")
+          if [ "$CHAOS_MODE" = "monkey" ]; then
+            ARGS+=(--seed "$CHAOS_SEED" --rounds "$CHAOS_ROUNDS")
+          fi
+          if [ "$CHAOS_QUORUM_LOSS" = "true" ]; then
+            ARGS+=(--quorum-loss)
+          fi
+          # Job fails iff chaos_run.sh exits non-zero (IC-3): 1 = MISMATCH or a
+          # stuck-connector t_recover_timeout; 3 = CHECK_ERROR / fault-not-observed
+          # / infra-stall / t_settle_timeout. 0 = PASS (integrity_ok, quiesced).
+          benchmarks/e2e/orchestration/chaos_run.sh "${ARGS[@]}"
+
+      # --- always() artifacts + cleanup (run_pair / nightly convention) --------
+      # The per-run JSON is written by chaos_run.sh on EVERY path (including gate
+      # timeouts) before exit, so it is present even when the run step failed.
+      - name: Upload chaos result + rounds JSONL + logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-v2-chaos-artifacts-${{ github.run_id }}
+          path: |
+            benchmarks/e2e/orchestration/artifacts/chaos/
+          if-no-files-found: warn
+
+      # Kill-safety net (T15): chaos_run.sh --reap is the single, state-free,
+      # idempotent teardown path — it deletes every chaos CR / topic / pod /
+      # consumer-group, tears down the self-hosted CH StatefulSet, scales both
+      # nodegroups to 0, and asserts §9.8 (STS gone AND nodegroups desired=0),
+      # exiting non-zero on a cost leak. Running it here (if: always()) closes the
+      # CI-timeout / cancelled-job gap with the SAME code path the operator uses
+      # after a local hard-kill — chaos_run.sh's own cleanup trap cannot fire on
+      # SIGKILL, so this reap is the backstop. Idempotent: safe even if the run
+      # step already tore down cleanly.
+      - name: Reap chaos resources — teardown + scale-to-zero (always)
+        if: always()
+        run: benchmarks/e2e/orchestration/chaos_run.sh --reap

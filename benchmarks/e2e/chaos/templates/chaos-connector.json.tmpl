@@ -1,0 +1,77 @@
+{
+  "//": "Chaos / monkey test (#771) — ClickHouse sink connector config template.",
+  "//1": "Derived from orchestration/templates/kafkaconnector.json.tmpl (T7). Wrapped",
+  "//2": "as a Strimzi KafkaConnector CR by chaos_run.sh; the `config` block is the",
+  "//3": "connector config. Values are spec §3.2 EXACTLY. Placeholders substituted by",
+  "//4": "render_connector.py (chaos mode):",
+  "//5": "  EXACTLY_ONCE  render-time: 1 -> \"true\" | 0 -> \"false\" (--exactly-once)",
+  "//6": "  IPWB          render-time: ignorePartitionsWhenBatching (--ipwb, default false)",
+  "//7": "The consumer group id is set from --group (ch-sink-chaos-eo<0|1>).",
+  "//8": "CH creds are referenced via ${env:...} placeholders resolved by the Connect",
+  "//9": "worker from the externalConfiguration Secret (see kafkaconnect.yaml.tmpl) —",
+  "//10": "they NEVER appear in this file or any log. The target is the in-cluster",
+  "//11": "self-hosted CH (IC-2): plaintext 8123, ssl=false, database clickbench.",
+  "apiVersion": "kafka.strimzi.io/v1beta2",
+  "kind": "KafkaConnector",
+  "metadata": {
+    "name": "chaos-clickhouse-sink",
+    "namespace": "kafka-bench",
+    "labels": {
+      "strimzi.io/cluster": "bench-connect",
+      "app.kubernetes.io/part-of": "kafka-connect-benchmark-v2"
+    }
+  },
+  "spec": {
+    "class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "//tasksMax": "3 partitions (hits-chaos) / tasks.max=3, one task per partition",
+    "tasksMax": 3,
+    "config": {
+      "topics": "hits-chaos",
+
+      "//conn": "--- in-cluster self-hosted CH target (IC-2), creds via worker env ---",
+      "hostname": "${env:CH_HOSTNAME}",
+      "port": "8123",
+      "ssl": "false",
+      "username": "${env:CH_USERNAME}",
+      "password": "${env:CH_PASSWORD}",
+      "database": "clickbench",
+
+      "//table": "--- chaos target table clickbench.hits_chaos ---",
+      "topic2TableMap": "hits-chaos=hits_chaos",
+
+      "//sem": "--- spec §3.2: delivery mode x batching ---",
+      "//exactlyOnce": "render-time ${EXACTLY_ONCE}: eo=1 keeperMap; eo=0 dedup token",
+      "exactlyOnce": "${EXACTLY_ONCE}",
+      "//keeper": "exactly-once KeeperMap state on the self-hosted keeper quorum (§2)",
+      "zkPath": "/kafka-connect-chaos",
+      "zkDatabase": "connect_state_chaos",
+      "//keeperOnCluster": "empty: single logical keeper quorum, no ON CLUSTER wrap",
+      "keeperOnCluster": "",
+      "//tolerate": "decision §10.4: false — a crash test wants real state bugs loud",
+      "tolerateStateMismatch": "false",
+
+      "//batch": "--- §3.2: pinned bufferCount=0 (buffering breaks dedup+state machine)",
+      "//batch2": "and ignorePartitionsWhenBatching (WATCH cell only, at-least-once) ---",
+      "bufferCount": "0",
+      "ignorePartitionsWhenBatching": "${IPWB}",
+
+      "//poll": "--- poll/fetch sizing (mirrors the pair template) ---",
+      "consumer.override.max.poll.records": "25000",
+      "consumer.override.max.partition.fetch.bytes": "104857600",
+      "consumer.override.fetch.max.bytes": "209715200",
+      "consumer.override.max.poll.interval.ms": "600000",
+      "clickhouseClientInsertTimeoutMs": "180000",
+
+      "//async": "--- async OFF by construction; pin for provenance/auditability ---",
+      "clickhouseSettings": "async_insert=0,wait_end_of_query=1",
+
+      "//err": "--- DLQ pins (§3.6b): errors.tolerance=all routes bad records to the",
+      "//err2": "DLQ so quiescence's DLQ-depth==0 assertion is meaningful (a MISMATCH",
+      "//err3": "signal). These are Kafka-Connect framework keys, not sink config keys.",
+      "errors.tolerance": "all",
+      "errors.deadletterqueue.topic.name": "hits-chaos-dlq",
+      "errors.deadletterqueue.topic.replication.factor": "1",
+      "errors.deadletterqueue.context.headers.enable": "true"
+    }
+  }
+}
