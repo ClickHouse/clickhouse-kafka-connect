@@ -251,6 +251,22 @@ export DWH_ROLE_ARN=... DWH_BUCKET=...
 benchmarks/e2e/orchestration/run_pair.sh
 ```
 
+**Launch long runs DETACHED.** A pair or chaos run is 15–60 min. Launch it
+detached so it survives the launching shell being reclaimed, and watch the log —
+never inline in a shell that may be killed mid-run:
+
+```
+nohup bash benchmarks/e2e/orchestration/run_pair.sh   > run.log 2>&1 < /dev/null & disown
+nohup bash benchmarks/e2e/orchestration/chaos_run.sh --mode monkey --seed 1 --exactly-once 1 \
+                                                       > chaos.log 2>&1 < /dev/null & disown
+tail -f run.log   # filtered: grep -E 'PHASE|error|FAILED|integrity|complete'
+```
+
+If a detached run is killed mid-flight (SIGKILL, CI hard-timeout), the in-process
+cleanup trap cannot fire — run `chaos_run.sh --reap` afterward (idempotent) to
+force scale-to-0 + delete chaos resources. CI (`benchmark-chaos.yml`) runs the
+script directly as a job step, so this discipline is a LOCAL-run requirement.
+
 **Baseline tuning knobs (first-baseline pair).** The baseline runs
 `CFG_MAX_POLL_RECORDS=25000` + `CONNECT_HEAP=4096m` — a *co-sized* pair (a 100k
 first poll GC-spiraled the 2G-heap worker: 17 restarts, zero commits; heap and
