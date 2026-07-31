@@ -10,6 +10,12 @@
   (`io.confluent.connect.avro.Union`), with the `null` branch making the field optional; the connector
   resolves this to `Variant(String, Int32)`. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/799)
 
+* Support the Avro `decimal` logical type on a `fixed` base (in addition to `bytes`). Confluent's Avro
+  converter maps both representations to a Kafka Connect `Decimal` (a `BigDecimal`), which the connector
+  already validates, converts and serializes to a ClickHouse `Decimal(P, S)` column. This promotes the
+  `decimal_fixed_logical` schema from the incompatible to the compatible Avro test fixtures and adds
+  feature-test coverage. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/798)
+
 ## Dependencies
 
 * [build] Updated `com.diffplug.spotless` from 8.6.0 to 8.9.0.
@@ -21,7 +27,6 @@
 * Fixed issue with Table Schema cache that can remember old schema instead of new one. Now if old 
 schema is read proper number of columns is calculated and cache will be properly updated after some time. 
 (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/813)
-
 
 # 1.4.0, 2026-07-15
 
