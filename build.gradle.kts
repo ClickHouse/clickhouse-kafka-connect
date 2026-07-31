@@ -40,11 +40,15 @@ repositories {
 val clickhouseDependencies: Configuration by configurations.creating
 
 dependencies {
-    implementation(libs.kafka.connect.api)
-    implementation(libs.clickhouse.client)
-    implementation(libs.clickhouse.http.client)
-    implementation(libs.clickhouse.data)
-    implementation(libs.clickhouse.client.v2)
+    // Exposed as `api` because they leak into the connector's public signatures
+    // (e.g. ClickHouseHelperClient returns ClickHouseResponse/Records, ClickHouseSinkTask
+    // extends SinkTask), so consumers such as the `benchmark` project resolve them
+    // transitively instead of pinning their own, possibly divergent, versions.
+    api(libs.kafka.connect.api)
+    api(libs.clickhouse.client)
+    api(libs.clickhouse.http.client)
+    api(libs.clickhouse.data)
+    api(libs.clickhouse.client.v2)
     implementation(libs.gson)
     implementation(libs.httpclient5)
 

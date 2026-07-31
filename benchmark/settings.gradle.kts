@@ -13,3 +13,13 @@ rootProject.name = "kafka-connector-benchmark"
  * Before running the benchmark, publish the connector locally from the repo root:
  *   ./gradlew publishToMavenLocal
  */
+
+// Reuse the connector's version catalog so the few libraries the benchmark has to
+// declare itself stay pinned to the versions the connector was built against.
+dependencyResolutionManagement {
+    versionCatalogs {
+        create("libs") {
+            from(files("../gradle/libs.versions.toml"))
+        }
+    }
+}
