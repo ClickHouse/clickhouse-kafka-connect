@@ -1,4 +1,4 @@
-# 1.4.1, 2026-07-17
+# 1.5.0 (not published)
 
 ## Improvements
 * RowBinary inserts with client V2 now stream data directly to the network output stream via the client's

@@ -7,7 +7,14 @@ different components of ClickHouse Kafka connector. The test scope can be small 
 
 ## How to Run
 
-As simple as:
+This is a standalone project that depends on the connector artifact by version,
+resolved from the local Maven repository. Publish the connector locally first
+(run from the repository root):
+```shell
+./gradlew publishToMavenLocal
+```
+
+Then, from this `benchmark` directory, run:
 ```shell
 ./gradlew run --args="-b kafka_connector.SimpleBenchmark -i 2 -t 10"
 ```

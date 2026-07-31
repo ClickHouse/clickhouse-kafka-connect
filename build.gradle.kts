@@ -19,6 +19,7 @@ plugins {
     idea
     `java-library`
     `jvm-test-suite`
+    `maven-publish`
     alias(libs.plugins.spotless)
     alias(libs.plugins.shadow)
     alias(libs.plugins.protobuf)
@@ -293,5 +294,24 @@ sourceSets {
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:${libs.versions.libprotobuf.get()}"
+    }
+}
+
+/*
+ * Publishing
+ *
+ * The connector is not published to Maven Central. Publish it to the local Maven
+ * repository (~/.m2) so standalone consumers — such as the JMH `benchmark` project —
+ * can depend on it by version. Because the `java-test-fixtures` plugin is applied,
+ * the `java` component also carries the test-fixtures variant (and Gradle Module
+ * Metadata), letting consumers resolve `testFixtures(...)` from mavenLocal().
+ *
+ *   ./gradlew publishToMavenLocal
+ */
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
     }
 }

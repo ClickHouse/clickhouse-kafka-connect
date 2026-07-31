@@ -12,7 +12,8 @@ plugins {
     application
 }
 
-val connectorVersion = file("../VERSION").readText().trim()
+//val connectorVersion = file("../VERSION").readText().trim()
+val connectorVersion = "v1.4.0"
 val clickHouseDriverVersion = "0.9.5"
 
 application {
