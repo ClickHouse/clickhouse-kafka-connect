@@ -19,6 +19,7 @@ plugins {
     idea
     `java-library`
     `jvm-test-suite`
+    `maven-publish`
     alias(libs.plugins.spotless)
     alias(libs.plugins.shadow)
     alias(libs.plugins.protobuf)
@@ -39,11 +40,15 @@ repositories {
 val clickhouseDependencies: Configuration by configurations.creating
 
 dependencies {
-    implementation(libs.kafka.connect.api)
-    implementation(libs.clickhouse.client)
-    implementation(libs.clickhouse.http.client)
-    implementation(libs.clickhouse.data)
-    implementation(libs.clickhouse.client.v2)
+    // Exposed as `api` because they leak into the connector's public signatures
+    // (e.g. ClickHouseHelperClient returns ClickHouseResponse/Records, ClickHouseSinkTask
+    // extends SinkTask), so consumers such as the `benchmark` project resolve them
+    // transitively instead of pinning their own, possibly divergent, versions.
+    api(libs.kafka.connect.api)
+    api(libs.clickhouse.client)
+    api(libs.clickhouse.http.client)
+    api(libs.clickhouse.data)
+    api(libs.clickhouse.client.v2)
     implementation(libs.gson)
     implementation(libs.httpclient5)
 
@@ -228,6 +233,33 @@ tasks.register<Zip>("createConfluentArchive") {
     destinationDirectory.set(layout.buildDirectory.dir("confluent"))
 }
 
+tasks.register<Exec>("runClickHouseVersionClientMatrix") {
+    group = "verification"
+    description = "Runs tests for ClickHouse and client version matrix and writes logs to build/"
+    commandLine("bash", "${project.rootDir}/scripts/run-ch-version-client-matrix.sh")
+
+    doFirst {
+        val timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now())
+        val outputDir = layout.buildDirectory.dir("matrix-test-results/$timestamp").get().asFile
+        outputDir.mkdirs()
+
+        val clickhouseVersions = (project.findProperty("matrixClickHouseVersions") as String?) ?: "24.8,25.2,25.8,26.3,latest"
+        val clientVersions = (project.findProperty("matrixClientVersions") as String?) ?: "V1,V2"
+        val testTask = (project.findProperty("matrixTestTask") as String?) ?: "test"
+        val continueOnFailure = (project.findProperty("matrixContinueOnFailure") as String?) ?: "true"
+        val matrixGradleArgs = (project.findProperty("matrixGradleArgs") as String?) ?: ""
+
+        environment("MATRIX_OUTPUT_DIR", outputDir.absolutePath)
+        environment("CH_VERSIONS", clickhouseVersions)
+        environment("CLIENT_VERSIONS", clientVersions)
+        environment("TEST_TASK", testTask)
+        environment("CONTINUE_ON_FAILURE", continueOnFailure)
+        environment("MATRIX_GRADLE_ARGS", matrixGradleArgs)
+
+        logger.lifecycle("Matrix test logs will be written to: ${outputDir.absolutePath}")
+    }
+}
+
 var generateVersionFile = tasks.register<DefaultTask>("generateVersionFile") {
     val outputDir = "generated/sources/version/java/main/com/clickhouse/kafka/connect/sink/";
     outputs.dir(layout.buildDirectory.dir(outputDir))
@@ -266,5 +298,24 @@ sourceSets {
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:${libs.versions.libprotobuf.get()}"
+    }
+}
+
+/*
+ * Publishing
+ *
+ * The connector is not published to Maven Central. Publish it to the local Maven
+ * repository (~/.m2) so standalone consumers — such as the JMH `benchmark` project —
+ * can depend on it by version. Because the `java-test-fixtures` plugin is applied,
+ * the `java` component also carries the test-fixtures variant (and Gradle Module
+ * Metadata), letting consumers resolve `testFixtures(...)` from mavenLocal().
+ *
+ *   ./gradlew publishToMavenLocal
+ */
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
     }
 }
