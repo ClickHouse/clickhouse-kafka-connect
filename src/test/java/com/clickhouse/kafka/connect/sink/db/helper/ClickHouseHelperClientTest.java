@@ -48,8 +48,8 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String topic = createTopicName("simple_table_test");
         new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
         try {
-            List<Table> table = chc.showTables(chc.getDatabase());
-            List<String> tableNames = table.stream().map(Table::getCleanName).collect(Collectors.toList());
+            List<Table.TableDesc> tableDescs = chc.showTables(chc.getDatabase());
+            List<String> tableNames = tableDescs.stream().map(Table.TableDesc::getCleanName).collect(Collectors.toList());
             Assertions.assertTrue(tableNames.contains(topic));
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);
@@ -133,6 +133,67 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
             ClickHouseTestHelpers.dropTable(adminChc, nestedTopic);
             ClickHouseTestHelpers.dropTable(adminChc, normalTopic);
             ClickHouseTestHelpers.executeQueryIgnoreResult(adminChc, String.format("DROP USER IF EXISTS `%s`%s", testUsername, clusterClause));
+        }
+    }
+
+    /**
+     * DESCRIBE TABLE drops alias, materialized and ephemeral columns and adds subcolumns that
+     * {@code system.columns} does not report, so neither of a described {@link Table}'s column lists
+     * matches the count {@link ClickHouseHelperClient#showTables} returns. Since
+     * {@code extractTablesMapping} compares those two counts to decide whether a cached description is
+     * stale, {@link Table#getNumColumns()} has to stay aligned with the listed count.
+     */
+    @Test
+    public void describedColumnCountMatchesListedColumnCount() {
+        String plainTopic = createTopicName("described_count_plain_test");
+        String skippedColsTopic = createTopicName("described_count_skipped_cols_test");
+        String subColsTopic = createTopicName("described_count_subcols_test");
+
+        new CreateTableStatement()
+                .tableName(plainTopic)
+                .column("off16", "Int16")
+                .column("str", "String")
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
+        new CreateTableStatement()
+                .tableName(skippedColsTopic)
+                .column("off16", "Int16")
+                .column("null_str_alias", "Nullable(String) ALIAS formatReadableSize(`off16`)")
+                .column("null_str_eph", "Nullable(String) EPHEMERAL")
+                .column("null_str_mat", "Nullable(String) MATERIALIZED formatReadableSize(`off16`)")
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
+        new CreateTableStatement()
+                .tableName(subColsTopic)
+                .column("off16", "Int16")
+                .column("null_str", "Nullable(String)")
+                .column("map", "Map(String, UInt64)")
+                .column("tuple", "Tuple(s String, i Int64)")
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
+
+        try {
+            Map<String, Integer> listedNumColumns = chc.showTables(chc.getDatabase()).stream()
+                    .collect(Collectors.toMap(Table.TableDesc::getCleanName, Table.TableDesc::getNumColumns));
+
+            for (String topic : List.of(plainTopic, skippedColsTopic, subColsTopic)) {
+                Table table = chc.describeTable(chc.getDatabase(), topic);
+                Assertions.assertNotNull(table, topic);
+                Assertions.assertEquals(listedNumColumns.get(topic).intValue(), table.getNumColumns(),
+                        String.format("Described and listed column counts disagree for %s, so extractTablesMapping "
+                                + "cannot tell a stale description from a current one", topic));
+            }
+
+            // Neither column list can stand in for the count: one is short of it, the other overshoots
+            Table skippedCols = chc.describeTable(chc.getDatabase(), skippedColsTopic);
+            Assertions.assertEquals(1, skippedCols.getRootColumnsList().size());
+            Assertions.assertEquals(4, skippedCols.getNumColumns());
+
+            Table subCols = chc.describeTable(chc.getDatabase(), subColsTopic);
+            Assertions.assertEquals(4, subCols.getNumColumns());
+            Assertions.assertTrue(subCols.getAllColumnsList().size() > subCols.getNumColumns(),
+                    "Expected subcolumns to make the full column list longer than the listed column count");
+        } finally {
+            ClickHouseTestHelpers.dropTable(chc, plainTopic);
+            ClickHouseTestHelpers.dropTable(chc, skippedColsTopic);
+            ClickHouseTestHelpers.dropTable(chc, subColsTopic);
         }
     }
 

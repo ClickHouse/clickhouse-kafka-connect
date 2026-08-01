@@ -1,9 +1,8 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
 import com.clickhouse.kafka.connect.util.Utils;
+import lombok.AccessLevel;
 import lombok.Getter;
-import lombok.Setter;
-import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,6 +17,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/** A table whose schema has been read from ClickHouse with DESCRIBE TABLE. */
 @Getter
 public class Table {
     private static final Logger LOGGER = LoggerFactory.getLogger(Table.class);
@@ -29,31 +29,38 @@ public class Table {
 
     private final List<Column> rootColumnsList;
     private final Map<String, Column> rootColumnsMap;
-    @Getter
     private final List<Column> allColumnsList;
     private final Map<String, Column> allColumnsMap;
 
-    @Setter
-    @Accessors(fluent = true)
-    private boolean hasDefaults;
+    @Getter(AccessLevel.NONE)
+    private final boolean hasDefaults;
 
-    @Setter
-    @Getter
-    private int numColumns = 0;
+    private final int numColumns;
 
-    public Table(String database, String name) {
+    /**
+     * @param columns the columns worth keeping, in the order ClickHouse described them
+     * @param numColumns how many columns ClickHouse reported for this table, counting the aliases,
+     *     materialized and ephemeral ones dropped from {@code columns}, so that it stays comparable to
+     *     {@link TableDesc#getNumColumns()}. It has to be tallied from the same DESCRIBE response as
+     *     {@code columns}: a count borrowed from any other query could describe a different schema
+     *     version, and this description would then be cached as if it were already up to date.
+     */
+    public Table(String database, String name, boolean hasDefaults, List<Column> columns, int numColumns) {
         this.database = database;
         this.name = name;
+        this.hasDefaults = hasDefaults;
+        this.numColumns = numColumns;
+
         this.rootColumnsList = new ArrayList<>();
         this.rootColumnsMap = new HashMap<>();
-
         this.allColumnsList = new ArrayList<>();
         this.allColumnsMap = new HashMap<>();
+
+        columns.forEach(this::addColumn);
     }
 
-    public Table(String database, String name, int numColumns) {
-        this(database, name);
-        this.numColumns = numColumns;
+    public boolean hasDefaults() {
+        return hasDefaults;
     }
 
     public String getCleanName() {
@@ -72,7 +79,7 @@ public class Table {
         allColumnsList.add(column);
     }
 
-    public void addColumn(Column column) {
+    private void addColumn(Column column) {
         registerValidColumn(column);
 
         if (column.isSubColumn()) handleNonRoot(column);
@@ -206,5 +213,33 @@ public class Table {
         while (matcher.find()) compensationDepth += 1;
 
         return parentOfParent.getMapDepth() + parentOfParent.getArrayDepth() - compensationDepth;
+    }
+
+    /**
+     * A table ClickHouse listed but that has not been described: only its identity and the number of
+     * columns the server reports for it are known. {@code extractTablesMapping} compares that count
+     * against a described {@link Table}'s to decide whether a cached description is still current, so
+     * both have to count the same thing: top-level columns, including aliases, materialized and
+     * ephemeral ones.
+     */
+    public static class TableDesc {
+        private final String database;
+        private final String name;
+        @Getter
+        private final int numColumns;
+
+        public TableDesc(String database, String name, int numColumns) {
+            this.database = database;
+            this.name = name;
+            this.numColumns = numColumns;
+        }
+
+        public String getCleanName() {
+            return name;
+        }
+
+        public String getFullName() {
+            return Utils.escapeTableName(database, name);
+        }
     }
 }
