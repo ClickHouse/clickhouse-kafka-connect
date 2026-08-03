@@ -28,3 +28,8 @@
 GRANT SELECT ON system.merge_tree_settings TO kafka_benchmark;
 GRANT SELECT ON system.asynchronous_metrics TO kafka_benchmark;
 GRANT SELECT ON system.merges TO kafka_benchmark;
+
+-- Added for task #54 (ch_version covariate): 21_pre_run_covariates.sql also reads
+-- system.build_options.VERSION_INTEGER via remoteSecure to record the target's
+-- ClickHouse version as a numeric covariate.
+GRANT SELECT ON system.build_options TO kafka_benchmark;

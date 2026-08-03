@@ -201,10 +201,17 @@ long-lived keys), then reads run config from GitHub secrets. Mirror that here:
   | Secret | Use |
   |---|---|
   | `KAFKA_BENCH_AWS_ROLE_ARN` | OIDC role the CI job assumes (region us-east-2) |
-  | `KAFKA_BENCH_TARGET_CH_HOST` | dedicated Cloud target host -> `TARGET_CH_HOST` |
-  | `KAFKA_BENCH_TARGET_CH_USER` | -> `TARGET_CH_USER` |
-  | `KAFKA_BENCH_TARGET_CH_PASSWORD` | -> `TARGET_CH_PASSWORD` |
-  | `KAFKA_BENCH_METRICS_CH_HOST` / `_USER` / `_PASSWORD` | `perf.*` metrics landing (shared DWH pipeline) |
+  | `KAFKA_TARGET_CH_HOST` | dedicated Cloud target host -> `TARGET_CH_HOST` |
+  | `KAFKA_TARGET_CH_USER` | -> `TARGET_CH_USER` |
+  | `KAFKA_TARGET_CH_PASSWORD` | -> `TARGET_CH_PASSWORD` |
+  | `KAFKA_METRICS_CH_HOST` / `_USER` / `_PASSWORD` | `perf.*` metrics landing (shared DWH pipeline) |
+
+  > **Secret-prefix note:** the CH-credential secrets use the bare `KAFKA_`
+  > prefix (`KAFKA_TARGET_CH_*` / `KAFKA_METRICS_CH_*`), matching `sql/README.md`
+  > and the names `benchmark-nightly.yml` actually consumes. Only the AWS OIDC
+  > role keeps the `KAFKA_BENCH_` prefix (`KAFKA_BENCH_AWS_ROLE_ARN`). Earlier
+  > drafts of this table used `KAFKA_BENCH_TARGET_CH_*` — that spelling is wrong;
+  > the workflow pins the `sql/README.md` spelling as the single source of truth.
 
   CH connection values are injected as env at run time and **never committed**.
 - The role and secrets are provisioned once (out of band, like the Spark CI
