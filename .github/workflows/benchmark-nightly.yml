@@ -24,6 +24,14 @@
 name: Benchmark v2 nightly pair
 
 on:
+  # REGISTRATION TRIGGER (mirrors benchmark-images.yml): GitHub only exposes
+  # workflow_dispatch for a workflow that exists on the default branch OR has at
+  # least one run. This workflow lives on a feature branch, so a push touching
+  # THIS file creates a (skipped — see the per-job `if`) run that registers it
+  # for dispatch. Without this, `gh workflow run benchmark-nightly.yml` 404s.
+  push:
+    branches: [benchmark-v2-consolidated]
+    paths: [".github/workflows/benchmark-nightly.yml"]
   schedule:
     # 04:15 UTC nightly (placeholder; align cadence with the Spark benchmark).
     - cron: '15 4 * * *'
@@ -35,15 +43,25 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write   # benchmark-images.yml pushes to GHCR
+  packages: read    # (legacy GHCR read; images now push to ECR via OIDC)
+  id-token: write   # REQUIRED so the reusable benchmark-images.yml can mint an
+                    # OIDC token for AssumeRoleWithWebIdentity -> ECR. Top-level
+                    # so the `images:` reusable-workflow job inherits it; run-pair
+                    # re-declares its own permissions block below.
 
 jobs:
   # Build both arm images (head + pinned) and export their refs.
   images:
+    # push events exist only to register the workflow for dispatch — skip then.
+    if: github.event_name != 'push'
     uses: ./.github/workflows/benchmark-images.yml
+    # Pass repo secrets (CLICKBENCH_AWS_ROLE_ARN + GITHUB_TOKEN) into the
+    # reusable workflow; without this its OIDC step assumes an EMPTY role ARN.
+    secrets: inherit
 
   run-pair:
     needs: images
+    if: github.event_name != 'push'
     runs-on: ubuntu-22.04
     permissions:
       id-token: write   # AWS OIDC (mirror the Spark CI pattern)

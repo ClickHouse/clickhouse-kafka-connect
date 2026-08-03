@@ -45,4 +45,14 @@ SELECT {run_id:String} AS run_id, metric_name, unit, value FROM (
          toFloat64(count())
   FROM remoteSecure({target_addr:String}, system.parts, {target_user:String}, {target_password:String})
   WHERE database = {ch_database:String} AND table = {ch_table:String} AND active
+  UNION ALL
+  -- Server version as a numeric covariate (task #54): a Cloud upgrade can shift
+  -- Tier-1 cost WITHOUT a restart, so ch_uptime alone cannot flag it.
+  -- system.build_options.VERSION_INTEGER is monotonic and already numeric
+  -- (e.g. 24.8.1 -> 24008001), round-tripping cleanly through the Float64 column.
+  -- Needs GRANT SELECT ON system.build_options (see 02_additional_capture_grants.sql).
+  SELECT 'ch_version', 'version_int',
+         toFloat64(toUInt64OrZero(coalesce(any(value), '0')))
+  FROM remoteSecure({target_addr:String}, system.build_options, {target_user:String}, {target_password:String})
+  WHERE name = 'VERSION_INTEGER'
 );
