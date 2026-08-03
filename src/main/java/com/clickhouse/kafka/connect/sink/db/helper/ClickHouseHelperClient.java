@@ -36,7 +36,6 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class ClickHouseHelperClient implements AutoCloseable {
@@ -517,17 +516,8 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public List<Table> extractTablesMapping(String database, Map<String, Table> cache) {
-        return extractTablesMapping(database, cache, table -> true);
-    }
-
-    public List<Table> extractTablesMapping(
-            String database, Map<String, Table> cache, Predicate<Table> tableFilter) {
         List<Table> tableList = new ArrayList<>();
         for (Table table : showTables(database)) {
-            if (!tableFilter.test(table)) {
-                continue;
-            }
-
             // (Full) Table names are escaped in the cache
             String escapedTableName = Utils.escapeTableName(database, table.getCleanName());
 

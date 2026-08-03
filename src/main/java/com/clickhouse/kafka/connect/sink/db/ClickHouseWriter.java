@@ -84,7 +84,6 @@ public class ClickHouseWriter implements DBWriter {
     private ClickHouseSinkConfig csc = null;
 
     private final Map<String, Table> mapping;
-    private DestinationTableFilter destinationTableFilter;
     private final AtomicBoolean isUpdateMappingRunning = new AtomicBoolean(false);
     private final SinkTaskStatistics statistics;
 
@@ -97,6 +96,15 @@ public class ClickHouseWriter implements DBWriter {
         this.statistics = statistics;
     }
 
+    ClickHouseWriter(
+            SinkTaskStatistics statistics,
+            ClickHouseHelperClient helperClient,
+            ClickHouseSinkConfig sinkConfig) {
+        this(statistics);
+        this.chc = helperClient;
+        this.csc = sinkConfig;
+    }
+
     protected Map<String, Table> getMapping() {
         return mapping;
     }
@@ -105,7 +113,6 @@ public class ClickHouseWriter implements DBWriter {
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
         this.csc = csc;
-        this.destinationTableFilter = new DestinationTableFilter(csc);
         String clientVersion = csc.getClientVersion();
         boolean useClientV2 = clientVersion.equals("V1") ? false : true;
 
@@ -148,15 +155,13 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         LOGGER.debug("Ping was successful.");
-        this.updateMapping(csc.getDatabase());
-        if (destinationTableFilter.hasDestinationIn(csc.getDatabase()) && mapping.isEmpty()) {
-            LOGGER.warn("Did not find a configured destination table during startup; "
-                    + "table mapping will be retried when records arrive.");
-        }
-
-        startBackgroundTableSync(csc.getDatabase());
+        startBackgroundTableSync();
 
         return true;
+    }
+
+    public boolean updateMapping() {
+        return updateMapping(null);
     }
 
     public boolean updateMapping(String database) {
@@ -169,11 +174,15 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.debug("Update table mapping.");
 
         try {
-            // Getting tables from ClickHouse
-            List<Table> tableList = this.chc.extractTablesMapping(database, this.mapping, destinationTableFilter);
-            // Adding new tables to mapping, or update existing tables
-            for (Table table : tableList) {
-                this.mapping.put(table.getFullName(), table);
+            for (Table table : new ArrayList<>(this.mapping.values())) {
+                if (database != null && !database.equals(table.getDatabase())) {
+                    continue;
+                }
+
+                Table refreshed = this.chc.describeTable(table.getDatabase(), table.getCleanName());
+                if (refreshed != null) {
+                    this.mapping.replace(table.getFullName(), table, refreshed);
+                }
             }
             return true;
         } finally {
@@ -980,24 +989,13 @@ public class ClickHouseWriter implements DBWriter {
     }
 
     private Table urgentTableUpdate(Table table) {
-        Table tableTmp;
-        if (updateMapping(table.getDatabase())) {
-            LOGGER.warn("urgentTableUpdate({}): update complete", table.getName());
-            tableTmp = getTable(table.getDatabase(), table.getName());
-        } else {
-            LOGGER.warn("urgentTableUpdate({}): update still running", table.getName());
-            tableTmp = chc.describeTable(table.getDatabase(), table.getCleanName());
-            if (tableTmp == null) {
-                LOGGER.error("Failed to describe table {}.{} via ClickHouseHelperClient.describeTable(); falling back to existing mapping.",
-                        table.getDatabase(), table.getCleanName());
-                tableTmp = getTable(table.getDatabase(), table.getName());
-            }
-        }
-        if (tableTmp == null) {
+        Table refreshed = chc.describeTable(table.getDatabase(), table.getCleanName());
+        if (refreshed == null) {
             throw new IllegalStateException("Unable to refresh table mapping for " + table.getDatabase() + "." + table.getName());
         }
-        Utils.logDiffBetweenNewAndOldTable(table, tableTmp);
-        return tableTmp;
+        mapping.put(refreshed.getFullName(), refreshed);
+        Utils.logDiffBetweenNewAndOldTable(table, refreshed);
+        return refreshed;
     }
 
     protected void doInsertRawBinaryV2(List<Record> records, Table table, QueryIdentifier queryId, boolean supportDefaults) throws IOException, ExecutionException, InterruptedException {
@@ -1517,17 +1515,14 @@ public class ClickHouseWriter implements DBWriter {
         return request;
     }
     protected Table getTable(String database, String topic) {
-        String tableName = destinationTableFilter.registerDestination(database, topic);
+        String tableName = Utils.getTableName(database, topic, csc.getTopicToTableMap());
         Table table = this.mapping.get(tableName);
         if (table == null) {
-            if (this.updateMapping(database)) {
-                table = this.mapping.get(tableName);//If null, update then do it again to be sure
-            } else {
-                String cleanTopicName = Utils.getMappedOrTopicTableName(topic, csc.getTopicToTableMap());
-                table = chc.describeTable(database, cleanTopicName.replace("`", "").trim());
-                if (table != null) {
-                    this.mapping.put(table.getFullName(), table);
-                }
+            String cleanTopicName = Utils.getMappedOrTopicTableName(topic, csc.getTopicToTableMap());
+            Table described = chc.describeTable(database, cleanTopicName.replace("`", "").trim());
+            if (described != null) {
+                Table cached = this.mapping.putIfAbsent(described.getFullName(), described);
+                table = cached == null ? described : cached;
             }
         }
 
@@ -1550,7 +1545,7 @@ public class ClickHouseWriter implements DBWriter {
         return 0;
     }
 
-    private void startBackgroundTableSync(String database) {
+    private void startBackgroundTableSync() {
         // Add table mapping refresher
         if (csc.getTableRefreshInterval() > 0) {
             if (scheduledExecutor == null) {
@@ -1565,7 +1560,7 @@ public class ClickHouseWriter implements DBWriter {
                 });
             }
 
-            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(database, this);
+            TableMappingRefresher tableMappingRefresher = new TableMappingRefresher(this);
             scheduledExecutor.scheduleAtFixedRate(tableMappingRefresher, csc.getTableRefreshInterval(), csc.getTableRefreshInterval(),
                     TimeUnit.MILLISECONDS);
         }

@@ -6,22 +6,19 @@ import org.slf4j.LoggerFactory;
 import java.util.TimerTask;
 
 public class TableMappingRefresher extends TimerTask {
-  private static final Logger LOGGER = LoggerFactory.getLogger(TableMappingRefresher.class);
-  private ClickHouseWriter chWriter = null;
-  private String database = null;
+    private static final Logger LOGGER = LoggerFactory.getLogger(TableMappingRefresher.class);
+    private final ClickHouseWriter chWriter;
 
-  public TableMappingRefresher(String database, final ClickHouseWriter chWriter) {
-    this.chWriter = chWriter;
-    this.database = database;
-  }
-
-  @Override
-  public void run() {
-    try {
-      chWriter.updateMapping(database);
-    } catch (Exception e) {
-      LOGGER.error("Update mapping Error: {}", e.getMessage());
+    public TableMappingRefresher(final ClickHouseWriter chWriter) {
+        this.chWriter = chWriter;
     }
-    
-  }
+
+    @Override
+    public void run() {
+        try {
+            chWriter.updateMapping();
+        } catch (Exception e) {
+            LOGGER.error("Update mapping Error: {}", e.getMessage());
+        }
+    }
 }

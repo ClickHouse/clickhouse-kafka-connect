@@ -40,7 +40,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
 import static org.junit.jupiter.api.Assertions.*;
@@ -119,7 +118,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     private void runWithWriter(Map<String, String> props, Consumer<ClickHouseWriter> test) {
         ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
-        writer.start(new ClickHouseSinkConfig(props));
+        assertTrue(writer.start(new ClickHouseSinkConfig(props)));
         try {
             test.accept(writer);
         } finally {
@@ -128,7 +127,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     }
 
     @Test
-    public void updateMapping() {
+    public void loadsTableCreatedAfterStartup() {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("missing_table_mapping_test");
@@ -136,36 +135,38 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
 
         runWithWriter(props, (chw) -> {
+            assertTrue(chw.getMapping().isEmpty());
+            chw.updateMapping(chc.getDatabase());
+            assertTrue(chw.getMapping().isEmpty());
 
-                    chw.updateMapping(chc.getDatabase());
-                    Map<String, Table> tables = chw.getMapping();
-                    assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+            new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
 
-
-                    new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
-
-                    Table table = chw.getTable(chc.getDatabase(), topic);
-                    assertNotNull(table);
-                    assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
-
-                    tables = chw.getMapping();
-                    assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
-                });
+            Table table = chw.getTable(chc.getDatabase(), topic);
+            assertNotNull(table);
+            assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
+            assertSame(table, chw.getMapping().get(Utils.escapeTableName(chc.getDatabase(), topic)));
+        });
 
         ClickHouseTestHelpers.dropTable(chc, topic);
     }
 
     @Test
-    public void configuredTopicsLimitInitialTableMapping() {
+    public void loadsOnlyRequestedTablesLazily() {
         Map<String, String> props = getBaseProps();
-        String relevantTopic = createTopicName("configured_mapping_test");
-        String unrelatedTopic = createTopicName("unrelated_mapping_test");
-        props.put(ClickHouseSinkConfig.TOPICS, relevantTopic);
+        String relevantTopic = createTopicName("lazy_mapping_test");
+        String unrelatedTopic = createTopicName("unrelated_lazy_mapping_test");
 
         new CreateTableStatement(SINGLE_INT16_TABLE).tableName(relevantTopic).execute(chc);
         new CreateTableStatement(SINGLE_INT16_TABLE).tableName(unrelatedTopic).execute(chc);
         try {
             runWithWriter(props, (writer) -> {
+                assertTrue(writer.getMapping().isEmpty());
+
+                Table firstLookup = writer.getTable(chc.getDatabase(), relevantTopic);
+                Table cachedLookup = writer.getTable(chc.getDatabase(), relevantTopic);
+
+                assertSame(firstLookup, cachedLookup);
+                assertEquals(1, writer.getMapping().size());
                 assertNotNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), relevantTopic)));
                 assertNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), unrelatedTopic)));
             });
@@ -176,21 +177,33 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     }
 
     @Test
-    public void configuredTopicsRegexLimitsInitialTableMapping() {
+    public void updateMappingRefreshesOnlyCachedTables() {
         Map<String, String> props = getBaseProps();
-        String relevantTopic = createTopicName("regex_mapping_test");
-        String unrelatedTopic = createTopicName("unrelated_regex_mapping_test");
-        props.put(ClickHouseSinkConfig.TOPICS_REGEX, Pattern.quote(relevantTopic));
+        String cachedTopic = createTopicName("cached_refresh_test");
+        String unrelatedTopic = createTopicName("unrelated_refresh_test");
 
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(relevantTopic).execute(chc);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(cachedTopic).execute(chc);
         new CreateTableStatement(SINGLE_INT16_TABLE).tableName(unrelatedTopic).execute(chc);
         try {
             runWithWriter(props, (writer) -> {
-                assertNotNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), relevantTopic)));
+                Table original = writer.getTable(chc.getDatabase(), cachedTopic);
+                assertEquals(1, original.getRootColumnsList().size());
+
+                String clusterClause = ClickHouseTestHelpers.getClusterClauseOrEmpty();
+                ClickHouseTestHelpers.executeQueryIgnoreResult(
+                        chc,
+                        String.format(
+                                "ALTER TABLE `%s`%s ADD COLUMN extra Nullable(Int32)",
+                                cachedTopic, clusterClause));
+
+                assertTrue(writer.updateMapping(chc.getDatabase()));
+
+                Table refreshed = writer.getTable(chc.getDatabase(), cachedTopic);
+                assertEquals(2, refreshed.getRootColumnsList().size());
                 assertNull(writer.getMapping().get(Utils.escapeTableName(chc.getDatabase(), unrelatedTopic)));
             });
         } finally {
-            ClickHouseTestHelpers.dropTable(chc, relevantTopic);
+            ClickHouseTestHelpers.dropTable(chc, cachedTopic);
             ClickHouseTestHelpers.dropTable(chc, unrelatedTopic);
         }
     }
