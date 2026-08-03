@@ -15,7 +15,7 @@ hamcrest = "2.2"
 mockito = "5.23.0"
 
 # Integration test
-okhttp = "5.3.2"
+okhttp = "5.4.0"
 
 # Test fixtures and extra
 kafkaPlatformSchemaRegistry = "7.9.1"
