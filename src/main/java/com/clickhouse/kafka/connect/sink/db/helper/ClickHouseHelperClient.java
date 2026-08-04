@@ -550,6 +550,8 @@ public class ClickHouseHelperClient implements AutoCloseable {
             // version than the count query above stays behind the count and is re-described next cycle
             Table tableDescribed = describeTable(this.database, tableDesc.getCleanName());
             if (tableDescribed != null) {
+                // this table will be returned and added to `cache` then will return to this method and
+                // rechecked.
                 tableList.add(tableDescribed);
             }
         }
