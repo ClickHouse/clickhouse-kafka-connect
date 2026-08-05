@@ -10,6 +10,11 @@
   The record serialization loop is now shared between the V1 and V2 insert paths. Since client V2 transmits
   the INSERT statement as an HTTP query parameter, feature test coverage was added for table names containing
   URL-special characters (space, `+`, `&`, `=`, `%`, `?`, `#`), SQL quotes, and non-ASCII characters.
+* Support the Avro `decimal` logical type on a `fixed` base (in addition to `bytes`). Confluent's Avro
+  converter maps both representations to a Kafka Connect `Decimal` (a `BigDecimal`), which the connector
+  already validates, converts and serializes to a ClickHouse `Decimal(P, S)` column. This promotes the
+  `decimal_fixed_logical` schema from the incompatible to the compatible Avro test fixtures and adds
+  feature-test coverage. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/798)
 
 * Support Avro nullable multi-type unions (e.g. `[null, string, int]`) mapping to a ClickHouse `Variant`.
   Confluent's Avro converter turns the non-null branches into a Connect union struct
