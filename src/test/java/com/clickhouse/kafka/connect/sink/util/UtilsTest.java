@@ -54,11 +54,11 @@ public class UtilsTest {
     }
 
     private static Table tableWith(String tableName, String[]... colSpecs) {
-        Table table = new Table("default", tableName);
+        List<Column> columns = new ArrayList<>();
         for (String[] spec : colSpecs) {
-            table.addColumn(Column.extractColumn(newDescriptor(spec[0], spec[1])));
+            columns.add(Column.extractColumn(newDescriptor(spec[0], spec[1])));
         }
-        return table;
+        return new Table("default", tableName, false, columns, colSpecs.length);
     }
 
     @Test

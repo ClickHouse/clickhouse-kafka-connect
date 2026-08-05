@@ -30,19 +30,28 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseWriterTest extends ClickHouseBase {
@@ -380,6 +389,135 @@ public class ClickHouseWriterTest extends ClickHouseBase {
     }
 
     /**
+     * {@code ClickHouseHelperClient.extractTablesMapping} decides whether a table needs re-describing
+     * by comparing the cached column count against the count reported by {@code system.columns}, but
+     * it stamps the cached table with the count from that query instead of with what DESCRIBE TABLE
+     * actually returned. The two are separate round trips, so on a cluster or behind a Cloud endpoint
+     * they can observe different metadata versions: the count query can already see a newly added
+     * column while DESCRIBE still hits a replica that has not applied the DDL.
+     *
+     * <p>When that happens the stale description is cached as though it already contained the new
+     * column, every later refresh short-circuits on the now-equal count, and the schema is never
+     * re-read - not even through the code 33/131 recovery path, which routes back through the same
+     * cache. Only a connector restart recovers.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"V1", "V2"})
+    public void staleDescribeTableIsNotCachedAsCurrentSchema(String clientVersion) throws Exception {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String topic = createTopicName("stale_describe_" + clientVersion);
+        String fullyQualifiedTableName = Utils.escapeTableName(chc.getDatabase(), topic);
+
+        // Array and Tuple make DESCRIBE report subcolumns that system.columns does not count, so the
+        // cached column count cannot be derived from the full column list either
+        int columnsBeforeAlter = 4;
+        int columnsAfterAlter = columnsBeforeAlter + 1;
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int32")
+                .column("name", "String")
+                .column("arr", "Array(Int32)")
+                .column("tup", "Tuple(s String, i Int32)")
+                .engine("MergeTree")
+                .orderByColumn("id")
+                .execute(chc);
+
+        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
+        assertTrue(writer.start(new ClickHouseSinkConfig(props)));
+
+        try {
+            Table cachedBefore = writer.getMapping().get(fullyQualifiedTableName);
+            assertNotNull(cachedBefore);
+            assertEquals(columnsBeforeAlter, cachedBefore.getRootColumnsList().size());
+            assertTrue(cachedBefore.getAllColumnsList().size() > columnsBeforeAlter,
+                    "Expected Array and Tuple to contribute subcolumns beyond the counted top level columns");
+
+            // A genuine pre-ALTER DESCRIBE result, replayed below to stand in for a lagging replica
+            Table staleDescription = chc.describeTable(chc.getDatabase(), topic);
+            assertNotNull(staleDescription);
+            assertEquals(columnsBeforeAlter, staleDescription.getRootColumnsList().size());
+
+            AtomicInteger describeCallsForTopic = new AtomicInteger();
+            ClickHouseHelperClient staleReplicaClient = Mockito.spy(getHelperClient(writer));
+            Mockito.doAnswer(invocation -> {
+                if (topic.equals(invocation.getArgument(1)) && describeCallsForTopic.incrementAndGet() == 1) {
+                    return staleDescription;
+                }
+                return invocation.callRealMethod();
+            }).when(staleReplicaClient).describeTable(Mockito.anyString(), Mockito.anyString());
+            setHelperClient(writer, staleReplicaClient);
+
+            // Adding the column FIRST means an insert built from the stale schema cannot silently write
+            // misaligned data: the server rejects the misread bytes (see testSchemaRefreshedAfterCode131).
+            ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN extra String DEFAULT '' FIRST",
+                    topic, ClickHouseTestHelpers.getClusterClauseOrEmpty()));
+
+            // system.columns already reports the new column while DESCRIBE replays the pre-ALTER schema
+            assertTrue(writer.updateMapping(chc.getDatabase()));
+            assertEquals(1, describeCallsForTopic.get(), "The column count change should have triggered exactly one re-describe");
+
+            Table cachedStale = writer.getMapping().get(fullyQualifiedTableName);
+            assertNotNull(cachedStale);
+            assertEquals(columnsBeforeAlter, cachedStale.getRootColumnsList().size(), "The replayed stale description is the one that got cached");
+            assertEquals(cachedStale.getRootColumnsList().size(), cachedStale.getNumColumns(), String.format(
+                    "Cached entry for %s is self-inconsistent: it records %d columns but holds a description of only %d. "
+                            + "The recorded count comes from the system.columns query rather than from the DESCRIBE response "
+                            + "that was cached, so every later refresh sees an equal count and skips re-describing the table",
+                    topic, cachedStale.getNumColumns(), cachedStale.getRootColumnsList().size()));
+
+            // DESCRIBE returns the new column from here on, so an ordinary refresh has to pick it up
+            assertTrue(writer.updateMapping(chc.getDatabase()));
+            assertEquals(2, describeCallsForTopic.get(), String.format("Refreshing the mapping should have re-described %s", topic));
+
+            Table cachedAfter = writer.getMapping().get(fullyQualifiedTableName);
+            assertNotNull(cachedAfter);
+            assertEquals(columnsAfterAlter, cachedAfter.getRootColumnsList().size());
+            assertTrue(cachedAfter.getRootColumnsMap().containsKey("extra"), "Cached schema is missing the column added by the ALTER");
+
+            // The recovered mapping has to be usable: `extra` is written from its DEFAULT
+            Schema tupleSchema = SchemaBuilder.struct()
+                    .field("s", Schema.STRING_SCHEMA)
+                    .field("i", Schema.INT32_SCHEMA)
+                    .build();
+            Schema oldSchema = SchemaBuilder.struct()
+                    .field("id", Schema.INT32_SCHEMA)
+                    .field("name", Schema.STRING_SCHEMA)
+                    .field("arr", SchemaBuilder.array(Schema.INT32_SCHEMA).build())
+                    .field("tup", tupleSchema)
+                    .build();
+            Struct value = new Struct(oldSchema)
+                    .put("id", -1)
+                    .put("name", "XXXXXXXX")
+                    .put("arr", List.of(7, 8, 9))
+                    .put("tup", new Struct(tupleSchema).put("s", "alpha").put("i", 42));
+            SinkRecord sr = new SinkRecord(topic, 0, null, null, oldSchema, value, 0,
+                    System.currentTimeMillis(), TimestampType.CREATE_TIME);
+            Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+            Assertions.assertDoesNotThrow(() -> writer.doInsert(List.of(record),
+                    new QueryIdentifier(topic, "stale-describe-" + System.nanoTime())));
+
+            List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+            assertEquals(1, rows.size());
+            JSONObject row = rows.get(0);
+            assertEquals(-1, row.getInt("id"));
+            assertEquals("XXXXXXXX", row.getString("name"));
+            assertEquals("", row.getString("extra"));
+            assertEquals(List.of(7, 8, 9), row.getJSONArray("arr").toList());
+            JSONObject tuple = row.getJSONObject("tup");
+            assertEquals("alpha", tuple.getString("s"));
+            assertEquals(42, tuple.getInt("i"));
+        } finally {
+            writer.stop();
+            ClickHouseTestHelpers.dropTable(chc, topic);
+        }
+    }
+
+    /**
      * Client V2 transmits the INSERT statement as an HTTP query parameter (unlike V1, which sends
      * it in the request body), so table names must survive both SQL backtick quoting and URL
      * encoding. Covers characters that are special in URLs (space, +, &, =, %, ?, #), SQL quotes,
@@ -552,6 +690,22 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);
         }
+    }
+
+    private static final String WRITER_HELPER_CLIENT_FIELD = "chc";
+
+    private static Field writerHelperClientField() throws NoSuchFieldException {
+        Field field = ClickHouseWriter.class.getDeclaredField(WRITER_HELPER_CLIENT_FIELD);
+        field.setAccessible(true);
+        return field;
+    }
+
+    private static ClickHouseHelperClient getHelperClient(ClickHouseWriter writer) throws Exception {
+        return (ClickHouseHelperClient) writerHelperClientField().get(writer);
+    }
+
+    private static void setHelperClient(ClickHouseWriter writer, ClickHouseHelperClient client) throws Exception {
+        writerHelperClientField().set(writer, client);
     }
 
     private static boolean exceptionChainContains(Throwable t, String target) {
