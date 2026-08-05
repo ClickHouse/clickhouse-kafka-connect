@@ -1,30 +1,27 @@
-# 1.5.0 (not published)
+# 1.5.0, 2026-08-05
 
 ## Improvements
 
 * RowBinary inserts with client V2 now stream data directly to the network output stream via the client's
-  `DataStreamWriter` API instead of first serializing the whole batch into an unsized `ByteArrayOutputStream`
-  (which caused repeated internal array reallocations and copies) and then copying it again through a
-  `ByteArrayInputStream`. Serialization is deterministic, so client-level retries resend a byte-identical
-  block and ClickHouse block deduplication (and therefore exactly-once delivery) is unaffected.
-  The record serialization loop is now shared between the V1 and V2 insert paths. Since client V2 transmits
-  the INSERT statement as an HTTP query parameter, feature test coverage was added for table names containing
-  URL-special characters (space, `+`, `&`, `=`, `%`, `?`, `#`), SQL quotes, and non-ASCII characters.
+  `DataStreamWriter` API. Increase in performance is ~ 30% for 100k dataset. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/796)  
 
 * Support Avro nullable multi-type unions (e.g. `[null, string, int]`) mapping to a ClickHouse `Variant`.
   Confluent's Avro converter turns the non-null branches into a Connect union struct
   (`io.confluent.connect.avro.Union`), with the `null` branch making the field optional; the connector
-  resolves this to `Variant(String, Int32)` and serializes the correct per-value discriminator (and the
-  ClickHouse null discriminator when no branch is set). Unions whose branches do not fit a `Variant`
-  (e.g. suspicious same-group numeric types) fall back to `Nullable(String)`. This promotes the
-  `union_null_string_int` schema from the incompatible to the compatible Avro test fixtures and adds
-  feature-test coverage. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/799)
+  resolves this to `Variant(String, Int32)`. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/799)
+
+## Dependencies
+
+* [build] Updated `com.diffplug.spotless` from 8.6.0 to 8.9.0.
+* [build] Updated `gradle-wrapper from` 9.5.1 to 9.6.1
+* [tests] Updated `com.squareup.okhttp3:okhttp` from 5.3.2 to 5.4.0.
 
 ## Bug Fixes 
 
 * Fixed issue with Table Schema cache that can remember old schema instead of new one. Now if old 
 schema is read proper number of columns is calculated and cache will be properly updated after some time. 
 (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/813)
+
 
 # 1.4.0, 2026-07-15
 
