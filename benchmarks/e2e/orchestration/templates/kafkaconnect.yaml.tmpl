@@ -1,0 +1,151 @@
+# Benchmark v2 — Strimzi KafkaConnect CR template (task 31).
+#
+# One single-worker Connect cluster per arm, using THAT arm's pre-baked image
+# (the ClickHouse sink plugin is unzipped into /opt/kafka/plugins in the image —
+# see benchmarks/e2e/docker/Dockerfile), so `spec.image` points at the arm image
+# and NO Strimzi build/plugins section is needed. The orchestrator deploys this
+# per arm, waits Ready, deploys the connector (KafkaConnector CR from
+# kafkaconnector.json.tmpl -> a KafkaConnector or REST PUT), waits all tasks
+# RUNNING, then starts the poller (poller README prerequisite 5).
+#
+# Placeholders (${VAR}) are substituted by run_pair.sh via envsubst:
+#   ARM_IMAGE   full image ref for this arm (from benchmark-images.yml outputs)
+#   CONNECT_HEAP  JVM heap (connect-ng m6i.xlarge sizing) e.g. 4096m
+#
+# metricsConfig: jmxPrometheusExporter on the standard port 9404, referencing the
+# connect-metrics ConfigMap (connect-metrics-configmap.yaml) which carries the
+# stock jmx-export-connector.yml rules PLUS the mandatory -rate rule (poller
+# README prerequisite 1a). This satisfies poller prerequisite 1 + 1a.
+#
+# use-connector-resources=true lets us manage the connector as a KafkaConnector
+# CR (declarative), which the orchestrator applies after the CR is Ready.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnect
+metadata:
+  name: bench-connect
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  # Single worker (plan decision 8 substrate: the broker/worker are minimal; the
+  # 3 tasks all run in this one worker). tasks.max=3 is set on the connector.
+  # replicas STAYS 1: the baseline is a clean single-worker reference. Worker
+  # scale-out is the #37 sweep's variable, tuned there — not here.
+  replicas: 1
+  # The arm's pre-baked image (plugin already in /opt/kafka/plugins).
+  image: ${ARM_IMAGE}
+  bootstrapServers: bench-kafka-bootstrap.kafka-bench.svc:9092
+  # Connect's own internal topics — RF1 to match the single-broker cluster
+  # (plan decision 8); Strimzi would otherwise default them to 3 and they would
+  # never create on an RF1 broker.
+  config:
+    group.id: bench-connect-cluster
+    # Config providers (task 31 review F1): Strimzi's externalConfiguration
+    # injects the Secret as worker env vars, but Connect only RESOLVES the
+    # ${env:CH_*} placeholders in the connector config if the
+    # EnvVarConfigProvider is registered. Without these two lines the literal
+    # string "${env:CH_HOSTNAME}" would be handed to the sink as the hostname.
+    config.providers: env
+    config.providers.env.class: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+    offset.storage.topic: bench-connect-offsets
+    config.storage.topic: bench-connect-configs
+    status.storage.topic: bench-connect-status
+    config.storage.replication.factor: 1
+    offset.storage.replication.factor: 1
+    status.storage.replication.factor: 1
+    # Confluent Avro converters (plan §6: Avro + Schema Registry). Key is not
+    # used by the sink (records keyed null by the producer) but must be set.
+    key.converter: io.confluent.connect.avro.AvroConverter
+    value.converter: io.confluent.connect.avro.AvroConverter
+    key.converter.schema.registry.url: http://schema-registry.kafka-bench.svc:8081
+    value.converter.schema.registry.url: http://schema-registry.kafka-bench.svc:8081
+  jvmOptions:
+    -Xms: ${CONNECT_HEAP}
+    -Xmx: ${CONNECT_HEAP}
+  resources:
+    # Dedicated connect-ng node: m6i.xlarge (4 vCPU / 16 GiB). LIVE FINDING
+    # 2026-07-08: on the shared m6i.large the worker was CPU-bound — pegged at
+    # its 2-core limit while the broker idled at ~2%. cpu request 2 / limit 3.5
+    # (3.5 of 4 vCPU leaves kubelet+system headroom). Memory stays 5Gi/6Gi.
+    # 5Gi/6Gi (was 3Gi/4Gi): live finding 2026-07-08 — the first poll at
+    # max.poll.records=100k x 3 tasks of deserialized 105-col Avro detonated a
+    # 2G-heap worker in ~40s (GC spiral -> /health dead -> liveness kill loop,
+    # 17 restarts, zero commits). Heap (CONNECT_HEAP) and max.poll.records MUST
+    # be co-tuned — see #32; first-pair values: CONNECT_HEAP=4096m, 25k polls
+    # (co-sized on the xlarge). #32 tunes both upward together.
+    requests:
+      cpu: "2"
+      memory: 5Gi
+    limits:
+      cpu: "3.5"
+      memory: 6Gi
+  # Poller prerequisite 1 + 1a: JMX Prometheus exporter on port 9404 using the
+  # connect-metrics ConfigMap rules (stock + the -rate rule).
+  metricsConfig:
+    type: jmxPrometheusExporter
+    valueFrom:
+      configMapKeyRef:
+        name: connect-metrics
+        key: metrics-config.yml
+  # Expose the JMX exporter (9404) and REST (8083) via the Strimzi-managed
+  # services; the poller reaches them at
+  #   http://bench-connect-connect-api.kafka-bench.svc:8083   (REST /status)
+  #   http://<connect-pod>:9404/metrics                        (JMX prometheus)
+  template:
+    connectContainer:
+      # No extra env needed; CH creds are on the KafkaConnector config via the
+      # externalized secret (kafkaconnector.json.tmpl), never here.
+      env: []
+    pod:
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+      # Pin the worker to the dedicated connect-ng node (role=connect). LIVE
+      # FINDING 2026-07-08: on the shared m6i.large the worker was CPU-bound
+      # (pegged at 2 cores while the broker idled ~2%), so the rebuild gives it
+      # its own m6i.xlarge nodegroup. Strimzi 0.46 PodTemplate exposes .affinity
+      # (full k8s Affinity) but has NO raw nodeSelector field, so node placement
+      # goes through nodeAffinity. Grounding: Strimzi 0.46 appendix_crds.adoc
+      # PodTemplate schema (properties: metadata, affinity, tolerations,
+      # topologySpreadConstraints, ... — no nodeSelector).
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: role
+                    operator: In
+                    values:
+                      - connect
+      # connect-ng is tainted dedicated=connect:NoSchedule (cluster.yaml, review
+      # F1) so nothing else can land beside the worker; this toleration is the
+      # worker's half of that contract. Plain YAML — run_pair.sh's envsubst list
+      # is '${ARM_IMAGE} ${CONNECT_HEAP}' only, so this block passes through
+      # untouched.
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: connect
+          effect: NoSchedule
+  # externalConfiguration wires the runtime CH-creds Secret (created by the
+  # orchestrator from CI secrets) into the worker as env vars, so the connector
+  # config can reference them via ${env:...} — creds never appear in any file.
+  externalConfiguration:
+    env:
+      - name: CH_HOSTNAME
+        valueFrom:
+          secretKeyRef:
+            name: bench-ch-creds
+            key: hostname
+      - name: CH_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: bench-ch-creds
+            key: password
+      - name: CH_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: bench-ch-creds
+            key: username

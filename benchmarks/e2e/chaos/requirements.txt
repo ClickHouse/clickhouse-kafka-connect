@@ -1,0 +1,18 @@
+# Chaos / monkey test (#771) — pinned test+harness Python dependencies.
+#
+# This is the dependency UNION the combined chaos test suite needs, so a single
+# venv (or the CI install-deps step, benchmark-chaos.yml) can run every suite:
+#   orchestration/tests, capture/tests, chaos/tests, producer
+#
+# Rationale per dep:
+# - pyarrow            : producer streaming + dup-dataset carving read parquet.
+# - confluent-kafka    : imported transitively by producer.py (chaos tests that
+#                        import the producer pull it in).
+# - PyYAML             : ch-cluster.yaml / workflow YAML parsing in tests.
+# - clickhouse-connect : capture/ch_common.py (the oracle's --direct client).
+# - pytest             : test runner (NOT in producer/requirements.txt today).
+pyarrow==17.0.0
+confluent-kafka[avro,schemaregistry]==2.6.1
+PyYAML==6.0.3
+clickhouse-connect==1.5.0
+pytest==9.1.1

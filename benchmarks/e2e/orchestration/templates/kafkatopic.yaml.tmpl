@@ -1,0 +1,25 @@
+# Benchmark v2 — KafkaTopic CR template (task 31). Fresh topic per run
+# (plan §5 step 2, decision 6): 3 partitions (plan decision 4: 3 partitions /
+# tasks.max=3, one task per partition), RF=1 (single-broker cluster, plan
+# decision 8). Managed by the Strimzi topicOperator (entityOperator.topicOperator
+# is enabled in kafka.yaml), so create/delete is declarative — no
+# kafka-topics.sh shell-out.
+#
+# The orchestrator applies this, then ASSERTS the actual partition count == 3
+# (overseer directive e) before producing — a topic that came up with the wrong
+# partition count would silently break the one-task-per-partition invariant.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: hits
+  namespace: kafka-bench
+  labels:
+    strimzi.io/cluster: bench
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    # Per-run backlog; deleted on teardown. Retention is a safety net only
+    # (matches kafka.yaml broker log.retention.hours).
+    retention.ms: "86400000"

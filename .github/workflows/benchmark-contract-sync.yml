@@ -1,0 +1,26 @@
+name: benchmark-contract-sync
+
+# Enforces benchmark-v2-contract.md §5: the vendored contract doc and perf.* DDL
+# in this repo MUST stay byte-identical to the canonical files owned by
+# spark-clickhouse-connector. The perf.* DDL uses CREATE ... IF NOT EXISTS, so
+# drift silently no-ops against the shared tables — this check is the only alarm.
+# CI runs the pinned-hash mode (Mode 1); the true upstream byte-diff (Mode 2) runs
+# locally with UPSTREAM_SPARK_REPO set until the Spark branch merges upstream.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/benchmark-v2-contract.md'
+      - 'benchmarks/e2e/sql/perf/**'
+      - 'benchmarks/e2e/scripts/check_contract_sync.sh'
+      - 'benchmarks/e2e/scripts/contract-sync.sha256'
+      - '.github/workflows/benchmark-contract-sync.yml'
+  workflow_dispatch:
+
+jobs:
+  contract-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify contract & perf.* DDL sync
+        run: benchmarks/e2e/scripts/check_contract_sync.sh

@@ -1,0 +1,125 @@
+# Strimzi Kafka custom resource — KRaft mode, SINGLE combined node
+# (controller+broker), replication factor 1 everywhere (plan decision 8).
+#
+# The broker is not under test: it serves sequential fetches to 3 Connect
+# tasks. RF=1 + a single node = cheapest and lowest-variance substrate.
+#
+# Requires Strimzi >= 0.46 (KafkaNodePool + KRaft are GA; ZooKeeper removed).
+# Pinned operator version is installed by install-strimzi.sh.
+#
+# ---------------------------------------------------------------------------
+# KafkaNodePool: one pool, one replica, combined controller+broker role.
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: combined
+  namespace: kafka-bench
+  labels:
+    strimzi.io/cluster: bench
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    # ~70Gi transient per-run backlog (~100M ClickBench hits rows, RF1);
+    # topic is deleted on teardown (plan section 6). gp3 via gp3-bench class.
+    size: 70Gi
+    class: gp3-bench
+    deleteClaim: true
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: "1"
+    limits:
+      memory: 4Gi
+      cpu: "2"
+  jvmOptions:
+    # ~2Gi heap on a 4Gi-request pod (m6i.large = 8Gi node) leaves room for
+    # page cache, which is what actually serves sequential fetches.
+    -Xms: 2048m
+    -Xmx: 2048m
+  # Pin the broker to bench-ng (review F1): on a fresh scale-up the scheduler
+  # could otherwise place this pod on the empty connect-ng m6i.xlarge, and the
+  # Connect worker's REQUIRED affinity would then land it beside the broker
+  # (2 + 3.5 = 5.5 CPU limits on 4 vCPU) — silently recreating the contention
+  # the dedicated nodegroup eliminates. Belt #2 alongside the connect-ng taint.
+  # Grounding: Strimzi 0.46 KafkaNodePool CRD (045-Crd-kafkanodepool.yaml)
+  # spec.template.pod is a PodTemplate with .affinity.
+  template:
+    pod:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: role
+                    operator: In
+                    values:
+                      - bench
+---
+# ---------------------------------------------------------------------------
+# Kafka: KRaft cluster referencing the node pool above. RF=1 on every
+# internal topic (offsets / transaction-state / __consumer_offsets) and
+# default.replication.factor=1 so auto-created topics are RF1 too.
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: bench
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+  annotations:
+    # Opt in to KRaft + KafkaNodePools explicitly (required on Strimzi
+    # versions where they are not yet the unconditional default).
+    strimzi.io/kraft: enabled
+    strimzi.io/node-pools: enabled
+spec:
+  kafka:
+    version: 3.9.0
+    metadataVersion: 3.9-IV0
+    # Listeners: one plaintext internal listener on 9092 for in-cluster
+    # clients (Connect, Schema Registry, producer Job). No external exposure —
+    # everything that talks to the broker lives in the cluster.
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      # RF=1 everywhere. These are the settings that make a single-broker
+      # cluster actually start and stay healthy.
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      # Modest per-run retention; topic is recreated fresh each run and
+      # deleted on teardown, so retention is a safety net, not a design point.
+      log.retention.hours: 24
+      auto.create.topics.enable: false
+    # Storage/JVM live on the KafkaNodePool above under KRaft.
+  # entityOperator manages topics/users declaratively (KafkaTopic CRs) — handy
+  # for the per-run topic create/delete without kafka-topics.sh shell-outs.
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+    # Pin to bench-ng (review F1) — same rationale as the node pool above: the
+    # dedicated connect-ng node runs ONLY the Connect worker. Grounding:
+    # Strimzi 0.46 appendix_crds.adoc EntityOperatorTemplate has .pod
+    # (PodTemplate) with .affinity.
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: role
+                      operator: In
+                      values:
+                        - bench

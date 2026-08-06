@@ -1,0 +1,161 @@
+# eksctl cluster config for the Kafka Connect sink Benchmark v2 (task 25).
+#
+# Substrate for the nightly two-arm drain benchmark: a single-broker Strimzi
+# Kafka (KRaft, RF=1), Schema Registry, and a Kafka Connect worker. The broker
+# is deliberately minimal and NOT under test (plan decision 8); the cluster
+# exists only to host the connector being benchmarked.
+#
+# Cost model (plan decision 12): the EKS control plane (~$0.10/hr, ~$73/mo)
+# and this config persist; the managed node group scales to zero between runs
+# so compute is paid only for run hours. See README.md.
+#
+# Account/region context (NEVER hardcode credentials — see README.md):
+#   AWS account : 796575137974
+#   region      : us-east-2  (co-located with the dedicated ClickHouse Cloud
+#                             target, which lives in us-east-2)
+# A credentialed operator selects the account via their own AWS profile/OIDC
+# role before running eksctl; this file carries no secrets.
+#
+# apiVersion is pinned; bump deliberately (every bump is a substrate change).
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: kafka-bench
+  # us-east-2 co-locates the cluster with the dedicated ClickHouse Cloud target
+  # (plan: EKS co-located with the target to minimize cross-region latency).
+  region: us-east-2
+  # Pin the control-plane Kubernetes version so a silent EKS default bump is
+  # never mistaken for a connector regression. Bump deliberately.
+  # 1.33: standard support (1.31 was already in EXTENDED support = $0.60/hr
+  # control plane, 6x the $0.10/hr the plan budgets — caught in console
+  # 2026-07-07 during first provision; cluster recreated at 1.33).
+  # 1.36 (2026-07-08 rebuild): 1.33 enters EXTENDED support 2026-07-29 (the
+  # $0.60/hr penalty again). The operator RECREATES the cluster (managed EKS
+  # does not in-place upgrade a scaled-to-zero benchmark substrate cheaply), so
+  # this bump rides the same rebuild that adds the dedicated connect nodegroup.
+  version: "1.36"
+  tags:
+    Project: clickbench-benchmark
+    Component: kafka-connect-benchmark-v2
+    ManagedBy: eksctl
+
+# Pin availability zones so the broker's AZ-local EBS volume and the node group
+# land in a stable, known pair (avoids eksctl picking an AZ without capacity).
+availabilityZones:
+  - us-east-2a
+  - us-east-2b
+
+# No NAT gateway: the node group runs in PUBLIC subnets (privateNetworking:
+# false below) with public IPs, so egress goes via the internet gateway and no
+# NAT/EIP is needed. This (a) avoids the account's us-east-2 EIP quota (full as
+# of 2026-07-07 — first provision attempt failed allocating the NAT EIP) and
+# (b) saves the ~$32/mo standing NAT-gateway cost, per the plan's cost
+# discipline. Acceptable for a benchmark: nodes are protected by their SGs;
+# nothing listens publicly except what K8s exposes (nothing, by default).
+vpc:
+  nat:
+    gateway: Disable
+
+# Managed node group: single group, small instances, gp3 root volumes,
+# scale-to-zero capable (minSize 0). Scale-up/down is driven by scale-up.sh /
+# scale-down.sh, which set desiredCapacity at runtime.
+managedNodeGroups:
+  - name: bench-ng
+    # m6i.large = 2 vCPU / 8 GiB. FIVE nodes max (chaos decision §10.1; was 4).
+    # Two capacity regimes share this group:
+    #   * pair (sharded-preload capacity, review F5): the parallel producer
+    #     preload runs SHARD_COUNT=3 pods at 4Gi request each. The per-pod peak
+    #     (~4.4Gi) is BUFFER-driven (pyarrow readahead + rdkafka queue), NOT
+    #     shard-size-driven, so the request must not shrink with the shard. Fit
+    #     arithmetic on m6i.large (~7.1Gi allocatable): the broker node has
+    #     ~2.9Gi free after broker+registry (0 producer pods fit there); each
+    #     other bench node fits exactly ONE 4Gi-request producer pod. 3 shard
+    #     pods => broker+registry node + 3 producer-capable nodes = 4 bench
+    #     nodes. At the old maxSize 2, two shard pods sat Pending and the
+    #     "parallel" preload ran serially (~20min + churn).
+    #   * chaos (#771, decision §10.1): the self-hosted CH StatefulSet adds 3
+    #     ch-chaos pods (nodeSelector role=bench) alongside broker/registry/
+    #     producer/poller, so bench-ng needs +1 headroom (max 5). Cost bump is
+    #     ~$0.096/hr and only while scaled up.
+    # KEEP IN SYNC: infra/env.sh SCALE_UP_NODES and lib_bench.sh SCALE_UP_NODES
+    # (chaos_run.sh overrides SCALE_UP_NODES=5; run_pair.sh keeps its default).
+    instanceType: m6i.large
+    # scale-to-zero: minSize 0 so scale-down.sh can drop the group to no nodes.
+    # desiredCapacity starts at 0 — provision creates the group empty; a run
+    # scales it up. This means `provision.sh` never leaves paid compute running.
+    minSize: 0
+    maxSize: 5
+    desiredCapacity: 0
+    volumeSize: 40
+    volumeType: gp3
+    # gp3 baseline is plenty for node root; broker data uses a separate PVC.
+    privateNetworking: false
+    amiFamily: AmazonLinux2023
+    labels:
+      # role=bench is the symmetric selector to connect-ng's role=connect
+      # (2026-07-08 rebuild): the broker, Schema Registry, producer Job and
+      # poller pod all pin nodeSelector role=bench, so the dedicated connect
+      # node runs ONLY the Connect worker. (Was role=kafka-bench-worker; renamed
+      # to the short symmetric form the pod specs now select on.)
+      role: bench
+    tags:
+      Project: clickbench-benchmark
+      Component: kafka-connect-benchmark-v2
+      nodegroup: bench-ng
+    # IAM: least-ish privilege. EBS CSI needed for the broker's gp3 PVC;
+    # CloudWatch optional for pod-log shipping during a run.
+    iam:
+      withAddonPolicies:
+        ebs: true
+        cloudWatch: true
+
+  # Dedicated Connect nodegroup (2026-07-08 rebuild). LIVE FINDING: on the shared
+  # m6i.large the Connect worker was CPU-bound — pegged at its 2-core limit while
+  # the broker idled at ~2%. An m6i.xlarge (4 vCPU / 16 GiB) gives the single
+  # worker room; the worker is pinned here via nodeAffinity role=connect in the
+  # KafkaConnect CR template. maxSize 1 (baseline = one worker; scale-out is the
+  # #37 sweep's variable). Scale-to-zero like bench-ng: scale-up.sh brings it to
+  # 1 for a run, scale-down.sh returns it to 0.
+  - name: connect-ng
+    instanceType: m6i.xlarge
+    minSize: 0
+    maxSize: 1
+    desiredCapacity: 0
+    volumeSize: 40
+    volumeType: gp3
+    privateNetworking: false
+    amiFamily: AmazonLinux2023
+    labels:
+      role: connect
+    # Taint: NOTHING schedules here unless it tolerates dedicated=connect
+    # (review F1). The worker's nodeAffinity alone is one-directional — it pins
+    # the worker TO this node but lets the scheduler put anything else (broker
+    # on a fresh scale-up, Strimzi operator, future pods) BESIDE it, silently
+    # recreating the CPU contention this nodegroup exists to eliminate. The
+    # matching toleration lives in kafkaconnect.yaml.tmpl (template.pod).
+    taints:
+      - key: dedicated
+        value: connect
+        effect: NoSchedule
+    tags:
+      Project: clickbench-benchmark
+      Component: kafka-connect-benchmark-v2
+      nodegroup: connect-ng
+    iam:
+      withAddonPolicies:
+        ebs: true
+        cloudWatch: true
+
+# The gp3 PersistentVolume for the broker is provisioned by the AWS EBS CSI
+# driver addon (see storageclass-gp3.yaml). Enable it as a managed addon so it
+# exists before the Strimzi Kafka CR requests its PVC.
+addons:
+  - name: aws-ebs-csi-driver
+    tags:
+      Project: clickbench-benchmark
+
+# CloudWatch container-insights / control-plane logging kept minimal (cost).
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["audit"]

@@ -1,0 +1,24 @@
+# gp3 StorageClass used by the Strimzi broker PVC (~70Gi transient backlog).
+#
+# EKS ships a default gp2 StorageClass; we define an explicit gp3 class so the
+# broker gets the cheaper/faster gp3 volume type and so the class name is
+# stable and version-controlled (referenced by kafka.yaml).
+#
+# WaitForFirstConsumer: the volume is created in the same AZ as the broker pod
+# once it is scheduled — required because the node group can be in any AZ and
+# EBS volumes are AZ-local.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: gp3
+  encrypted: "true"
+  # gp3 free-tier baseline (3000 IOPS / 125 MiB/s) is ample for a single
+  # broker serving sequential fetches to 3 tasks; leave defaults.

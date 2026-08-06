@@ -1,0 +1,10 @@
+# Dedicated namespace for all Kafka-benchmark workloads (broker, Schema
+# Registry, Connect worker, producer Job). The Strimzi operator itself is
+# installed cluster-wide but watches this namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+    Project: clickbench-benchmark

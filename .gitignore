@@ -36,3 +36,12 @@ build
 
 # AI
 memory
+
+# Benchmark v2 per-run orchestration artifacts (poller samples, capture output,
+# runtime JSON) — transient, regenerated every run.
+benchmarks/e2e/orchestration/artifacts/
+
+# Benchmark v2 Python local dev artifacts (never tracked).
+benchmarks/e2e/**/venv/
+benchmarks/e2e/**/__pycache__/
+benchmarks/e2e/**/*.pyc
