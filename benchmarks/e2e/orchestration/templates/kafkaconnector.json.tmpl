@@ -1,0 +1,80 @@
+{
+  "//": "Benchmark v2 — ClickHouse sink connector config template (task 31). Wrapped",
+  "//1": "as a Strimzi KafkaConnector CR by run_pair.sh; the `config` block is the",
+  "//2": "connector config. Values are plan §6 EXACTLY (first-run config; task 32",
+  "//3": "tunes). Placeholders (${VAR}) are substituted by run_pair.sh via envsubst:",
+  "//4": "  CH_TABLE      target table per tier: hits_null (Tier 0) | hits (Tier 1)",
+  "//5": "  CONSUMER_GROUP consumer group id, distinct per (arm,tier) so each drain",
+  "//6": "                 starts fresh at offset 0",
+  "//7": "CH creds are referenced via ${env:...} placeholders resolved by the Connect",
+  "//8": "worker from the externalConfiguration Secret (see kafkaconnect.yaml.tmpl) —",
+  "//9": "they NEVER appear in this file or any log.",
+  "apiVersion": "kafka.strimzi.io/v1beta2",
+  "kind": "KafkaConnector",
+  "metadata": {
+    "name": "bench-clickhouse-sink",
+    "namespace": "kafka-bench",
+    "labels": {
+      "strimzi.io/cluster": "bench-connect",
+      "app.kubernetes.io/part-of": "kafka-connect-benchmark-v2"
+    }
+  },
+  "spec": {
+    "class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "//tasksMax": "plan §6: 3 partitions / tasks.max=3 (decision 4), one task per partition",
+    "tasksMax": 3,
+    "config": {
+      "topics": "hits",
+
+      "//conn": "--- target connection (creds via worker env from the Secret) ---",
+      "hostname": "${env:CH_HOSTNAME}",
+      "port": "8443",
+      "ssl": "true",
+      "username": "${env:CH_USERNAME}",
+      "password": "${env:CH_PASSWORD}",
+      "database": "clickbench",
+
+      "//table": "--- per-tier target table (hits_null Tier 0 | hits Tier 1) ---",
+      "topic2TableMap": "hits=${CH_TABLE}",
+
+      "//sem": "--- plan §6: semantics x batching ---",
+      "//exactlyOnce": "plan §6 exactlyOnce=false (decision 3); keeps dedup token active",
+      "exactlyOnce": "false",
+
+      "//fmt": "--- plan §6: Avro + Schema Registry -> RowBinary (SCHEMA path) ---",
+      "//conv": "converters are set on the KafkaConnect worker (kafkaconnect.yaml.tmpl)",
+
+      "//poll": "--- poll/fetch sizing (co-tuned with CONNECT_HEAP — see below) ---",
+      "//pollnote": "Connect default 500-row polls would trip TOO_MANY_PARTS and burn a",
+      "//pollnote2": "full EKS+drain cycle. The sink inserts what one poll delivers per",
+      "//pollnote3": "topic-partition, so max.poll.records IS the batch size.",
+      "//pollnote4": "25000 (was 100000, review F2): the only live-PROVEN pairing is",
+      "//pollnote5": "25000 + CONNECT_HEAP=4096m — 100k polls x 3 tasks GC-spiraled the",
+      "//pollnote6": "2G heap (17 restarts, zero commits; commit e140231) and 4096m is",
+      "//pollnote7": "only 2x that, so 100k is not worth betting a full EKS+preload",
+      "//pollnote8": "cycle on. TODO(#32): 25k is KNOWINGLY below the plan-§6 >=50k",
+      "//pollnote9": "ch_avg_rows_per_insert milestone; #32 co-tunes poll+heap upward on",
+      "//pollnote10": "the connect-ng m6i.xlarge. Overridable per-run via env",
+      "//pollnote11": "CFG_MAX_POLL_RECORDS (render_connector.py + runtime echo agree).",
+      "consumer.override.max.poll.records": "25000",
+      "consumer.override.max.partition.fetch.bytes": "104857600",
+      "consumer.override.fetch.max.bytes": "209715200",
+
+      "//timeout": "--- plan §6: insert timeout << max.poll.interval.ms with margin ---",
+      "//timeoutnote": "max.poll.interval.ms=600000 (10m). clickhouseClientInsertTimeoutMs",
+      "//timeoutnote2": "=180000 (3m) leaves a 420s (7m) margin, sized off the target's",
+      "//timeoutnote3": "observed multi-second throttled p99s so a hung insert cannot outlive",
+      "//timeoutnote4": "the poll interval and trigger a rebalance mid-insert. The sink also",
+      "//timeoutnote5": "warns at startup if this is >= max.poll.interval.ms.",
+      "consumer.override.max.poll.interval.ms": "600000",
+      "clickhouseClientInsertTimeoutMs": "180000",
+
+      "//async": "--- plan §6: async OFF by construction (sink forces async_insert=0 ---",
+      "//async2": "+ wait_end_of_query=1). Pin explicitly for provenance/auditability.",
+      "clickhouseSettings": "async_insert=0,wait_end_of_query=1",
+
+      "//err": "--- fail loud, do not silently drop/retry-forever during a benchmark ---",
+      "errors.tolerance": "none"
+    }
+  }
+}

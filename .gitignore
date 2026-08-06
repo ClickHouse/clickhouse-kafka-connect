@@ -36,3 +36,7 @@ build
 
 # AI
 memory
+
+# Benchmark v2 per-run orchestration artifacts (poller samples, capture output,
+# runtime JSON) — transient, regenerated every run.
+benchmarks/e2e/orchestration/artifacts/

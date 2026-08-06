@@ -1,0 +1,128 @@
+name: Benchmark v2 Connect images
+
+# Builds BOTH benchmark arm images (plan section 3, phase 2):
+#   - arm H (head)   : plugin built from the checked-out sha
+#   - arm P (pinned) : the immutable RELEASED plugin artifact for the tag in
+#                      benchmarks/e2e/docker/PINNED_REF (downloaded + sha256-verified,
+#                      never rebuilt)
+# and pushes them to GHCR. The nightly orchestrator (task 31) calls this via
+# workflow_call; it can also be run by hand via workflow_dispatch.
+#
+# DIGEST-PINNED BY DEFAULT (stale-tag class fix): build-arm.sh --push resolves
+# the registry digest after each push, and the workflow_call outputs
+# (head_image / pinned_image) are the immutable repo@sha256:... references — NOT
+# the mutable tags. A live run once served a STALE image twice because a reused
+# tag was cached at the node/registry; consuming the digest downstream makes that
+# impossible. run_pair.sh additionally re-validates that whatever it is handed is
+# a digest ref (fails loud on a bare tag).
+#
+# No new secrets: pushes use the built-in GITHUB_TOKEN.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      head_image:
+        description: "DIGEST ref (repo@sha256:...) of the pushed head-arm image"
+        value: ${{ jobs.build.outputs.head_image }}
+      pinned_image:
+        description: "DIGEST ref (repo@sha256:...) of the pushed pinned-arm image"
+        value: ${{ jobs.build.outputs.pinned_image }}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: build-arm-images
+    runs-on: ubuntu-latest
+    outputs:
+      head_image: ${{ steps.export.outputs.head_image }}
+      pinned_image: ${{ steps.export.outputs.pinned_image }}
+    steps:
+      - name: Checkout (full history + tags so the pinned tag sha resolves)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase repository owner
+        id: repo
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      # build-arm.sh --push builds, pushes, and resolves the registry DIGEST,
+      # emitting `image_digest_ref=<repo>@sha256:...` on stdout and writing it to
+      # the --digest-out file. We consume the DIGEST (never the tag) downstream.
+      - name: Build + push head arm image (resolve digest)
+        id: head
+        env:
+          IMAGE_BASE: ${{ env.REGISTRY }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          SHA_SHORT="${GITHUB_SHA:0:12}"
+          IMAGE_TAG="${IMAGE_BASE,,}:benchmark-head-${SHA_SHORT}"
+          ./benchmarks/e2e/docker/build-arm.sh --arm head --image-tag "${IMAGE_TAG}" \
+            --push --digest-out head.digest | tee head.out
+          DIGEST="$(cat head.digest)"
+          case "${DIGEST}" in
+            *@sha256:*) ;;
+            *) echo "::error::head image did not resolve to a digest ref: '${DIGEST}'"; exit 1 ;;
+          esac
+          echo "tag=${IMAGE_TAG}"     >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}"     >> "$GITHUB_OUTPUT"
+
+      - name: Build + push pinned arm image (resolve digest)
+        id: pinned
+        env:
+          IMAGE_BASE: ${{ env.REGISTRY }}/${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PINNED_REF="$(grep -v '^[[:space:]]*#' benchmarks/e2e/docker/PINNED_REF | grep -v '^[[:space:]]*$' | head -1 | tr -d '[:space:]')"
+          IMAGE_TAG="${IMAGE_BASE,,}:benchmark-pinned-${PINNED_REF}"
+          ./benchmarks/e2e/docker/build-arm.sh --arm pinned --image-tag "${IMAGE_TAG}" \
+            --push --digest-out pinned.digest | tee pinned.out
+          DIGEST="$(cat pinned.digest)"
+          case "${DIGEST}" in
+            *@sha256:*) ;;
+            *) echo "::error::pinned image did not resolve to a digest ref: '${DIGEST}'"; exit 1 ;;
+          esac
+          echo "tag=${IMAGE_TAG}"     >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}"     >> "$GITHUB_OUTPUT"
+
+      - name: Export image DIGEST refs + provenance summary
+        id: export
+        run: |
+          set -euo pipefail
+          # The workflow_call outputs are DIGEST references, not tags (stale-tag
+          # class fix): downstream (benchmark-nightly.yml -> run_pair.sh) deploys
+          # the arms by digest so a cached mutable tag can never be served stale.
+          echo "head_image=${{ steps.head.outputs.digest }}"     >> "$GITHUB_OUTPUT"
+          echo "pinned_image=${{ steps.pinned.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Benchmark v2 arm images (DIGEST-pinned)"
+            echo ""
+            echo "| arm | tag (build handle) | digest (deployed ref) |"
+            echo "|-----|--------------------|-----------------------|"
+            echo "| head | \`${{ steps.head.outputs.tag }}\` | \`${{ steps.head.outputs.digest }}\` |"
+            echo "| pinned | \`${{ steps.pinned.outputs.tag }}\` | \`${{ steps.pinned.outputs.digest }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

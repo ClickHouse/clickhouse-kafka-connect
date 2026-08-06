@@ -1,0 +1,136 @@
+# Benchmark v2 producer Job — pre-loads the topic before a measured drain
+# (plan §5 step 2, decision 6). Runs to completion, then exits. The orchestrator
+# (task 31) waits for this Job to succeed, then derives the authoritative
+# rows_expected from the broker's committed topic offsets before deploying any
+# Connect arm.
+#
+# PARALLEL SHARDED PRE-LOAD (cut the ~20min preload to ~5-6min). This is an
+# INDEXED Job: completions == parallelism == SHARD_COUNT pods run at once, each
+# producing a disjoint stride-N slice of the parquet files (producer.py reads
+# JOB_COMPLETION_INDEX + SHARD_COUNT). render_producer_job.py patches BOTH
+# completions and parallelism to SHARD_COUNT (default 3). The preload is
+# UNMEASURED, so this parallelism never touches the instrument.
+#
+# CRITICAL: backoffLimit 0 + restartPolicy Never. ANY pod failure = Job Failed =
+# terminal (a retried, half-complete pre-load would corrupt the offset-derived
+# count: idempotence protects against duplicate *records* within one pod, but a
+# re-run would re-produce a shard on top of the first, inflating end offsets).
+# The orchestrator handles retry by recreating the topic and creating a fresh
+# Job — never by letting K8s restart pods.
+#
+# The image is built from benchmarks/e2e/producer/Dockerfile (build context
+# benchmarks/e2e/). Set the image ref via `kubectl set image` or an overlay;
+# the placeholder below is replaced by CI.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hits-producer
+  namespace: kafka-bench
+  labels:
+    app: hits-producer
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  # Indexed completions: each pod gets a distinct JOB_COMPLETION_INDEX (0..N-1)
+  # and produces the stride-N slice of files for that index. render_producer_job.py
+  # patches completions AND parallelism to SHARD_COUNT (this default N=3 stays
+  # in sync with the SHARD_COUNT env below).
+  completionMode: Indexed
+  completions: 3
+  parallelism: 3
+  # A half-complete pre-load must never be silently retried — see header. With
+  # an Indexed Job + backoffLimit 0, the FIRST failed pod fails the whole Job.
+  backoffLimit: 0
+  # Give a full-dataset (~100M row) run generous headroom; the orchestrator can
+  # override. 6h.
+  activeDeadlineSeconds: 21600
+  # Clean up the finished Job object automatically 1h after completion.
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: hits-producer
+        app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+    spec:
+      restartPolicy: Never
+      # Keep the producer on the bench nodegroup (2026-07-08 rebuild): the
+      # dedicated connect-ng m6i.xlarge runs ONLY the Connect worker, so the
+      # producer must land on bench-ng (role=bench). The podAntiAffinity below
+      # still spreads it off the broker pod within bench-ng.
+      nodeSelector:
+        role: bench
+      # Keep the producer off the broker node when the scheduler can manage it.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    strimzi.io/cluster: bench
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: producer
+          # Replaced by CI with the built image ref (ECR).
+          image: PRODUCER_IMAGE_PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          env:
+            # Strimzi bootstrap for cluster `bench`, plaintext 9092.
+            - name: BOOTSTRAP
+              value: "bench-kafka-bootstrap.kafka-bench.svc:9092"
+            # Confluent Schema Registry in-cluster service (schema-registry.yaml).
+            - name: REGISTRY_URL
+              value: "http://schema-registry.kafka-bench.svc:8081"
+            - name: TOPIC
+              value: "hits"
+            - name: PARTITIONS
+              value: "3"
+            # Number of parallel producer shards. MUST equal spec.completions ==
+            # spec.parallelism above; render_producer_job.py keeps all three in
+            # sync from a single SHARD_COUNT input (default 3). JOB_COMPLETION_INDEX
+            # is injected by K8s per pod (Indexed Job) — do NOT set it here.
+            - name: SHARD_COUNT
+              value: "3"
+            # The orchestrator creates the fresh topic per run (decision 6), so
+            # the Job does NOT create it (CREATE_TOPIC defaults to false). Set
+            # to "true" only for standalone/local runs.
+            - name: CREATE_TOPIC
+              value: "false"
+            # PARQUET_SOURCE: staging location is a PENDING decision (overseer
+            # directive 3). Default here is the us-east-2 staging placeholder;
+            # CI/orchestrator overrides it with the resolved location. See
+            # README "Parquet staging (TBD)".
+            - name: PARQUET_SOURCE
+              value: "s3://TBD-us-east-2-staging/clickbench/hits/"
+            # AWS region for S3 reads (co-located with the Cloud target).
+            - name: AWS_REGION
+              value: "us-east-2"
+            # Parquet read batch (memory bound, not the Kafka batch).
+            - name: PARQUET_BATCH_ROWS
+              value: "65536"
+          resources:
+            # Sized for an m6i.large node (2 vCPU / 8 GiB). The producer is
+            # I/O + serialize bound; it streams parquet in bounded batches. The
+            # boundedness is now enforced on ALL buffers (see producer.py + the
+            # README "Memory boundedness & OOM diagnosis"): pyarrow scanner
+            # readahead pinned to 1x1, librdkafka queue capped at 100k msgs /
+            # 128 MiB, per-batch dicts released promptly.
+            requests:
+              cpu: "1"
+              # 4Gi request is SCHEDULING-ONLY — it reserves capacity for the
+              # scheduler and does NOT cap usage. The measured post-fix peak
+              # (~4.4Gi) runs slightly ABOVE this request, which is expected and
+              # fine: only the LIMIT below is enforced by the OOMKiller. The
+              # 1Gi/3Gi sizing OOMKilled at ~2m44s into a 10M-row pre-load
+              # (2026-07-07); post-fix the stall-driven pyarrow readahead spike
+              # (the pair-3 OOM cause) drops from ~5.2Gi to ~2.1Gi.
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              # 7Gi: bumped from 6Gi as a stopgap on 2026-07-12 when 6Gi
+              # OOMKilled nondeterministically at ~2.5M rows (pair-3) — the peak
+              # (rdkafka queue near its old 1GiB cap + a pyarrow readahead spike)
+              # sat right at the old limit. The durable producer.py fix has since
+              # bounded both paths; 7Gi is retained as DOCUMENTED HEADROOM and can
+              # be revisited down to ~6Gi once a full stall-under-load run confirms
+              # the flattened peak in-cluster. m6i.large allocatable ~7.1Gi.
+              memory: 7Gi
