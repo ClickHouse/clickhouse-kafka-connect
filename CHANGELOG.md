@@ -16,6 +16,14 @@
 * [build] Updated `gradle-wrapper from` 9.5.1 to 9.6.1
 * [tests] Updated `com.squareup.okhttp3:okhttp` from 5.3.2 to 5.4.0.
 
+* Support Avro record unions (e.g. `[TypeA, TypeB]`) mapping to a ClickHouse `JSON` column. Confluent's
+  Avro converter turns a union of records into a Connect union struct (`io.confluent.connect.avro.Union`)
+  keyed by branch record name; the connector serializes this to JSON in tagged form (which branch it was
+  is preserved). Writing to a `JSON` column in RowBinary requires `input_format_binary_read_json_as_string=1`,
+  so the Avro integration harness now routes JSON-target fixtures through a `setupAvroConnectorWithJson`
+  connector config. This promotes the `union_two_records` schema from the incompatible to the compatible
+  Avro test fixtures and adds feature-test coverage. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/800)
+
 ## Bug Fixes 
 
 * Fixed issue with Table Schema cache that can remember old schema instead of new one. Now if old 
