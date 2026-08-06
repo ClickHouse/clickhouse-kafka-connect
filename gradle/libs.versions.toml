@@ -11,7 +11,7 @@ lombok = "1.18.46"
 # Testing
 junitJupiter = "5.14.4"
 apiguardian = "1.1.2"
-hamcrest = "2.2"
+hamcrest = "3.0"
 mockito = "5.23.0"
 
 # Integration test
