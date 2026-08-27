@@ -1,3 +1,11 @@
+# 1.5.1 (not published)
+
+## Bug Fixes
+
+* With client V2, server errors arrive as `com.clickhouse.client.api.ServerException` rather than the V1
+  `ClickHouseException`, so the retriable error-code list in `Utils.handleException` never matched and tasks
+  failed instead of retrying. Both exception types now share the same list.
+
 # 1.5.0, 2026-08-05
 
 ## Improvements
