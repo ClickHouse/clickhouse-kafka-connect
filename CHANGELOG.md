@@ -1,3 +1,11 @@
+# 1.5.1 (not published)
+
+## Bug Fixes
+
+* `java.net.SocketException` (broken pipe, connection reset) from the ClickHouse client is now retried like the
+  existing timeout cases instead of failing the task. With client V2's persistent connections a single server-side
+  connection reset otherwise fails every task at once.
+
 # 1.5.0, 2026-08-05
 
 ## Improvements

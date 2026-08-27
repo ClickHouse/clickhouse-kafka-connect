@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.util;
 
 import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.api.DataTransferException;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -50,6 +52,15 @@ public class UtilsTest {
         assertThrows(RetriableException.class, () -> {
             Exception timeout = new IOException("Write timed out after 30000 ms");
             Utils.handleException(timeout, false, new ArrayList<>());
+        });
+    }
+
+    @Test
+    @DisplayName("Test SocketException Throw Cause")
+    public void TestSocketExceptionCause() {
+        assertThrows(RetriableException.class, () -> {
+            Exception brokenPipe = new RuntimeException(new DataTransferException("Insert failed", new SocketException("Broken pipe")));
+            Utils.handleException(brokenPipe, false, new ArrayList<>());
         });
     }
 
