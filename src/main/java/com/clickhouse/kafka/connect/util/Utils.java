@@ -61,10 +61,6 @@ public class Utils {
         return t instanceof ClickHouseException || t instanceof ServerException;
     }
 
-    private static int getServerErrorCode(Throwable t) {
-        return t instanceof ServerException ? ((ServerException) t).getCode() : ((ClickHouseException) t).getErrorCode();
-    }
-
 
     /**
      * This method checks to see if we should retry, otherwise it just throws the exception again
@@ -79,7 +75,9 @@ public class Utils {
         //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
         Exception rootCause = Utils.getRootCause(e, true);
         if (isServerError(rootCause)) {
-            int errorCode = getServerErrorCode(rootCause);
+            int errorCode = rootCause instanceof ServerException
+                    ? ((ServerException) rootCause).getCode()
+                    : ((ClickHouseException) rootCause).getErrorCode();
             LOGGER.warn("ClickHouse server error code: {}", errorCode);
             switch (errorCode) {
                 case 3: // UNEXPECTED_END_OF_FILE
