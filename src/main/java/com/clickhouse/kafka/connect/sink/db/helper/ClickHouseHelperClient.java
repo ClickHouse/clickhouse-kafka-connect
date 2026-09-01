@@ -64,6 +64,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private boolean useClientV2 = false;
     private final String sslSocketSni;
     private final String clusterClause;
+    private final boolean clientCompression;
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -81,6 +82,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.useClientV2 = builder.useClientV2;
         this.sslSocketSni = builder.sslSocketSni;
         this.clusterClause = builder.clusterClause;
+        this.clientCompression = builder.clientCompression;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -159,7 +161,8 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .setUsername(this.username)
                 .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
-                .setDefaultDatabase(this.database);
+                .setDefaultDatabase(this.database)
+                .compressClientRequest(this.clientCompression);
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
@@ -583,6 +586,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private boolean useClientV2 = true;
         private String sslSocketSni = "";
         private String clusterClause = "";
+        private boolean clientCompression = false;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -640,6 +644,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder setClusterClause(String clusterName) {
             this.clusterClause = (clusterName == null || clusterName.isEmpty()) ? "" : " ON CLUSTER '" + clusterName + "' ";
+            return this;
+        }
+
+        public ClickHouseClientBuilder setClientCompression(boolean clientCompression) {
+            this.clientCompression = clientCompression;
             return this;
         }
 

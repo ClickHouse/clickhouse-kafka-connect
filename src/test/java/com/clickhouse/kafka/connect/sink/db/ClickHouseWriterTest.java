@@ -586,9 +586,23 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     @Test
     public void doInsertJsonUsesEquivalentWirePathAcrossClients() {
-        List<String> v1Rows = runJsonInsertAndReadRows("V1");
-        List<String> v2Rows = runJsonInsertAndReadRows("V2");
+        List<String> v1Rows = runJsonInsertAndReadRows("V1", Map.of());
+        List<String> v2Rows = runJsonInsertAndReadRows("V2", Map.of());
         assertEquals(v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for JSON inserts");
+    }
+
+    @Test
+    public void doInsertJsonWithV2ClientCompressionEnabledOrDisabledPersistsIdenticalRows() {
+        List<String> expectedRows = List.of("1|alpha", "2|beta", "3|gamma");
+        List<String> compressedRows = runJsonInsertAndReadRows("V2", Map.of(
+                ClickHouseSinkConfig.CLIENT_COMPRESSION, "true"));
+        List<String> uncompressedRows = runJsonInsertAndReadRows("V2", Map.of(
+                ClickHouseSinkConfig.CLIENT_COMPRESSION, "false"));
+
+        assertEquals(expectedRows, compressedRows,
+                "Expected V2 JSON inserts with client request compression enabled to persist the inserted rows");
+        assertEquals(expectedRows, uncompressedRows,
+                "Expected V2 JSON inserts with client request compression disabled to persist the inserted rows");
     }
 
     private List<String> runStringInsertAndReadRows(String clientVersion, String insertFormat) {
@@ -646,9 +660,10 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         }
     }
 
-    private List<String> runJsonInsertAndReadRows(String clientVersion) {
+    private List<String> runJsonInsertAndReadRows(String clientVersion, Map<String, String> overrides) {
         Map<String, String> props = getBaseProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+        props.putAll(overrides);
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("json_parity_" + clientVersion.toLowerCase());
 
