@@ -52,17 +52,27 @@ public class UtilsTest {
     public void TestClickHouseClientTimeoutCause(){
         assertThrows(RetriableException.class, () -> {
             Exception timeout = new IOException("Write timed out after 30000 ms");
-            Utils.handleException(timeout, false, new ArrayList<>());
+            Utils.handleException(timeout, false, false, new ArrayList<>());
         });
     }
 
     @Test
-    @DisplayName("Test SocketException Throw Cause")
-    public void TestSocketExceptionCause() {
+    @DisplayName("Test SocketException retried when enabled")
+    public void TestSocketExceptionRetriedWhenEnabled() {
         assertThrows(RetriableException.class, () -> {
             Exception brokenPipe = new RuntimeException(new DataTransferException("Insert failed", new SocketException("Broken pipe")));
-            Utils.handleException(brokenPipe, false, new ArrayList<>());
+            Utils.handleException(brokenPipe, false, true, new ArrayList<>());
         });
+    }
+
+    @Test
+    @DisplayName("Test SocketException not retried by default")
+    public void TestSocketExceptionNotRetriedByDefault() {
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
+            Exception brokenPipe = new RuntimeException(new DataTransferException("Insert failed", new SocketException("Broken pipe")));
+            Utils.handleException(brokenPipe, false, false, new ArrayList<>());
+        });
+        assertFalse(thrown instanceof RetriableException);
     }
 
     @DisplayName("Test client V2 ServerException Root Cause")
@@ -77,7 +87,7 @@ public class UtilsTest {
     public void TestServerExceptionRetriableCode() {
         assertThrows(RetriableException.class, () -> {
             Exception e = new RuntimeException(new ServerException(252, "Too many parts", 500));
-            Utils.handleException(e, false, new ArrayList<>());
+            Utils.handleException(e, false, false, new ArrayList<>());
         });
     }
 
@@ -86,7 +96,7 @@ public class UtilsTest {
     public void TestServerExceptionNonRetriableCode() {
         RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
             Exception e = new RuntimeException(new ServerException(60, "Table does not exist", 404));
-            Utils.handleException(e, false, new ArrayList<>());
+            Utils.handleException(e, false, false, new ArrayList<>());
         });
         assertFalse(thrown instanceof RetriableException);
     }

@@ -69,7 +69,7 @@ public class Utils {
      * @param e Exception to check
      */
 
-    public static void handleException(Exception e, boolean errorsTolerance, Collection<SinkRecord> records) {
+    public static void handleException(Exception e, boolean errorsTolerance, boolean retryOnSocketException, Collection<SinkRecord> records) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
 
         //Let's check if we have a ClickHouseException to reference the error code
@@ -116,7 +116,7 @@ public class Utils {
         } else if (rootCause instanceof UnknownHostException) {
             LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw new RetriableException(e);
-        } else if (rootCause instanceof SocketException) {
+        } else if (retryOnSocketException && rootCause instanceof SocketException) {
             LOGGER.warn("SocketException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw new RetriableException(e);
         } else if (rootCause instanceof IOException) {

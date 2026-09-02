@@ -1,10 +1,13 @@
 # 1.5.1 (not published)
 
+## Improvements
+
+* New `retryOnSocketException` setting (default `false`). When enabled, a `java.net.SocketException` (broken pipe,
+  connection reset) from the ClickHouse client is retried like the existing timeout cases instead of failing the
+  task. With client V2's persistent connections a single server-side connection reset otherwise fails every task at once.
+
 ## Bug Fixes
 
-* `java.net.SocketException` (broken pipe, connection reset) from the ClickHouse client is now retried like the
-  existing timeout cases instead of failing the task. With client V2's persistent connections a single server-side
-  connection reset otherwise fails every task at once.
 * With client V2, server errors arrive as `com.clickhouse.client.api.ServerException` rather than the V1
   `ClickHouseException`, so the retriable error-code list in `Utils.handleException` never matched and tasks
   failed instead of retrying. Both exception types now share the same list.
