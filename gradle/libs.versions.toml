@@ -29,7 +29,7 @@ slf4j = "2.0.18"
 # Plugins
 spotless = "8.10.1"
 shadow = "8.3.5"
-protobufPlugin = "0.9.5"
+protobufPlugin = "0.10.0"
 
 [libraries]
 # Core dependencies
