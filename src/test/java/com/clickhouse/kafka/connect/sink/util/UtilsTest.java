@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.sink.util;
 
 import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.api.ServerException;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -51,6 +52,33 @@ public class UtilsTest {
             Exception timeout = new IOException("Write timed out after 30000 ms");
             Utils.handleException(timeout, false, new ArrayList<>());
         });
+    }
+
+    @Test
+    @DisplayName("Test client V2 ServerException Root Cause")
+    public void TestServerExceptionRootCause() {
+        Exception e1 = new ServerException(252, "Too many parts", 500);
+        Exception e2 = new RuntimeException(new RuntimeException(e1));
+        assertEquals(e1, Utils.getRootCause(e2, true));
+    }
+
+    @Test
+    @DisplayName("Test client V2 ServerException retriable code")
+    public void TestServerExceptionRetriableCode() {
+        assertThrows(RetriableException.class, () -> {
+            Exception e = new RuntimeException(new ServerException(252, "Too many parts", 500));
+            Utils.handleException(e, false, new ArrayList<>());
+        });
+    }
+
+    @Test
+    @DisplayName("Test client V2 ServerException non-retriable code")
+    public void TestServerExceptionNonRetriableCode() {
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
+            Exception e = new RuntimeException(new ServerException(60, "Table does not exist", 404));
+            Utils.handleException(e, false, new ArrayList<>());
+        });
+        assertFalse(thrown instanceof RetriableException);
     }
 
     private static Table tableWith(String tableName, String[]... colSpecs) {
