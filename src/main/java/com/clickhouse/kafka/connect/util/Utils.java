@@ -1,6 +1,7 @@
 package com.clickhouse.kafka.connect.util;
 
 import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.api.ServerException;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
@@ -38,10 +39,10 @@ public class Utils {
     }
 
     /**
-     * This will drill down to the first ClickHouseException in the exception chain
+     * This will drill down to the first ClickHouse server exception (client V1 or V2) in the exception chain
      *
      * @param e Exception to drill down
-     * @return ClickHouseException or null if none found
+     * @return the server exception, otherwise the deepest cause, or null if none found
      */
     public static Exception getRootCause(Exception e, Boolean prioritizeClickHouseException) {
         if (e == null)
@@ -49,12 +50,16 @@ public class Utils {
 
         Throwable runningException = e;//We have to use Throwable because of the getCause() signature
         while (runningException.getCause() != null &&
-                (!prioritizeClickHouseException || !(runningException instanceof ClickHouseException))) {
+                (!prioritizeClickHouseException || !isServerError(runningException))) {
             LOGGER.trace("Found exception: {}", runningException.getLocalizedMessage());
             runningException = runningException.getCause();
         }
 
         return runningException instanceof Exception ? (Exception) runningException : null;
+    }
+
+    private static boolean isServerError(Throwable t) {
+        return t instanceof ClickHouseException || t instanceof ServerException;
     }
 
 
@@ -70,10 +75,12 @@ public class Utils {
         //Let's check if we have a ClickHouseException to reference the error code
         //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
         Exception rootCause = Utils.getRootCause(e, true);
-        if (rootCause instanceof ClickHouseException) {
-            ClickHouseException clickHouseException = (ClickHouseException) rootCause;
-            LOGGER.warn("ClickHouseException code: {}", clickHouseException.getErrorCode());
-            switch (clickHouseException.getErrorCode()) {
+        if (isServerError(rootCause)) {
+            int errorCode = rootCause instanceof ServerException
+                    ? ((ServerException) rootCause).getCode()
+                    : ((ClickHouseException) rootCause).getErrorCode();
+            LOGGER.warn("ClickHouse server error code: {}", errorCode);
+            switch (errorCode) {
                 case 3: // UNEXPECTED_END_OF_FILE
                 case 107: // FILE_DOESNT_EXIST
                 case 159: // TIMEOUT_EXCEEDED
@@ -91,7 +98,7 @@ public class Utils {
                 case 999: // KEEPER_EXCEPTION
                     throw new RetriableException(e);
                 default:
-                    LOGGER.error("Error code [{}] wasn't in the acceptable list.", clickHouseException.getErrorCode());
+                    LOGGER.error("Error code [{}] wasn't in the acceptable list.", errorCode);
                     break;
             }
         }
