@@ -36,7 +36,27 @@ We dismissed solutions using a two-phase commit or storing offsets in ClickHouse
 
 The current solution exploits a property of ClickHouse, which can initially cause some [getting-started confusion](https://clickhouse.com/blog/common-getting-started-issues-with-clickhouse). If identical inserts are made to ClickHouse within a certain time period, they are de-duplicated. This is known as the [replicated_deduplication_window](https://clickhouse.com/docs/en/operations/settings/merge-tree-settings/#replicated-deduplication-window) and is enabled by default on replicated instances. When data is inserted into ClickHouse, it creates one or more blocks (parts). In replicated environments, such as ClickHouse Cloud, a hash is written in ClickHouse Keeper. Subsequent inserted blocks are compared against these hashes and ignored if a match is present. This is useful since it allows clients to safely retry inserts in case of no acknowledgment from ClickHouse, e.g., because of a network interruption. This requires blocks to be identical, i.e., the same size with the same rows in the same order. These hashes are stored for only the most recent 100 blocks, although this [can be modified](https://clickhouse.com/docs/en/operations/settings/merge-tree-settings/#replicated-deduplication-window). Note higher values will slow down inserts due to the need for more comparisons.
 
-![deduplication](./deduplication.png)
+#### Deduplication flow
+
+```
+Insert query
+    │
+    ▼
+ClickHouse: create data block(s)
+    │  per block
+    ▼
+Calculate hash sum for data block
+    │
+    ▼
+Check if hash sum already exists  ──read──►  Keeper deduplication log
+    │
+    ├─ yes ──► Ignore data block
+    │
+    └─ no  ──► Create data part on storage
+               + write hash sum to Keeper
+```
+
+Original diagram: [deduplication.png](./deduplication.png)
 
 This same behavior can be enabled for non-replicated instances via the setting [non_replicated_deduplication_window](https://clickhouse.com/docs/en/operations/settings/merge-tree-settings/#replicated-deduplication-window). In this case, the hashes are stored on a local disk.
 
@@ -49,7 +69,31 @@ If we could ensure these properties hold true, we could exploit ClickHouse’s a
 
 To ensure we always formulate identical batches to ClickHouse, we need to maintain a state of our current processing and a record of the previous insert. We can use this information to slice and merge batches to ensure the consistency of inserts. We do this using a state machine per topic and partition to align with how processing can be distributed in Kafka and how offsets are tracked. Specifically, for each `put` of records, we generate a batch per topic and partition, look up the previous state for this topic/partition and generate consistent inserts to ClickHouse based on a set of rules implemented as a state machine. This can be summarized as shown below:
 
-![architecture](./architecture.png)
+#### High-level architecture
+
+```
+Kafka  -- 'put' of records -->  Kafka Connect Sink
+                                    │
+                                    ▼
+                           create batch per Topic+Partition
+                                    │  batch
+                                    ▼
+                           state machine (single worker thread)
+                             1. look up state of previous insert
+                             2. generate consistent batches
+                             3. (re-) insert batches
+                             4. store state of current insert
+                                    │
+                    ┌───────────────┴────────────────┐
+                    ▼                                ▼
+           ClickHouse Keeper                  ClickHouse
+             State store                        automatic
+             (look up / store)                  deduplication of batches
+                                                (Keeper deduplication log)
+                                                → batches stored exactly-once
+```
+
+Original diagram: [architecture.png](./architecture.png)
 
 Not that the above process is single-threaded per worker, i.e., only a single thread can operate on any single topic/partition simultaneously.
 
@@ -72,7 +116,21 @@ For each topic/partition batch, we record the following information:
 
 When handling a batch for a specific topic and partition, we look up this information for the previous insert. If the latest state is `AFTER,` we know the previous insert was successful. Conversely, `BEFORE` means the connector could not confirm whether ClickHouse received and acknowledged the data. The absence of either state means either this is the first time we have seen data for this topic or partition, or we weren't able to set even set a `BEFORE` state. These are logically identical. This is the simplest case in our state machine:
 
-![start state](./start_state.png)
+#### Initial state (`NONE`)
+
+```
+Stored state: NONE
+  (first insert for this topic/partition, or a previous failure
+   before the BEFORE flag could be stored)
+
+  1. Store state  BEFORE  [current minOffset, current maxOffset]
+  2. Insert batch
+  3. Store state  AFTER   [current minOffset, current maxOffset]
+```
+
+In code these flags are `State.BEFORE_PROCESSING` and `State.AFTER_PROCESSING`.
+
+Original diagram: [start_state.png](./start_state.png)
 
 As shown, the state is set to `BEFORE` before the insert to ClickHouse is performed. If successful and acknowledged, the state is set to `AFTER`. Any of these steps could fail.
 
@@ -85,17 +143,56 @@ For subsequent inserts, we should have a previous state for each topic/partition
 
 This is summarized below:
 
-![full state machine](./full_state_machine.png)
+#### Full state machine
+
+Comparison of previous insert `[storedMin, storedMax]` with current batch `[currentMin, currentMax]`.
+
+| Previous flag | same (`currentMin == storedMin` and `currentMax == storedMax`) | overlapping (`currentMin == storedMin` and `currentMax > storedMax`) | contains (current range inside stored range) | new (`currentMin > storedMax`) |
+|---|---|---|---|---|
+| `BEFORE` (unsure previous insert succeeded) | (Re-)Insert batch* then store `AFTER` `[currentMin, currentMax]` | Split at stored maxOffset. (Re-)Insert first chunk* then store `AFTER` for that chunk; then run the `AFTER` overlapping steps on the second chunk | DLQ** | Insert batch*** then store `AFTER` `[currentMin, currentMax]` |
+| `AFTER` (previous insert succeeded) | Do nothing | Store `BEFORE` for the second chunk `[splitOffset, currentMax]`, insert second chunk, store `AFTER` | Do nothing | Store `BEFORE` `[currentMin, currentMax]`, insert batch, store `AFTER` |
+
+\* Automatically deduplicated by ClickHouse if the previous insert already succeeded.
+
+\*\* There is no way to create and insert data blocks without risking duplication.
+
+\*\*\* Kafka would not deliver the current insert if the previous max offset had not been committed.
+
+Original diagram: [full_state_machine.png](./full_state_machine.png)
 
 There is one case not covered by the above. We may simply get data for a partition and batch whose `minOffset` is less than the `minOffset` of the previous state. This is shown below:
 
-![cropping batches](./cropping_batches.png)
+#### Cropping batches
+
+When the incoming batch starts below the stored `minOffset`, the prefix is dropped and the remainder is evaluated with the rules above:
+
+```
+previous:          [storedMin ──────── storedMax]
+current:    [currentMin ──|──────────── currentMax]
+            ^^^^^^^^^^^^^^^
+            dropped (offset < storedMin)
+
+after trim:            [storedMin ──── currentMax]
+                       evaluate as overlapping / new / …
+```
+
+Original diagram: [cropping_batches.png](./cropping_batches.png)
 
 In this case, we know a portion of the data, up to the previous minOffset of the new batch, has already been processed. We always drop this, as shown above, and continue with the above state machine rules with the “reduced” batch.
 
 Finally, other cases are still possible. For example, suppose the maxOffset of our new batch is less than the minOffset of the previous. These cases are irrecoverable and likely due to external manipulation of the Kafka offsets, resulting in an exception.
 
-![invalid states](./invalid_states.png)
+#### Invalid states
+
+```
+error: current batch does not line up with the stored range
+  (for example current maxOffset < stored minOffset)
+
+BEFORE or AFTER  →  throw runtime exception
+                    (state is out of sync, often from external offset changes)
+```
+
+Original diagram: [invalid_states.png](./invalid_states.png)
 
 ### Scaling
 

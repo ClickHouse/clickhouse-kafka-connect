@@ -18,6 +18,14 @@ Key design goals:
 
 Full design rationale: [`docs/DESIGN.md`](./docs/DESIGN.md)
 
+The diagrams in that doc are ASCII so they can be cited directly:
+- [Deduplication flow](./docs/DESIGN.md#deduplication-flow)
+- [High-level architecture](./docs/DESIGN.md#high-level-architecture)
+- [Initial `NONE` state](./docs/DESIGN.md#initial-state-none)
+- [Full state machine](./docs/DESIGN.md#full-state-machine)
+- [Cropping batches](./docs/DESIGN.md#cropping-batches)
+- [Invalid states](./docs/DESIGN.md#invalid-states)
+
 ### Package Structure
 
 All source code lives under `src/main/java` in the `com.clickhouse.kafka.connect` package:
