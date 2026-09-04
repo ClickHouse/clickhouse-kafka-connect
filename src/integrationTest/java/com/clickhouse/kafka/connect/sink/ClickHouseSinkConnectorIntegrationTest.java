@@ -230,6 +230,14 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.AVRO.getJsonPayload(1, topicName));
     }
 
+    // Same as setupAvroConnector but with input_format_binary_read_json_as_string=1, required for
+    // fixtures whose target table has a JSON column (RowBinary writes the JSON value as a string).
+    private void setupAvroConnectorWithJson(String topicName) throws IOException, InterruptedException {
+        LOGGER.info("Setting up Avro connector (JSON as string) for topic {}...", topicName);
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.AVRO_JSON.getJsonPayload(1, topicName));
+    }
+
     private void setupProtobufConnector(String topicName) throws IOException, InterruptedException {
         LOGGER.info("Setting up Protobuf connector for topic {}...", topicName);
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
@@ -323,8 +331,11 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 .engine("MergeTree")
                 .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
+        boolean hasJsonColumn = false;
         for (String colName : clickhouseColumns.keySet()) {
-            tableStmt.column(colName, clickhouseColumns.getString(colName));
+            String colType = clickhouseColumns.getString(colName);
+            tableStmt.column(colName, colType);
+            hasJsonColumn |= colType.contains("JSON");
         }
         tableStmt.execute(chcNoProxy);
 
@@ -336,8 +347,12 @@ public class ClickHouseSinkConnectorIntegrationTest {
         );
         LOGGER.info("Produced {} records to topic {}", producedCount, topicName);
 
-        // 4. Setup sink connector with Avro converter
-        setupAvroConnector(topicName);
+        // 4. Setup sink connector with Avro converter (JSON-as-string variant when a JSON column is present)
+        if (hasJsonColumn) {
+            setupAvroConnectorWithJson(topicName);
+        } else {
+            setupAvroConnector(topicName);
+        }
 
         // 5. Wait for data to flow through
         ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
@@ -440,6 +455,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         BASE_SCHEMALESS("clickhouse_sink_schemaless.json"),
         PROTOBUF("clickhouse_sink_protobuf.json"),
         AVRO("clickhouse_sink_avro.json"),
+        AVRO_JSON("clickhouse_sink_avro_json.json"),
         JDBC_PROP("clickhouse_sink_with_jdbc_prop.json");
 
         final Path pathToJsonConfig;
