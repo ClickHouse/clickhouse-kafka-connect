@@ -2,6 +2,23 @@
 
 This document details the current design and implementation for ClickHouse-kafka-connect and how it aims to achieve exactly-once delivery semantics.
 
+## Contents
+
+- [Requirements](#requirements)
+- [Addressing exactly-once](#addressing-exactly-once)
+  - [Known Challenges](#known-challenges)
+  - [High-level approach](#high-level-approach)
+    - [Deduplication flow](#deduplication-flow)
+    - [High-level architecture](#high-level-architecture)
+  - [Storing State](#storing-state)
+  - [State Machine](#state-machine)
+    - [Initial state (`NONE`)](#initial-state-none)
+    - [Full state machine](#full-state-machine)
+    - [Cropping batches](#cropping-batches)
+    - [Invalid states](#invalid-states)
+  - [Scaling](#scaling)
+  - [Internal Buffering](#internal-buffering)
+
 # Requirements
 
 For the reasons behind the development of this connector, see [here](https://clickhouse.com/blog/kafka-connect-connector-clickhouse-with-exactly-once).
@@ -81,27 +98,34 @@ To ensure we always formulate identical batches to ClickHouse, we need to mainta
 
 #### High-level architecture
 
+```mermaid
+sequenceDiagram
+    participant Kafka
+    participant Sink as Kafka Connect Sink
+    participant SM as State machine
+    participant Keeper as ClickHouse Keeper
+    participant CH as ClickHouse
+
+    Kafka->>Sink: put(records)
+    Sink->>Sink: create a batch per topic+partition
+    loop each topic+partition (single worker thread)
+        Sink->>SM: batch
+        SM->>Keeper: look up previous insert state
+        Keeper-->>SM: flag + [storedMin, storedMax]
+        SM->>SM: generate consistent batches
+        SM->>CH: (re-)insert batches
+        Note over CH: identical blocks are deduplicated
+        SM->>Keeper: store current insert state
+    end
 ```
-Kafka  -- 'put' of records -->  Kafka Connect Sink
-                                    │
-                                    ▼
-                           create batch per Topic+Partition
-                                    │  batch
-                                    ▼
-                           state machine (single worker thread)
-                             1. look up state of previous insert
-                             2. generate consistent batches
-                             3. (re-) insert batches
-                             4. store state of current insert
-                                    │
-                    ┌───────────────┴────────────────┐
-                    ▼                                ▼
-           ClickHouse Keeper                  ClickHouse
-             State store                        automatic
-             (look up / store)                  deduplication of batches
-                                                (Keeper deduplication log)
-                                                → batches stored exactly-once
-```
+
+1. Kafka Connect delivers a `put` of records to the sink.
+2. Group those records into one batch per topic+partition.
+3. For each batch, on a single worker thread:
+   1. Look up the previous insert state in ClickHouse Keeper (state store).
+   2. Generate consistent batches from that state.
+   3. (Re-)insert the batches into ClickHouse. Identical blocks are dropped by the dedup window (Keeper deduplication log).
+   4. Store the current insert state in Keeper.
 
 Original diagram: [architecture.png](./architecture.png)
 
@@ -128,15 +152,12 @@ When handling a batch for a specific topic and partition, we look up this inform
 
 #### Initial state (`NONE`)
 
-```
-Stored state: NONE
-  (first insert for this topic/partition, or a previous failure
-   before the BEFORE flag could be stored)
-
-  1. Store state  BEFORE  [current minOffset, current maxOffset]
-  2. Insert batch
-  3. Store state  AFTER   [current minOffset, current maxOffset]
-```
+| Step | Action | Stored state after |
+|---|---|---|
+| 0 | First batch for this topic/partition, or a crash before `BEFORE` was written | `NONE` |
+| 1 | Store `BEFORE` `[currentMin, currentMax]` | `BEFORE` |
+| 2 | Insert the batch | `BEFORE` |
+| 3 | Store `AFTER` `[currentMin, currentMax]` | `AFTER` |
 
 In code these flags are `State.BEFORE_PROCESSING` and `State.AFTER_PROCESSING`.
 
@@ -174,17 +195,20 @@ There is one case not covered by the above. We may simply get data for a partiti
 
 #### Cropping batches
 
-When the incoming batch starts below the stored `minOffset`, the prefix is dropped and the remainder is evaluated with the rules above:
+Let the stored range be `[s_min, s_max]` and the current batch `[c_min, c_max]`.
 
-```
-previous:          [storedMin ──────── storedMax]
-current:    [currentMin ──|──────────── currentMax]
-            ^^^^^^^^^^^^^^^
-            dropped (offset < storedMin)
+If `c_min < s_min`, drop every record with `offset < s_min` and continue with `[s_min, c_max]` using the rules above.
 
-after trim:            [storedMin ──── currentMax]
-                       evaluate as overlapping / new / …
-```
+Example: stored `[10, 19]`, current `[5, 25]`.
+
+| Range | Offsets |
+|---|---|
+| stored | `[10, 19]` |
+| current | `[5, 25]` |
+| dropped prefix (`offset < s_min`) | `[5, 9]` |
+| remainder | `[10, 25]` |
+
+`[10, 25]` vs `[10, 19]` is overlapping (`c_min == s_min` and `c_max > s_max`), so the overlapping rule applies next.
 
 Original diagram: [cropping_batches.png](./cropping_batches.png)
 
