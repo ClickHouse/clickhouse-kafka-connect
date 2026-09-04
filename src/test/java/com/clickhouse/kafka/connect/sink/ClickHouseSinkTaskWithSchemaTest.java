@@ -1875,32 +1875,45 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topic);
     }
 
-    @Test
-    public void testInt32ToInt64ConversionWithConnectSchema() throws Exception {
-        String topic = createTopicName("test_int32_to_int64_connect");
+    private static Stream<Arguments> integerTypesConnectSchemaProvider() {
+        List<Arguments> args = new ArrayList<>();
+        List<String> targetTypes = List.of("Int64", "Int128");
+        for (String targetType : targetTypes) {
+            args.add(Arguments.of("INT8_to_" + targetType, Schema.INT8_SCHEMA, (byte) 12, (byte) 34, Arrays.asList((byte) 100, (byte) 110, (byte) 120), targetType));
+            args.add(Arguments.of("INT16_to_" + targetType, Schema.INT16_SCHEMA, (short) 1234, (short) 5678, Arrays.asList((short) 100, (short) 200, (short) 300), targetType));
+            args.add(Arguments.of("INT32_to_" + targetType, Schema.INT32_SCHEMA, 12345, 67890, Arrays.asList(100, 200, 300), targetType));
+            args.add(Arguments.of("INT64_to_" + targetType, Schema.INT64_SCHEMA, 123456789L, 987654321L, Arrays.asList(100L, 200L, 300L), targetType));
+        }
+        return args.stream();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("integerTypesConnectSchemaProvider")
+    public void testInt32ToInt64ConversionWithConnectSchema(String name, Schema fieldSchema, Object idVal, Object val, List<?> arrVal, String targetType) throws Exception {
+        String topic = createTopicName("test_" + name.toLowerCase() + "_connect");
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         ClickHouseTestHelpers.dropTable(chc, topic);
 
         new CreateTableStatement()
                 .tableName(topic)
-                .column("id", "Int64")
-                .column("val_int32", "Int64")
-                .column("arr_int32", "Array(Int64)")
+                .column("id", targetType)
+                .column("val_int32", targetType)
+                .column("arr_int32", "Array(" + targetType + ")")
                 .engine("MergeTree")
                 .orderByColumn("id")
                 .execute(chc);
 
         Schema schema = SchemaBuilder.struct()
-                .field("id", Schema.INT32_SCHEMA)
-                .field("val_int32", Schema.INT32_SCHEMA)
-                .field("arr_int32", SchemaBuilder.array(Schema.INT32_SCHEMA).build())
+                .field("id", fieldSchema)
+                .field("val_int32", fieldSchema)
+                .field("arr_int32", SchemaBuilder.array(fieldSchema).build())
                 .build();
 
         Struct struct = new Struct(schema)
-                .put("id", 12345)
-                .put("val_int32", 67890)
-                .put("arr_int32", Arrays.asList(100, 200, 300));
+                .put("id", idVal)
+                .put("val_int32", val)
+                .put("arr_int32", arrVal);
 
         SinkRecord record = new SinkRecord(topic, 0, null, null, schema, struct, 0);
 
@@ -1912,13 +1925,13 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
         assertEquals(1, rows.size());
         JSONObject row = rows.get(0);
-        assertEquals(12345L, row.getLong("id"));
-        assertEquals(67890L, row.getLong("val_int32"));
+        assertEquals(((Number) idVal).longValue(), row.getLong("id"));
+        assertEquals(((Number) val).longValue(), row.getLong("val_int32"));
         JSONArray arr = row.getJSONArray("arr_int32");
-        assertEquals(3, arr.length());
-        assertEquals(100, arr.getInt(0));
-        assertEquals(200, arr.getInt(1));
-        assertEquals(300, arr.getInt(2));
+        assertEquals(arrVal.size(), arr.length());
+        for (int i = 0; i < arrVal.size(); i++) {
+            assertEquals(((Number) arrVal.get(i)).longValue(), arr.getLong(i));
+        }
 
         ClickHouseTestHelpers.dropTable(chc, topic);
     }

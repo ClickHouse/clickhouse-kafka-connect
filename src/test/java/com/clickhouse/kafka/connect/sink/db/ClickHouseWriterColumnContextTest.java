@@ -212,6 +212,49 @@ public class ClickHouseWriterColumnContextTest {
     }
 
     @Test
+    public void validateDataSchemaBooleanAndNumericConversions() {
+        ClickHouseWriter writer = newWriter();
+
+        // 1. Boolean Kafka field -> Numeric ClickHouse columns should be allowed
+        String[] numericChCols = {"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float32", "Float64", "Int128", "UInt128"};
+        for (String chType : numericChCols) {
+            Table t = new Table("default", "test_table", false, List.of(Column.extractColumn("v", chType, false, false, false)), 1);
+            Schema s = SchemaBuilder.struct().field("v", Schema.BOOLEAN_SCHEMA).build();
+            com.clickhouse.kafka.connect.sink.data.Record r = com.clickhouse.kafka.connect.sink.data.Record.convert(
+                    new SinkRecord("test_table", 0, null, null, s, new Struct(s).put("v", true), 0), false, ".", "default", false);
+            assertTrue(writer.validateDataSchema(t, r, false), "BOOLEAN -> " + chType + " should be allowed");
+        }
+
+        // 2. Numeric Kafka fields -> Boolean ClickHouse column should be allowed
+        Schema[] numericKafkaSchemas = {
+                Schema.INT8_SCHEMA, Schema.INT16_SCHEMA, Schema.INT32_SCHEMA, Schema.INT64_SCHEMA,
+                Schema.FLOAT32_SCHEMA, Schema.FLOAT64_SCHEMA
+        };
+        Object[] sampleNumericValues = {(byte) 1, (short) 1, 1, 1L, 1.0f, 1.0d};
+
+        Table tableBool = new Table("default", "test_table", false, List.of(Column.extractColumn("v", "Bool", false, false, false)), 1);
+        for (int i = 0; i < numericKafkaSchemas.length; i++) {
+            Schema s = SchemaBuilder.struct().field("v", numericKafkaSchemas[i]).build();
+            com.clickhouse.kafka.connect.sink.data.Record r = com.clickhouse.kafka.connect.sink.data.Record.convert(
+                    new SinkRecord("test_table", 0, null, null, s, new Struct(s).put("v", sampleNumericValues[i]), 0), false, ".", "default", false);
+            assertTrue(writer.validateDataSchema(tableBool, r, false), numericKafkaSchemas[i].type() + " -> Boolean should be allowed");
+        }
+
+        // 3. Non-numeric non-boolean Kafka field -> Boolean ClickHouse column should be rejected
+        Schema stringSchema = SchemaBuilder.struct().field("v", Schema.STRING_SCHEMA).build();
+        com.clickhouse.kafka.connect.sink.data.Record rString = com.clickhouse.kafka.connect.sink.data.Record.convert(
+                new SinkRecord("test_table", 0, null, null, stringSchema, new Struct(stringSchema).put("v", "true"), 0), false, ".", "default", false);
+        assertFalse(writer.validateDataSchema(tableBool, rString, false), "STRING -> Boolean should be rejected");
+
+        // 4. Boolean Kafka field -> Non-numeric, non-Date ClickHouse column (e.g. Decimal) should be rejected
+        Table tableDecimal = new Table("default", "test_table", false, List.of(Column.extractColumn("v", "Decimal(9,2)", false, false, false)), 1);
+        Schema boolSchema = SchemaBuilder.struct().field("v", Schema.BOOLEAN_SCHEMA).build();
+        com.clickhouse.kafka.connect.sink.data.Record rBool = com.clickhouse.kafka.connect.sink.data.Record.convert(
+                new SinkRecord("test_table", 0, null, null, boolSchema, new Struct(boolSchema).put("v", true), 0), false, ".", "default", false);
+        assertFalse(writer.validateDataSchema(tableDecimal, rBool, false), "BOOLEAN -> Decimal should be rejected");
+    }
+
+    @Test
     public void integerSerializationValuesAndTypes() throws Exception {
         ClickHouseWriter writer = newWriter();
 
