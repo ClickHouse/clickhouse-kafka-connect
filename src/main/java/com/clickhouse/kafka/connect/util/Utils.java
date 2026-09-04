@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -68,7 +69,7 @@ public class Utils {
      * @param e Exception to check
      */
 
-    public static void handleException(Exception e, boolean errorsTolerance, Collection<SinkRecord> records) {
+    public static void handleException(Exception e, boolean errorsTolerance, boolean retryOnSocketException, Collection<SinkRecord> records) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
 
         //Let's check if we have a ClickHouseException to reference the error code
@@ -114,6 +115,9 @@ public class Utils {
             throw new RetriableException(e);
         } else if (rootCause instanceof UnknownHostException) {
             LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
+            throw new RetriableException(e);
+        } else if (retryOnSocketException && rootCause instanceof SocketException) {
+            LOGGER.warn("SocketException thrown, wrapping exception: {}", e.getLocalizedMessage());
             throw new RetriableException(e);
         } else if (rootCause instanceof IOException) {
             final String msg = rootCause.getMessage();

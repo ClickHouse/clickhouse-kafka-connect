@@ -68,7 +68,8 @@ final class ChunkFlusher {
         } catch (Exception e) {
             LOGGER.trace("Passing the exception to the exception handler.");
             boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.isErrorsTolerance();
-            Utils.handleException(e, errorTolerance, records);
+            boolean retryOnSocketException = clickHouseSinkConfig != null && clickHouseSinkConfig.isRetryOnSocketException();
+            Utils.handleException(e, errorTolerance, retryOnSocketException, records);
             if (errorTolerance && errorReporter != null) {
                 LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
                 records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
