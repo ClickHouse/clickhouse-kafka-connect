@@ -997,8 +997,13 @@ public class ClickHouseWriter implements DBWriter {
             Optional<String> updateTableException = UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().filter(code -> e.getMessage().contains(code)).findFirst();
             if (e.getMessage() != null && updateTableException.isPresent() && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.get(updateTableException.get()));
-                Table tableTmp = urgentTableUpdate(table);
-                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
+                try {
+                    chc.pinReplica();
+                    Table tableTmp = urgentTableUpdate(table);
+                    doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
+                } finally {
+                    chc.unpinReplica();
+                }
             } else {
                 LOGGER.error("Error inserting records", e);
                 throw e;
@@ -1049,6 +1054,7 @@ public class ClickHouseWriter implements DBWriter {
 
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
+        chc.setReplicaTagHeaderV2(insertSettings);
 
         String deduplicationToken = queryId.getDeduplicationToken();
         if (deduplicationToken != null) {
@@ -1127,6 +1133,7 @@ public class ClickHouseWriter implements DBWriter {
             } else {
                 request = getMutationRequest(client, ClickHouseFormat.RowBinary, table.getName(), database, queryId);
             }
+            chc.setReplicaTagHeaderV1(request);
             ClickHouseConfig config = request.getConfig();
             CompletableFuture<ClickHouseResponse> future;
 
