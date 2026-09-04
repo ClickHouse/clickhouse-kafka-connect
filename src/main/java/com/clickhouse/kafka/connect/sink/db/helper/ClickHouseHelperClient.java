@@ -67,6 +67,8 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private boolean useClientV2 = false;
     private final String sslSocketSni;
     private final String clusterClause;
+    @Getter
+    private final boolean enableReplicaPinning;
 
     // Part of HTTP protocol header
     public static final String REPLICA_TAG_HEADER = "X-ClickHouse-Replica-Tag";
@@ -87,6 +89,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.useClientV2 = builder.useClientV2;
         this.sslSocketSni = builder.sslSocketSni;
         this.clusterClause = builder.clusterClause;
+        this.enableReplicaPinning = builder.enableReplicaPinning;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -166,6 +169,16 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
                 .setDefaultDatabase(this.database);
+
+        if (jdbcConnectionProperties != null && !jdbcConnectionProperties.isEmpty()) {
+            String props = jdbcConnectionProperties.startsWith("?") ? jdbcConnectionProperties.substring(1) : jdbcConnectionProperties;
+            for (String pair : props.split("&")) {
+                String[] kv = pair.split("=", 2);
+                if (kv.length == 2 && !kv[0].isEmpty()) {
+                    clientBuilder.setOption(kv[0], kv[1]);
+                }
+            }
+        }
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
@@ -577,12 +590,15 @@ public class ClickHouseHelperClient implements AutoCloseable {
      * Do not call it in main path. Code that called pinReplica() must call unpinReplica()
      */
     public void pinReplica() {
+        if (!enableReplicaPinning) {
+            return;
+        }
         try {
             final String chars_en = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
             ThreadLocalRandom random = ThreadLocalRandom.current();
             int size = 32;
             final StringBuilder tag = new StringBuilder();
-            random.ints(size).forEach(operand -> tag.append(chars_en.charAt(operand % chars_en.length())));
+            random.ints(size, 0, chars_en.length()).forEach(operand -> tag.append(chars_en.charAt(operand)));
             replicaTag.set(tag.toString());
             LOGGER.debug("Replica pinned by tag {}", replicaTag.get());
         } catch (Exception e) {
@@ -598,11 +614,17 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 if (!request.hasOption(ClickHouseHttpOption.CUSTOM_HEADERS)) {
                     customHeaders = REPLICA_TAG_HEADER + "=" + tag;
                 } else {
-                    customHeaders = (String) request.getSetting(ClickHouseHttpOption.CUSTOM_HEADERS.getKey(), "");
-                    if (!customHeaders.trim().endsWith(",")) {
-                        customHeaders += ",";
+                    customHeaders = (String) request.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+                    if (customHeaders == null || customHeaders.trim().isEmpty()) {
+                        customHeaders = REPLICA_TAG_HEADER + "=" + tag;
+                    } else if (customHeaders.contains(REPLICA_TAG_HEADER + "=")) {
+                        customHeaders = customHeaders.replaceAll(REPLICA_TAG_HEADER + "=[^,]*", REPLICA_TAG_HEADER + "=" + tag);
+                    } else {
+                        if (!customHeaders.trim().endsWith(",")) {
+                            customHeaders += ",";
+                        }
+                        customHeaders += REPLICA_TAG_HEADER + "=" + tag;
                     }
-                    customHeaders += REPLICA_TAG_HEADER + "=" + tag;
                 }
                 request.option(ClickHouseHttpOption.CUSTOM_HEADERS, customHeaders);
             } catch (Exception e) {
@@ -659,6 +681,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private boolean useClientV2 = true;
         private String sslSocketSni = "";
         private String clusterClause = "";
+        private boolean enableReplicaPinning = false;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -716,6 +739,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder setClusterClause(String clusterName) {
             this.clusterClause = (clusterName == null || clusterName.isEmpty()) ? "" : " ON CLUSTER '" + clusterName + "' ";
+            return this;
+        }
+
+        public ClickHouseClientBuilder enableReplicaPinning(boolean enableReplicaPinning) {
+            this.enableReplicaPinning = enableReplicaPinning;
             return this;
         }
 

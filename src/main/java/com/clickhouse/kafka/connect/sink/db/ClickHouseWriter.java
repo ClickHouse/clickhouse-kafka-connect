@@ -92,6 +92,7 @@ public class ClickHouseWriter implements DBWriter {
                 .useClientV2(useClientV2)
                 .setSslSocketSni(csc.getSslSocketSni())
                 .setClusterClause(csc.getClusterName())
+                .enableReplicaPinning(csc.isEnableReplicaPinning())
                 .build();
 
         if (!chc.ping()) {
@@ -986,8 +987,13 @@ public class ClickHouseWriter implements DBWriter {
         } catch (ServerException e) {
             if (UPDATE_TABLE_ERROR_CODES_V2.contains(e.getCode()) && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", e.getCode());
-                Table tableTmp = urgentTableUpdate(table);
-                doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
+                try {
+                    chc.pinReplica();
+                    Table tableTmp = urgentTableUpdate(table);
+                    doInsertRawBinary(records, tableTmp, queryId, tableTmp.hasDefaults(), false);
+                } finally {
+                    chc.unpinReplica();
+                }
             } else {
                 LOGGER.error("Error inserting records", e);
                 throw e;
@@ -1054,6 +1060,7 @@ public class ClickHouseWriter implements DBWriter {
 
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
+        chc.setReplicaTagHeaderV2(insertSettings);
         chc.setReplicaTagHeaderV2(insertSettings);
 
         String deduplicationToken = queryId.getDeduplicationToken();
@@ -1275,6 +1282,7 @@ public class ClickHouseWriter implements DBWriter {
 
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
+        chc.setReplicaTagHeaderV2(insertSettings);
         String deduplicationToken = queryId.getDeduplicationToken();
         if (deduplicationToken != null) {
             insertSettings.setDeduplicationToken(deduplicationToken);
@@ -1411,6 +1419,7 @@ public class ClickHouseWriter implements DBWriter {
 
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
+        chc.setReplicaTagHeaderV2(insertSettings);
         String deduplicationToken = queryId.getDeduplicationToken();
         if (deduplicationToken != null) {
             insertSettings.setDeduplicationToken(deduplicationToken);
@@ -1480,6 +1489,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setRetry(csc.getRetry())
                 .setSslSocketSni(csc.getSslSocketSni())
                 .setClusterClause(csc.getClusterName())
+                .enableReplicaPinning(csc.isEnableReplicaPinning())
                 .build();
 
         ClickHouseNode server = chcTmp.getServer();
@@ -1498,6 +1508,7 @@ public class ClickHouseWriter implements DBWriter {
         }
 
         request.option(ClickHouseClientOption.WRITE_BUFFER_SIZE, 8192);
+        chc.setReplicaTagHeaderV1(request);
 
         return request;
     }
