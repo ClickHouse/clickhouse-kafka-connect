@@ -38,23 +38,33 @@ The current solution exploits a property of ClickHouse, which can initially caus
 
 #### Deduplication flow
 
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ClickHouse
+    participant Keeper as Keeper (dedup log)
+    participant Storage
+
+    Client->>ClickHouse: Insert query
+    ClickHouse->>ClickHouse: Create data block(s)
+    loop per block
+        ClickHouse->>ClickHouse: Calculate hash sum
+        ClickHouse->>Keeper: Check if hash already exists
+        alt hash exists
+            ClickHouse->>ClickHouse: Ignore data block
+        else hash is new
+            ClickHouse->>Storage: Create data part
+            ClickHouse->>Keeper: Write hash sum
+        end
+    end
 ```
-Insert query
-    │
-    ▼
-ClickHouse: create data block(s)
-    │  per block
-    ▼
-Calculate hash sum for data block
-    │
-    ▼
-Check if hash sum already exists  ──read──►  Keeper deduplication log
-    │
-    ├─ yes ──► Ignore data block
-    │
-    └─ no  ──► Create data part on storage
-               + write hash sum to Keeper
-```
+
+1. Receive the insert query.
+2. Create one or more data blocks from it.
+3. For each block, calculate a hash sum.
+4. Read the Keeper deduplication log and check whether that hash already exists.
+5. If it does, ignore the block.
+6. If it does not, write the data part to storage and write the hash to Keeper.
 
 Original diagram: [deduplication.png](./deduplication.png)
 
