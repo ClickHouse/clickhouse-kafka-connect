@@ -9,6 +9,7 @@ import com.clickhouse.client.ClickHouseRequest;
 import com.clickhouse.client.ClickHouseResponse;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.enums.ProxyType;
+import com.clickhouse.client.api.insert.InsertSettings;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
@@ -16,6 +17,7 @@ import com.clickhouse.client.api.query.Records;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.config.ClickHouseProxyType;
 import com.clickhouse.client.config.ClickHouseSslMode;
+import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
@@ -35,6 +37,7 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 public class ClickHouseHelperClient implements AutoCloseable {
@@ -64,6 +67,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private boolean useClientV2 = false;
     private final String sslSocketSni;
     private final String clusterClause;
+    @Getter
+    private final boolean enableReplicaPinning;
+
+    // Part of HTTP protocol header
+    public static final String REPLICA_TAG_HEADER = "X-ClickHouse-Replica-Tag";
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -81,6 +89,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.useClientV2 = builder.useClientV2;
         this.sslSocketSni = builder.sslSocketSni;
         this.clusterClause = builder.clusterClause;
+        this.enableReplicaPinning = builder.enableReplicaPinning;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -160,6 +169,16 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
                 .setDefaultDatabase(this.database);
+
+        if (jdbcConnectionProperties != null && !jdbcConnectionProperties.isEmpty()) {
+            String props = jdbcConnectionProperties.startsWith("?") ? jdbcConnectionProperties.substring(1) : jdbcConnectionProperties;
+            for (String pair : props.split("&")) {
+                String[] kv = pair.split("=", 2);
+                if (kv.length == 2 && !kv[0].isEmpty()) {
+                    clientBuilder.setOption(kv[0], kv[1]);
+                }
+            }
+        }
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
@@ -375,10 +394,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .options(getDefaultClientOptions())
                 .nodeSelector(ClickHouseNodeSelector.of(ClickHouseProtocol.HTTP))
                 .build();
-             ClickHouseResponse response = client.read(server)
+             ClickHouseResponse response = setReplicaTagHeaderV1(client.read(server)
                      .set("describe_include_subcolumns", true)
                      .format(ClickHouseFormat.JSONEachRow)
-                     .query(describeQuery)
+                     .query(describeQuery))
                      .executeAndWait()) {
 
             Set<String> skippedCols = new HashSet<>();
@@ -438,6 +457,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.JSONEachRow);
             settings.serverSetting("describe_include_subcolumns", "1");
             settings.setDatabase(database);
+            setReplicaTagHeaderV2(settings);
 
             boolean hasDefaults = false;
             int numColumns = 0;
@@ -558,6 +578,81 @@ public class ClickHouseHelperClient implements AutoCloseable {
         return tableList;
     }
 
+    // thread local without inheritance to pass replica tag to operations
+    private final ThreadLocal<String> replicaTag = new ThreadLocal<>();
+
+    public String getReplicaTag() {
+        return replicaTag.get();
+    }
+
+    /**
+     * Pins replica for next calls until unpinReplica() is called.
+     * This process is based on setting {@code X-ClickHouse-Replica-Tag} header to randomly generated string.
+     * New random string is required to always pin to a new replica.
+     * This approach works on for ClickHouse cloud and when enabled.
+     * Pinning affects only insert and describe operations to make them hit same replica in case of failure.
+     * Do not call it in main path. Code that called pinReplica() must call unpinReplica()
+     */
+    public void pinReplica() {
+        if (!enableReplicaPinning) {
+            return;
+        }
+        try {
+            final String chars_en = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            int size = 32;
+            final StringBuilder tag = new StringBuilder();
+            random.ints(size, 0, chars_en.length()).forEach(operand -> tag.append(chars_en.charAt(operand)));
+            replicaTag.set(tag.toString());
+            LOGGER.debug("Replica pinned by tag {}", replicaTag.get());
+        } catch (Exception e) {
+            LOGGER.error("Failed to pin replica", e);
+        }
+    }
+
+    public ClickHouseRequest setReplicaTagHeaderV1(ClickHouseRequest request) {
+        String tag = replicaTag.get();
+        if (tag != null && request != null) {
+            try {
+                String customHeaders = (String) request.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+                if (customHeaders == null || customHeaders.trim().isEmpty()) {
+                    customHeaders = REPLICA_TAG_HEADER + "=" + tag;
+                } else {
+                    if (!customHeaders.trim().endsWith(",")) {
+                        customHeaders += ",";
+                    }
+                    customHeaders += REPLICA_TAG_HEADER + "=" + tag;
+                }
+                request.option(ClickHouseHttpOption.CUSTOM_HEADERS, customHeaders);
+            } catch (Exception e) {
+                LOGGER.error("Failed to set replica tag header", e);
+            }
+        }
+        return request;
+    }
+
+    public void setReplicaTagHeaderV2(QuerySettings settings) {
+        String tag = replicaTag.get();
+        if (tag != null && settings != null) {
+            settings.httpHeader(REPLICA_TAG_HEADER, tag);
+        }
+    }
+
+    public void setReplicaTagHeaderV2(InsertSettings settings) {
+        String tag = replicaTag.get();
+        if (tag != null && settings != null) {
+            settings.httpHeader(REPLICA_TAG_HEADER, tag);
+        }
+    }
+
+    /**
+     * Unpins replica for next operations.
+     * Do not call it in main path.
+     */
+    public void unpinReplica() {
+        replicaTag.remove();
+    }
+
     @Override
     public void close() {
         if (client != null) {
@@ -583,6 +678,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private boolean useClientV2 = true;
         private String sslSocketSni = "";
         private String clusterClause = "";
+        private boolean enableReplicaPinning = false;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -640,6 +736,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder setClusterClause(String clusterName) {
             this.clusterClause = (clusterName == null || clusterName.isEmpty()) ? "" : " ON CLUSTER '" + clusterName + "' ";
+            return this;
+        }
+
+        public ClickHouseClientBuilder enableReplicaPinning(boolean enableReplicaPinning) {
+            this.enableReplicaPinning = enableReplicaPinning;
             return this;
         }
 

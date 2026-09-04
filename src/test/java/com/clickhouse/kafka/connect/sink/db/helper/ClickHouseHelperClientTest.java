@@ -1,5 +1,12 @@
 package com.clickhouse.kafka.connect.sink.db.helper;
 
+import com.clickhouse.client.ClickHouseClient;
+import com.clickhouse.client.ClickHouseNode;
+import com.clickhouse.client.ClickHouseProtocol;
+import com.clickhouse.client.ClickHouseRequest;
+import com.clickhouse.client.api.insert.InsertSettings;
+import com.clickhouse.client.api.query.QuerySettings;
+import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
@@ -224,5 +231,121 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         } finally {
             ClickHouseTestHelpers.dropTable(chc, topic);
         }
+    }
+
+    private ClickHouseRequest<?> createMockRequest() {
+        ClickHouseNode node = ClickHouseNode.builder()
+                .host("localhost")
+                .port(ClickHouseProtocol.HTTP, 8123)
+                .build();
+        return ClickHouseClient.newInstance(ClickHouseProtocol.HTTP).read(node);
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV1_DisabledFeatureFlag() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(false)
+                .build();
+        client.pinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        client.setReplicaTagHeaderV1(req);
+        Assertions.assertFalse(req.hasOption(ClickHouseHttpOption.CUSTOM_HEADERS));
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV1_NoPriorCustomHeaders() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        client.setReplicaTagHeaderV1(req);
+        Assertions.assertTrue(req.hasOption(ClickHouseHttpOption.CUSTOM_HEADERS));
+        String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+        Assertions.assertTrue(customHeaders.startsWith(ClickHouseHelperClient.REPLICA_TAG_HEADER + "="), "Got customHeaders: " + customHeaders);
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV1_EmptyCustomHeaders() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "");
+        client.setReplicaTagHeaderV1(req);
+        String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+        Assertions.assertTrue(customHeaders.startsWith(ClickHouseHelperClient.REPLICA_TAG_HEADER + "="), "Got customHeaders: " + customHeaders);
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV1_PreExistingCustomHeadersWithoutTrailingComma() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "Header1=Val1,Header2=Val2");
+        client.setReplicaTagHeaderV1(req);
+        String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+        Assertions.assertEquals("Header1=Val1,Header2=Val2," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "=" + client.getReplicaTag(), customHeaders);
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV1_PreExistingCustomHeadersWithTrailingComma() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "Header1=Val1,");
+        client.setReplicaTagHeaderV1(req);
+        String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+        Assertions.assertEquals("Header1=Val1," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "=" + client.getReplicaTag(), customHeaders);
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV1_AppendsToExistingReplicaTag() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "Header1=Val1,X-ClickHouse-Replica-Tag=oldTag123,Header2=Val2");
+        client.setReplicaTagHeaderV1(req);
+        String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+        Assertions.assertEquals("Header1=Val1,X-ClickHouse-Replica-Tag=oldTag123,Header2=Val2," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "=" + client.getReplicaTag(), customHeaders);
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV1_UnpinReset() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        client.unpinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        client.setReplicaTagHeaderV1(req);
+        Assertions.assertFalse(req.hasOption(ClickHouseHttpOption.CUSTOM_HEADERS));
+    }
+
+    @Test
+    public void testSetReplicaTagHeaderV2() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        QuerySettings qs = new QuerySettings();
+        InsertSettings is = new InsertSettings();
+        client.setReplicaTagHeaderV2(qs);
+        client.setReplicaTagHeaderV2(is);
+        String expectedOptionKey = "http_header_" + ClickHouseHelperClient.REPLICA_TAG_HEADER.toUpperCase(java.util.Locale.US);
+        Assertions.assertNotNull(qs.getAllSettings().get(expectedOptionKey));
+        Assertions.assertNotNull(is.getAllSettings().get(expectedOptionKey));
+
+        client.unpinReplica();
+        QuerySettings qs2 = new QuerySettings();
+        client.setReplicaTagHeaderV2(qs2);
+        Assertions.assertNull(qs2.getAllSettings().get(expectedOptionKey));
     }
 }

@@ -65,6 +65,7 @@ public class ClickHouseSinkConfig {
     public static final String AUTO_EVOLVE_STRUCT_TO_JSON = "auto.evolve.struct.to.json";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
     public static final String CLUSTER_NAME = "clusterName";
+    public static final String ENABLE_REPLICA_PINNING = "enableReplicaPinning";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
     public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
@@ -85,6 +86,7 @@ public class ClickHouseSinkConfig {
     public static final Long bufferFlushTimeDefault = 0L;
     public static final Long clickhouseClientInsertTimeoutMsDefault = TimeUnit.MINUTES.toMillis(4);
     public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
+    public static final Boolean enableReplicaPinningDefault = Boolean.FALSE;
 
     private final String hostname;
     private final int port;
@@ -127,6 +129,7 @@ public class ClickHouseSinkConfig {
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
     private final String clusterName;
+    private final boolean enableReplicaPinning;
 
     public enum InsertFormats {
         NONE,
@@ -310,6 +313,7 @@ public class ClickHouseSinkConfig {
         this.debeziumCDCEnabled = Boolean.parseBoolean(props.getOrDefault(DEBEZIUM_CDC_ENABLED, "false"));
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
         this.clusterName = props.getOrDefault(CLUSTER_NAME, "");
+        this.enableReplicaPinning = Boolean.parseBoolean(props.getOrDefault(ENABLE_REPLICA_PINNING, enableReplicaPinningDefault.toString()));
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -769,6 +773,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "SSL Socket SNI"
+        );
+        configDef.define(ENABLE_REPLICA_PINNING,
+                ConfigDef.Type.BOOLEAN,
+                enableReplicaPinningDefault,
+                ConfigDef.Importance.LOW,
+                "Enable pinning requests to a single ClickHouse replica using X-ClickHouse-Replica-Tag header when retrying after failure. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Enable replica pinning."
         );
 
         String ddlGroup = "DDL";
