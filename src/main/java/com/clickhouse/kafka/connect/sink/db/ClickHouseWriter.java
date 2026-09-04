@@ -1,13 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db;
 
-import com.clickhouse.client.ClickHouseClient;
-import com.clickhouse.client.ClickHouseConfig;
-import com.clickhouse.client.ClickHouseNode;
-import com.clickhouse.client.ClickHouseNodeSelector;
-import com.clickhouse.client.ClickHouseProtocol;
-import com.clickhouse.client.ClickHouseRequest;
-import com.clickhouse.client.ClickHouseResponse;
-import com.clickhouse.client.ClickHouseResponseSummary;
+import com.clickhouse.client.*;
 import com.clickhouse.client.api.Client;
 import com.clickhouse.client.api.DataStreamWriter;
 import com.clickhouse.client.api.ServerException;
@@ -48,25 +41,8 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -253,7 +229,37 @@ public class ClickHouseWriter implements DBWriter {
         }
     }
 
-    private static final Set<String> INT_TYPES = Set.of("INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16", "UINT32", "UINT64");
+    private static final Map<Type, Integer> CLICKHOUSE_TYPE_BIT_WIDTHS;
+    static {
+        Map<Type, Integer> map = new EnumMap<>(Type.class);
+        map.put(Type.INT8, 8);
+        map.put(Type.UINT8, 8);
+        map.put(Type.Enum8, 8);
+        map.put(Type.INT16, 16);
+        map.put(Type.UINT16, 16);
+        map.put(Type.Enum16, 16);
+        map.put(Type.INT32, 32);
+        map.put(Type.UINT32, 32);
+        map.put(Type.FLOAT32, 32);
+        map.put(Type.INT64, 64);
+        map.put(Type.UINT64, 64);
+        map.put(Type.FLOAT64, 64);
+        map.put(Type.INT128, 128);
+        map.put(Type.UINT128, 128);
+        CLICKHOUSE_TYPE_BIT_WIDTHS = Collections.unmodifiableMap(map);
+    }
+
+    private static final Map<Schema.Type, Integer> KAFKA_SCHEMA_TYPE_BIT_WIDTHS;
+    static {
+        Map<Schema.Type, Integer> map = new EnumMap<>(Schema.Type.class);
+        map.put(Schema.Type.INT8, 8);
+        map.put(Schema.Type.INT16, 16);
+        map.put(Schema.Type.INT32, 32);
+        map.put(Schema.Type.INT64, 64);
+        map.put(Schema.Type.FLOAT32, 32);
+        map.put(Schema.Type.FLOAT64, 64);
+        KAFKA_SCHEMA_TYPE_BIT_WIDTHS = Collections.unmodifiableMap(map);
+    }
 
     protected boolean validateDataSchema(Table table, Record record, boolean onlyFieldsName) {
         boolean validSchema = true;
@@ -312,15 +318,26 @@ public class ClickHouseWriter implements DBWriter {
                                 if (colTypeName.equals("VARIANT") && dataTypeName.equals("STRUCT"))
                                     continue;
 
-                                if (INT_TYPES.contains(colTypeName)) {
+                                // Check numeric types
+                                Integer colWidth = CLICKHOUSE_TYPE_BIT_WIDTHS.get(type);
+                                Integer dataWidth = KAFKA_SCHEMA_TYPE_BIT_WIDTHS.get(obj.getFieldType());
+
+                                boolean isDataFloat = obj.getFieldType() == Schema.Type.FLOAT32 || obj.getFieldType() == Schema.Type.FLOAT64;
+                                boolean isColFloat = type == Type.FLOAT32 || type == Type.FLOAT64;
+
+                                if (isDataFloat && !isColFloat) {
+                                    // Float data cannot be written to non-float column
+                                } else if (colWidth != null && dataWidth != null && dataWidth <= colWidth) {
                                     continue;
                                 }
 
-                                if (colTypeName.equalsIgnoreCase("BOOLEAN") &&
-                                        INT_TYPES.contains(dataTypeName.toUpperCase())) {
+                                boolean isColNumeric = colWidth != null;
+                                boolean isDataNumeric = dataWidth != null;
+                                if ((type == Type.BOOLEAN && isDataNumeric) || (isColNumeric && obj.getFieldType() == Schema.Type.BOOLEAN)) {
                                     continue;
                                 }
 
+                                // Check decimal types
                                 if (("DECIMAL".equalsIgnoreCase(colTypeName) && "org.apache.kafka.connect.data.Decimal".equals(objSchema.name())))
                                     continue;
 
@@ -726,10 +743,10 @@ public class ClickHouseWriter implements DBWriter {
         } else {
             switch (columnType) {
                 case INT8:
-                    BinaryStreamUtils.writeInt8(stream, (Byte) value);
+                    BinaryStreamUtils.writeInt8(stream, ((Number) value).byteValue());
                     break;
                 case INT16:
-                    BinaryStreamUtils.writeInt16(stream, (Short) value);
+                    BinaryStreamUtils.writeInt16(stream, ((Number) value).shortValue());
                     break;
                 case INT32:
                     if (value.getClass().getName().endsWith(".Date")) {
@@ -737,7 +754,7 @@ public class ClickHouseWriter implements DBWriter {
                         int time = (int) date.getTime();
                         BinaryStreamUtils.writeInt32(stream, time);
                     } else {
-                        BinaryStreamUtils.writeInt32(stream, (Integer) value);
+                        BinaryStreamUtils.writeInt32(stream, ((Number) value).intValue());
                     }
                     break;
                 case DateTime64:
@@ -747,26 +764,26 @@ public class ClickHouseWriter implements DBWriter {
                         long time = date.getTime();
                         BinaryStreamUtils.writeInt64(stream, time);
                     } else {
-                        BinaryStreamUtils.writeInt64(stream, (Long) value);
+                        BinaryStreamUtils.writeInt64(stream, ((Number) value).longValue());
                     }
                     break;
                 case UINT8:
-                    BinaryStreamUtils.writeUnsignedInt8(stream, (Byte) value);
+                    BinaryStreamUtils.writeUnsignedInt8(stream, Byte.toUnsignedInt(((Number) value).byteValue()));
                     break;
                 case UINT16:
-                    BinaryStreamUtils.writeUnsignedInt16(stream, ((Number) value).shortValue());
+                    BinaryStreamUtils.writeUnsignedInt16(stream, Short.toUnsignedInt(((Number) value).shortValue()));
                     break;
                 case UINT32:
-                    BinaryStreamUtils.writeUnsignedInt32(stream, ((Number) value).intValue());
+                    BinaryStreamUtils.writeUnsignedInt32(stream, Integer.toUnsignedLong(((Number) value).intValue()));
                     break;
                 case UINT64:
                     BinaryStreamUtils.writeUnsignedInt64(stream, ((Number) value).longValue());
                     break;
                 case FLOAT32:
-                    BinaryStreamUtils.writeFloat32(stream, (Float) value);
+                    BinaryStreamUtils.writeFloat32(stream, ((Number) value).floatValue());
                     break;
                 case FLOAT64:
-                    BinaryStreamUtils.writeFloat64(stream, (Double) value);
+                    BinaryStreamUtils.writeFloat64(stream, ((Number) value).doubleValue());
                     break;
                 case BOOLEAN:
                     if (value instanceof Number) {
