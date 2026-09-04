@@ -581,6 +581,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
     // thread local without inheritance to pass replica tag to operations
     private final ThreadLocal<String> replicaTag = new ThreadLocal<>();
 
+    public String getReplicaTag() {
+        return replicaTag.get();
+    }
+
     /**
      * Pins replica for next calls until unpinReplica() is called.
      * This process is based on setting {@code X-ClickHouse-Replica-Tag} header to randomly generated string.
@@ -610,21 +614,14 @@ public class ClickHouseHelperClient implements AutoCloseable {
         String tag = replicaTag.get();
         if (tag != null && request != null) {
             try {
-                String customHeaders;
-                if (!request.hasOption(ClickHouseHttpOption.CUSTOM_HEADERS)) {
+                String customHeaders = (String) request.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+                if (customHeaders == null || customHeaders.trim().isEmpty()) {
                     customHeaders = REPLICA_TAG_HEADER + "=" + tag;
                 } else {
-                    customHeaders = (String) request.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
-                    if (customHeaders == null || customHeaders.trim().isEmpty()) {
-                        customHeaders = REPLICA_TAG_HEADER + "=" + tag;
-                    } else if (customHeaders.contains(REPLICA_TAG_HEADER + "=")) {
-                        customHeaders = customHeaders.replaceAll(REPLICA_TAG_HEADER + "=[^,]*", REPLICA_TAG_HEADER + "=" + tag);
-                    } else {
-                        if (!customHeaders.trim().endsWith(",")) {
-                            customHeaders += ",";
-                        }
-                        customHeaders += REPLICA_TAG_HEADER + "=" + tag;
+                    if (!customHeaders.trim().endsWith(",")) {
+                        customHeaders += ",";
                     }
+                    customHeaders += REPLICA_TAG_HEADER + "=" + tag;
                 }
                 request.option(ClickHouseHttpOption.CUSTOM_HEADERS, customHeaders);
             } catch (Exception e) {

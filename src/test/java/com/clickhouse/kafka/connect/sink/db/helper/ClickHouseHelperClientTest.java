@@ -266,6 +266,19 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     }
 
     @Test
+    public void testSetReplicaTagHeaderV1_EmptyCustomHeaders() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .enableReplicaPinning(true)
+                .build();
+        client.pinReplica();
+        ClickHouseRequest<?> req = createMockRequest();
+        req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "");
+        client.setReplicaTagHeaderV1(req);
+        String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
+        Assertions.assertTrue(customHeaders.startsWith(ClickHouseHelperClient.REPLICA_TAG_HEADER + "="), "Got customHeaders: " + customHeaders);
+    }
+
+    @Test
     public void testSetReplicaTagHeaderV1_PreExistingCustomHeadersWithoutTrailingComma() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
                 .enableReplicaPinning(true)
@@ -275,7 +288,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "Header1=Val1,Header2=Val2");
         client.setReplicaTagHeaderV1(req);
         String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
-        Assertions.assertTrue(customHeaders.startsWith("Header1=Val1,Header2=Val2," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "="), "Got customHeaders: " + customHeaders);
+        Assertions.assertEquals("Header1=Val1,Header2=Val2," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "=" + client.getReplicaTag(), customHeaders);
     }
 
     @Test
@@ -288,11 +301,11 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "Header1=Val1,");
         client.setReplicaTagHeaderV1(req);
         String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
-        Assertions.assertTrue(customHeaders.startsWith("Header1=Val1," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "="), "Got customHeaders: " + customHeaders);
+        Assertions.assertEquals("Header1=Val1," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "=" + client.getReplicaTag(), customHeaders);
     }
 
     @Test
-    public void testSetReplicaTagHeaderV1_OverridingExistingReplicaTag() {
+    public void testSetReplicaTagHeaderV1_AppendsToExistingReplicaTag() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
                 .enableReplicaPinning(true)
                 .build();
@@ -301,9 +314,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         req.option(ClickHouseHttpOption.CUSTOM_HEADERS, "Header1=Val1,X-ClickHouse-Replica-Tag=oldTag123,Header2=Val2");
         client.setReplicaTagHeaderV1(req);
         String customHeaders = (String) req.getConfig().getOption(ClickHouseHttpOption.CUSTOM_HEADERS);
-        Assertions.assertTrue(customHeaders.contains("Header1=Val1,X-ClickHouse-Replica-Tag="), "Got customHeaders: " + customHeaders);
-        Assertions.assertTrue(customHeaders.contains(",Header2=Val2"), "Got customHeaders: " + customHeaders);
-        Assertions.assertFalse(customHeaders.contains("oldTag123"), "Got customHeaders: " + customHeaders);
+        Assertions.assertEquals("Header1=Val1,X-ClickHouse-Replica-Tag=oldTag123,Header2=Val2," + ClickHouseHelperClient.REPLICA_TAG_HEADER + "=" + client.getReplicaTag(), customHeaders);
     }
 
     @Test
