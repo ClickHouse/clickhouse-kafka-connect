@@ -314,9 +314,9 @@ public class ClickHouseSinkConfig {
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
         this.clusterName = props.getOrDefault(CLUSTER_NAME, "");
         this.clientCompression = Boolean.parseBoolean(props.getOrDefault(CLIENT_COMPRESSION, clientCompressionDefault.toString()));
-        if (this.clientCompression && this.clientVersion != null && this.clientVersion.trim().equalsIgnoreCase("V1")) {
+        if (this.clientCompression && "V1".equals(this.clientVersion)) {
             throw new ConfigException(CLIENT_COMPRESSION, true,
-                    "clientCompression is supported only with clientVersion=V2");
+                    "clientCompression is supported only with client_version=V2; unset client_version defaults to V1");
         }
 
         if (this.bufferCount > 0) {
@@ -666,7 +666,7 @@ public class ClickHouseSinkConfig {
                 ConfigDef.Type.BOOLEAN,
                 clientCompressionDefault,
                 ConfigDef.Importance.LOW,
-                "Enable client request compression. default: false",
+                "Enable V2 client request compression. Requires client_version=V2. default: false",
                 group,
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,

@@ -5,7 +5,7 @@
 * New `retryOnSocketException` setting (default `false`). When enabled, a `java.net.SocketException` (broken pipe,
   connection reset) from the ClickHouse client is retried like the existing timeout cases instead of failing the
   task. With client V2's persistent connections a single server-side connection reset otherwise fails every task at once.
-* Added `clientCompression` connector configuration to control ClickHouse client request compression for the V2 insert and exactly-once state-store paths. The default is `false`, preserving existing behavior unless users opt in. Configuring `clientCompression=true` with `clientVersion=V1` is rejected. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/528)
+* Added `clientCompression` connector configuration to control ClickHouse client request compression for V2 insert traffic and exactly-once state-store writes. The default is `false`, preserving existing behavior unless users opt in. Configuring `clientCompression=true` with `client_version=V1`, including the unset `client_version` default, is rejected. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/528)
 
 ## Bug Fixes
 
