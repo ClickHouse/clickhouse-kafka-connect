@@ -1,6 +1,8 @@
 package com.clickhouse.kafka.connect.sink.util;
 
 import com.clickhouse.client.ClickHouseException;
+import com.clickhouse.client.api.DataTransferException;
+import com.clickhouse.client.api.ServerException;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,8 +52,53 @@ public class UtilsTest {
     public void TestClickHouseClientTimeoutCause(){
         assertThrows(RetriableException.class, () -> {
             Exception timeout = new IOException("Write timed out after 30000 ms");
-            Utils.handleException(timeout, false, new ArrayList<>());
+            Utils.handleException(timeout, false, false, new ArrayList<>());
         });
+    }
+
+    @Test
+    @DisplayName("Test SocketException retried when enabled")
+    public void TestSocketExceptionRetriedWhenEnabled() {
+        assertThrows(RetriableException.class, () -> {
+            Exception brokenPipe = new RuntimeException(new DataTransferException("Insert failed", new SocketException("Broken pipe")));
+            Utils.handleException(brokenPipe, false, true, new ArrayList<>());
+        });
+    }
+
+    @Test
+    @DisplayName("Test SocketException not retried by default")
+    public void TestSocketExceptionNotRetriedByDefault() {
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
+            Exception brokenPipe = new RuntimeException(new DataTransferException("Insert failed", new SocketException("Broken pipe")));
+            Utils.handleException(brokenPipe, false, false, new ArrayList<>());
+        });
+        assertFalse(thrown instanceof RetriableException);
+    }
+
+    @DisplayName("Test client V2 ServerException Root Cause")
+    public void TestServerExceptionRootCause() {
+        Exception e1 = new ServerException(252, "Too many parts", 500);
+        Exception e2 = new RuntimeException(new RuntimeException(e1));
+        assertEquals(e1, Utils.getRootCause(e2, true));
+    }
+
+    @Test
+    @DisplayName("Test client V2 ServerException retriable code")
+    public void TestServerExceptionRetriableCode() {
+        assertThrows(RetriableException.class, () -> {
+            Exception e = new RuntimeException(new ServerException(252, "Too many parts", 500));
+            Utils.handleException(e, false, false, new ArrayList<>());
+        });
+    }
+
+    @Test
+    @DisplayName("Test client V2 ServerException non-retriable code")
+    public void TestServerExceptionNonRetriableCode() {
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
+            Exception e = new RuntimeException(new ServerException(60, "Table does not exist", 404));
+            Utils.handleException(e, false, false, new ArrayList<>());
+        });
+        assertFalse(thrown instanceof RetriableException);
     }
 
     private static Table tableWith(String tableName, String[]... colSpecs) {

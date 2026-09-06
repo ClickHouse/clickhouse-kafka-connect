@@ -98,7 +98,7 @@ public final class ProxySinkTask {
                 processing.doLogic(rec);
             } catch (Exception e) {
                 boolean errorTolerance = clickHouseSinkConfig.isErrorsTolerance();
-                Utils.handleException(e, errorTolerance, records); // This will throw RetriableException and failed records will be retried. No need to continue with the next topic & partition
+                Utils.handleException(e, errorTolerance, clickHouseSinkConfig.isRetryOnSocketException(), records); // This will throw RetriableException and failed records will be retried. No need to continue with the next topic & partition
                 if (errorTolerance) {
                     failedMessages.add(new Utils.FailedRecords(rec, e));
                     statistics.sentToDLQ(rec.size());

@@ -1,6 +1,16 @@
-# 1.5.1, 2026-09-06
+# 1.5.1 (not published)
+
+## Improvements
+
+* New `retryOnSocketException` setting (default `false`). When enabled, a `java.net.SocketException` (broken pipe,
+  connection reset) from the ClickHouse client is retried like the existing timeout cases instead of failing the
+  task. With client V2's persistent connections a single server-side connection reset otherwise fails every task at once.
 
 ## Bug Fixes
+
+* With client V2, server errors arrive as `com.clickhouse.client.api.ServerException` rather than the V1
+  `ClickHouseException`, so the retriable error-code list in `Utils.handleException` never matched and tasks
+  failed instead of retrying. Both exception types now share the same list.
 
 * Fixed `enableDbTopicSplit=true` failing to insert into every database but the one set in the `database` config.
   `DESCRIBE TABLE` was built from the configured database rather than the database requested by the caller, so
@@ -14,7 +24,6 @@
   version is not deduplicated on the first insert after upgrading.
 * The connector no longer refuses to start with `Did not find any tables in destination` when `enableDbTopicSplit=true`
   and the configured database holds no tables, which is a valid multi-database setup.
-
 
 # 1.5.0, 2026-08-05
 

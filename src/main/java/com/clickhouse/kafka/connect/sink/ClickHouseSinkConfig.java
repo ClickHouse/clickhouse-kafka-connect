@@ -36,6 +36,7 @@ public class ClickHouseSinkConfig {
     public static final String CLICKHOUSE_SETTINGS = "clickhouseSettings";
     public static final String TABLE_MAPPING = "topic2TableMap";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
+    public static final String RETRY_ON_SOCKET_EXCEPTION = "retryOnSocketException";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
     public static final String CUSTOM_INSERT_FORMAT_ENABLE = "customInsertFormat";
     public static final String INSERT_FORMAT = "insertFormat";
@@ -98,6 +99,7 @@ public class ClickHouseSinkConfig {
     private final long tableRefreshInterval;
     private final boolean suppressTableExistenceException;
     private final boolean errorsTolerance;
+    private final boolean retryOnSocketException;
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
     private final ClickHouseProxyType proxyType;
@@ -216,6 +218,7 @@ public class ClickHouseSinkConfig {
 
         String errorsToleranceString = props.getOrDefault(ERRORS_TOLERANCE, ERROR_TOLERANCE_NONE).trim();
         errorsTolerance = errorsToleranceString.equalsIgnoreCase(ERROR_TOLERANCE_ALL);
+        retryOnSocketException = Boolean.parseBoolean(props.getOrDefault(RETRY_ON_SOCKET_EXCEPTION, "false"));
 
         Map<String, String> clickhouseSettings = new HashMap<>();
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
@@ -512,6 +515,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Tolerate errors.");
+        configDef.define(RETRY_ON_SOCKET_EXCEPTION,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "Retry the batch when the ClickHouse client fails with a java.net.SocketException (connection reset, broken pipe, connection refused) instead of failing the task. The task keeps retrying while the condition persists. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Retry on socket exception.");
         configDef.define(CUSTOM_INSERT_FORMAT_ENABLE,
                 ConfigDef.Type.BOOLEAN,
                 customInsertFormatDefault,
