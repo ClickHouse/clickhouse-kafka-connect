@@ -15,6 +15,8 @@ import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanServer;
@@ -48,11 +50,11 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             .engine("MergeTree")
             .orderByColumn("off16");
 
-    public Collection<SinkRecord> createDBTopicSplit(int dbRange, long timeStamp, String topic, int partition, String splitChar) {
+    public Collection<SinkRecord> createDBTopicSplit(int dbRange, String databasePrefix, String topic, int partition, String splitChar) {
         Gson gson = new Gson();
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, dbRange).forEachOrdered(i -> {
-            String newTopic = i + "_" + timeStamp + splitChar + topic  ;
+            String newTopic = databasePrefix + i + splitChar + topic;
             LongStream.range(0, DEFAULT_TOTAL_RECORDS).forEachOrdered(n -> {
                 Map<String, Object> value_struct = new HashMap<>();
                 value_struct.put("str", "num" + n);
@@ -106,39 +108,101 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
         }
     }
 
-    @Test
-    @Disabled // TODO: Fix this test (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
-    public void testDBTopicSplit() {
+    /**
+     * Records for many databases arrive in a single put() and must be routed to the database
+     * encoded in their topic name, not all to the database of the batch's first record. Covers
+     * every separator {@code DbTopicSplitCharValidatorAndRecommender} recommends plus the
+     * two-character {@code __} reported in issue #580, since the separator is what the connector
+     * uses to rebuild the database-qualified batch key.
+     */
+    @ParameterizedTest(name = "dbTopicSplitChar={0}")
+    @CsvSource({"'.', dot", "'_', underscore", "'-', dash", "'__', doubleunderscore"})
+    public void testDBTopicSplit(String splitChar, String splitCharName) {
         Map<String, String> props =  getBaseProps();
         props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
-        props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
+        props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, splitChar);
+        // Database and table names must not contain the separator: the connector only splits a
+        // topic that yields exactly two parts, so an extra separator makes it fall back to the
+        // configured database. This also rules out createTopicName(), which joins with '_'.
         long timeStamp = System.currentTimeMillis();
-        ClickHouseTestHelpers.createClient(props);
-        String tableName = createTopicName("splitTopic");
+        String databasePrefix = String.format("splitdb%s%d", splitCharName, timeStamp);
+        String tableName = String.format("splitTable%d", timeStamp);
         int dbRange = 10;
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         LongStream.range(0, dbRange).forEachOrdered(i -> {
-            String databaseName = String.format("%d_%d" , i, timeStamp);
-            String tmpTableName = String.format("`%s`.`%s`", databaseName, tableName);
-            ClickHouseTestHelpers.dropTable(chc, tmpTableName);
+            String databaseName = databasePrefix + i;
             ClickHouseTestHelpers.createDatabase(databaseName, chc);
             new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
-                    .tableName(tmpTableName)
+                    .database(databaseName)
+                    .tableName(tableName)
                     .execute(chc);
         });
 
         ClickHouseSinkTask task = new ClickHouseSinkTask();
         // Generate SinkRecords with different topics and check if they are split correctly
-        Collection<SinkRecord> records = createDBTopicSplit(dbRange, timeStamp, tableName, 0, ".");
+        Collection<SinkRecord> records = createDBTopicSplit(dbRange, databasePrefix, tableName, 0, splitChar);
         try {
             task.start(props);
             task.put(records);
         } catch (Exception e) {
-            fail("Exception should not be thrown");
+            fail("Exception should not be thrown", e);
         }
         LongStream.range(0, dbRange).forEachOrdered(i -> {
-            int count = ClickHouseTestHelpers.countRows(chc, String.valueOf(i), tableName);
-            assertEquals(DEFAULT_TOTAL_RECORDS, count);
+            String databaseName = databasePrefix + i;
+            int count = ClickHouseTestHelpers.countRows(chc, databaseName, tableName);
+            assertEquals(DEFAULT_TOTAL_RECORDS, count,
+                    String.format("Wrong row count in database [%s] for separator [%s]", databaseName, splitChar));
+        });
+    }
+
+    /**
+     * Several partitions per split database. With {@code ignorePartitionsWhenBatching=true} the
+     * partition is dropped from the batch key, so a database's partitions are inserted together;
+     * with it false each {@code (database, topic, partition)} is batched on its own and runs the
+     * state machine independently. Either way a database must end up holding exactly its own
+     * partitions' records — a batch key missing the database collapses both dimensions and every
+     * record lands in the database of the batch's first record.
+     */
+    @ParameterizedTest(name = "ignorePartitionsWhenBatching={0}")
+    @CsvSource({"true", "false"})
+    public void testDBTopicSplitWithMultiplePartitions(boolean ignorePartitions) {
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT, "true");
+        props.put(ClickHouseSinkConfig.DB_TOPIC_SPLIT_CHAR, ".");
+        props.put(ClickHouseSinkConfig.IGNORE_PARTITIONS_WHEN_BATCHING, String.valueOf(ignorePartitions));
+        long timeStamp = System.currentTimeMillis();
+        String databasePrefix = String.format("splitdbparts%s%d", ignorePartitions, timeStamp);
+        String tableName = String.format("splitTable%d", timeStamp);
+        int dbRange = 3;
+        int partitionCount = 3;
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        LongStream.range(0, dbRange).forEachOrdered(i -> {
+            String databaseName = databasePrefix + i;
+            ClickHouseTestHelpers.createDatabase(databaseName, chc);
+            new CreateTableStatement(PRIMITIVE_TYPES_TABLE)
+                    .database(databaseName)
+                    .tableName(tableName)
+                    .execute(chc);
+        });
+
+        Collection<SinkRecord> records = new ArrayList<>();
+        for (int partition = 0; partition < partitionCount; partition++) {
+            records.addAll(createDBTopicSplit(dbRange, databasePrefix, tableName, partition, "."));
+        }
+
+        ClickHouseSinkTask task = new ClickHouseSinkTask();
+        try {
+            task.start(props);
+            task.put(records);
+        } catch (Exception e) {
+            fail("Exception should not be thrown", e);
+        }
+        task.stop();
+        LongStream.range(0, dbRange).forEachOrdered(i -> {
+            String databaseName = databasePrefix + i;
+            int count = ClickHouseTestHelpers.countRows(chc, databaseName, tableName);
+            assertEquals(DEFAULT_TOTAL_RECORDS * partitionCount, count,
+                    String.format("Database [%s] should hold every partition's records", databaseName));
         });
     }
 

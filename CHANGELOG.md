@@ -1,3 +1,21 @@
+# 1.5.1, 2026-09-06
+
+## Bug Fixes
+
+* Fixed `enableDbTopicSplit=true` failing to insert into every database but the one set in the `database` config.
+  `DESCRIBE TABLE` was built from the configured database rather than the database requested by the caller, so
+  tables in the other databases were never resolved and records were dropped or rejected with
+  `Table <db>.<table> does not exist`. Multi-character separators such as `dbTopicSplitChar=__` are covered.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
+* Records are now batched per database when `enableDbTopicSplit=true`. A batch is inserted into the database of its
+  first record, and stripping the database prefix off the topic left records for `dbA.t` and `dbB.t` sharing a batch
+  key, so a single `put()` spanning multiple databases wrote all of its records into the first one. Note for
+  `exactlyOnce=true` users: because batch composition changes, a batch left in the `BEFORE` state by an earlier
+  version is not deduplicated on the first insert after upgrading.
+* The connector no longer refuses to start with `Did not find any tables in destination` when `enableDbTopicSplit=true`
+  and the configured database holds no tables, which is a valid multi-database setup.
+
+
 # 1.5.0, 2026-08-05
 
 ## Improvements

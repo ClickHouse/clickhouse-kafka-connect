@@ -431,7 +431,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     public Table describeTableV2(String database, String tableName) {
         if (tableName.startsWith(".inner"))
             return null;
-        String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", this.database, tableName);
+        String describeQuery = String.format("DESCRIBE TABLE `%s`.`%s`", database, tableName);
         LOGGER.debug(describeQuery);
 
         try {
@@ -548,7 +548,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             }
             // A described table counts its own columns, so a DESCRIBE that observed an older schema
             // version than the count query above stays behind the count and is re-described next cycle
-            Table tableDescribed = describeTable(this.database, tableDesc.getCleanName());
+            Table tableDescribed = describeTable(database, tableDesc.getCleanName());
             if (tableDescribed != null) {
                 // this table will be returned and added to `cache` then will return to this method and
                 // rechecked.
