@@ -146,6 +146,8 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             task.put(records);
         } catch (Exception e) {
             fail("Exception should not be thrown", e);
+        } finally {
+            task.stop();
         }
         LongStream.range(0, dbRange).forEachOrdered(i -> {
             String databaseName = databasePrefix + i;
