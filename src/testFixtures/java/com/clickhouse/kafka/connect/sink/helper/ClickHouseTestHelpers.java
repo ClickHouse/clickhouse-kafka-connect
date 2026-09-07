@@ -204,8 +204,19 @@ public class ClickHouseTestHelpers {
         }
     }
 
+    /** Backtick-quoted table name, qualified with the database when one is given. */
+    public static String quoteTableName(String database, String tableName) {
+        return database == null
+                ? String.format("`%s`", tableName)
+                : String.format("`%s`.`%s`", database, tableName);
+    }
+
     public static OperationMetrics optimizeTable(ClickHouseHelperClient chc, String tableName) {
-        String queryCount = String.format("OPTIMIZE TABLE `%s`%s", tableName, getClusterClauseOrEmpty());
+        return optimizeQuotedTable(chc, quoteTableName(null, tableName));
+    }
+
+    private static OperationMetrics optimizeQuotedTable(ClickHouseHelperClient chc, String quotedTableName) {
+        String queryCount = "OPTIMIZE TABLE " + quotedTableName + getClusterClauseOrEmpty();
         try (Records records = chc.queryV2(queryCount)) {
             return records.getMetrics();
         } catch (Exception e) {
@@ -214,11 +225,15 @@ public class ClickHouseTestHelpers {
     }
 
     public static int countRows(ClickHouseHelperClient chc, String database, String topic) {
-        return countRows(chc, String.format("%s.%s", database, topic));
+        optimizeQuotedTable(chc, quoteTableName(database, topic));
+        return countRowsFrom(chc, buildFromClause(chc, database, topic));
     }
     public static int countRows(ClickHouseHelperClient chc, String tableName) {
         optimizeTable(chc, tableName);
-        String from = buildFromClause(chc, tableName);
+        return countRowsFrom(chc, buildFromClause(chc, tableName));
+    }
+
+    private static int countRowsFrom(ClickHouseHelperClient chc, String from) {
         String queryCount = "SELECT COUNT(*) FROM " + from + " SETTINGS select_sequential_consistency = 1";
 
         try (Records records = chc.queryV2(queryCount)) {
@@ -263,6 +278,15 @@ public class ClickHouseTestHelpers {
                     ClickHouseCluster.getClusterFromEnvVarOrThrow().getName(), escapedDatabase, escapedTableName);
         }
         return "`" + tableName + "`";
+    }
+
+    public static String buildFromClause(ClickHouseHelperClient chc, String database, String tableName) {
+        if (isCluster()) {
+            return String.format("cluster('%s', '%s', '%s')",
+                    ClickHouseCluster.getClusterFromEnvVarOrThrow().getName(),
+                    escapeSingleQuotes(database), escapeSingleQuotes(tableName));
+        }
+        return quoteTableName(database, tableName);
     }
 
     public static boolean validateRows(ClickHouseHelperClient chc, String topic, Collection<SinkRecord> sinkRecords) {

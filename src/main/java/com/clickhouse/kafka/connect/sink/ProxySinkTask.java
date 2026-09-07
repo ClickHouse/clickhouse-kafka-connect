@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public final class ProxySinkTask {
@@ -85,8 +86,7 @@ public final class ProxySinkTask {
                         clickHouseSinkConfig.getDbTopicSplitChar(),
                         clickHouseSinkConfig.getDatabase(),
                         clickHouseSinkConfig.isDebeziumCDCEnabled()))
-                .collect(Collectors.groupingBy(!clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()
-                        ? Record::getTopic : Record::getTopicAndPartition));
+                .collect(Collectors.groupingBy(batchKey()));
 
         statistics.recordProcessingTime(processingTime);
         // TODO - Multi process???
@@ -107,6 +107,23 @@ public final class ProxySinkTask {
         }
         statistics.taskProcessingTime(taskTime);
         Utils.sendTODLQ(failedMessages, errorReporter);
+    }
+
+    /**
+     * A batch is inserted into the database of its first record, so records bound for different
+     * databases must never share a batch. Conversion strips the database prefix off the topic when
+     * db-topic split is on, which would otherwise leave records from {@code dbA.t} and {@code dbB.t}
+     * with the same key.
+     */
+    private Function<Record, String> batchKey() {
+        Function<Record, String> tableKey =
+                !clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()
+                        ? Record::getTopic : Record::getTopicAndPartition;
+        if (!clickHouseSinkConfig.isEnableDbTopicSplit()) {
+            return tableKey;
+        }
+        final String splitChar = clickHouseSinkConfig.getDbTopicSplitChar();
+        return record -> record.getDatabase() + splitChar + tableKey.apply(record);
     }
 
     public int getId() {

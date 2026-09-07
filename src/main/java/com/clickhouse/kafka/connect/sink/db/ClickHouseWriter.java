@@ -122,8 +122,14 @@ public class ClickHouseWriter implements DBWriter {
         LOGGER.debug("Ping was successful.");
         this.updateMapping(csc.getDatabase());
         if (mapping.isEmpty()) {
-            LOGGER.error("Did not find any tables in destination Please create before running.");
-            return false;
+            // With db-topic split the destination database is derived per record, so the configured
+            // database may legitimately hold no tables; getTable resolves them on first use.
+            if (!csc.isEnableDbTopicSplit()) {
+                LOGGER.error("Did not find any tables in destination Please create before running.");
+                return false;
+            }
+            LOGGER.info("No tables found in database [{}]; tables are resolved per record because {} is enabled.",
+                    csc.getDatabase(), ClickHouseSinkConfig.ENABLE_DB_TOPIC_SPLIT);
         }
 
         startBackgroundTableSync(csc.getDatabase());

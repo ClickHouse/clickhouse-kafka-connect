@@ -12,6 +12,7 @@ import java.util.Optional;
 @SuppressWarnings({"OptionalUsedAsFieldOrParameterType"})
 public class CreateTableStatement {
     private String tableName;
+    private Optional<String> databaseOpt = Optional.empty();
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
     private String engine;
     private Optional<String> orderByColumnOpt = Optional.empty();
@@ -27,6 +28,7 @@ public class CreateTableStatement {
 
     public CreateTableStatement(CreateTableStatement template) {
         this.tableName = template.tableName;
+        this.databaseOpt = template.databaseOpt;
         this.schema = new LinkedHashMap<>(template.schema);
         this.engine = template.engine;
         this.orderByColumnOpt = template.orderByColumnOpt;
@@ -37,6 +39,11 @@ public class CreateTableStatement {
 
     public CreateTableStatement tableName(String tableName) {
         this.tableName = tableName;
+        return this;
+    }
+
+    public CreateTableStatement database(String database) {
+        this.databaseOpt = Optional.ofNullable(database);
         return this;
     }
 
@@ -79,7 +86,7 @@ public class CreateTableStatement {
         var sql = new StringBuilder();
         sql.append("CREATE TABLE ")
                 .append(ifNotExists ? "IF NOT EXISTS " : "")
-                .append("`").append(tableName).append("`");
+                .append(ClickHouseTestHelpers.quoteTableName(databaseOpt.orElse(null), tableName));
         clusterClauseOpt.ifPresent(s -> sql.append(" ").append(s));
         sql.append(" ").append("(").append(columns).append(")").append(" ");
         sql.append("Engine = ").append(engine);
