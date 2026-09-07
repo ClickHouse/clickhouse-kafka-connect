@@ -65,6 +65,7 @@ public class ClickHouseSinkConfig {
     public static final String AUTO_EVOLVE_STRUCT_TO_JSON = "auto.evolve.struct.to.json";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
     public static final String CLUSTER_NAME = "clusterName";
+    public static final String CLIENT_COMPRESSION = "clientCompression";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
     public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
@@ -85,6 +86,7 @@ public class ClickHouseSinkConfig {
     public static final Long bufferFlushTimeDefault = 0L;
     public static final Long clickhouseClientInsertTimeoutMsDefault = TimeUnit.MINUTES.toMillis(4);
     public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
+    public static final Boolean clientCompressionDefault = Boolean.FALSE;
 
     private final String hostname;
     private final int port;
@@ -127,6 +129,7 @@ public class ClickHouseSinkConfig {
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
     private final String clusterName;
+    private final boolean clientCompression;
 
     public enum InsertFormats {
         NONE,
@@ -310,6 +313,11 @@ public class ClickHouseSinkConfig {
         this.debeziumCDCEnabled = Boolean.parseBoolean(props.getOrDefault(DEBEZIUM_CDC_ENABLED, "false"));
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
         this.clusterName = props.getOrDefault(CLUSTER_NAME, "");
+        this.clientCompression = Boolean.parseBoolean(props.getOrDefault(CLIENT_COMPRESSION, clientCompressionDefault.toString()));
+        if (this.clientCompression && "V1".equals(this.clientVersion)) {
+            throw new ConfigException(CLIENT_COMPRESSION, true,
+                    "clientCompression is supported only with client_version=V2; unset client_version defaults to V1");
+        }
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -322,8 +330,8 @@ public class ClickHouseSinkConfig {
         String jsonAsString = getClickhouseSettings().get("input_format_binary_read_json_as_string");
         this.binaryFormatWrtiteJsonAsString = jsonAsString != null && (jsonAsString.equalsIgnoreCase("true") || jsonAsString.equals("1"));
 
-        LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}",
-                hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce);
+        LOGGER.debug("ClickHouseSinkConfig: hostname: {}, port: {}, database: {}, username: {}, sslEnabled: {}, timeout: {}, retry: {}, exactlyOnce: {}, clientCompression: {}",
+                hostname, port, database, username, sslEnabled, timeout, retry, exactlyOnce, clientCompression);
         LOGGER.debug("ClickHouseSinkConfig: clickhouseSettings: {}", clickhouseSettings);
         LOGGER.debug("ClickHouseSinkConfig: topicToTableMap: {}", topicToTableMap);
 
@@ -653,6 +661,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Client version"
+        );
+        configDef.define(CLIENT_COMPRESSION,
+                ConfigDef.Type.BOOLEAN,
+                clientCompressionDefault,
+                ConfigDef.Importance.LOW,
+                "Enable V2 client request compression. Requires client_version=V2. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Enable client request compression."
         );
         configDef.define(TOLERATE_STATE_MISMATCH,
                 ConfigDef.Type.BOOLEAN,

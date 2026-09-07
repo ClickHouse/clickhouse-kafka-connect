@@ -5,6 +5,8 @@ import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
 import org.apache.kafka.common.config.Config;
 import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.config.ConfigException;
+import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.sink.SinkConnector;
 import org.apache.kafka.connect.sink.SinkConnectorContext;
@@ -97,6 +99,17 @@ public class ClickHouseSinkConnector extends SinkConnector {
         ClickHouseSinkConfig sinkConfig;
         try {
             sinkConfig = new ClickHouseSinkConfig(connectorConfigs);
+        } catch (ConfigException e) {
+            config.configValues().stream()
+                    .filter(configValue -> configValue.name().equals(ClickHouseSinkConfig.CLIENT_COMPRESSION))
+                    .findFirst()
+                    .orElseGet(() -> {
+                        ConfigValue configValue = new ConfigValue(ClickHouseSinkConfig.CLIENT_COMPRESSION);
+                        config.configValues().add(configValue);
+                        return configValue;
+                    })
+                    .addErrorMessage(e.getMessage());
+            return config;
         } catch (Exception e) {
             return config;
         }

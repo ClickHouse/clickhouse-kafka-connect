@@ -92,6 +92,7 @@ public class ClickHouseWriter implements DBWriter {
                 .useClientV2(useClientV2)
                 .setSslSocketSni(csc.getSslSocketSni())
                 .setClusterClause(csc.getClusterName())
+                .setClientCompression(csc.isClientCompression())
                 .build();
 
         if (!chc.ping()) {
@@ -1065,6 +1066,7 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
+        insertSettings.compressClientRequest(csc.isClientCompression());
         ClickHouseFormat format = ClickHouseFormat.RowBinary;
         if (supportDefaults) {
             format = ClickHouseFormat.RowBinaryWithDefaults;
@@ -1283,6 +1285,7 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
+        insertSettings.compressClientRequest(csc.isClientCompression());
 
         AtomicLong dataSerializeTime = new AtomicLong(0);
         DataStreamWriter dataWriter = out -> {
@@ -1419,6 +1422,7 @@ public class ClickHouseWriter implements DBWriter {
         for (String clickhouseSetting : csc.getClickhouseSettings().keySet()) {//THIS ASSUMES YOU DON'T ADD insert_deduplication_token
             insertSettings.serverSetting(clickhouseSetting, csc.getClickhouseSettings().get(clickhouseSetting));
         }
+        insertSettings.compressClientRequest(csc.isClientCompression());
         // We don't validate the schema for JSON inserts.  ClickHouse will ignore unknown fields based on the
         // input_format_skip_unknown_fields setting, and missing fields will use ClickHouse defaults
         ClickHouseFormat clickHouseFormat = getStringInsertFormat();

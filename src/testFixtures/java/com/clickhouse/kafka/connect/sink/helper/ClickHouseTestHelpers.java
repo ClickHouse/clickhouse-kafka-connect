@@ -425,6 +425,7 @@ public class ClickHouseTestHelpers {
                 .setRetry(csc.getRetry())
                 .useClientV2("V2".equals(csc.getClientVersion()))
                 .setSslSocketSni(csc.getSslSocketSni())
+                .setClientCompression(csc.isClientCompression())
                 .build();
     }
 
