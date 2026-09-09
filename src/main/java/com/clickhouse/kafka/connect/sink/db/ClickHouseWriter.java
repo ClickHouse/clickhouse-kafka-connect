@@ -1061,7 +1061,6 @@ public class ClickHouseWriter implements DBWriter {
         InsertSettings insertSettings = new InsertSettings();
         insertSettings.setDatabase(database);
         chc.setReplicaTagHeaderV2(insertSettings);
-        chc.setReplicaTagHeaderV2(insertSettings);
 
         String deduplicationToken = queryId.getDeduplicationToken();
         if (deduplicationToken != null) {
