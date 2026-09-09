@@ -191,6 +191,21 @@ Comparison of previous insert `[storedMin, storedMax]` with current batch `[curr
 
 \*\*\* Kafka would not deliver the current insert if the previous max offset had not been committed.
 
+Compact view of the same rules:
+
+| Stored state | Overlapping state | Action |
+|---|---|---|
+| `NONE` | Any | Insert |
+| `BEFORE_PROCESSING` | Zero | Insert |
+| `BEFORE_PROCESSING` | New or Same | Insert (dedup) |
+| `BEFORE_PROCESSING` | Contains | ERROR |
+| `BEFORE_PROCESSING` | Overlapping | Insert stored + Insert new |
+| `AFTER_PROCESSING` | Same, Contains | Ignore |
+| `AFTER_PROCESSING` | Zero | Insert |
+| `AFTER_PROCESSING` | New | Insert |
+| `AFTER_PROCESSING` | Overlapping | Insert only new records |
+| `AFTER_PROCESSING` | Contains | Error, or ignore if `tolerateStateMismatch=true` |
+
 Original diagram: [full_state_machine.png](./full_state_machine.png)
 
 There is one case not covered by the above. We may simply get data for a partition and batch whose `minOffset` is less than the `minOffset` of the previous state. This is shown below:
