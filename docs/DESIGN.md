@@ -113,9 +113,10 @@ sequenceDiagram
         SM->>Keeper: look up previous insert state
         Keeper-->>SM: flag + [storedMin, storedMax]
         SM->>SM: generate consistent batches
+        SM->>Keeper: Store BEFORE_PROCESSING state
         SM->>CH: (re-)insert batches
         Note over CH: identical blocks are deduplicated
-        SM->>Keeper: store current insert state
+        SM->>Keeper: Store AFTER_PROCESSING state
     end
 ```
 
@@ -124,8 +125,9 @@ sequenceDiagram
 3. For each batch, on a single worker thread:
    1. Look up the previous insert state in ClickHouse Keeper (state store).
    2. Generate consistent batches from that state.
-   3. (Re-)insert the batches into ClickHouse. Identical blocks are dropped by the dedup window (Keeper deduplication log).
-   4. Store the current insert state in Keeper.
+   3. Store `BEFORE_PROCESSING` in Keeper so a crash during insert can be recovered.
+   4. (Re-)insert the batches into ClickHouse. Identical blocks are dropped by the dedup window (Keeper deduplication log).
+   5. Store `AFTER_PROCESSING` in Keeper after a successful insert.
 
 Original diagram: [architecture.png](./architecture.png)
 
