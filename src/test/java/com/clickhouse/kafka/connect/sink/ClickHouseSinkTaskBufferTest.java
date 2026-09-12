@@ -476,6 +476,42 @@ public class ClickHouseSinkTaskBufferTest extends ClickHouseBase {
     }
 
     @Test
+    public void retriableFlushFailureDoesNotDuplicateBufferedRecords() {
+        // A failed flush leaves the batch in the buffer. Connect redelivers exactly that
+        // batch, so unless it is dropped the retry buffers a second copy and the eventual
+        // successful flush writes every record twice.
+        Map<String, String> props = getBaseProps();
+        props.put(ClickHouseSinkConfig.BUFFER_COUNT, "500");
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        String topic = createTopicName("buffer_retry_no_duplicates_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
+
+        ClickHouseSinkTask task = new ClickHouseSinkTask();
+        task.start(props);
+
+        List<SinkRecord> batch1 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
+        task.put(batch1);
+        assertEquals(0, ClickHouseTestHelpers.countRows(chc, topic),
+                "Records should be buffered, not flushed yet");
+
+        // Drop the table so the flush triggered by the next batch fails.
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        List<SinkRecord> batch2 = SchemalessTestData.createPrimitiveTypes(topic, 1, 300);
+        assertThrows(RuntimeException.class, () -> task.put(batch2));
+
+        // The failure condition clears and Connect redelivers the same batch.
+        new CreateTableStatement(PRIMITIVE_TYPES_TABLE).tableName(topic).execute(chc);
+        task.put(batch2);
+
+        assertEquals(600, ClickHouseTestHelpers.countRows(chc, topic),
+                "Redelivered records must not be buffered twice");
+
+        task.stop();
+    }
+
+    @Test
     public void putDirectFailsWithErrorTolerance_offsetsCommitted() {
         // Edge case: buffer flush triggers putDirect → insert fails → error tolerance swallows it.
         // With error tolerance, records go to DLQ and offsets ARE committed (same as non-buffered behavior).

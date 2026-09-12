@@ -24,7 +24,11 @@
   version is not deduplicated on the first insert after upgrading.
 * The connector no longer refuses to start with `Did not find any tables in destination` when `enableDbTopicSplit=true`
   and the configured database holds no tables, which is a valid multi-database setup.
-
+* With internal buffering (`bufferCount > 0`, `exactlyOnce=false`), a retriable insert failure such as code 252
+  `TOO_MANY_PARTS` left the failed batch in the buffer. Kafka Connect redelivers exactly that batch, so every retry
+  appended another copy and the eventual successful flush wrote each record several times. The batch is now removed
+  from the buffer when the flush fails, leaving the redelivery as the single copy.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/801)
 # 1.5.0, 2026-08-05
 
 ## Improvements
