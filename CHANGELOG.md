@@ -26,7 +26,8 @@
   is preserved). Writing to a `JSON` column in RowBinary requires `input_format_binary_read_json_as_string=1`,
   so the Avro integration harness now routes JSON-target fixtures through a `setupAvroConnectorWithJson`
   connector config. This promotes the `union_two_records` schema from the incompatible to the compatible
-  Avro test fixtures and adds feature-test coverage. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/800)
+  Avro test fixtures; the integration test reads the rows back from ClickHouse and asserts the
+  tagged-by-branch `JSON` value landed, not just the row count. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/800)
 
 ## Bug Fixes 
 
