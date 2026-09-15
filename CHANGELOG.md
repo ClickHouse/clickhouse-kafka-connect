@@ -1,29 +1,46 @@
-# 1.5.1 (not published)
+# 1.6.0, 2026-09-11
 
 ## Improvements
 
 * New `retryOnSocketException` setting (default `false`). When enabled, a `java.net.SocketException` (broken pipe,
   connection reset) from the ClickHouse client is retried like the existing timeout cases instead of failing the
-  task. With client V2's persistent connections a single server-side connection reset otherwise fails every task at once.
+  task. With client V2's persistent connections a single server-side connection reset otherwise fails every task at once. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/817`)
+
+* New option `enableReplicaPinning` on schema error retry should solve the problem with schema changes on cluster. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/827) 
+
+* Tested support of Decimal Avro types. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/802)
+
+## Dependencies
+
+* Updated `com.fasterxml.jackson.core:jackson-core` from `2.21.5` to `2.22.2`
+* Updated `org.hamcrest:hamcrest` from `2.2` to `3.0`
+* Updated `com.google.protobuf` from `0.9.5` to `0.10.0`
+* Updated `com.fasterxml.jackson.core:jackson-annotations` from `2.21` to `2.22`
+* Updated `org.apache.httpcomponents.client5:httpclient5` from `5.5.1` to `5.6.2`
 
 ## Bug Fixes
 
 * With client V2, server errors arrive as `com.clickhouse.client.api.ServerException` rather than the V1
   `ClickHouseException`, so the retriable error-code list in `Utils.handleException` never matched and tasks
-  failed instead of retrying. Both exception types now share the same list.
+  failed instead of retrying. Both exception types now share the same list. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/818)
 
 * Fixed `enableDbTopicSplit=true` failing to insert into every database but the one set in the `database` config.
   `DESCRIBE TABLE` was built from the configured database rather than the database requested by the caller, so
   tables in the other databases were never resolved and records were dropped or rejected with
   `Table <db>.<table> does not exist`. Multi-character separators such as `dbTopicSplitChar=__` are covered.
   (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
+
 * Records are now batched per database when `enableDbTopicSplit=true`. A batch is inserted into the database of its
   first record, and stripping the database prefix off the topic left records for `dbA.t` and `dbB.t` sharing a batch
   key, so a single `put()` spanning multiple databases wrote all of its records into the first one. Note for
   `exactlyOnce=true` users: because batch composition changes, a batch left in the `BEFORE` state by an earlier
-  version is not deduplicated on the first insert after upgrading.
+  version is not deduplicated on the first insert after upgrading. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
+
 * The connector no longer refuses to start with `Did not find any tables in destination` when `enableDbTopicSplit=true`
-  and the configured database holds no tables, which is a valid multi-database setup.
+  and the configured database holds no tables, which is a valid multi-database setup. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
+
+* Fixed conversion from small integers to bigger ones. Previously Int32 values cannot be written to Int64 without 
+transformation. Now number types can be written to wider number columns. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/642)
 
 # 1.5.0, 2026-08-05
 
