@@ -177,6 +177,34 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
     }
 
     @Test
+    public void nullMapTypesTest() {
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic = createTopicName("schemaless_nullable_map_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("off16", "Int16")
+                .column("map_string_string", "Map(String, String)")
+                .column("map_string_int64", "Map(String, Int64)")
+                .engine("MergeTree").orderByColumn("off16").execute(chc);
+        Collection<SinkRecord> sr = SchemalessTestData.createNullableMapType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        String query = "SELECT count() FROM `" + topic + "` WHERE empty(map_string_string) AND empty(map_string_int64) SETTINGS select_sequential_consistency = 1";
+        try (com.clickhouse.client.api.query.Records records = chc.queryV2(query)) {
+            assertEquals((sr.size() + 9) / 10, Integer.parseInt(records.iterator().next().getString(1)));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
     // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
     public void specialCharTableNameTest() {
         Map<String, String> props = getBaseProps();
