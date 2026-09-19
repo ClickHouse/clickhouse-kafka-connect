@@ -36,6 +36,7 @@ public class ClickHouseSinkConfig {
     public static final String CLICKHOUSE_SETTINGS = "clickhouseSettings";
     public static final String TABLE_MAPPING = "topic2TableMap";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
+    public static final String RETRY_ON_SOCKET_EXCEPTION = "retryOnSocketException";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
     public static final String CUSTOM_INSERT_FORMAT_ENABLE = "customInsertFormat";
     public static final String INSERT_FORMAT = "insertFormat";
@@ -64,6 +65,7 @@ public class ClickHouseSinkConfig {
     public static final String AUTO_EVOLVE_STRUCT_TO_JSON = "auto.evolve.struct.to.json";
     public static final String CONNECTOR_RETRY_TIMEOUT = "errors.retry.timeout";
     public static final String CLUSTER_NAME = "clusterName";
+    public static final String ENABLE_REPLICA_PINNING = "enableReplicaPinning";
 
     public static final long MINIMAL_RETRY_TIMEOUT_THR_WARN = TimeUnit.SECONDS.toMillis(10);
     public static final String SSL_SOCKET_SNI = "ssl_socket_sni";
@@ -84,6 +86,7 @@ public class ClickHouseSinkConfig {
     public static final Long bufferFlushTimeDefault = 0L;
     public static final Long clickhouseClientInsertTimeoutMsDefault = TimeUnit.MINUTES.toMillis(4);
     public static final Boolean reportInsertedOffsetsDefault = Boolean.FALSE;
+    public static final Boolean enableReplicaPinningDefault = Boolean.FALSE;
 
     private final String hostname;
     private final int port;
@@ -98,6 +101,7 @@ public class ClickHouseSinkConfig {
     private final long tableRefreshInterval;
     private final boolean suppressTableExistenceException;
     private final boolean errorsTolerance;
+    private final boolean retryOnSocketException;
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
     private final ClickHouseProxyType proxyType;
@@ -125,6 +129,7 @@ public class ClickHouseSinkConfig {
     private final boolean binaryFormatWrtiteJsonAsString;
     private final String sslSocketSni;
     private final String clusterName;
+    private final boolean enableReplicaPinning;
 
     public enum InsertFormats {
         NONE,
@@ -216,6 +221,7 @@ public class ClickHouseSinkConfig {
 
         String errorsToleranceString = props.getOrDefault(ERRORS_TOLERANCE, ERROR_TOLERANCE_NONE).trim();
         errorsTolerance = errorsToleranceString.equalsIgnoreCase(ERROR_TOLERANCE_ALL);
+        retryOnSocketException = Boolean.parseBoolean(props.getOrDefault(RETRY_ON_SOCKET_EXCEPTION, "false"));
 
         Map<String, String> clickhouseSettings = new HashMap<>();
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
@@ -307,6 +313,7 @@ public class ClickHouseSinkConfig {
         this.debeziumCDCEnabled = Boolean.parseBoolean(props.getOrDefault(DEBEZIUM_CDC_ENABLED, "false"));
         this.sslSocketSni = props.getOrDefault(SSL_SOCKET_SNI, "");
         this.clusterName = props.getOrDefault(CLUSTER_NAME, "");
+        this.enableReplicaPinning = Boolean.parseBoolean(props.getOrDefault(ENABLE_REPLICA_PINNING, enableReplicaPinningDefault.toString()));
 
         if (this.bufferCount > 0) {
             LOGGER.info("Internal buffering enabled: bufferCount={}, bufferFlushTime={}ms", this.bufferCount, this.bufferFlushTime);
@@ -512,6 +519,15 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Tolerate errors.");
+        configDef.define(RETRY_ON_SOCKET_EXCEPTION,
+                ConfigDef.Type.BOOLEAN,
+                false,
+                ConfigDef.Importance.LOW,
+                "Retry the batch when the ClickHouse client fails with a java.net.SocketException (connection reset, broken pipe, connection refused) instead of failing the task. The task keeps retrying while the condition persists. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Retry on socket exception.");
         configDef.define(CUSTOM_INSERT_FORMAT_ENABLE,
                 ConfigDef.Type.BOOLEAN,
                 customInsertFormatDefault,
@@ -757,6 +773,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.MEDIUM,
                 "SSL Socket SNI"
+        );
+        configDef.define(ENABLE_REPLICA_PINNING,
+                ConfigDef.Type.BOOLEAN,
+                enableReplicaPinningDefault,
+                ConfigDef.Importance.LOW,
+                "Enable pinning requests to a single ClickHouse replica using X-ClickHouse-Replica-Tag header when retrying after failure. default: false",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.SHORT,
+                "Enable replica pinning."
         );
 
         String ddlGroup = "DDL";

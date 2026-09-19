@@ -8,6 +8,8 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.ParseException;
 import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.profile.GCProfiler;
+import org.openjdk.jmh.profile.MemPoolProfiler;
 import org.openjdk.jmh.results.format.ResultFormatType;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
@@ -82,8 +84,8 @@ public class BenchmarkMain {
                 .warmupTime(TimeValue.seconds(15))
                 .mode(Mode.SampleTime)
                 .timeUnit(TimeUnit.MILLISECONDS)
-//                .addProfiler(GCProfiler.class)
-//                .addProfiler(MemPoolProfiler.class)
+                .addProfiler(GCProfiler.class)
+                .addProfiler(MemPoolProfiler.class)
                 .jvmArgs("-Xms4g", "-Xmx4g")
                 .resultFormat(ResultFormatType.JSON)
                 .output(outputFile)

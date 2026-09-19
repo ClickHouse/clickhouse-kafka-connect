@@ -1,6 +1,7 @@
-# 1.5.0 
+# next release 
 
-## Confluent Archive 
+
+## Confluent Archive
 
 * Now includes shaded `org.lz4` to solve conflict between versions provided by `org.apache.kafka:connect-api > org.apache.kafka:kafka-clients`.
 
@@ -9,29 +10,130 @@
 * Bumped `com.clickhouse:*` from `0.9.5` to `0.9.6`.
 * Fixed resolution of `org.lz4` library.
 
-# 1.3.11, (unreleased)
-## New Features
-* Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0` and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
 
-## Internal Changes
-* Refactored `ClickHouseSinkTask` to delegate to a `DeliveryStrategy` per delivery semantic (`DirectDeliveryStrategy`, `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`), with a shared `ChunkFlusher` for the insert + offset-tracking path. The buffering and non-buffering flows now live in separate, cohesive units instead of interleaved branches on the task. Behavior is unchanged.
+# 1.6.0, 2026-09-11
+
+## Improvements
+
+* New `retryOnSocketException` setting (default `false`). When enabled, a `java.net.SocketException` (broken pipe,
+  connection reset) from the ClickHouse client is retried like the existing timeout cases instead of failing the
+  task. With client V2's persistent connections a single server-side connection reset otherwise fails every task at once. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/817`)
+
+* New option `enableReplicaPinning` on schema error retry should solve the problem with schema changes on cluster. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/827) 
+
+* Tested support of Decimal Avro types. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/802)
+
+## Dependencies
+
+* Updated `com.fasterxml.jackson.core:jackson-core` from `2.21.5` to `2.22.2`
+* Updated `org.hamcrest:hamcrest` from `2.2` to `3.0`
+* Updated `com.google.protobuf` from `0.9.5` to `0.10.0`
+* Updated `com.fasterxml.jackson.core:jackson-annotations` from `2.21` to `2.22`
+* Updated `org.apache.httpcomponents.client5:httpclient5` from `5.5.1` to `5.6.2`
+
+## Bug Fixes
+
+* With client V2, server errors arrive as `com.clickhouse.client.api.ServerException` rather than the V1
+  `ClickHouseException`, so the retriable error-code list in `Utils.handleException` never matched and tasks
+  failed instead of retrying. Both exception types now share the same list. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/818)
+
+* Fixed `enableDbTopicSplit=true` failing to insert into every database but the one set in the `database` config.
+  `DESCRIBE TABLE` was built from the configured database rather than the database requested by the caller, so
+  tables in the other databases were never resolved and records were dropped or rejected with
+  `Table <db>.<table> does not exist`. Multi-character separators such as `dbTopicSplitChar=__` are covered.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
+
+* Records are now batched per database when `enableDbTopicSplit=true`. A batch is inserted into the database of its
+  first record, and stripping the database prefix off the topic left records for `dbA.t` and `dbB.t` sharing a batch
+  key, so a single `put()` spanning multiple databases wrote all of its records into the first one. Note for
+  `exactlyOnce=true` users: because batch composition changes, a batch left in the `BEFORE` state by an earlier
+  version is not deduplicated on the first insert after upgrading. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
+
+* The connector no longer refuses to start with `Did not find any tables in destination` when `enableDbTopicSplit=true`
+  and the configured database holds no tables, which is a valid multi-database setup. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/580)
+
+* Fixed conversion from small integers to bigger ones. Previously Int32 values cannot be written to Int64 without 
+transformation. Now number types can be written to wider number columns. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/642)
+
+# 1.5.0, 2026-08-05
+
+## Improvements
+
+* RowBinary inserts with client V2 now stream data directly to the network output stream via the client's
+  `DataStreamWriter` API. Increase in performance is ~ 30% for 100k dataset. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/796)  
+
+* Support Avro nullable multi-type unions (e.g. `[null, string, int]`) mapping to a ClickHouse `Variant`.
+  Confluent's Avro converter turns the non-null branches into a Connect union struct
+  (`io.confluent.connect.avro.Union`), with the `null` branch making the field optional; the connector
+  resolves this to `Variant(String, Int32)`. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/799)
+
+* Support the Avro `decimal` logical type on a `fixed` base (in addition to `bytes`). Confluent's Avro
+  converter maps both representations to a Kafka Connect `Decimal` (a `BigDecimal`), which the connector
+  already validates, converts and serializes to a ClickHouse `Decimal(P, S)` column. This promotes the
+  `decimal_fixed_logical` schema from the incompatible to the compatible Avro test fixtures and adds
+  feature-test coverage. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/798)
+
+## Dependencies
+
+* [build] Updated `com.diffplug.spotless` from 8.6.0 to 8.9.0.
+* [build] Updated `gradle-wrapper from` 9.5.1 to 9.6.1
+* [tests] Updated `com.squareup.okhttp3:okhttp` from 5.3.2 to 5.4.0.
+
+* Support Avro record unions (e.g. `[TypeA, TypeB]`) mapping to a ClickHouse `JSON` column. Confluent's
+  Avro converter turns a union of records into a Connect union struct (`io.confluent.connect.avro.Union`)
+  keyed by branch record name; the connector serializes this to JSON in tagged form (which branch it was
+  is preserved). Writing to a `JSON` column in RowBinary requires `input_format_binary_read_json_as_string=1`,
+  so the Avro integration harness now routes JSON-target fixtures through a `setupAvroConnectorWithJson`
+  connector config. This promotes the `union_two_records` schema from the incompatible to the compatible
+  Avro test fixtures; the integration test reads the rows back from ClickHouse and asserts the
+  tagged-by-branch `JSON` value landed, not just the row count. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/800)
+
+## Bug Fixes 
+
+* Fixed issue with Table Schema cache that can remember old schema instead of new one. Now if old 
+schema is read proper number of columns is calculated and cache will be properly updated after some time. 
+(https://github.com/ClickHouse/clickhouse-kafka-connect/issues/813)
+
+# 1.4.0, 2026-07-15
+
+## Security
+
+* Upgraded `com.fasterxml.jackson.core` dependencies to version `2.21.5` to address multiple CVE's in previous releases.
+
+## New Features
+
+* Internal buffering now supports `exactlyOnce=true` via strict-chunking mode. When both `bufferCount > 0` and
+  `exactlyOnce=true`, records are bucketed per `(topic, partition)` and flushed only in fixed `bufferCount`-sized
+  chunks. Tail records below the threshold remain buffered until subsequent `put()` calls grow the bucket past
+  `bufferCount`. This keeps `(minOffset, maxOffset)` reproducible across retries, allowing ClickHouse
+  `insert_deduplication_token` reuse and StateProvider range comparison to work correctly. Requires `bufferFlushTime=0`
+  and `ignorePartitionsWhenBatching=false` — the start-up validator throws `ConnectException` otherwise.
 
 ## Improvements
 * Cast/conversion failures in `ClickHouseWriter` now surface the failing column and its types.
-Previously a type mismatch (e.g. a `java.util.Date` reaching a `UInt64` column) threw a bare
-`ClassCastException` that named only Java types, and the useful context — column name, target
-ClickHouse type, source Kafka type — was written to the container logs only. The connector now
-rethrows these as a non-retryable `DataException` carrying that context, so it also reaches the Kafka
-Connect REST status, DLQ record headers, and JMX `task-error-metrics`. Record values are never
-included in the message. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/729)
+  Previously a type mismatch (e.g. a `java.util.Date` reaching a `UInt64` column) threw a bare
+  `ClassCastException` that named only Java types, and the useful context — column name, target
+  ClickHouse type, source Kafka type — was written to the container logs only. The connector now
+  rethrows these as a non-retryable `DataException` carrying that context, so it also reaches the Kafka
+  Connect REST status, DLQ record headers, and JMX `task-error-metrics`. Record values are never
+  included in the message. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/729)
 
-# 1.3.11, 2026-06-24
+## Internal Changes
+
+* Refactored `ClickHouseSinkTask` to delegate to a `DeliveryStrategy` per delivery semantic (`DirectDeliveryStrategy`,
+  `AtLeastOnceBufferStrategy`, `ExactlyOnceBufferStrategy`), with a shared `ChunkFlusher` for the insert +
+  offset-tracking path. The buffering and non-buffering flows now live in separate, cohesive units instead of
+  interleaved branches on the task. Behavior is unchanged.
 
 ## Bug Fixes
 * Fixed `NullPointerException` when writing a `null` value into a `Nullable(JSON)` column via the binary
 insert path with `input_format_binary_read_json_as_string=1`. The JSON case in `ClickHouseWriter` cast the
 field straight to `String` without checking for `null` first, unlike every other nullable-aware type in the
 same switch. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/562)
+
+## Dependencies
+
+* Bumped `org.json:json` from `20250517` to `20260522`.
 
 # 1.3.10, 2026-06-24
 

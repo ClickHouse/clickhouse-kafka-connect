@@ -32,25 +32,20 @@ java {
 }
 
 dependencies {
+    // The connector is the single source of truth for the ClickHouse Java client, the Kafka
+    // Connect API, and (via its test fixtures) the Schema Registry / protobuf stack. They all
+    // arrive transitively as `api` dependencies; re-declaring any of them here would let the
+    // benchmark silently measure a different version set than the connector ships with.
     implementation("com.clickhouse.kafka:clickhouse-kafka-connect:${connectorVersion}")
-    implementation("com.clickhouse.kafka:clickhouse-kafka-connect:${connectorVersion}:test-fixtures")
-    implementation("org.apache.kafka:connect-api:2.7.0")
+    implementation(testFixtures("com.clickhouse.kafka:clickhouse-kafka-connect:${connectorVersion}"))
 
-    // https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
-    implementation("org.apache.commons:commons-lang3:3.18.0")
+    // Used directly by the benchmarks themselves, versioned from the connector's catalog.
+    implementation(libs.testcontainers)
+    implementation(libs.testcontainers.clickhouse)
 
     implementation("commons-cli:commons-cli:1.5.0")
     implementation("org.openjdk.jmh:jmh-core:1.37")
     implementation("org.openjdk.jmh:jmh-generator-annprocess:1.37")
     annotationProcessor("org.openjdk.jmh:jmh-generator-annprocess:1.37")
-
-    implementation("com.google.protobuf:protobuf-java:3.25.1")
-    implementation("io.confluent:kafka-protobuf-serializer:7.9.1")
-    implementation("io.confluent:kafka-connect-protobuf-converter:7.9.1")
-
-//    // Schema Registry client for testing
-    implementation("io.confluent:kafka-schema-registry-client:7.5.4")
-    implementation("io.confluent:kafka-schema-registry:7.5.4")
-    implementation("io.confluent:kafka-schema-serializer:7.5.4")
 }
 

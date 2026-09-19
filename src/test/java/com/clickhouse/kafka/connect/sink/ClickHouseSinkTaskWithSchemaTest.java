@@ -13,6 +13,8 @@ import com.clickhouse.kafka.connect.test.TestProtos;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
 import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.util.Utils;
+import com.google.protobuf.Descriptors.Descriptor;
+import com.google.protobuf.DynamicMessage;
 import io.confluent.connect.protobuf.ProtobufConverter;
 import io.confluent.connect.protobuf.ProtobufConverterConfig;
 import io.confluent.connect.protobuf.ProtobufDataConfig;
@@ -21,6 +23,8 @@ import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchema;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer;
 import io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializerConfig;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
@@ -1868,6 +1872,191 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             assertEquals(formatter.format(event.getTime1()), row.get("time1"));
             assertEquals(event.getTime2().atDate(LocalDate.of(1970, 1, 1)).format(localFormatter), row.get("time2"));
         }
+        ClickHouseTestHelpers.dropTable(chc, topic);
+    }
+
+    private static Stream<Arguments> integerTypesConnectSchemaProvider() {
+        List<Arguments> args = new ArrayList<>();
+        List<String> targetTypes = List.of("Int64", "Int128");
+        for (String targetType : targetTypes) {
+            args.add(Arguments.of("INT8_to_" + targetType, Schema.INT8_SCHEMA, (byte) 12, (byte) 34, Arrays.asList((byte) 100, (byte) 110, (byte) 120), targetType));
+            args.add(Arguments.of("INT16_to_" + targetType, Schema.INT16_SCHEMA, (short) 1234, (short) 5678, Arrays.asList((short) 100, (short) 200, (short) 300), targetType));
+            args.add(Arguments.of("INT32_to_" + targetType, Schema.INT32_SCHEMA, 12345, 67890, Arrays.asList(100, 200, 300), targetType));
+            args.add(Arguments.of("INT64_to_" + targetType, Schema.INT64_SCHEMA, 123456789L, 987654321L, Arrays.asList(100L, 200L, 300L), targetType));
+        }
+        return args.stream();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("integerTypesConnectSchemaProvider")
+    public void testInt32ToInt64ConversionWithConnectSchema(String name, Schema fieldSchema, Object idVal, Object val, List<?> arrVal, String targetType) throws Exception {
+        String topic = createTopicName("test_" + name.toLowerCase() + "_connect");
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", targetType)
+                .column("val_int32", targetType)
+                .column("arr_int32", "Array(" + targetType + ")")
+                .engine("MergeTree")
+                .orderByColumn("id")
+                .execute(chc);
+
+        Schema schema = SchemaBuilder.struct()
+                .field("id", fieldSchema)
+                .field("val_int32", fieldSchema)
+                .field("arr_int32", SchemaBuilder.array(fieldSchema).build())
+                .build();
+
+        Struct struct = new Struct(schema)
+                .put("id", idVal)
+                .put("val_int32", val)
+                .put("arr_int32", arrVal);
+
+        SinkRecord record = new SinkRecord(topic, 0, null, null, schema, struct, 0);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(List.of(record));
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(1, rows.size());
+        JSONObject row = rows.get(0);
+        assertEquals(((Number) idVal).longValue(), row.getLong("id"));
+        assertEquals(((Number) val).longValue(), row.getLong("val_int32"));
+        JSONArray arr = row.getJSONArray("arr_int32");
+        assertEquals(arrVal.size(), arr.length());
+        for (int i = 0; i < arrVal.size(); i++) {
+            assertEquals(((Number) arrVal.get(i)).longValue(), arr.getLong(i));
+        }
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+    }
+
+    @Test
+    public void testInt32ToInt64ConversionWithAvro() throws Exception {
+        String topic = createTopicName("test_int32_to_int64_avro");
+        org.apache.avro.Schema avroSchema = org.apache.avro.SchemaBuilder.record("Int32ToInt64Avro")
+                .namespace("com.clickhouse.kafka.connect.avro.test")
+                .fields()
+                .name("id").type().intType().noDefault()
+                .name("val_int32").type().intType().noDefault()
+                .name("arr_int32").type().array().items().intType().noDefault()
+                .endRecord();
+
+        GenericRecord record = new GenericData.Record(avroSchema);
+        record.put("id", 42);
+        record.put("val_int32", 9999);
+        record.put("arr_int32", Arrays.asList(1, 2, 3));
+
+        List<SinkRecord> sinkRecords = SchemaTestData.convertAvroToSinkRecord(topic, new AvroSchema(avroSchema), List.of(record));
+
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int64")
+                .column("val_int32", "Int64")
+                .column("arr_int32", "Array(Int64)")
+                .engine("MergeTree")
+                .orderByColumn("id")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sinkRecords);
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(1, rows.size());
+        JSONObject row = rows.get(0);
+        assertEquals(42L, row.getLong("id"));
+        assertEquals(9999L, row.getLong("val_int32"));
+        JSONArray arr = row.getJSONArray("arr_int32");
+        assertEquals(3, arr.length());
+        assertEquals(1, arr.getInt(0));
+        assertEquals(2, arr.getInt(1));
+        assertEquals(3, arr.getInt(2));
+
+        ClickHouseTestHelpers.dropTable(chc, topic);
+    }
+
+    @Test
+    public void testInt32ToInt64ConversionWithProtobuf() throws Exception {
+        String topic = createTopicName("test_int32_to_int64_proto");
+        String protoSchemaStr = "syntax = \"proto3\";\n" +
+                "package com.clickhouse.kafka.connect.proto.test;\n" +
+                "message Int32ToInt64Msg {\n" +
+                "  int32 id = 1;\n" +
+                "  int32 val_int32 = 2;\n" +
+                "  repeated int32 arr_int32 = 3;\n" +
+                "}\n";
+
+        ProtobufSchema schema = new ProtobufSchema(protoSchemaStr);
+        Descriptor descriptor = schema.toDescriptor();
+
+        MockSchemaRegistryClient schemaRegistry = new MockSchemaRegistryClient();
+        schemaRegistry.register(topic + "-value", schema);
+
+        KafkaProtobufSerializer<DynamicMessage> serializer = new KafkaProtobufSerializer<>(schemaRegistry);
+        Map<String, Object> serializerConfig = new HashMap<>();
+        serializerConfig.put(KafkaProtobufSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-proto-url");
+        serializerConfig.put(KafkaProtobufSerializerConfig.AUTO_REGISTER_SCHEMAS, true);
+        serializer.configure(serializerConfig, false);
+
+        ProtobufConverter converter = new ProtobufConverter(schemaRegistry);
+        Map<String, Object> converterConfig = new HashMap<>();
+        converterConfig.put(ProtobufConverterConfig.AUTO_REGISTER_SCHEMAS, true);
+        converterConfig.put(ProtobufDataConfig.GENERATE_INDEX_FOR_UNIONS_CONFIG, false);
+        converterConfig.put(KafkaProtobufSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, "mock://test-proto-url");
+        converter.configure(converterConfig, false);
+
+        DynamicMessage msg = DynamicMessage.newBuilder(descriptor)
+                .setField(descriptor.findFieldByName("id"), 777)
+                .setField(descriptor.findFieldByName("val_int32"), 888)
+                .addRepeatedField(descriptor.findFieldByName("arr_int32"), 5)
+                .addRepeatedField(descriptor.findFieldByName("arr_int32"), 6)
+                .addRepeatedField(descriptor.findFieldByName("arr_int32"), 7)
+                .build();
+
+        byte[] serialized = serializer.serialize(topic, msg);
+        SchemaAndValue connectData = converter.toConnectData(topic, serialized);
+        SinkRecord record = new SinkRecord(topic, 0, null, null, connectData.schema(), connectData.value(), 0);
+
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+        ClickHouseTestHelpers.dropTable(chc, topic);
+
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("id", "Int64")
+                .column("val_int32", "Int64")
+                .column("arr_int32", "Array(Int64)")
+                .engine("MergeTree")
+                .orderByColumn("id")
+                .execute(chc);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(List.of(record));
+        chst.stop();
+
+        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+        assertEquals(1, rows.size());
+        JSONObject row = rows.get(0);
+        assertEquals(777L, row.getLong("id"));
+        assertEquals(888L, row.getLong("val_int32"));
+        JSONArray arr = row.getJSONArray("arr_int32");
+        assertEquals(3, arr.length());
+        assertEquals(5, arr.getInt(0));
+        assertEquals(6, arr.getInt(1));
+        assertEquals(7, arr.getInt(2));
+
         ClickHouseTestHelpers.dropTable(chc, topic);
     }
 
