@@ -254,7 +254,8 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     private static int countEmptyMaps(ClickHouseHelperClient chc, String tableName) {
-        String query = "SELECT count() FROM `" + tableName + "` WHERE empty(map_string_string) AND empty(map_string_int64) SETTINGS select_sequential_consistency = 1";
+        String table = ClickHouseTestHelpers.buildFromClause(chc, tableName);
+        String query = "SELECT count() FROM " + table + " WHERE empty(map_string_string) AND empty(map_string_int64) SETTINGS select_sequential_consistency = 1";
         try (com.clickhouse.client.api.query.Records records = chc.queryV2(query)) {
             return Integer.parseInt(records.iterator().next().getString(1));
         } catch (Exception e) {
