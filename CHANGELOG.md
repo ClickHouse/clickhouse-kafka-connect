@@ -10,6 +10,8 @@
 
 * Tested support of Decimal Avro types. (https://github.com/ClickHouse/clickhouse-kafka-connect/pull/802)
 
+* New `FieldToJsonString` transformation that serializes one or more (optionally nested, dot-notation) record fields into their JSON string representation, so nested objects can be written into plain `String` columns. Works with both schema-less and schema-based records.
+
 ## Dependencies
 
 * Updated `com.fasterxml.jackson.core:jackson-core` from `2.21.5` to `2.22.2`
