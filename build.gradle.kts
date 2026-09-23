@@ -78,6 +78,7 @@ dependencies {
     testImplementation(libs.apiguardian.api)
     testImplementation(libs.hamcrest)
     testImplementation(libs.mockito.junit.jupiter)
+    testImplementation(libs.kafka.connect.json)
     testImplementation(libs.testcontainers)
     testImplementation(libs.testcontainers.clickhouse)
     testImplementation(libs.testcontainers.toxiproxy)

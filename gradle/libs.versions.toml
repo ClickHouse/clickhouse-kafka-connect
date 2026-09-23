@@ -34,6 +34,7 @@ protobufPlugin = "0.10.0"
 [libraries]
 # Core dependencies
 kafka-connect-api = { module = "org.apache.kafka:connect-api", version.ref = "kafka" }
+kafka-connect-json = { module = "org.apache.kafka:connect-json", version.ref = "kafka" }
 clickhouse-client = { module = "com.clickhouse:clickhouse-client", version.ref = "clickHouseDriver" }
 clickhouse-http-client = { module = "com.clickhouse:clickhouse-http-client", version.ref = "clickHouseDriver" }
 clickhouse-data = { module = "com.clickhouse:clickhouse-data", version.ref = "clickHouseDriver" }
