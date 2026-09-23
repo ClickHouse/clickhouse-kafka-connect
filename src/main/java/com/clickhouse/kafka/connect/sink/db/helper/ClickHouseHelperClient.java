@@ -21,19 +21,19 @@ import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.config.ClickHouseOption;
 import com.clickhouse.data.ClickHouseFormat;
 import com.clickhouse.data.ClickHouseRecord;
-import com.clickhouse.data.ClickHouseValue;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.Version;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -398,16 +398,16 @@ public class ClickHouseHelperClient implements AutoCloseable {
                      .set("describe_include_subcolumns", true)
                      .format(ClickHouseFormat.JSONEachRow)
                      .query(describeQuery))
-                     .executeAndWait()) {
+                     .executeAndWait();
+             BufferedReader reader = new BufferedReader(new InputStreamReader(response.getInputStream(), StandardCharsets.UTF_8))) {
 
             Set<String> skippedCols = new HashSet<>();
             boolean hasDefaults = false;
             int numColumns = 0;
             List<Column> columns = new ArrayList<>();
-            for (ClickHouseRecord r : response.records()) {
-                ClickHouseValue v = r.getValue(0);
-
-                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(v.asString());
+            String line;
+            while ((line = reader.readLine()) != null) {
+                ClickHouseFieldDescriptor fieldDescriptor = ClickHouseFieldDescriptor.fromJsonRow(line);
                 // Count what system.columns counts: top-level columns, including the ones skipped below
                 if (!fieldDescriptor.isSubcolumn()) {
                     numColumns++;
@@ -441,7 +441,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             }
 
             return new Table(database, tableName, hasDefaults, columns, numColumns);
-        } catch (ClickHouseException | JsonProcessingException e) {
+        } catch (ClickHouseException | IOException e) {
             LOGGER.error(String.format("Exception when running describeTable %s", describeQuery), e);
             return null;
         }
@@ -463,7 +463,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             int numColumns = 0;
             List<Column> columns = new ArrayList<>();
             try (QueryResponse queryResponse = client.query(describeQuery, settings).get();
-                 BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
+                 BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream(), StandardCharsets.UTF_8))) {
                 String line = null;
                 Set<String> skippedCols = new HashSet<>();
                 while ((line = br.readLine()) != null) {
