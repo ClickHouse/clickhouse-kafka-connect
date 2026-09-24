@@ -149,7 +149,6 @@ testing {
                 implementation(libs.okhttp)
                 implementation(libs.json)
                 implementation(libs.httpclient5.test)
-//                implementation(libs.clickhouse.jdbc)
                 implementation(libs.clickhouse.client)
                 implementation(libs.clickhouse.client.v2)
                 implementation(libs.clickhouse.http.client)
