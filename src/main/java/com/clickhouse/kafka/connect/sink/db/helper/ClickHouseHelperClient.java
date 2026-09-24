@@ -100,6 +100,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
         options.put(ClickHouseClientOption.CLIENT_NAME, CONNECT_CLIENT_NAME);
+        options.put(ClickHouseClientOption.CUSTOM_SETTINGS, "network_compression_method=lz4");
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             options.put(ClickHouseClientOption.PROXY_TYPE, proxyType);
             options.put(ClickHouseClientOption.PROXY_HOST, proxyHost);
@@ -129,6 +130,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         LOGGER.info("ClickHouse URL: {}", url);
 
         final Map<String, String> options = new HashMap<>();
+        options.put("network_compression_method", "lz4");
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
             options.put("user", username);
@@ -168,6 +170,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .setUsername(this.username)
                 .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
+                .serverSetting("network_compression_method", "lz4")
                 .setDefaultDatabase(this.database);
 
         if (jdbcConnectionProperties != null && !jdbcConnectionProperties.isEmpty()) {
