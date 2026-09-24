@@ -38,6 +38,7 @@ final class AtLeastOnceBufferStrategy implements DeliveryStrategy {
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        int bufferedBeforePut = buffer.size();
         if (records != null && !records.isEmpty()) {
             buffer.addAll(records);
             LOGGER.debug("Buffered {} records, total buffer size: {}", records.size(), buffer.size());
@@ -51,7 +52,14 @@ final class AtLeastOnceBufferStrategy implements DeliveryStrategy {
         if (sizeThreshold || timeThreshold) {
             LOGGER.debug("Buffer flush triggered: size={}, sizeThreshold={}, timeThreshold={}, lastFlushTime={}",
                     buffer.size(), sizeThreshold, timeThreshold, lastFlushTime);
-            flushBuffer();
+            try {
+                flushBuffer();
+            } catch (RuntimeException e) {
+                // Connect redelivers exactly the records of this put() after a retriable
+                // failure, so keeping them buffered here would produce a second copy.
+                buffer.subList(bufferedBeforePut, buffer.size()).clear();
+                throw e;
+            }
         }
     }
 
