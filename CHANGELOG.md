@@ -1,3 +1,16 @@
+# next release 
+
+
+## Confluent Archive
+
+* Now includes shaded `org.lz4` to solve conflict between versions provided by `org.apache.kafka:connect-api > org.apache.kafka:kafka-clients`.
+
+## Dependencies
+
+* Bumped `com.clickhouse:*` from `0.9.5` to `0.9.6`.
+* Fixed resolution of `org.lz4` library.
+
+
 # 1.6.0, 2026-09-11
 
 ## Improvements
