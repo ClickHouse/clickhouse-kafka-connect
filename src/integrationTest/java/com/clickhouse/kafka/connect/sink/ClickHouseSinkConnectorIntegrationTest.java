@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -230,6 +231,14 @@ public class ClickHouseSinkConnectorIntegrationTest {
         confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.AVRO.getJsonPayload(1, topicName));
     }
 
+    // Same as setupAvroConnector but with input_format_binary_read_json_as_string=1, required for
+    // fixtures whose target table has a JSON column (RowBinary writes the JSON value as a string).
+    private void setupAvroConnectorWithJson(String topicName) throws IOException, InterruptedException {
+        LOGGER.info("Setting up Avro connector (JSON as string) for topic {}...", topicName);
+        confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
+        confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.AVRO_JSON.getJsonPayload(1, topicName));
+    }
+
     private void setupProtobufConnector(String topicName) throws IOException, InterruptedException {
         LOGGER.info("Setting up Protobuf connector for topic {}...", topicName);
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
@@ -323,8 +332,11 @@ public class ClickHouseSinkConnectorIntegrationTest {
                 .engine("MergeTree")
                 .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
+        boolean hasJsonColumn = false;
         for (String colName : clickhouseColumns.keySet()) {
-            tableStmt.column(colName, clickhouseColumns.getString(colName));
+            String colType = clickhouseColumns.getString(colName);
+            tableStmt.column(colName, colType);
+            hasJsonColumn |= colType.contains("JSON");
         }
         tableStmt.execute(chcNoProxy);
 
@@ -336,8 +348,12 @@ public class ClickHouseSinkConnectorIntegrationTest {
         );
         LOGGER.info("Produced {} records to topic {}", producedCount, topicName);
 
-        // 4. Setup sink connector with Avro converter
-        setupAvroConnector(topicName);
+        // 4. Setup sink connector with Avro converter (JSON-as-string variant when a JSON column is present)
+        if (hasJsonColumn) {
+            setupAvroConnectorWithJson(topicName);
+        } else {
+            setupAvroConnector(topicName);
+        }
 
         // 5. Wait for data to flow through
         ClickHouseTestHelpers.waitWhileCounting(chcNoProxy, topicName, 3);
@@ -350,6 +366,80 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
         // 7. Check row count
         Assertions.assertEquals(expectedRowCount, ClickHouseTestHelpers.countRows(chcNoProxy, topicName));
+
+        // 8. Optionally verify the data actually landed as expected (not just the row count).
+        // A fixture opts in by declaring "expected_rows"; rows are matched to expectations by the
+        // order-by column so the assertion doesn't depend on ClickHouse's return order.
+        final String expectedRowsKey = "expected_rows";
+        if (fixture.has(expectedRowsKey)) {
+            String orderByColumn = fixture.getString(clickhouseOrderByKey);
+            JSONArray expectedRows = fixture.getJSONArray(expectedRowsKey);
+            List<JSONObject> actualRows =
+                    isCloud
+                            ? ClickHouseTestHelpers.getAllRowsAsJsonCloud(chcNoProxy, topicName)
+                            : ClickHouseTestHelpers.getAllRowsAsJson(chcNoProxy, topicName);
+
+            Map<String, JSONObject> actualByKey = new HashMap<>();
+            for (JSONObject row : actualRows) {
+                actualByKey.put(String.valueOf(row.get(orderByColumn)), row);
+            }
+
+            for (int i = 0; i < expectedRows.length(); i++) {
+                JSONObject expectedRow = expectedRows.getJSONObject(i);
+                String key = String.valueOf(expectedRow.get(orderByColumn));
+                JSONObject actualRow = actualByKey.get(key);
+                Assertions.assertNotNull(
+                        actualRow,
+                        String.format("%s: no row found for %s=%s", fileName, orderByColumn, key));
+                for (String col : expectedRow.keySet()) {
+                    Assertions.assertTrue(
+                            jsonContains(expectedRow.get(col), actualRow.opt(col)),
+                            String.format(
+                                    "%s: column '%s' mismatch for %s=%s (expected %s, got %s)",
+                                    fileName, col, orderByColumn, key, expectedRow.get(col), actualRow.opt(col)));
+                }
+            }
+        }
+    }
+
+    // Asserts the expected value is contained in what ClickHouse returned: object keys are matched
+    // recursively (extra keys on the actual side are ignored, since a JSON column drops unset
+    // union branches that serialize as null), key order is irrelevant, and numbers compare by value
+    // (an Int32 reads back as a wider numeric type).
+    private static boolean jsonContains(Object expected, Object actual) {
+        if (expected instanceof JSONObject) {
+            if (!(actual instanceof JSONObject)) {
+                return false;
+            }
+            JSONObject expectedObj = (JSONObject) expected;
+            JSONObject actualObj = (JSONObject) actual;
+            for (String k : expectedObj.keySet()) {
+                if (!actualObj.has(k) || !jsonContains(expectedObj.get(k), actualObj.get(k))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (expected instanceof JSONArray) {
+            if (!(actual instanceof JSONArray)) {
+                return false;
+            }
+            JSONArray expectedArr = (JSONArray) expected;
+            JSONArray actualArr = (JSONArray) actual;
+            if (expectedArr.length() != actualArr.length()) {
+                return false;
+            }
+            for (int i = 0; i < expectedArr.length(); i++) {
+                if (!jsonContains(expectedArr.get(i), actualArr.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (expected instanceof Number && actual instanceof Number) {
+            return ((Number) expected).doubleValue() == ((Number) actual).doubleValue();
+        }
+        return String.valueOf(expected).equals(String.valueOf(actual));
     }
 
     private static Stream<Path> getCompatibleProtoSchemaPaths() {
@@ -440,6 +530,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         BASE_SCHEMALESS("clickhouse_sink_schemaless.json"),
         PROTOBUF("clickhouse_sink_protobuf.json"),
         AVRO("clickhouse_sink_avro.json"),
+        AVRO_JSON("clickhouse_sink_avro_json.json"),
         JDBC_PROP("clickhouse_sink_with_jdbc_prop.json");
 
         final Path pathToJsonConfig;
