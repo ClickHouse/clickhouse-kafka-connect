@@ -4,10 +4,14 @@ import com.clickhouse.client.ClickHouseClient;
 import com.clickhouse.client.ClickHouseNode;
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.ClickHouseRequest;
+import com.clickhouse.client.api.Client;
+import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.client.api.insert.InsertSettings;
 import com.clickhouse.client.api.query.QuerySettings;
+import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.http.config.ClickHouseHttpOption;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
+import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -347,5 +351,65 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         QuerySettings qs2 = new QuerySettings();
         client.setReplicaTagHeaderV2(qs2);
         Assertions.assertNull(qs2.getAllSettings().get(expectedOptionKey));
+    }
+
+    @Test
+    public void testSetCompressionMethod_DefaultIsTrue() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .build();
+        Assertions.assertTrue(client.isSetCompressionMethod());
+
+        // V1 client options
+        Map<com.clickhouse.config.ClickHouseOption, java.io.Serializable> defaultOptions = client.getDefaultClientOptions();
+        Assertions.assertEquals(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD + "=" + ClickHouseHelperClient.LZ4,
+                defaultOptions.get(ClickHouseClientOption.CUSTOM_SETTINGS));
+
+        // V1 node options
+        Assertions.assertEquals(ClickHouseHelperClient.LZ4,
+                client.getServer().getOptions().get(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD));
+
+        // V2 client configuration
+        Map<String, String> v2Config = client.getClient().getConfiguration();
+        Assertions.assertTrue(v2Config.entrySet().stream()
+                .anyMatch(e -> e.getKey().contains(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD) && ClickHouseHelperClient.LZ4.equals(e.getValue())));
+    }
+
+    @Test
+    public void testSetCompressionMethod_Disabled() {
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .setCompressionMethod(false)
+                .build();
+        Assertions.assertFalse(client.isSetCompressionMethod());
+
+        // V1 client options
+        Map<com.clickhouse.config.ClickHouseOption, java.io.Serializable> defaultOptions = client.getDefaultClientOptions();
+        Assertions.assertNull(defaultOptions.get(ClickHouseClientOption.CUSTOM_SETTINGS));
+
+        // V1 node options
+        Assertions.assertNull(client.getServer().getOptions().get(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD));
+
+        // V2 client configuration
+        Map<String, String> v2Config = client.getClient().getConfiguration();
+        Assertions.assertFalse(v2Config.entrySet().stream()
+                .anyMatch(e -> e.getKey().contains(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD)));
+    }
+
+    @Test
+    public void testSinkConfig_SetCompressionMethod() {
+        // Default is true
+        ClickHouseSinkConfig configDefault = new ClickHouseSinkConfig(Map.of());
+        Assertions.assertTrue(configDefault.isSetCompressionMethod());
+
+        // Set to false via canonical config key
+        ClickHouseSinkConfig configFalse = new ClickHouseSinkConfig(Map.of(ClickHouseSinkConfig.SET_COMPRESSION_METHOD, "false"));
+        Assertions.assertFalse(configFalse.isSetCompressionMethod());
+
+        // Set to false via snake_case alias
+        ClickHouseSinkConfig configSnake = new ClickHouseSinkConfig(Map.of("set_compression_method", "false"));
+        Assertions.assertFalse(configSnake.isSetCompressionMethod());
+
+        // Verify config definition exists
+        Assertions.assertTrue(ClickHouseSinkConfig.CONFIG.configKeys().containsKey(ClickHouseSinkConfig.SET_COMPRESSION_METHOD));
+        Assertions.assertEquals(true, ClickHouseSinkConfig.CONFIG.configKeys().get(ClickHouseSinkConfig.SET_COMPRESSION_METHOD).defaultValue);
     }
 }
