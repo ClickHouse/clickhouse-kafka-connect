@@ -17,8 +17,10 @@ import com.clickhouse.kafka.connect.util.Mask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class KeeperStateProvider extends BaseStateProviderImpl {
 
@@ -103,8 +105,9 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
                      .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
                      .query(selectStr)
                      .executeAndWait()) {
-            LOGGER.debug("return size: {}", response.getSummary().getReadRows());
-            long totalResultsFound = response.getSummary().getResultRows();
+            List<ClickHouseRecord> records = response.stream().collect(Collectors.toList());
+            long totalResultsFound = records.size();
+            LOGGER.debug("return size: {}", records.size());
             if ( totalResultsFound == 0) {
                 LOGGER.info("Read state record: topic {} partition {} with NONE state", topic, partition);
                 return new StateRecord(topic, partition, 0, 0, State.NONE, topic);
@@ -112,7 +115,7 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
                 LOGGER.warn("There was more than 1 state records for query: {} ({} found)", selectStr, totalResultsFound);
             }
 
-            ClickHouseRecord r = response.firstRecord();
+            ClickHouseRecord r = records.get(0);
             long minOffset = r.getValue(1).asLong();
             long maxOffset = r.getValue(2).asLong();
             State state = State.valueOf(r.getValue(3).asString());
