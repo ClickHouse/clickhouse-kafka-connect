@@ -196,6 +196,74 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
     }
 
     @Test
+    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/820
+    public void nullMapTypeTest() {
+        Map<String, String> props = getBaseProps();
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic = createTopicName("nullable_map_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("off16", "Int16")
+                .column("map_string_string", "Map(String, String)")
+                .column("map_string_int64", "Map(String, Int64)")
+                .engine("MergeTree")
+                .orderByColumn("off16")
+                .execute(chc);
+        Collection<SinkRecord> sr = SchemaTestData.createNullableMapType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(expectedNullMapCount(sr.size()), countEmptyMaps(chc, topic));
+    }
+
+    @Test
+    public void nullMapTypeJsonInsertTest() {
+        Map<String, String> props = getBaseProps();
+        props.put("bypassRowBinary", "true");
+        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+        String topic = createTopicName("nullable_map_json_table_test");
+        ClickHouseTestHelpers.dropTable(chc, topic);
+        new CreateTableStatement()
+                .tableName(topic)
+                .column("off16", "Int16")
+                .column("map_string_string", "Map(String, String)")
+                .column("map_string_int64", "Map(String, Int64)")
+                .engine("MergeTree")
+                .orderByColumn("off16")
+                .execute(chc);
+        Collection<SinkRecord> sr = SchemaTestData.createNullableMapType(topic, 1);
+
+        ClickHouseSinkTask chst = new ClickHouseSinkTask();
+        chst.start(props);
+        chst.put(sr);
+        chst.stop();
+
+        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+        assertEquals(expectedNullMapCount(sr.size()), countEmptyMaps(chc, topic));
+    }
+
+    private static int expectedNullMapCount(int totalRecords) {
+        return (totalRecords + 9) / 10;
+    }
+
+    private static int countEmptyMaps(ClickHouseHelperClient chc, String tableName) {
+        String table = ClickHouseTestHelpers.buildFromClause(chc, tableName);
+        String query = "SELECT count() FROM " + table + " WHERE empty(map_string_string) AND empty(map_string_int64) SETTINGS select_sequential_consistency = 1";
+        try (com.clickhouse.client.api.query.Records records = chc.queryV2(query)) {
+            return Integer.parseInt(records.iterator().next().getString(1));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
     public void nullArrayTypeTest() {
         Map<String, String> props = getBaseProps();
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
