@@ -1,0 +1,22 @@
+# Pinned reference for Benchmark v2 arm P (the "pinned" arm).
+#
+# This is the single, authoritative place the pin lives. Bumping the pin is a
+# one-line change here, committed as an annotated dashboard event (a pin bump is
+# a real, recorded change in the H/P ratio trend — see plan section 3 and
+# open decision 3).
+#
+# Value MUST be an existing tagged release of this repo whose GitHub release
+# publishes the plugin zip asset. arm P bakes in the IMMUTABLE RELEASED artifact
+# for this tag (downloaded from the release, sha256-verified against the release
+# digest) — it is NOT rebuilt from the tag. A rebuild would drift with toolchain
+# changes (gradle/JDK/deps) and move the H/P ratio for non-connector reasons; the
+# released jar is the fixed reference. The verified sha256 is recorded in the
+# image provenance (provenance.json + OCI label).
+#
+# Policy (plan open decision 3): the pinned reference = the last tagged release,
+# bumped only deliberately. To bump: set the value below to the new tag, commit
+# with a message noting the old->new tags and the reason.
+#
+# Lines starting with '#' and blank lines are ignored; the first non-comment,
+# non-blank line is the pinned ref.
+v1.3.10

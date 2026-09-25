@@ -1,0 +1,113 @@
+{
+  "_comment": [
+    "Tab 3 (ENVIRONMENT) chart specs for the Benchmark v2 Kafka dashboard, DWH Superset (dashboard 432).",
+    "Consumed by the Stage-B build (script or browser operator). Layout follows",
+    "docs/benchmark-v2-plan.md §8 Tab 3 sketch (6 charts): pinned drain-rate trend with upgrade/restart",
+    "annotations; CH version timeline; throughput-vs-uptime scatter; pre-run state trends (RSS + active",
+    "parts); CoV noise gauge per tier (Tier 0 must be << Tier 1 or the instrument is broken); and the",
+    "Kafka-specific Tier-0 parse-watch (ch_insert_cpu_share_tier0) with a threshold line.",
+    "ARM SCOPING: the WHOLE tab is arm=PINNED (instrument health — the stable reference whose environment",
+    "drift is the story) per plan §8 global-filter note. Every trend reads v_kc_metric_trends filtered",
+    "arm='pinned'; the tab carries a native filter pinning arm='pinned'. Head rows are EXCLUDED from Tab 3.",
+    "ANNOTATION LAYER: v_env_annotations does NOT exist yet for kafka (task-35 constraint 6). Tab-3's",
+    "annotation layer is derived INLINE from v_kc_env_events — CH-version changes + ch_uptime drops between",
+    "consecutive PINNED runs — a NEW kafka-local dataset carrying the contract §4 scope tuple (connector,",
+    "target_service, environment_class). Consumers MUST filter that tuple. A SHARED cross-connector",
+    "annotation view is explicitly FUTURE WORK (see DASHBOARD.md Tab-3 section).",
+    "EVERY chart carries `description` (what / how-to-read / direction-of-goodness) per the #42 standard;",
+    "covariate charts SAY SO. ADDITIVE-ONLY: all new assets; Tab 3 reads NO verdict/alert truth.",
+    "SIGHTED-GATE HISTORY: ch_insert_cpu_share_tier0 exists only from pair 4 (2026-07-12) onward",
+    "(constraint 5) — the parse-watch description notes the series start.",
+    "PARSE-WATCH THRESHOLD: threshold line at 50% (the decision-9 revisit level — task-35 constraint 8).",
+    "Observed values are 1.6–2.75%, so there is huge headroom; the description explains the revisit trigger.",
+    "CALIBRATION CAVEAT (n=3): the CoV noise gauge and any median are noisy at n=3 pairs (constraint 9).",
+    "DATA REALITY (Task 34/35): 3 clean pairs (n=3) ACCEPTED by the user — structure first."
+  ],
+  "dashboard_title": "Benchmark v2 — Kafka Connect (REGRESSION)",
+  "tab": "Tab 3 — ENVIRONMENT",
+  "tab_arm_scope": {
+    "arm": "pinned",
+    "mechanism": "a dashboard-level native filter (or per-chart filter) pins arm='pinned' on every v_kc_metric_trends-backed chart; v_kc_env_events is pinned-only by construction. This is the plan §8 'Arm is scoped per-tab (Tab 3 = pinned)' rule — HEAD rows never appear on Tab 3.",
+    "note": "The pinned arm is the STABLE reference; its environment drift (CH upgrades, restarts, memory pressure) is Tab 3's whole subject. A head-arm change would be code-under-test, not environment."
+  },
+  "datasets": {
+    "v_kc_metric_trends": "NEW (shared with Tab 2) — tall per-run metric series; feeds the pinned-arm trends (pinned drain-rate, pre-run RSS + active parts, parse-watch, CoV inputs). Filter arm='pinned'.",
+    "v_kc_env_events": "NEW — kafka-local environment-annotation source derived inline from consecutive PINNED runs (CH-version change + ch_uptime-drop restart), carrying the contract §4 scope tuple (connector, target_service, environment_class). Feeds the annotation overlay on the pinned drain-rate trend AND the CH version timeline.",
+    "v_kc_runs": "REUSED — one wide row per run; feeds the throughput-vs-uptime scatter (pinned drain_rows_per_sec vs ch_uptime, one point per pinned run) and the per-tier CoV noise gauge."
+  },
+  "charts": [
+    {
+      "slice_name": "kc_t3_pinned_drain_trend_annotated",
+      "viz_type": "echarts_timeseries_line",
+      "dataset": "v_kc_metric_trends",
+      "row": 1, "width": 6,
+      "x_axis": "run_started_at",
+      "metric": "value",
+      "filters": "metric_name='drain_rows_per_sec' AND arm='pinned' AND tier='1'",
+      "annotation_layer": {
+        "source_dataset": "v_kc_env_events",
+        "type": "event/interval markers",
+        "time_column": "event_time",
+        "label_column": "label",
+        "scope_filter": "connector='kafka-connect' AND environment_class='staging' AND target_service = <this benchmark's target_service>",
+        "note": "MANDATORY scope filter (contract §4): the annotation overlay MUST filter (connector, target_service, environment_class) so a Spark-target event is never painted onto this Kafka chart. event_kind IN ('ch_version_change','server_restart'); label is the human string ('CH upgrade X -> Y' / 'server restart (uptime ...)')."
+      },
+      "description": "PINNED drain-rate trend (rows/s), Tier 1, WITH environment annotations. The pinned arm is the fixed reference build, so its Tier-1 throughput should be FLAT — any move is the ENVIRONMENT, not the code. Vertical annotations from v_kc_env_events mark CH upgrades and server restarts. HOW TO READ: a step in the pinned line that lines up with an annotation is explained (a restart cleared memory pressure → throughput jumped; an upgrade shifted server behaviour); a step with NO annotation is unexplained instrument drift worth investigating. DIRECTION OF GOODNESS: FLAT is good — the reference should not move on its own; movement is a covariate to attribute, not a performance win. SCOPE: annotations are filtered to this Kafka target's (connector, target_service, environment_class) tuple per contract §4 — never unscoped."
+    },
+    {
+      "slice_name": "kc_t3_ch_version_timeline",
+      "viz_type": "echarts_timeseries_line",
+      "dataset": "v_kc_metric_trends",
+      "row": 1, "width": 6,
+      "x_axis": "run_started_at",
+      "dimension": "clickhouse_version",
+      "series_note": "a step/timeline of the target's clickhouse_version over pinned runs. Simplest robust build: plot a constant (e.g. value=1) with clickhouse_version as the series/label so the chart reads as version-over-time bands; OR a table of (run_started_at, clickhouse_version) if a timeline viz is unavailable. The CH-version CHANGE points are also emitted as v_kc_env_events rows (event_kind='ch_version_change') for cross-reference.",
+      "description": "CH VERSION TIMELINE — the target ClickHouse version over time, pinned arm. HOW TO READ: this is the ground truth for which server version was under each pinned run, so any Tab-2/Tab-3 trend step can be checked against a version boundary. A Cloud target's version drifts on the provider's schedule (contract §1.4: Cloud-hosted targets have no pinned instrument version), so upgrades appear here as covariates, not decisions. DIRECTION OF GOODNESS: none — this is descriptive context. It pairs with the annotation layer on the pinned drain trend (same ch_version_change events) so a throughput step and a version bump can be lined up."
+    },
+    {
+      "slice_name": "kc_t3_throughput_vs_uptime_scatter",
+      "viz_type": "echarts_timeseries_scatter",
+      "dataset": "v_kc_runs",
+      "row": 2, "width": 6,
+      "x_axis": "ch_uptime",
+      "metric": "drain_rows_per_sec",
+      "filters": "arm='pinned' AND tier='1' AND drain_rows_per_sec IS NOT NULL AND ch_uptime IS NOT NULL",
+      "series_note": "one point per pinned Tier-1 run: x = ch_uptime (server uptime at run start, seconds), y = drain_rows_per_sec. NOT a time series — a scatter to expose a decay relationship. Optional trend/regression line if the viz supports it.",
+      "description": "THROUGHPUT vs UPTIME scatter (+ decay), pinned arm, Tier 1. Each point is one pinned run: server uptime at run start (x) vs verified drain throughput (y). HOW TO READ: a FLAT cloud means uptime does not affect throughput (healthy — the server holds steady however long it has been up); a DOWNWARD slope means throughput DECAYS with uptime (memory pressure / fragmentation accumulating since the last restart), which is exactly the mechanism behind the restart step-changes annotated on the pinned drain trend. A low-uptime point sitting high confirms 'a fresh restart runs faster'. DIRECTION OF GOODNESS: a flat (no-decay) relationship is good; a downward slope is an instrument-health concern to attribute, not a code result. CALIBRATION CAVEAT: at n=3 pinned runs the slope is not yet meaningful (constraint 9) — read it as it fills in."
+    },
+    {
+      "slice_name": "kc_t3_pre_run_state_trends",
+      "viz_type": "echarts_timeseries_line",
+      "dataset": "v_kc_metric_trends",
+      "row": 2, "width": 6,
+      "x_axis": "run_started_at",
+      "metric": "value",
+      "series": "metric_name",
+      "filters": "metric_name IN ('pre_run_rss','pre_run_active_parts') AND arm='pinned' AND tier='1'",
+      "series_note": "two series keyed by metric_name: pre_run_rss (bytes) and pre_run_active_parts (count). Different units — put pre_run_active_parts on a secondary y-axis. Pinned/conformant names (§7).",
+      "description": "PRE-RUN STATE trends — inherited RSS + active parts, pinned arm, Tier 1. pre_run_rss is the target's resident memory BEFORE the run (pre-truncate) — inherited memory pressure; pre_run_active_parts is active parts on the target table at run start (expected ~0 on a clean start — contract §2.1 cleanliness verifier). HOW TO READ: pre_run_rss creeping up run-over-run means memory pressure is accumulating between runs (a restart should reset it — cross-check the annotations); pre_run_active_parts above ~0 means the previous run's parts were not fully merged/cleaned before this run started, which biases the run (the drain begins on a dirty table). DIRECTION OF GOODNESS: both LOW and FLAT are good — rising RSS or non-zero active parts are covariates that can confound the throughput trend, not performance results."
+    },
+    {
+      "slice_name": "kc_t3_cov_noise_gauge_per_tier",
+      "viz_type": "table",
+      "dataset": "v_kc_runs",
+      "row": 3, "width": 6,
+      "query": "SELECT tier, count() AS n_runs, round(stddevPop(drain_rows_per_sec) / nullIf(avg(drain_rows_per_sec), 0), 4) AS cov FROM v_kc_runs WHERE arm='pinned' AND drain_rows_per_sec IS NOT NULL AND run_started_at >= now() - INTERVAL 30 DAY GROUP BY tier ORDER BY tier",
+      "query_note": "CoV = stddevPop(rate) / avg(rate) per tier over the pinned arm's trailing-30d runs. For Tier 0 the rate metric is null_drain_rows_per_sec; for Tier 1 it is drain_rows_per_sec. If a single query cannot pick the per-tier rate metric cleanly, build two rows: Tier 0 CoV over null_drain_rows_per_sec and Tier 1 CoV over drain_rows_per_sec (both from v_kc_runs). The table shows n_runs so the caveat is visible at a glance.",
+      "columns": ["tier", "n_runs", "cov"],
+      "description": "CoV NOISE GAUGE per tier, pinned arm — the instrument-sanity check. CoV = coefficient of variation (stddev ÷ mean) of the per-tier drain rate over the pinned reference runs. INVARIANT: Tier 0 CoV must be MUCH LESS than Tier 1 CoV — Tier 0 (Null target) removes server/merge variance, so if Tier 0 is as noisy as (or noisier than) Tier 1, the instrument itself is unstable and the whole benchmark's precision is suspect (the bands cannot be trusted). HOW TO READ: Tier 0 CoV small and Tier 1 CoV larger = healthy; Tier 0 CoV ≈ or > Tier 1 CoV = BROKEN instrument, investigate before trusting any verdict. DIRECTION OF GOODNESS: low CoV per tier, and Tier0 << Tier1. CALIBRATION CAVEAT: CoV at n=3 is barely defined — the n_runs column is shown precisely so this gauge is read as PROVISIONAL until n≈20 (constraint 9)."
+    },
+    {
+      "slice_name": "kc_t3_parse_watch_tier0",
+      "viz_type": "echarts_timeseries_line",
+      "dataset": "v_kc_metric_trends",
+      "row": 3, "width": 6,
+      "x_axis": "run_started_at",
+      "metric": "value",
+      "filters": "metric_name='ch_insert_cpu_share_tier0' AND arm='pinned' AND tier='0'",
+      "threshold_line": {"value": 50, "unit": "percent", "label": "decision-9 revisit threshold (50%)"},
+      "series_note": "single pinned Tier-0 series; y = percent (Null-target insert CPU ÷ wall-clock ×100). A horizontal THRESHOLD LINE at 50% marks the decision-9 revisit level. ANNOTATION RENDER: the FORMULA annotation layer carries showMarkers:false and hideLine:false so the threshold renders as a clean reference LINE (no point markers, line not suppressed) — required on this Superset build.",
+      "description": "TIER-0 PARSE-WATCH — ch_insert_cpu_share_tier0 (%), pinned arm, WITH a 50% threshold line. This is the decision-9 guard (plan §8 / contract §2.1): the share of Tier-0 wall-clock the Null target spends in server-side insert CPU. If the 3 vCPU box is PARSE-BOUND, Tier 0 stops measuring the connector and starts measuring the server — and Tier 0's whole premise (a client-ceiling isolated from server cost) breaks. HOW TO READ: the line should sit LOW; observed values are 1.6–2.75%, which leaves HUGE headroom below the threshold. The 50% THRESHOLD LINE is the documented REVISIT TRIGGER — if the line trends toward and crosses 50%, the Null target is materially parse-bound and decision 9 (whether Tier 0 is a fair connector ceiling on this box) MUST be revisited; today's ~2% is comfortably clear. DIRECTION OF GOODNESS: LOWER is better; near-zero means Tier 0 is a clean connector ceiling. SERIES START: ch_insert_cpu_share_tier0 exists only from pair 4 (2026-07-12) onward (the sighted-gate Tier-0 build — constraint 5), so the line STARTS 2026-07-12; earlier dates are genuinely empty."
+    }
+  ]
+}
