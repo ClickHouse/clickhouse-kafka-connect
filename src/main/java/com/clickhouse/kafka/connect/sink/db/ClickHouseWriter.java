@@ -93,6 +93,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setSslSocketSni(csc.getSslSocketSni())
                 .setClusterClause(csc.getClusterName())
                 .enableReplicaPinning(csc.isEnableReplicaPinning())
+                .setCompressionMethod(csc.isSetCompressionMethod())
                 .build();
 
         if (!chc.ping()) {
@@ -1495,6 +1496,7 @@ public class ClickHouseWriter implements DBWriter {
                 .setSslSocketSni(csc.getSslSocketSni())
                 .setClusterClause(csc.getClusterName())
                 .enableReplicaPinning(csc.isEnableReplicaPinning())
+                .setCompressionMethod(csc.isSetCompressionMethod())
                 .build();
 
         ClickHouseNode server = chcTmp.getServer();
