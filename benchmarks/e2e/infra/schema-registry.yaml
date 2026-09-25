@@ -1,0 +1,118 @@
+# Schema Registry — Confluent cp-schema-registry (Community/OSS image).
+#
+# CHOICE (plan open decision 6): Confluent Schema Registry, not Apicurio.
+# Rationale: the benchmark's insert path uses the Confluent AvroConverter
+# (plan section 6, decision-locked). cp-schema-registry is the reference
+# implementation of exactly that wire format (magic byte + 4-byte schema id),
+# so the converter needs no compatibility shim, no alternate id-encoding, and
+# no Apicurio "ccompat" endpoint quirks. Wire-compatibility with the
+# AvroConverter is the deciding criterion, and Confluent is a 1:1 match.
+# The Community image is Apache-2.0 / Confluent Community License — fine for
+# an internal benchmark.
+#
+# Deployment is plain Kubernetes (Deployment + Service) — no operator needed.
+# It points at the Strimzi bootstrap service for the `bench` cluster.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-registry
+  namespace: kafka-bench
+  labels:
+    app: schema-registry
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: schema-registry
+  template:
+    metadata:
+      labels:
+        app: schema-registry
+        app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+    spec:
+      # Kubernetes service-link env injection creates SCHEMA_REGISTRY_PORT=tcp://...
+      # (from the schema-registry Service), which the Confluent configure script
+      # parses as the deprecated `port` config and crash-loops ("PORT is
+      # deprecated"). Disable service links; discovery uses DNS anyway.
+      enableServiceLinks: false
+      # Pin to the bench nodegroup (2026-07-08 rebuild): the dedicated connect-ng
+      # m6i.xlarge runs ONLY the Connect worker, so the registry lands on
+      # bench-ng (role=bench). The podAntiAffinity below still spreads it off the
+      # broker pod within bench-ng.
+      nodeSelector:
+        role: bench
+      # Keep off the broker node when possible; not a hard requirement on a
+      # 2-node group, so a soft anti-affinity rather than required.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    strimzi.io/cluster: bench
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: schema-registry
+          # Pinned image tag — bump deliberately (a registry version change is
+          # a substrate change, annotate it like any other).
+          image: confluentinc/cp-schema-registry:7.7.1
+          ports:
+            - name: http
+              containerPort: 8081
+          env:
+            - name: SCHEMA_REGISTRY_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # Strimzi bootstrap service for cluster `bench`, plaintext 9092.
+            # Service name pattern: <cluster>-kafka-bootstrap.<ns>.svc:9092
+            - name: SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS
+              value: "PLAINTEXT://bench-kafka-bootstrap.kafka-bench.svc:9092"
+            - name: SCHEMA_REGISTRY_LISTENERS
+              value: "http://0.0.0.0:8081"
+            # _schemas topic RF=1 to match the single-broker cluster.
+            - name: SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: SCHEMA_REGISTRY_KAFKASTORE_TOPIC
+              value: "_schemas"
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: "250m"
+            limits:
+              memory: 1Gi
+              cpu: "1"
+          readinessProbe:
+            httpGet:
+              path: /subjects
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /subjects
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: schema-registry
+  namespace: kafka-bench
+  labels:
+    app: schema-registry
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+spec:
+  selector:
+    app: schema-registry
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+  # In-cluster only; the AvroConverter reaches it at
+  # http://schema-registry.kafka-bench.svc:8081
+  type: ClusterIP

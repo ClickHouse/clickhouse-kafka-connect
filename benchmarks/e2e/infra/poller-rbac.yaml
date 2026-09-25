@@ -1,0 +1,109 @@
+# RBAC for the in-cluster benchmark poller (task 31 — poller prerequisite 2).
+#
+# The poller integrates the cumulative cadvisor CPU counter
+# (container_cpu_usage_seconds_total) to produce connect_cpu_seconds_per_Mrows
+# and the tier-0 CPU acceptance-gate share (kafka_worker_cpu_share_t0). It reads
+# the kubelet /metrics/cadvisor endpoint of the node hosting the Connect worker
+# THROUGH the API server proxy:
+#
+#   https://kubernetes.default.svc/api/v1/nodes/<node>/proxy/metrics/cadvisor
+#
+# That proxy subresource requires `get` on `nodes/proxy`. This is the ENTIRE
+# grant — least-privilege (plan scope check): no secrets, no pods, no pods/exec,
+# no node object mutation. The poller pod authenticates with this ServiceAccount's
+# projected token (Authorization: Bearer) and verifies TLS against the mounted
+# cluster CA (see sampler._cadvisor_auth).
+#
+# Applied by scale-up.sh (idempotent) into the kafka-bench namespace; the poller
+# pod (bench-poller) sets serviceAccountName: bench-poller-sa. Cluster-scoped
+# because nodes are cluster-scoped resources.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bench-poller-sa
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bench-poller-cadvisor
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+rules:
+  # Read-only access to the kubelet cadvisor scrape via the API-server node
+  # proxy subresource. `get` is the verb for a GET through the proxy;
+  # `create` is included because the proxy subresource historically authorizes
+  # some request shapes as `create` (POST/other verbs are proxied) — Prometheus'
+  # own kubelet-scrape ClusterRole grants both on nodes/proxy, and omitting
+  # `create` is a known cause of a 403 on the proxy path even though a plain
+  # `can-i get nodes/proxy` may still say no when the binding is stale. No
+  # list/watch, no secrets, no pods, no node mutation.
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get", "create"]
+  # The sibling read-only kubelet metrics subresources, so the grant is correct
+  # regardless of which subresource this cluster's kube-apiserver version maps
+  # the /proxy/metrics/cadvisor path onto. Read-only (`get`) only.
+  - apiGroups: [""]
+    resources: ["nodes/metrics", "nodes/stats"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bench-poller-cadvisor
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bench-poller-cadvisor
+subjects:
+  - kind: ServiceAccount
+    name: bench-poller-sa
+    namespace: kafka-bench
+---
+# Namespace-scoped pods read (get/list). NOTE on who uses this: the actual
+# .spec.nodeName resolution that builds the node-proxy cadvisor URL runs in
+# run_pair.sh under the ORCHESTRATOR identity, NOT the poller SA — so this Role
+# is not on that hot path. It exists for (a) the scale-up.sh preflight, which
+# verifies the poller SA can reach the API with a real token+request probe, and
+# (b) any future IN-POD nodeName resolution should the poller ever resolve the
+# node itself. Kept least-privilege (get/list pods only) so both uses are
+# covered without granting the sampler more than it could ever need.
+#
+# The 2026-07-09 blind CPU gate was NOT an RBAC denial: nodes/proxy was
+# authorized all along, and the orchestrator-side resolver silently swallowed
+# its stderr (fixed in run_pair.sh). Because SSAR `can-i` checks false-negative
+# on this cluster, verify authorization with a real token+request probe, never
+# can-i — see scale-up.sh preflight.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bench-poller-pods
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bench-poller-pods
+  namespace: kafka-bench
+  labels:
+    app.kubernetes.io/part-of: kafka-connect-benchmark-v2
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bench-poller-pods
+subjects:
+  - kind: ServiceAccount
+    name: bench-poller-sa
+    namespace: kafka-bench

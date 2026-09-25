@@ -1,0 +1,681 @@
+{
+  "type": "record",
+  "name": "Hit",
+  "namespace": "com.clickhouse.kafka.connect.benchmark",
+  "doc": "ClickBench 'hits' schema (105 columns). Type mapping validated in CI against benchmarks/sql/clickbench/02_create_hits.sql. See README.md.",
+  "fields": [
+    {
+      "name": "WatchID",
+      "type": "long",
+      "doc": "CH Int64"
+    },
+    {
+      "name": "JavaEnable",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "Title",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "GoodEvent",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "EventTime",
+      "type": "long",
+      "doc": "CH DateTime (epoch seconds)"
+    },
+    {
+      "name": "EventDate",
+      "type": {
+        "type": "int",
+        "logicalType": "date",
+        "connect.type": "int32"
+      },
+      "doc": "CH Date (days since epoch)"
+    },
+    {
+      "name": "CounterID",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "ClientIP",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "RegionID",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "UserID",
+      "type": "long",
+      "doc": "CH Int64"
+    },
+    {
+      "name": "CounterClass",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "OS",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "UserAgent",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "URL",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "Referer",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "IsRefresh",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "RefererCategoryID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "RefererRegionID",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "URLCategoryID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "URLRegionID",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "ResolutionWidth",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "ResolutionHeight",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "ResolutionDepth",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "FlashMajor",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "FlashMinor",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "FlashMinor2",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "NetMajor",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "NetMinor",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "UserAgentMajor",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "UserAgentMinor",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "CookieEnable",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "JavascriptEnable",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "IsMobile",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "MobilePhone",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "MobilePhoneModel",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "Params",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "IPNetworkID",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "TraficSourceID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "SearchEngineID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "SearchPhrase",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "AdvEngineID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "IsArtifical",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "WindowClientWidth",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "WindowClientHeight",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "ClientTimeZone",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "ClientEventTime",
+      "type": "long",
+      "doc": "CH DateTime (epoch seconds)"
+    },
+    {
+      "name": "SilverlightVersion1",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "SilverlightVersion2",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "SilverlightVersion3",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "SilverlightVersion4",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "PageCharset",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "CodeVersion",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "IsLink",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "IsDownload",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "IsNotBounce",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "FUniqID",
+      "type": "long",
+      "doc": "CH Int64"
+    },
+    {
+      "name": "OriginalURL",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "HID",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "IsOldCounter",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "IsEvent",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "IsParameter",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "DontCountHits",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "WithHash",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "HitColor",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "LocalEventTime",
+      "type": "long",
+      "doc": "CH DateTime (epoch seconds)"
+    },
+    {
+      "name": "Age",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "Sex",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "Income",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "Interests",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "Robotness",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "RemoteIP",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "WindowName",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "OpenerName",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "HistoryLength",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "BrowserLanguage",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "BrowserCountry",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "SocialNetwork",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "SocialAction",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "HTTPError",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "SendTiming",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "DNSTiming",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "ConnectTiming",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "ResponseStartTiming",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "ResponseEndTiming",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "FetchTiming",
+      "type": "int",
+      "doc": "CH Int32"
+    },
+    {
+      "name": "SocialSourceNetworkID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "SocialSourcePage",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "ParamPrice",
+      "type": "long",
+      "doc": "CH Int64"
+    },
+    {
+      "name": "ParamOrderID",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "ParamCurrency",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "ParamCurrencyID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "OpenstatServiceName",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "OpenstatCampaignID",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "OpenstatAdID",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "OpenstatSourceID",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "UTMSource",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "UTMMedium",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "UTMCampaign",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "UTMContent",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "UTMTerm",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "FromTag",
+      "type": "string",
+      "doc": "CH String"
+    },
+    {
+      "name": "HasGCLID",
+      "type": {
+        "type": "int",
+        "connect.type": "int16"
+      },
+      "doc": "CH Int16"
+    },
+    {
+      "name": "RefererHash",
+      "type": "long",
+      "doc": "CH Int64"
+    },
+    {
+      "name": "URLHash",
+      "type": "long",
+      "doc": "CH Int64"
+    },
+    {
+      "name": "CLID",
+      "type": "int",
+      "doc": "CH Int32"
+    }
+  ]
+}

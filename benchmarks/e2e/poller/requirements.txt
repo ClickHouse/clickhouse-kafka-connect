@@ -1,0 +1,17 @@
+# Benchmark v2 metrics poller (task 29) — pinned runtime dependencies.
+#
+# Kept deliberately small (task brief). The finalizer math and the metric-name
+# vocabulary are pure stdlib and need NONE of these — only the live `sample`
+# loop and the `--insert` path do.
+#
+# confluent-kafka: consumer-group committed offsets + topic end offsets via the
+# same client the producer already uses (benchmarks/e2e/producer). No Avro
+# extras needed here — the poller only reads offsets, never record payloads.
+confluent-kafka==2.6.1
+# requests: Connect REST /status, the jmxPrometheusExporter /metrics scrape, the
+# kubelet cadvisor scrape, and the ClickHouse HTTP insert. One HTTP client for
+# all four so we avoid pulling clickhouse-connect just for a tiny batch insert.
+requests==2.32.3
+
+# Test-only (not imported by the package at runtime):
+#   pytest==8.3.3

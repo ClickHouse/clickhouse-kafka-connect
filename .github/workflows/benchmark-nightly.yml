@@ -1,0 +1,164 @@
+# Benchmark v2 — nightly two-arm pair (task 31).
+#
+# Assembles the full nightly anatomy (plan §5): build both arm images (via
+# benchmark-images.yml workflow_call), then run the pair orchestrator
+# (benchmarks/e2e/orchestration/run_pair.sh) on a self-hosted / credentialed
+# runner with kubectl access to the kafka-bench EKS cluster.
+#
+# STATUS: CODE-COMPLETE / VALIDATION-PENDING. No live cluster or creds exist in
+# this environment; this workflow has NOT run. The green-e2e-pair acceptance
+# criterion is NOT claimed. See benchmarks/e2e/orchestration/README.md.
+#
+# Concurrency (overseer directive f): a single-run guard so no two Kafka
+# benchmark runs overlap on the target. LIMITS documented in the README (it is a
+# per-workflow-file lock, not a target-wide lock — the Spark benchmark runs
+# against a DIFFERENT dedicated target, so no cross-workflow lock is needed;
+# plan §3/§5).
+#
+# Secret naming: AWS OIDC role mirrors the Spark CLICKBENCH_AWS_ROLE_ARN as
+# KAFKA_BENCH_AWS_ROLE_ARN (infra/README.md). CH creds use the KAFKA_*_CH_*
+# names from benchmarks/e2e/sql/README.md. (These two docs currently disagree on
+# the CH-secret prefix — see README "Interface gaps"; this workflow pins the
+# sql/README.md spelling as the single source of truth.)
+
+name: Benchmark v2 nightly pair
+
+on:
+  schedule:
+    # 04:15 UTC nightly (placeholder; align cadence with the Spark benchmark).
+    - cron: '15 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: benchmark-v2-kafka-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write   # benchmark-images.yml pushes to GHCR
+
+jobs:
+  # Build both arm images (head + pinned) and export their refs.
+  images:
+    uses: ./.github/workflows/benchmark-images.yml
+
+  run-pair:
+    needs: images
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write   # AWS OIDC (mirror the Spark CI pattern)
+      contents: read
+      packages: read
+    env:
+      AWS_REGION: us-east-2
+      COMPUTE_REGION: us-east-2         # EKS region (contract runtime key, directive c)
+      K8S_NAMESPACE: kafka-bench
+      CLUSTER_NAME: kafka-bench
+      NODEGROUP_NAME: bench-ng
+      # 4 bench nodes: sharded-preload capacity (review F5) — broker+registry
+      # node + 3 nodes each fitting one 4Gi-request producer shard pod. Keep in
+      # sync with infra/env.sh + cluster.yaml bench-ng maxSize.
+      SCALE_UP_NODES: "4"
+      # Arm images from the images job (benchmark-images.yml outputs).
+      HEAD_IMAGE: ${{ needs.images.outputs.head_image }}
+      PINNED_IMAGE: ${{ needs.images.outputs.pinned_image }}
+      # Producer image + parquet staging (staging location pending; see
+      # producer/README "Parquet staging (TBD)"). Both are workflow-level knobs
+      # so a mis-wire fails loudly.
+      PRODUCER_IMAGE: ${{ vars.KAFKA_PRODUCER_IMAGE }}
+      PARQUET_SOURCE: ${{ vars.KAFKA_PARQUET_SOURCE }}
+      PRODUCER_SA: ${{ vars.KAFKA_PRODUCER_SA || 'hits-producer' }}
+      # --- CH creds (env-only; sql/README.md KAFKA_* names) -------------------
+      TARGET_CH_HOST: ${{ secrets.KAFKA_TARGET_CH_HOST }}
+      TARGET_CH_USER: ${{ secrets.KAFKA_TARGET_CH_USER }}
+      TARGET_CH_PASSWORD: ${{ secrets.KAFKA_TARGET_CH_PASSWORD }}
+      METRICS_CH_HOST: ${{ secrets.KAFKA_METRICS_CH_HOST }}
+      METRICS_CH_USER: ${{ secrets.KAFKA_METRICS_CH_USER }}
+      METRICS_CH_PASSWORD: ${{ secrets.KAFKA_METRICS_CH_PASSWORD }}
+      # --- DWH export (bucket pending region decision; capture/README) --------
+      DWH_ROLE_ARN: ${{ secrets.KAFKA_DWH_ROLE_ARN }}
+      DWH_BUCKET: ${{ vars.KAFKA_DWH_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # lib_runid.sh needs the sha (nogit hard-fails)
+
+      - name: Install deps (kubectl, eksctl, envsubst, python libs)
+        run: |
+          set -euo pipefail
+          # kubectl
+          curl -fsSLo /usr/local/bin/kubectl \
+            "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x /usr/local/bin/kubectl
+          # eksctl
+          curl -fsSL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" \
+            | tar xz -C /tmp && sudo mv /tmp/eksctl /usr/local/bin/
+          sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base
+          pip install --quiet -r benchmarks/e2e/capture/requirements.txt
+          pip install --quiet -r benchmarks/e2e/poller/requirements.txt
+          pip install --quiet pyyaml boto3
+
+      - name: Configure AWS credentials (OIDC; mirrors Spark CI)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.KAFKA_BENCH_AWS_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Update kubeconfig for the kafka-bench cluster
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Resolve arm order + image slots (SINGLE parity computation)
+        # Review F10: the day parity is computed ONCE, here, and passed to
+        # run_pair.sh as ARM_ORDER_SPEC together with the matching
+        # ARM0_IMAGE/ARM1_IMAGE slots. run_pair.sh never re-derives the parity
+        # in CI — a second derivation straddling UTC midnight would silently
+        # mislabel the arms vs the image slots. Even day -> head first.
+        run: |
+          set -euo pipefail
+          DOY=$(date -u +%j)
+          if [ $((10#$DOY % 2)) -eq 0 ]; then
+            # even -> head first
+            echo "ARM_ORDER_SPEC=head pinned" >> "$GITHUB_ENV"
+            echo "ARM0_IMAGE=$HEAD_IMAGE"   >> "$GITHUB_ENV"
+            echo "ARM1_IMAGE=$PINNED_IMAGE" >> "$GITHUB_ENV"
+          else
+            # odd -> pinned first
+            echo "ARM_ORDER_SPEC=pinned head" >> "$GITHUB_ENV"
+            echo "ARM0_IMAGE=$PINNED_IMAGE" >> "$GITHUB_ENV"
+            echo "ARM1_IMAGE=$HEAD_IMAGE"   >> "$GITHUB_ENV"
+          fi
+          echo "day-of-year=$DOY -> ARM_ORDER_SPEC + ARM0/ARM1 image slots resolved once"
+
+      - name: Phase plan (dry-run, for the run log)
+        run: benchmarks/e2e/orchestration/run_pair.sh --plan
+
+      - name: Run the nightly pair
+        run: benchmarks/e2e/orchestration/run_pair.sh
+
+      # --- always() cleanup (overseer directive b) --------------------------
+      # These duplicate run_pair.sh's own trap so cleanup survives even a hard
+      # kill of the script (e.g. a cancelled job). All idempotent. The CR
+      # deletes matter (review F11): a KafkaConnector CR that survives the
+      # night would revive on the next scale-up and pre-consume the fresh topic.
+      - name: Delete benchmark CRs + topic (always)
+        if: always()
+        run: |
+          kubectl -n "$K8S_NAMESPACE" delete kafkaconnector bench-clickhouse-sink --ignore-not-found --wait=false || true
+          kubectl -n "$K8S_NAMESPACE" delete kafkaconnect bench-connect --ignore-not-found --wait=false || true
+          kubectl -n "$K8S_NAMESPACE" delete secret bench-ch-creds --ignore-not-found || true
+          kubectl -n "$K8S_NAMESPACE" delete pod bench-poller --ignore-not-found --wait=false || true
+          kubectl -n "$K8S_NAMESPACE" delete kafkatopic hits --ignore-not-found --wait=false || true
+
+      - name: Scale EKS node group to zero (always)
+        if: always()
+        working-directory: benchmarks/e2e/infra
+        run: ./scale-down.sh
+
+      - name: Upload poller samples + logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-v2-artifacts-${{ github.run_id }}
+          path: |
+            benchmarks/e2e/orchestration/artifacts/
+          if-no-files-found: warn

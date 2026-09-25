@@ -1,0 +1,40 @@
+name: Benchmark v2 - Hits Avro Mapping Test
+
+# Validates the full ClickBench `hits` 105-column Avro -> AvroConverter -> sink -> ClickHouse
+# mapping once in CI, so a broken column mapping surfaces here rather than at 200K rows/s during
+# a load test (Benchmark v2 plan, section 6 / phase 3). Uses Testcontainers ClickHouse.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'benchmarks/e2e/schema/**'
+      - 'src/main/java/com/clickhouse/kafka/connect/sink/db/**'
+      - 'src/main/java/com/clickhouse/kafka/connect/sink/data/**'
+      - 'src/test/java/com/clickhouse/kafka/connect/benchmark/**'
+      - '.github/workflows/benchmark-mapping-test.yml'
+
+jobs:
+  hits-mapping-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: Hits Avro 105-column mapping validation
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
+      - name: Run hits mapping test
+        run: ./gradlew test --tests "com.clickhouse.kafka.connect.benchmark.HitsAvroMappingTest"
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: hits-mapping-test-results-${{ github.run_id }}
+          path: |
+            **/build/reports/tests
+          retention-days: 5
