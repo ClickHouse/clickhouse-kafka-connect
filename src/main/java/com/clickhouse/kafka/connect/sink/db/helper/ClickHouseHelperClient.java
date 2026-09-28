@@ -108,6 +108,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         if (setCompressionMethod) {
             options.put(ClickHouseClientOption.CUSTOM_SETTINGS, NETWORK_COMPRESSION_METHOD + "=" + LZ4);
         }
+        options.put(ClickHouseClientOption.COMPRESS, false);
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             options.put(ClickHouseClientOption.PROXY_TYPE, proxyType);
             options.put(ClickHouseClientOption.PROXY_HOST, proxyHost);
@@ -140,6 +141,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         if (setCompressionMethod) {
             options.put(NETWORK_COMPRESSION_METHOD, LZ4);
         }
+        options.put(ClickHouseClientOption.COMPRESS.getKey(), "false");
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
             options.put("user", username);
@@ -179,6 +181,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .setUsername(this.username)
                 .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
+                .compressServerResponse(false)
                 .setDefaultDatabase(this.database);
 
         if (setCompressionMethod) {
