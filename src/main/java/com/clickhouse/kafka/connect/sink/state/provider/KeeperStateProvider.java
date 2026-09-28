@@ -56,6 +56,7 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
                 .setTimeout(timeout)
                 .setRetry(csc.getRetry())
                 .useClientV2(useClientV2)
+                .setCompressionMethod(csc.isSetCompressionMethod())
                 .build();
 
         if (!chc.ping()) {

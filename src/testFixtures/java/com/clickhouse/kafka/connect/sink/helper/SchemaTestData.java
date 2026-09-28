@@ -427,6 +427,46 @@ public class SchemaTestData {
         return array;
     }
 
+    public static Collection<SinkRecord> createNullableMapType(String topic, int partition) {
+        return createNullableMapType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createNullableMapType(String topic, int partition, int totalRecords) {
+        Schema MAP_SCHEMA_STRING_STRING = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.STRING_SCHEMA).optional().build();
+        Schema MAP_SCHEMA_STRING_INT64 = SchemaBuilder.map(Schema.STRING_SCHEMA, Schema.INT64_SCHEMA).optional().build();
+
+        Schema NESTED_SCHEMA = SchemaBuilder.struct()
+                .field("off16", Schema.INT16_SCHEMA)
+                .field("map_string_string", MAP_SCHEMA_STRING_STRING)
+                .field("map_string_int64", MAP_SCHEMA_STRING_INT64)
+                .build();
+
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Map<String, String> mapStringString = Map.of("k1", "v1", "k2", "v1");
+            Map<String, Long> mapStringLong = Map.of("k1", 1L, "k2", 2L);
+            boolean isNull = n % 10 == 0;
+
+            Struct value_struct = new Struct(NESTED_SCHEMA)
+                    .put("off16", (short) n)
+                    .put("map_string_string", isNull ? null : mapStringString)
+                    .put("map_string_int64", isNull ? null : mapStringLong);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, NESTED_SCHEMA,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     public static Collection<SinkRecord> createJSONType(String topic, int partition, int totalRecords) {
 
         Schema CONTENT_SCHEMA = SchemaBuilder.struct()

@@ -69,9 +69,13 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private final String clusterClause;
     @Getter
     private final boolean enableReplicaPinning;
+    @Getter
+    private final boolean setCompressionMethod;
 
     // Part of HTTP protocol header
     public static final String REPLICA_TAG_HEADER = "X-ClickHouse-Replica-Tag";
+    public static final String NETWORK_COMPRESSION_METHOD = "network_compression_method";
+    public static final String LZ4 = "lz4";
 
     public ClickHouseHelperClient(ClickHouseClientBuilder builder) {
         this.hostname = builder.hostname;
@@ -90,6 +94,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.sslSocketSni = builder.sslSocketSni;
         this.clusterClause = builder.clusterClause;
         this.enableReplicaPinning = builder.enableReplicaPinning;
+        this.setCompressionMethod = builder.setCompressionMethod;
         // We are creating two clients, one for V1 and one for V2
         this.client = createClientV2();
         this.server = createClientV1();
@@ -100,6 +105,9 @@ public class ClickHouseHelperClient implements AutoCloseable {
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
         options.put(ClickHouseClientOption.CLIENT_NAME, CONNECT_CLIENT_NAME);
+        if (setCompressionMethod) {
+            options.put(ClickHouseClientOption.CUSTOM_SETTINGS, NETWORK_COMPRESSION_METHOD + "=" + LZ4);
+        }
         options.put(ClickHouseClientOption.COMPRESS, false);
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             options.put(ClickHouseClientOption.PROXY_TYPE, proxyType);
@@ -130,6 +138,9 @@ public class ClickHouseHelperClient implements AutoCloseable {
         LOGGER.info("ClickHouse URL: {}", url);
 
         final Map<String, String> options = new HashMap<>();
+        if (setCompressionMethod) {
+            options.put(NETWORK_COMPRESSION_METHOD, LZ4);
+        }
         options.put(ClickHouseClientOption.COMPRESS.getKey(), "false");
         if (username != null && password != null) {
             LOGGER.debug(String.format("Adding username [%s]", username));
@@ -172,6 +183,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .setClientName(CONNECT_CLIENT_NAME)
                 .compressServerResponse(false)
                 .setDefaultDatabase(this.database);
+
+        if (setCompressionMethod) {
+            clientBuilder.serverSetting(NETWORK_COMPRESSION_METHOD, LZ4);
+        }
 
         if (jdbcConnectionProperties != null && !jdbcConnectionProperties.isEmpty()) {
             String props = jdbcConnectionProperties.startsWith("?") ? jdbcConnectionProperties.substring(1) : jdbcConnectionProperties;
@@ -682,6 +697,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private String sslSocketSni = "";
         private String clusterClause = "";
         private boolean enableReplicaPinning = false;
+        private boolean setCompressionMethod = ClickHouseSinkConfig.setCompressionMethodDefault;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -744,6 +760,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder enableReplicaPinning(boolean enableReplicaPinning) {
             this.enableReplicaPinning = enableReplicaPinning;
+            return this;
+        }
+
+        public ClickHouseClientBuilder setCompressionMethod(boolean setCompressionMethod) {
+            this.setCompressionMethod = setCompressionMethod;
             return this;
         }
 

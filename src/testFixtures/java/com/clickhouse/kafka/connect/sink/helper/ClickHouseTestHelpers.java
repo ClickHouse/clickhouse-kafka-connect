@@ -426,6 +426,7 @@ public class ClickHouseTestHelpers {
                 .useClientV2("V2".equals(csc.getClientVersion()))
                 .setSslSocketSni(csc.getSslSocketSni())
                 .enableReplicaPinning(csc.isEnableReplicaPinning())
+                .setCompressionMethod(csc.isSetCompressionMethod())
                 .build();
     }
 

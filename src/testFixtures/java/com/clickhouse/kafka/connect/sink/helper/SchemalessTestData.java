@@ -226,6 +226,37 @@ public class SchemalessTestData {
         return array;
     }
 
+    public static Collection<SinkRecord> createNullableMapType(String topic, int partition) {
+        return createNullableMapType(topic, partition, DEFAULT_TOTAL_RECORDS);
+    }
+    public static Collection<SinkRecord> createNullableMapType(String topic, int partition, int totalRecords) {
+        List<SinkRecord> array = new ArrayList<>();
+        LongStream.range(0, totalRecords).forEachOrdered(n -> {
+            Map<String, String> mapStringString = Map.of("k1", "v1", "k2", "v1");
+            Map<String, Long> mapStringLong = Map.of("k1", 1L, "k2", 2L);
+            boolean isNull = n % 10 == 0;
+
+            Map<String, Object> value_struct = new HashMap<>();
+            value_struct.put("off16", (short) n);
+            value_struct.put("map_string_string", isNull ? null : mapStringString);
+            value_struct.put("map_string_int64", isNull ? null : mapStringLong);
+
+            SinkRecord sr = new SinkRecord(
+                    topic,
+                    partition,
+                    null,
+                    null, null,
+                    value_struct,
+                    n,
+                    System.currentTimeMillis(),
+                    TimestampType.CREATE_TIME
+            );
+
+            array.add(sr);
+        });
+        return array;
+    }
+
     public static Collection<SinkRecord> createJSONType(String topic, int partition, int totalRecords) {
         List<SinkRecord> array = new ArrayList<>();
         LongStream.range(0, totalRecords).forEachOrdered(n -> {

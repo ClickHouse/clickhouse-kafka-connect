@@ -1,5 +1,8 @@
 # next release 
 
+## Bug Fixes
+
+* Fixed NPE on null optional Map fields; they are written as empty ClickHouse maps. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/820)
 
 ## Confluent Archive
 
@@ -9,7 +12,6 @@
 
 * Bumped `com.clickhouse:*` from `0.9.5` to `0.9.6`.
 * Fixed resolution of `org.lz4` library.
-
 
 # 1.6.0, 2026-09-11
 

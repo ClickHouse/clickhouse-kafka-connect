@@ -84,7 +84,12 @@ public class StructToJsonMap {
                     jsonMap.put(fieldName, new Data(field.schema(), toJsonMap(struct.getStruct(fieldName))));
                     break;
                 case MAP:
-                    Map<Object, Object> fieldMap = new HashMap<>(struct.getMap(fieldName));
+                    Map<?, ?> rawMap = struct.getMap(fieldName);
+                    if (rawMap == null) {
+                        jsonMap.put(fieldName, new Data(field.schema(), null));
+                        break;
+                    }
+                    Map<Object, Object> fieldMap = new HashMap<>(rawMap);
                     if (!fieldMap.isEmpty() && fieldMap.values().iterator().next() instanceof Struct) {
                         // Map values are `Struct`
 
