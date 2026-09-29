@@ -1,4 +1,11 @@
-# next release 
+# 1.7.0, 2026-09-30
+
+## Important Changes
+
+* Fixed issue with server response compression when using ClickHouse 26.9+. Problem
+  occurs because default `network_compression_method` value was switched from `LZ4` to `ZSTD`.
+  But client do not detect it automatically in payload from server.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/841)
 
 ## Bug Fixes
 
