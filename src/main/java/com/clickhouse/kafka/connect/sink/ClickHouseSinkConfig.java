@@ -11,9 +11,12 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 
 import static com.clickhouse.kafka.connect.ClickHouseSinkConnector.CLIENT_VERSION;
@@ -38,6 +41,7 @@ public class ClickHouseSinkConfig {
     public static final String TABLE_MAPPING = "topic2TableMap";
     public static final String ERRORS_TOLERANCE = "errors.tolerance";
     public static final String RETRY_ON_SOCKET_EXCEPTION = "retryOnSocketException";
+    public static final String ADDITIONAL_RETRIABLE_ERROR_CODES = "additionalRetriableErrorCodes";
     public static final String TABLE_REFRESH_INTERVAL = "tableRefreshInterval";
     public static final String CUSTOM_INSERT_FORMAT_ENABLE = "customInsertFormat";
     public static final String INSERT_FORMAT = "insertFormat";
@@ -107,6 +111,7 @@ public class ClickHouseSinkConfig {
     private final boolean suppressTableExistenceException;
     private final boolean errorsTolerance;
     private final boolean retryOnSocketException;
+    private final Set<Integer> additionalRetriableErrorCodes;
     private final Map<String, String> clickhouseSettings;
     private final Map<String, String> topicToTableMap;
     private final ClickHouseProxyType proxyType;
@@ -162,6 +167,49 @@ public class ClickHouseSinkConfig {
             return "utf-8 string";
         }
     }
+
+    public static final class ErrorCodeListValidator implements ConfigDef.Validator {
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public void ensureValid(String name, Object o) {
+            String value = o instanceof List ? String.join(",", (List<String>) o) : String.valueOf(o);
+            try {
+                parseErrorCodes(value);
+            } catch (IllegalArgumentException e) {
+                throw new ConfigException(name, o, e.getMessage());
+            }
+        }
+
+        @Override
+        public String toString() {
+            return "comma-separated list of ClickHouse error codes";
+        }
+    }
+
+    static Set<Integer> parseErrorCodes(String value) {
+        Set<Integer> codes = new TreeSet<>();
+        if (value == null || value.isBlank()) {
+            return Collections.unmodifiableSet(codes);
+        }
+        for (String part : value.split(",")) {
+            String code = part.trim();
+            if (code.isEmpty()) {
+                continue;
+            }
+            try {
+                int parsed = Integer.parseInt(code);
+                if (parsed <= 0) {
+                    throw new IllegalArgumentException("Error code must be a positive integer: " + code);
+                }
+                codes.add(parsed);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Error code must be a positive integer: " + code);
+            }
+        }
+        return Collections.unmodifiableSet(codes);
+    }
+
     public static final class ZKPathValidator implements ConfigDef.Validator {
 
         @Override
@@ -228,6 +276,7 @@ public class ClickHouseSinkConfig {
         String errorsToleranceString = props.getOrDefault(ERRORS_TOLERANCE, ERROR_TOLERANCE_NONE).trim();
         errorsTolerance = errorsToleranceString.equalsIgnoreCase(ERROR_TOLERANCE_ALL);
         retryOnSocketException = Boolean.parseBoolean(props.getOrDefault(RETRY_ON_SOCKET_EXCEPTION, "false"));
+        additionalRetriableErrorCodes = parseErrorCodes(props.getOrDefault(ADDITIONAL_RETRIABLE_ERROR_CODES, ""));
 
         Map<String, String> clickhouseSettings = new HashMap<>();
         String clickhouseSettingsString = props.getOrDefault("clickhouseSettings", "").trim();
@@ -535,6 +584,16 @@ public class ClickHouseSinkConfig {
                 ++orderInGroup,
                 ConfigDef.Width.SHORT,
                 "Retry on socket exception.");
+        configDef.define(ADDITIONAL_RETRIABLE_ERROR_CODES,
+                ConfigDef.Type.LIST,
+                "",
+                new ErrorCodeListValidator(),
+                ConfigDef.Importance.LOW,
+                "ClickHouse server error codes, in addition to the built-in list, that throw RetriableException so the Connect framework redelivers the batch. Redelivery has no retry budget and does not go through errors.tolerance or the DLQ, so only list codes that are transient. Does not change the ClickHouse Java client's own retry settings. default: empty",
+                group,
+                ++orderInGroup,
+                ConfigDef.Width.LONG,
+                "Additional retriable error codes.");
         configDef.define(CUSTOM_INSERT_FORMAT_ENABLE,
                 ConfigDef.Type.BOOLEAN,
                 customInsertFormatDefault,
