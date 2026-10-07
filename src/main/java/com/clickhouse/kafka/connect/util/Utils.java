@@ -6,12 +6,6 @@ import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
-import org.apache.kafka.connect.errors.DataException;
-import org.apache.kafka.connect.errors.RetriableException;
-import org.apache.kafka.connect.sink.SinkRecord;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
@@ -20,286 +14,308 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.errors.RetriableException;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Utils {
 
-    public static String escapeName(String topic) {
-        String cleanTopic = topic.replace("`", "");
-        return String.format("`%s`", cleanTopic);
+  public static String escapeName(String topic) {
+    String cleanTopic = topic.replace("`", "");
+    return String.format("`%s`", cleanTopic);
+  }
+
+  public static String escapeTableName(String database, String topicName) {
+    return escapeName(database) + "." + escapeName(topicName);
+  }
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
+
+  public static Exception getRootCause(Exception e) {
+    return getRootCause(e, false);
+  }
+
+  /**
+   * This will drill down to the first ClickHouse server exception (client V1 or V2) in the
+   * exception chain
+   *
+   * @param e Exception to drill down
+   * @return the server exception, otherwise the deepest cause, or null if none found
+   */
+  public static Exception getRootCause(Exception e, Boolean prioritizeClickHouseException) {
+    if (e == null) return null;
+
+    Throwable runningException = e; // We have to use Throwable because of the getCause() signature
+    while (runningException.getCause() != null
+        && (!prioritizeClickHouseException || !isServerError(runningException))) {
+      LOGGER.trace("Found exception: {}", runningException.getLocalizedMessage());
+      runningException = runningException.getCause();
     }
 
-    public static String escapeTableName(String database, String topicName) {
-        return escapeName(database) + "." + escapeName(topicName);
+    return runningException instanceof Exception ? (Exception) runningException : null;
+  }
+
+  private static boolean isServerError(Throwable t) {
+    return t instanceof ClickHouseException || t instanceof ServerException;
+  }
+
+  /**
+   * This method checks to see if we should retry, otherwise it just throws the exception again
+   *
+   * @param e Exception to check
+   */
+  public static void handleException(
+      Exception e,
+      boolean errorsTolerance,
+      boolean retryOnSocketException,
+      Collection<SinkRecord> records) {
+    LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
+
+    // Let's check if we have a ClickHouseException to reference the error code
+    // https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
+    Exception rootCause = Utils.getRootCause(e, true);
+    if (isServerError(rootCause)) {
+      int errorCode =
+          rootCause instanceof ServerException
+              ? ((ServerException) rootCause).getCode()
+              : ((ClickHouseException) rootCause).getErrorCode();
+      LOGGER.warn("ClickHouse server error code: {}", errorCode);
+      switch (errorCode) {
+        case 3: // UNEXPECTED_END_OF_FILE
+        case 107: // FILE_DOESNT_EXIST
+        case 159: // TIMEOUT_EXCEEDED
+        case 164: // READONLY
+        case 202: // TOO_MANY_SIMULTANEOUS_QUERIES
+        case 203: // NO_FREE_CONNECTION
+        case 209: // SOCKET_TIMEOUT
+        case 210: // NETWORK_ERROR
+        case 241: // MEMORY_LIMIT_EXCEEDED
+        case 242: // TABLE_IS_READ_ONLY
+        case 252: // TOO_MANY_PARTS
+        case 285: // TOO_FEW_LIVE_REPLICAS
+        case 319: // UNKNOWN_STATUS_OF_INSERT
+        case 425: // SYSTEM_ERROR
+        case 999: // KEEPER_EXCEPTION
+          throw new RetriableException(e);
+        default:
+          LOGGER.error("Error code [{}] wasn't in the acceptable list.", errorCode);
+          break;
+      }
     }
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
-
-    public static Exception getRootCause(Exception e) {
-        return getRootCause(e, false);
+    // High-Level Explicit Exception Checking
+    if (e instanceof DataException && !errorsTolerance) {
+      LOGGER.warn("DataException thrown, wrapping exception: {}", e.getLocalizedMessage());
+      throw (DataException) e;
     }
 
-    /**
-     * This will drill down to the first ClickHouse server exception (client V1 or V2) in the exception chain
-     *
-     * @param e Exception to drill down
-     * @return the server exception, otherwise the deepest cause, or null if none found
-     */
-    public static Exception getRootCause(Exception e, Boolean prioritizeClickHouseException) {
-        if (e == null)
-            return null;
+    // Otherwise use Root-Cause Exception Checking
+    if (rootCause instanceof SocketTimeoutException) {
+      LOGGER.warn("SocketTimeoutException thrown, wrapping exception: {}", e.getLocalizedMessage());
+      throw new RetriableException(e);
+    } else if (rootCause instanceof UnknownHostException) {
+      LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
+      throw new RetriableException(e);
+    } else if (retryOnSocketException && rootCause instanceof SocketException) {
+      LOGGER.warn("SocketException thrown, wrapping exception: {}", e.getLocalizedMessage());
+      throw new RetriableException(e);
+    } else if (rootCause instanceof IOException) {
+      final String msg = rootCause.getMessage();
+      if (msg.indexOf(CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG) == 0
+          || msg.indexOf(CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG) == 0) {
+        LOGGER.warn("IOException thrown, wrapping exception: {}", e.getLocalizedMessage());
+        throw new RetriableException(e);
+      }
+    }
 
-        Throwable runningException = e;//We have to use Throwable because of the getCause() signature
-        while (runningException.getCause() != null &&
-                (!prioritizeClickHouseException || !isServerError(runningException))) {
-            LOGGER.trace("Found exception: {}", runningException.getLocalizedMessage());
-            runningException = runningException.getCause();
+    if (errorsTolerance) { // Right now this is all exceptions - should we restrict to just
+      // ClickHouseExceptions?
+      LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
+    } else {
+      LOGGER.error("Errors tolerance is disabled, wrapping exception: {}", e.getLocalizedMessage());
+      if (records != null) {
+        throw new RuntimeException(String.format("Number of records: %d", records.size()), e);
+      } else {
+        throw new RuntimeException("Records was null", e);
+      }
+    }
+  }
+
+  private static final String CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG = "Read timed out after";
+  private static final String CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG = "Write timed out after";
+
+  public static void sendTODlq(ErrorReporter errorReporter, Record record, Exception exception) {
+    sendTODlq(errorReporter, record.getSinkRecord(), exception);
+  }
+
+  public static void sendTODlq(
+      ErrorReporter errorReporter, SinkRecord record, Exception exception) {
+    if (errorReporter != null && record != null) {
+      errorReporter.report(record, exception);
+    }
+  }
+
+  public static void sendTODLQ(List<FailedRecords> failedRecords, ErrorReporter errorReporter) {
+
+    if (!failedRecords.isEmpty() && errorReporter != null) {
+      try {
+
+        for (FailedRecords records : failedRecords) {
+          LOGGER.warn(
+              "Sending [{}] records to DLQ for exception: {}",
+              failedRecords.size(),
+              records.exception.getMessage());
+          for (Record record : records.records) {
+            Utils.sendTODlq(errorReporter, record, records.exception);
+          }
         }
+      } catch (Exception e) {
+        LOGGER.error("failed to send messages to DLQ", e);
+      }
+    }
+  }
 
-        return runningException instanceof Exception ? (Exception) runningException : null;
+  public static class FailedRecords {
+    List<Record> records;
+    Exception exception;
+
+    public FailedRecords(List<Record> records, Exception exception) {
+      this.records = records;
+      this.exception = exception;
+    }
+  }
+
+  public static String getTableName(
+      String database, String topicName, Map<String, String> topicToTableMap) {
+    String tableName = getMappedOrTopicTableName(topicName, topicToTableMap);
+    return escapeTableName(database, tableName);
+  }
+
+  public static String getMappedOrTopicTableName(
+      String topicName, Map<String, String> topicToTableMap) {
+    String tableName = topicToTableMap.get(topicName);
+    LOGGER.debug("Topic name: {}, Table Name: {}", topicName, tableName);
+    if (tableName == null) {
+      tableName = topicName;
+    }
+    return tableName;
+  }
+
+  public static String getOffsets(Collection<SinkRecord> records) {
+    long minOffset = Long.MAX_VALUE;
+    long maxOffset = -1;
+
+    for (SinkRecord record : records) {
+      if (record.kafkaOffset() > maxOffset) {
+        maxOffset = record.kafkaOffset();
+      }
+      if (record.kafkaOffset() < minOffset) {
+        minOffset = record.kafkaOffset();
+      }
     }
 
-    private static boolean isServerError(Throwable t) {
-        return t instanceof ClickHouseException || t instanceof ServerException;
-    }
+    return String.format("minOffset: %d, maxOffset: %d", minOffset, maxOffset);
+  }
 
+  public static List<String> splitIgnoringQuotes(String input, char separator) {
+    List<String> result = new ArrayList<>();
+    StringBuilder sb = new StringBuilder();
+    boolean inSingleQuotes = false;
+    boolean inDoubleQuotes = false;
 
-    /**
-     * This method checks to see if we should retry, otherwise it just throws the exception again
-     *
-     * @param e Exception to check
-     */
-
-    public static void handleException(Exception e, boolean errorsTolerance, boolean retryOnSocketException, Collection<SinkRecord> records) {
-        LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
-
-        //Let's check if we have a ClickHouseException to reference the error code
-        //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
-        Exception rootCause = Utils.getRootCause(e, true);
-        if (isServerError(rootCause)) {
-            int errorCode = rootCause instanceof ServerException
-                    ? ((ServerException) rootCause).getCode()
-                    : ((ClickHouseException) rootCause).getErrorCode();
-            LOGGER.warn("ClickHouse server error code: {}", errorCode);
-            switch (errorCode) {
-                case 3: // UNEXPECTED_END_OF_FILE
-                case 107: // FILE_DOESNT_EXIST
-                case 159: // TIMEOUT_EXCEEDED
-                case 164: // READONLY
-                case 202: // TOO_MANY_SIMULTANEOUS_QUERIES
-                case 203: // NO_FREE_CONNECTION
-                case 209: // SOCKET_TIMEOUT
-                case 210: // NETWORK_ERROR
-                case 241: // MEMORY_LIMIT_EXCEEDED
-                case 242: // TABLE_IS_READ_ONLY
-                case 252: // TOO_MANY_PARTS
-                case 285: // TOO_FEW_LIVE_REPLICAS
-                case 319: // UNKNOWN_STATUS_OF_INSERT
-                case 425: // SYSTEM_ERROR
-                case 999: // KEEPER_EXCEPTION
-                    throw new RetriableException(e);
-                default:
-                    LOGGER.error("Error code [{}] wasn't in the acceptable list.", errorCode);
-                    break;
-            }
-        }
-
-        //High-Level Explicit Exception Checking
-        if (e instanceof DataException && !errorsTolerance) {
-            LOGGER.warn("DataException thrown, wrapping exception: {}", e.getLocalizedMessage());
-            throw (DataException) e;
-        }
-
-        //Otherwise use Root-Cause Exception Checking
-        if (rootCause instanceof SocketTimeoutException) {
-            LOGGER.warn("SocketTimeoutException thrown, wrapping exception: {}", e.getLocalizedMessage());
-            throw new RetriableException(e);
-        } else if (rootCause instanceof UnknownHostException) {
-            LOGGER.warn("UnknownHostException thrown, wrapping exception: {}", e.getLocalizedMessage());
-            throw new RetriableException(e);
-        } else if (retryOnSocketException && rootCause instanceof SocketException) {
-            LOGGER.warn("SocketException thrown, wrapping exception: {}", e.getLocalizedMessage());
-            throw new RetriableException(e);
-        } else if (rootCause instanceof IOException) {
-            final String msg = rootCause.getMessage();
-            if (msg.indexOf(CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG) == 0 || msg.indexOf(CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG) == 0) {
-                LOGGER.warn("IOException thrown, wrapping exception: {}", e.getLocalizedMessage());
-                throw new RetriableException(e);
-            }
-        }
-
-        if (errorsTolerance) {//Right now this is all exceptions - should we restrict to just ClickHouseExceptions?
-            LOGGER.warn("Errors tolerance is enabled, ignoring exception: {}", e.getLocalizedMessage());
-        } else {
-            LOGGER.error("Errors tolerance is disabled, wrapping exception: {}", e.getLocalizedMessage());
-            if (records != null) {
-                throw new RuntimeException(String.format("Number of records: %d", records.size()), e);
-            } else {
-                throw new RuntimeException("Records was null", e);
-            }
-
-        }
-    }
-
-    private static final String CLICKHOUSE_CLIENT_ERROR_READ_TIMEOUT_MSG = "Read timed out after";
-    private static final String CLICKHOUSE_CLIENT_ERROR_WRITE_TIMEOUT_MSG = "Write timed out after";
-
-    public static void sendTODlq(ErrorReporter errorReporter, Record record, Exception exception) {
-        sendTODlq(errorReporter, record.getSinkRecord(), exception);
-    }
-
-    public static void sendTODlq(ErrorReporter errorReporter, SinkRecord record, Exception exception) {
-        if (errorReporter != null && record != null) {
-            errorReporter.report(record, exception);
-        }
-    }
-
-    public static void sendTODLQ(List<FailedRecords> failedRecords, ErrorReporter errorReporter) {
-
-        if (!failedRecords.isEmpty() && errorReporter != null) {
-            try {
-
-                for (FailedRecords records : failedRecords) {
-                    LOGGER.warn("Sending [{}] records to DLQ for exception: {}", failedRecords.size(), records.exception.getMessage());
-                    for (Record record :   records.records) {
-                        Utils.sendTODlq(errorReporter, record, records.exception);
-                    }
-                }
-            } catch (Exception e) {
-                LOGGER.error("failed to send messages to DLQ", e);
-            }
-        }
-    }
-
-    public static class FailedRecords {
-        List<Record> records;
-        Exception exception;
-
-        public FailedRecords(List<Record> records, Exception exception) {
-            this.records = records;
-            this.exception = exception;
-        }
-    }
-
-    public static String getTableName(String database, String topicName, Map<String, String> topicToTableMap) {
-        String tableName = getMappedOrTopicTableName(topicName, topicToTableMap);
-        return escapeTableName(database, tableName);
-    }
-
-    public static String getMappedOrTopicTableName(String topicName, Map<String, String> topicToTableMap) {
-        String tableName = topicToTableMap.get(topicName);
-        LOGGER.debug("Topic name: {}, Table Name: {}", topicName, tableName);
-        if (tableName == null) {
-            tableName = topicName;
-        }
-        return tableName;
-    }
-
-    public static String getOffsets(Collection<SinkRecord> records) {
-        long minOffset = Long.MAX_VALUE;
-        long maxOffset = -1;
-
-        for (SinkRecord record : records) {
-            if (record.kafkaOffset() > maxOffset) {
-                maxOffset = record.kafkaOffset();
-            }
-            if (record.kafkaOffset() < minOffset) {
-                minOffset = record.kafkaOffset();
-            }
-        }
-
-        return String.format("minOffset: %d, maxOffset: %d", minOffset, maxOffset);
-    }
-
-    public static List<String> splitIgnoringQuotes(String input, char separator) {
-        List<String> result = new ArrayList<>();
-        StringBuilder sb = new StringBuilder();
-        boolean inSingleQuotes = false;
-        boolean inDoubleQuotes = false;
-
-        for (char c : input.toCharArray()) {
-            if (c == '\'' && !inDoubleQuotes) {
-                inSingleQuotes = !inSingleQuotes;
-                sb.append(c);
-            } else if (c == '"' && !inSingleQuotes) {
-                inDoubleQuotes = !inDoubleQuotes;
-                sb.append(c);
-            } else if (c == separator && !inSingleQuotes && !inDoubleQuotes) {
-                result.add(sb.toString().trim());
-                sb.setLength(0);
-            } else {
-                sb.append(c);
-            }
-        }
+    for (char c : input.toCharArray()) {
+      if (c == '\'' && !inDoubleQuotes) {
+        inSingleQuotes = !inSingleQuotes;
+        sb.append(c);
+      } else if (c == '"' && !inSingleQuotes) {
+        inDoubleQuotes = !inDoubleQuotes;
+        sb.append(c);
+      } else if (c == separator && !inSingleQuotes && !inDoubleQuotes) {
         result.add(sb.toString().trim());
+        sb.setLength(0);
+      } else {
+        sb.append(c);
+      }
+    }
+    result.add(sb.toString().trim());
 
-        return result;
+    return result;
+  }
+
+  public static void logDiffBetweenNewAndOldTable(Table oldTable, Table newTable) {
+    if (newTable == null) {
+      return;
     }
 
-    public static void logDiffBetweenNewAndOldTable(Table oldTable, Table newTable) {
-        if (newTable == null) {
-            return;
-        }
-
-        if (oldTable == null) {
-            LOGGER.info("New table discovered: {}", newTable.getFullName());
-            return;
-        }
-
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
-        if (diffs.isEmpty()) {
-            LOGGER.info("No schema changes detected for table {}",  newTable.getFullName());
-            return;
-        }
-
-        for (String diff : diffs) {
-            LOGGER.warn("Schema for table {} has changed: {}", newTable.getFullName(), diff);
-        }
+    if (oldTable == null) {
+      LOGGER.info("New table discovered: {}", newTable.getFullName());
+      return;
     }
 
-    public static List<String> computeColumnDiff(Table oldTable, Table newTable) {
-        List<Column> oldColumns = oldTable.getAllColumnsList();
-        List<Column> newColumns = newTable.getAllColumnsList();
-        int oldSize = oldColumns.size();
-        int newSize = newColumns.size();
-        int commonSize = Math.min(oldSize, newSize);
-
-        List<String> diffs = new ArrayList<>();
-
-        for (int i = 0; i < commonSize; i++) {
-            Column oldCol = oldColumns.get(i);
-            Column newCol = newColumns.get(i);
-            if (!columnsMatch(oldCol, newCol)) {
-                diffs.add(String.format("Column diff at position %d: old=[%s], new=[%s]",
-                        i, describeColumn(oldCol), describeColumn(newCol)));
-            }
-        }
-
-        for (int i = oldSize; i < newSize; i++) {
-            diffs.add(String.format("Column added at position %d: [%s]", i, describeColumn(newColumns.get(i))));
-        }
-
-        for (int i = newSize; i < oldSize; i++) {
-            diffs.add(String.format("Column removed at position %d: [%s]", i, describeColumn(oldColumns.get(i))));
-        }
-
-        return diffs;
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
+    if (diffs.isEmpty()) {
+      LOGGER.info("No schema changes detected for table {}", newTable.getFullName());
+      return;
     }
 
-    // Limitation: two columns can match on (name, Type, nullable, precision, scale) but still differ in arrayType,
-    // mapValueType, tupleFields, enumValues, etc. TODO: extend this if needed in the future.
-    public static boolean columnsMatch(Column a, Column b) {
-        if (a == null || b == null) {
-            return false;
-        }
-        return a.getName().equals(b.getName())
-                && a.getType() == b.getType()
-                && a.isNullable() == b.isNullable()
-                && a.getPrecision() == b.getPrecision()
-                && a.getScale() == b.getScale();
+    for (String diff : diffs) {
+      LOGGER.warn("Schema for table {} has changed: {}", newTable.getFullName(), diff);
+    }
+  }
+
+  public static List<String> computeColumnDiff(Table oldTable, Table newTable) {
+    List<Column> oldColumns = oldTable.getAllColumnsList();
+    List<Column> newColumns = newTable.getAllColumnsList();
+    int oldSize = oldColumns.size();
+    int newSize = newColumns.size();
+    int commonSize = Math.min(oldSize, newSize);
+
+    List<String> diffs = new ArrayList<>();
+
+    for (int i = 0; i < commonSize; i++) {
+      Column oldCol = oldColumns.get(i);
+      Column newCol = newColumns.get(i);
+      if (!columnsMatch(oldCol, newCol)) {
+        diffs.add(
+            String.format(
+                "Column diff at position %d: old=[%s], new=[%s]",
+                i, describeColumn(oldCol), describeColumn(newCol)));
+      }
     }
 
-    public static String describeColumn(Column col) {
-        return String.format("name=%s, type=%s, nullable=%s, precision=%d, scale=%d",
-                col.getName(), col.getType(), col.isNullable(), col.getPrecision(), col.getScale());
+    for (int i = oldSize; i < newSize; i++) {
+      diffs.add(
+          String.format("Column added at position %d: [%s]", i, describeColumn(newColumns.get(i))));
     }
+
+    for (int i = newSize; i < oldSize; i++) {
+      diffs.add(
+          String.format(
+              "Column removed at position %d: [%s]", i, describeColumn(oldColumns.get(i))));
+    }
+
+    return diffs;
+  }
+
+  // Limitation: two columns can match on (name, Type, nullable, precision, scale) but still differ
+  // in arrayType,
+  // mapValueType, tupleFields, enumValues, etc. TODO: extend this if needed in the future.
+  public static boolean columnsMatch(Column a, Column b) {
+    if (a == null || b == null) {
+      return false;
+    }
+    return a.getName().equals(b.getName())
+        && a.getType() == b.getType()
+        && a.isNullable() == b.isNullable()
+        && a.getPrecision() == b.getPrecision()
+        && a.getScale() == b.getScale();
+  }
+
+  public static String describeColumn(Column col) {
+    return String.format(
+        "name=%s, type=%s, nullable=%s, precision=%d, scale=%d",
+        col.getName(), col.getType(), col.isNullable(), col.getPrecision(), col.getScale());
+  }
 }

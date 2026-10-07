@@ -1,5 +1,14 @@
 package com.clickhouse.kafka.connect.sink.db;
 
+import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import com.clickhouse.data.ClickHouseDataUpdater;
 import com.clickhouse.data.ClickHouseInputStream;
 import com.clickhouse.data.ClickHouseOutputStream;
@@ -18,6 +27,15 @@ import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExt
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -34,687 +52,835 @@ import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.lang.reflect.Field;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
-
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseWriterTest extends ClickHouseBase {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriterTest.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriterTest.class);
 
-    private static final CreateTableStatement SINGLE_INT16_TABLE = new CreateTableStatement()
-            .column("off16", "Int16")
-            .engine("MergeTree")
-            .orderByColumn("off16");
+  private static final CreateTableStatement SINGLE_INT16_TABLE =
+      new CreateTableStatement()
+          .column("off16", "Int16")
+          .engine("MergeTree")
+          .orderByColumn("off16");
 
-    ClickHouseHelperClient chc = null;
+  ClickHouseHelperClient chc = null;
 
-    @BeforeEach
-    public void setUp() {
-        LOGGER.info("Setting up...");
-        Map<String, String> props = getBaseProps();
-        chc = ClickHouseTestHelpers.createClient(props);
-    }
+  @BeforeEach
+  public void setUp() {
+    LOGGER.info("Setting up...");
+    Map<String, String> props = getBaseProps();
+    chc = ClickHouseTestHelpers.createClient(props);
+  }
 
-    @Test
-    public void writeUTF8StringPrimitive() throws IOException {
-        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
-        Column column = Column.extractColumn(newDescriptor("utf8String", "String"));
-        ClickHousePipedOutputStream out = new ClickHousePipedOutputStream(null) {
-            List<Byte> bytes = new ArrayList<>();
+  @Test
+  public void writeUTF8StringPrimitive() throws IOException {
+    ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
+    Column column = Column.extractColumn(newDescriptor("utf8String", "String"));
+    ClickHousePipedOutputStream out =
+        new ClickHousePipedOutputStream(null) {
+          List<Byte> bytes = new ArrayList<>();
 
-            @Override
-            public ClickHouseOutputStream transferBytes(byte[] bytes, int i, int i1) throws IOException {
-                for (int j = i; j < i1; j++) {
-                    this.bytes.add(bytes[j]);
-                }
-                return this;
+          @Override
+          public ClickHouseOutputStream transferBytes(byte[] bytes, int i, int i1)
+              throws IOException {
+            for (int j = i; j < i1; j++) {
+              this.bytes.add(bytes[j]);
             }
+            return this;
+          }
 
-            @Override
-            public ClickHouseOutputStream writeByte(byte b) throws IOException {
-                this.bytes.add(b);
-                return this;
-            }
+          @Override
+          public ClickHouseOutputStream writeByte(byte b) throws IOException {
+            this.bytes.add(b);
+            return this;
+          }
 
-            @Override
-            public ClickHouseOutputStream writeBytes(byte[] bytes, int i, int i1) throws IOException {
-                for (int j = i; j < i1; j++) {
-                    this.bytes.add(bytes[j]);
-                }
-                return this;
+          @Override
+          public ClickHouseOutputStream writeBytes(byte[] bytes, int i, int i1) throws IOException {
+            for (int j = i; j < i1; j++) {
+              this.bytes.add(bytes[j]);
             }
+            return this;
+          }
 
-            @Override
-            public ClickHouseOutputStream writeCustom(ClickHouseDataUpdater clickHouseDataUpdater) throws IOException {
-                return this;
-            }
+          @Override
+          public ClickHouseOutputStream writeCustom(ClickHouseDataUpdater clickHouseDataUpdater)
+              throws IOException {
+            return this;
+          }
 
-            @Override
-            public ClickHouseInputStream getInputStream(Runnable runnable) {
-                return null;
-            }
+          @Override
+          public ClickHouseInputStream getInputStream(Runnable runnable) {
+            return null;
+          }
 
-            @Override
-            public String toString() {
-                byte[] bytes = new byte[this.bytes.size()];
-                for (int i = 0; i < this.bytes.size(); i++) {
-                    bytes[i] = this.bytes.get(i);
-                }
-                return new String(bytes, StandardCharsets.UTF_8);
+          @Override
+          public String toString() {
+            byte[] bytes = new byte[this.bytes.size()];
+            for (int i = 0; i < this.bytes.size(); i++) {
+              bytes[i] = this.bytes.get(i);
             }
+            return new String(bytes, StandardCharsets.UTF_8);
+          }
         };
-        byte[] originalBytes = "שלום".getBytes(StandardCharsets.UTF_8);
-        writer.doWritePrimitive(Type.STRING, Schema.Type.STRING, out,"שלום", column);
-        byte[] newBytes = out.toString().getBytes(StandardCharsets.UTF_8);
-        assertTrue(Arrays.equals(originalBytes, Arrays.copyOfRange(newBytes, 1, newBytes.length)));//We add a length before the string
+    byte[] originalBytes = "שלום".getBytes(StandardCharsets.UTF_8);
+    writer.doWritePrimitive(Type.STRING, Schema.Type.STRING, out, "שלום", column);
+    byte[] newBytes = out.toString().getBytes(StandardCharsets.UTF_8);
+    assertTrue(
+        Arrays.equals(
+            originalBytes,
+            Arrays.copyOfRange(newBytes, 1, newBytes.length))); // We add a length before the string
+  }
+
+  private void runWithWriter(Map<String, String> props, Consumer<ClickHouseWriter> test) {
+    ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
+    writer.start(new ClickHouseSinkConfig(props));
+    try {
+      test.accept(writer);
+    } finally {
+      writer.stop();
     }
+  }
 
-    private void runWithWriter(Map<String, String> props, Consumer<ClickHouseWriter> test) {
-        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
-        writer.start(new ClickHouseSinkConfig(props));
-        try {
-            test.accept(writer);
-        } finally {
-            writer.stop();
-        }
-    }
+  @Test
+  public void updateMapping() {
+    Map<String, String> props = getBaseProps();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("missing_table_mapping_test");
 
-    @Test
-    public void updateMapping() {
-        Map<String, String> props = getBaseProps();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("missing_table_mapping_test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+    runWithWriter(
+        props,
+        (chw) -> {
+          chw.updateMapping(chc.getDatabase());
+          Map<String, Table> tables = chw.getMapping();
+          assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
 
-        runWithWriter(props, (chw) -> {
+          new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
 
-                    chw.updateMapping(chc.getDatabase());
-                    Map<String, Table> tables = chw.getMapping();
-                    assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
+          Table table = chw.getTable(chc.getDatabase(), topic);
+          assertNotNull(table);
+          assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
 
-
-                    new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
-
-                    Table table = chw.getTable(chc.getDatabase(), topic);
-                    assertNotNull(table);
-                    assertEquals(Utils.escapeTableName(chc.getDatabase(), topic), table.getFullName());
-
-                    tables = chw.getMapping();
-                    assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
-                });
-
-        ClickHouseTestHelpers.dropTable(chc, topic);
-    }
-
-    @Test
-    public void getTableUsesTopicToTableMapping() {
-        Map<String, String> props = getBaseProps();
-        String topicWithoutBackticks = createTopicName("mapped_source_topic_plain_test");
-        String mappedTableWithoutBackticks = createTopicName("mapped_target_table_plain_test");
-        String topicWithBackticks = createTopicName("mapped_source_topic_backtick_test");
-        String mappedTableWithBackticksRaw = createTopicName("mapped_target_table_backtick_test");
-        String mappedTableWithBackticks = String.format("`%s`", mappedTableWithBackticksRaw);
-        props.put(ClickHouseSinkConfig.TABLE_MAPPING,
-                topicWithoutBackticks + "=" + mappedTableWithoutBackticks + ","
-                        + topicWithBackticks + "=" + mappedTableWithBackticks);
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-
-        ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks);
-        ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithoutBackticks).execute(chc);
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithBackticksRaw).execute(chc);
-
-        runWithWriter(props, (chw) -> {
-            Table plainMappingTable = chw.getTable(chc.getDatabase(), topicWithoutBackticks);
-            assertNotNull(plainMappingTable);
-            assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTableWithoutBackticks), plainMappingTable.getFullName());
-
-            Table backtickedMappingTable = chw.getTable(chc.getDatabase(), topicWithBackticks);
-            assertNotNull(backtickedMappingTable);
-            assertEquals(Utils.escapeTableName(chc.getDatabase(), mappedTableWithBackticksRaw), backtickedMappingTable.getFullName());
-        });
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
-        ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
-    }
-
-    @Test
-    public void getTableThrowsWhenMissingAndSuppressionDisabled() {
-        Map<String, String> props = getBaseProps();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("missing_table_get_table_throw_test");
-
-        ClickHouseTestHelpers.dropTable(chc, topic);
-
-        runWithWriter(props, (chw) -> {
-            RuntimeException ex = assertThrows(RuntimeException.class, () -> chw.getTable(chc.getDatabase(), topic));
-            assertTrue(ex.getMessage().contains("does not exist"));
-        });
-        ClickHouseTestHelpers.dropTable(chc, topic);
-    }
-
-    @Test
-    public void getTableReturnsNullWhenMissingAndSuppressionEnabled() {
-        Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConfig.SUPPRESS_TABLE_EXISTENCE_EXCEPTION, "true");
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("missing_table_get_table_suppressed_test");
-
-        ClickHouseTestHelpers.dropTable(chc, topic);
-
-        runWithWriter(props, (chw) -> {
-            Table table = chw.getTable(chc.getDatabase(), topic);
-            assertNull(table);
-        });
-        ClickHouseTestHelpers.dropTable(chc, topic);
-    }
-
-    @Test
-    public void doWriteColValue_Tuples() throws Exception {
-        Map<String, String> props = getBaseProps();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("do_insert_tuple_order_mismatch_test");
-
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .tableName(topic)
-                .column("_id", "String")
-                .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
-                .engine("MergeTree").orderByColumn("_id").execute(chc);
-
-        Schema tupleSchema = SchemaBuilder.struct()
-                .field("isanswered", Schema.INT32_SCHEMA)
-                .field("id", Schema.STRING_SCHEMA)
-                .field("subject", Schema.STRING_SCHEMA)
-                .field("relevancescore", Schema.FLOAT64_SCHEMA)
-                .field("istextanswered", Schema.INT32_SCHEMA)
-                .build();
-        Schema recordSchema = SchemaBuilder.struct()
-                .field("_id", Schema.STRING_SCHEMA)
-                .field("result", tupleSchema)
-                .build();
-
-        Struct tupleValue = new Struct(tupleSchema)
-                .put("isanswered", 1)
-                .put("id", "24554770")
-                .put("subject", "SUBJECT")
-                .put("relevancescore", 84.7)
-                .put("istextanswered", 1);
-        Struct value = new Struct(recordSchema)
-                .put("_id", "id-1")
-                .put("result", tupleValue);
-
-        SinkRecord sinkRecord = new SinkRecord(
-                topic,
-                0,
-                null,
-                null,
-                recordSchema,
-                value,
-                0,
-                System.currentTimeMillis(),
-                TimestampType.CREATE_TIME);
-        Record record = Record.convert(sinkRecord, false, ".", chc.getDatabase(), false);
-
-        runWithWriter(props, (chw) -> {
-            try {
-                chw.doInsert(List.of(record), new QueryIdentifier(topic, "tuple-order-mismatch-" + System.nanoTime()));
-            } catch (Exception e) {
-                fail("Failed to insert", e);
-            }
+          tables = chw.getMapping();
+          assertNotNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
         });
 
-        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-        assertEquals(1, rows.size());
-        JSONObject row = rows.get(0);
-        assertEquals("id-1", row.getString("_id"));
-        JSONObject tuple = row.getJSONObject("result");
-        assertEquals("24554770", tuple.getString("id"));
-        assertEquals(1, tuple.getInt("isanswered"));
-        assertEquals(84.7d, tuple.getDouble("relevancescore"), 0.001d);
-        assertEquals("SUBJECT", tuple.getString("subject"));
-        assertEquals(1, tuple.getInt("istextanswered"));
+    ClickHouseTestHelpers.dropTable(chc, topic);
+  }
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
+  @Test
+  public void getTableUsesTopicToTableMapping() {
+    Map<String, String> props = getBaseProps();
+    String topicWithoutBackticks = createTopicName("mapped_source_topic_plain_test");
+    String mappedTableWithoutBackticks = createTopicName("mapped_target_table_plain_test");
+    String topicWithBackticks = createTopicName("mapped_source_topic_backtick_test");
+    String mappedTableWithBackticksRaw = createTopicName("mapped_target_table_backtick_test");
+    String mappedTableWithBackticks = String.format("`%s`", mappedTableWithBackticksRaw);
+    props.put(
+        ClickHouseSinkConfig.TABLE_MAPPING,
+        topicWithoutBackticks
+            + "="
+            + mappedTableWithoutBackticks
+            + ","
+            + topicWithBackticks
+            + "="
+            + mappedTableWithBackticks);
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+    ClickHouseTestHelpers.dropTable(chc, topicWithoutBackticks);
+    ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
+    ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
+    ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
+    new CreateTableStatement(SINGLE_INT16_TABLE)
+        .tableName(mappedTableWithoutBackticks)
+        .execute(chc);
+    new CreateTableStatement(SINGLE_INT16_TABLE)
+        .tableName(mappedTableWithBackticksRaw)
+        .execute(chc);
+
+    runWithWriter(
+        props,
+        (chw) -> {
+          Table plainMappingTable = chw.getTable(chc.getDatabase(), topicWithoutBackticks);
+          assertNotNull(plainMappingTable);
+          assertEquals(
+              Utils.escapeTableName(chc.getDatabase(), mappedTableWithoutBackticks),
+              plainMappingTable.getFullName());
+
+          Table backtickedMappingTable = chw.getTable(chc.getDatabase(), topicWithBackticks);
+          assertNotNull(backtickedMappingTable);
+          assertEquals(
+              Utils.escapeTableName(chc.getDatabase(), mappedTableWithBackticksRaw),
+              backtickedMappingTable.getFullName());
+        });
+    ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
+    ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
+  }
+
+  @Test
+  public void getTableThrowsWhenMissingAndSuppressionDisabled() {
+    Map<String, String> props = getBaseProps();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("missing_table_get_table_throw_test");
+
+    ClickHouseTestHelpers.dropTable(chc, topic);
+
+    runWithWriter(
+        props,
+        (chw) -> {
+          RuntimeException ex =
+              assertThrows(RuntimeException.class, () -> chw.getTable(chc.getDatabase(), topic));
+          assertTrue(ex.getMessage().contains("does not exist"));
+        });
+    ClickHouseTestHelpers.dropTable(chc, topic);
+  }
+
+  @Test
+  public void getTableReturnsNullWhenMissingAndSuppressionEnabled() {
+    Map<String, String> props = getBaseProps();
+    props.put(ClickHouseSinkConfig.SUPPRESS_TABLE_EXISTENCE_EXCEPTION, "true");
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("missing_table_get_table_suppressed_test");
+
+    ClickHouseTestHelpers.dropTable(chc, topic);
+
+    runWithWriter(
+        props,
+        (chw) -> {
+          Table table = chw.getTable(chc.getDatabase(), topic);
+          assertNull(table);
+        });
+    ClickHouseTestHelpers.dropTable(chc, topic);
+  }
+
+  @Test
+  public void doWriteColValue_Tuples() throws Exception {
+    Map<String, String> props = getBaseProps();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("do_insert_tuple_order_mismatch_test");
+
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .tableName(topic)
+        .column("_id", "String")
+        .column(
+            "result",
+            "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
+        .engine("MergeTree")
+        .orderByColumn("_id")
+        .execute(chc);
+
+    Schema tupleSchema =
+        SchemaBuilder.struct()
+            .field("isanswered", Schema.INT32_SCHEMA)
+            .field("id", Schema.STRING_SCHEMA)
+            .field("subject", Schema.STRING_SCHEMA)
+            .field("relevancescore", Schema.FLOAT64_SCHEMA)
+            .field("istextanswered", Schema.INT32_SCHEMA)
+            .build();
+    Schema recordSchema =
+        SchemaBuilder.struct()
+            .field("_id", Schema.STRING_SCHEMA)
+            .field("result", tupleSchema)
+            .build();
+
+    Struct tupleValue =
+        new Struct(tupleSchema)
+            .put("isanswered", 1)
+            .put("id", "24554770")
+            .put("subject", "SUBJECT")
+            .put("relevancescore", 84.7)
+            .put("istextanswered", 1);
+    Struct value = new Struct(recordSchema).put("_id", "id-1").put("result", tupleValue);
+
+    SinkRecord sinkRecord =
+        new SinkRecord(
+            topic,
+            0,
+            null,
+            null,
+            recordSchema,
+            value,
+            0,
+            System.currentTimeMillis(),
+            TimestampType.CREATE_TIME);
+    Record record = Record.convert(sinkRecord, false, ".", chc.getDatabase(), false);
+
+    runWithWriter(
+        props,
+        (chw) -> {
+          try {
+            chw.doInsert(
+                List.of(record),
+                new QueryIdentifier(topic, "tuple-order-mismatch-" + System.nanoTime()));
+          } catch (Exception e) {
+            fail("Failed to insert", e);
+          }
+        });
+
+    List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+    assertEquals(1, rows.size());
+    JSONObject row = rows.get(0);
+    assertEquals("id-1", row.getString("_id"));
+    JSONObject tuple = row.getJSONObject("result");
+    assertEquals("24554770", tuple.getString("id"));
+    assertEquals(1, tuple.getInt("isanswered"));
+    assertEquals(84.7d, tuple.getDouble("relevancescore"), 0.001d);
+    assertEquals("SUBJECT", tuple.getString("subject"));
+    assertEquals(1, tuple.getInt("istextanswered"));
+
+    ClickHouseTestHelpers.dropTable(chc, topic);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"V1", "V2"})
+  public void testSchemaRefreshedAfterCode131(String clientVersion) throws Exception {
+    Map<String, String> props = getBaseProps();
+    props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("code131_refresh_" + clientVersion);
+    String fullyQualifiedTableName = Utils.escapeTableName(chc.getDatabase(), topic);
+
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .tableName(topic)
+        .column("id", "Int32")
+        .column("name", "String")
+        .engine("MergeTree")
+        .orderByColumn("id")
+        .execute(chc);
+
+    ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
+    assertTrue(writer.start(new ClickHouseSinkConfig(props)));
+
+    try {
+      Table cachedBefore = writer.getMapping().get(fullyQualifiedTableName);
+      assertNotNull(cachedBefore);
+      assertEquals(2, cachedBefore.getRootColumnsList().size());
+      assertFalse(cachedBefore.getRootColumnsMap().containsKey("extra"));
+
+      // Code 131 reproduction explanation:
+      // The connector serializes RowBinary in the cached column order [id Int32, name String]:
+      //   id = -1            -> little-endian bytes 0xFF 0xFF 0xFF 0xFF (4 varint-continuation
+      // bytes)
+      //   name = "XXXXXXXX"  -> single varint length byte 0x08, then 8 ASCII 'X's
+      // First 5 bytes on the wire: [0xFF, 0xFF, 0xFF, 0xFF, 0x08].
+      //
+      // ClickHouse parses in the new column order [extra String, id Int32, name String], so it
+      // reads those same 5 bytes as the varint length prefix of `extra`:
+      //   value = 0x7F | (0x7F << 7) | (0x7F << 14) | (0x7F << 21) | (0x08 << 28) = 2,415,919,103
+      // which exceeds DBMS_MAX_STRING_SIZE (1 GiB = 1,073,741,824) -> server throws
+      // TOO_LARGE_STRING_SIZE (131).
+      //
+      // ClickHouseWriter.doInsertRawBinary catches the exception, calls urgentTableUpdate
+      // (which refreshes the in-memory Table schema to [extra, id, name]), and retries.
+
+      // migrate schema backwards compatibly while writer is running
+      ClickHouseTestHelpers.executeQueryIgnoreResult(
+          chc,
+          String.format(
+              "ALTER TABLE `" + topic + "`%s ADD COLUMN extra String DEFAULT '' FIRST",
+              ClickHouseTestHelpers.getClusterClauseOrEmpty()));
+
+      Schema oldSchema =
+          SchemaBuilder.struct()
+              .field("id", Schema.INT32_SCHEMA)
+              .field("name", Schema.STRING_SCHEMA)
+              .build();
+      Struct value = new Struct(oldSchema).put("id", -1).put("name", "XXXXXXXX");
+      SinkRecord sr =
+          new SinkRecord(
+              topic,
+              0,
+              null,
+              null,
+              oldSchema,
+              value,
+              0,
+              System.currentTimeMillis(),
+              TimestampType.CREATE_TIME);
+      Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+
+      // Verify the server actually returns code 131
+      Exception thrown =
+          assertThrows(
+              Exception.class,
+              () ->
+                  writer.doInsertRawBinary(
+                      List.of(record),
+                      cachedBefore,
+                      new QueryIdentifier(topic, "code131-direct-" + System.nanoTime()),
+                      cachedBefore.hasDefaults(),
+                      false));
+      assertTrue(
+          exceptionChainContains(thrown, "Code: 131"),
+          "Expected ClickHouse error Code: 131 in exception chain, got: " + thrown);
+
+      Assertions.assertDoesNotThrow(
+          () ->
+              writer.doInsert(
+                  List.of(record), new QueryIdentifier(topic, "code131-" + System.nanoTime())));
+
+      Table cachedAfter = writer.getMapping().get(fullyQualifiedTableName);
+      assertNotNull(cachedAfter);
+      assertEquals(3, cachedAfter.getRootColumnsList().size());
+      assertTrue(cachedAfter.getRootColumnsMap().containsKey("extra"));
+
+      assertEquals(1, ClickHouseTestHelpers.countRows(chc, topic));
+
+      // Verify the refreshed mapping by inserting record with the new schema
+      Schema newSchema =
+          SchemaBuilder.struct()
+              .field("id", Schema.INT32_SCHEMA)
+              .field("name", Schema.STRING_SCHEMA)
+              .field("extra", Schema.STRING_SCHEMA)
+              .build();
+      Struct newValue =
+          new Struct(newSchema).put("id", -1).put("name", "XXXXXXXX").put("extra", "XXXXXXXX");
+      SinkRecord sr2 =
+          new SinkRecord(
+              topic,
+              0,
+              null,
+              null,
+              newSchema,
+              newValue,
+              1,
+              System.currentTimeMillis(),
+              TimestampType.CREATE_TIME);
+      Record record2 = Record.convert(sr2, false, ".", chc.getDatabase(), false);
+      writer.doInsert(
+          List.of(record2), new QueryIdentifier(topic, "code131-new-schema-" + System.nanoTime()));
+
+      assertEquals(2, ClickHouseTestHelpers.countRows(chc, topic));
+      assertEquals(3, writer.getMapping().get(fullyQualifiedTableName).getRootColumnsList().size());
+    } finally {
+      writer.stop();
+      ClickHouseTestHelpers.dropTable(chc, topic);
     }
+  }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"V1", "V2"})
-    public void testSchemaRefreshedAfterCode131(String clientVersion) throws Exception {
-        Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+  /**
+   * {@code ClickHouseHelperClient.extractTablesMapping} decides whether a table needs re-describing
+   * by comparing the cached column count against the count reported by {@code system.columns}, but
+   * it stamps the cached table with the count from that query instead of with what DESCRIBE TABLE
+   * actually returned. The two are separate round trips, so on a cluster or behind a Cloud endpoint
+   * they can observe different metadata versions: the count query can already see a newly added
+   * column while DESCRIBE still hits a replica that has not applied the DDL.
+   *
+   * <p>When that happens the stale description is cached as though it already contained the new
+   * column, every later refresh short-circuits on the now-equal count, and the schema is never
+   * re-read - not even through the code 33/131 recovery path, which routes back through the same
+   * cache. Only a connector restart recovers.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"V1", "V2"})
+  public void staleDescribeTableIsNotCachedAsCurrentSchema(String clientVersion) throws Exception {
+    Map<String, String> props = getBaseProps();
+    props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
 
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("code131_refresh_" + clientVersion);
-        String fullyQualifiedTableName = Utils.escapeTableName(chc.getDatabase(), topic);
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("stale_describe_" + clientVersion);
+    String fullyQualifiedTableName = Utils.escapeTableName(chc.getDatabase(), topic);
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .tableName(topic)
-                .column("id", "Int32")
-                .column("name", "String")
-                .engine("MergeTree")
-                .orderByColumn("id")
-                .execute(chc);
+    // Array and Tuple make DESCRIBE report subcolumns that system.columns does not count, so the
+    // cached column count cannot be derived from the full column list either
+    int columnsBeforeAlter = 4;
+    int columnsAfterAlter = columnsBeforeAlter + 1;
 
-        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
-        assertTrue(writer.start(new ClickHouseSinkConfig(props)));
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .tableName(topic)
+        .column("id", "Int32")
+        .column("name", "String")
+        .column("arr", "Array(Int32)")
+        .column("tup", "Tuple(s String, i Int32)")
+        .engine("MergeTree")
+        .orderByColumn("id")
+        .execute(chc);
 
-        try {
-            Table cachedBefore = writer.getMapping().get(fullyQualifiedTableName);
-            assertNotNull(cachedBefore);
-            assertEquals(2, cachedBefore.getRootColumnsList().size());
-            assertFalse(cachedBefore.getRootColumnsMap().containsKey("extra"));
+    ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
+    assertTrue(writer.start(new ClickHouseSinkConfig(props)));
 
-            // Code 131 reproduction explanation:
-            // The connector serializes RowBinary in the cached column order [id Int32, name String]:
-            //   id = -1            -> little-endian bytes 0xFF 0xFF 0xFF 0xFF (4 varint-continuation bytes)
-            //   name = "XXXXXXXX"  -> single varint length byte 0x08, then 8 ASCII 'X's
-            // First 5 bytes on the wire: [0xFF, 0xFF, 0xFF, 0xFF, 0x08].
-            //
-            // ClickHouse parses in the new column order [extra String, id Int32, name String], so it
-            // reads those same 5 bytes as the varint length prefix of `extra`:
-            //   value = 0x7F | (0x7F << 7) | (0x7F << 14) | (0x7F << 21) | (0x08 << 28) = 2,415,919,103
-            // which exceeds DBMS_MAX_STRING_SIZE (1 GiB = 1,073,741,824) -> server throws
-            // TOO_LARGE_STRING_SIZE (131).
-            //
-            // ClickHouseWriter.doInsertRawBinary catches the exception, calls urgentTableUpdate
-            // (which refreshes the in-memory Table schema to [extra, id, name]), and retries.
+    try {
+      Table cachedBefore = writer.getMapping().get(fullyQualifiedTableName);
+      assertNotNull(cachedBefore);
+      assertEquals(columnsBeforeAlter, cachedBefore.getRootColumnsList().size());
+      assertTrue(
+          cachedBefore.getAllColumnsList().size() > columnsBeforeAlter,
+          "Expected Array and Tuple to contribute subcolumns beyond the counted top level columns");
 
-            // migrate schema backwards compatibly while writer is running
-            ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `" + topic + "`%s ADD COLUMN extra String DEFAULT '' FIRST", ClickHouseTestHelpers.getClusterClauseOrEmpty()));
+      // A genuine pre-ALTER DESCRIBE result, replayed below to stand in for a lagging replica
+      Table staleDescription = chc.describeTable(chc.getDatabase(), topic);
+      assertNotNull(staleDescription);
+      assertEquals(columnsBeforeAlter, staleDescription.getRootColumnsList().size());
 
-            Schema oldSchema = SchemaBuilder.struct()
-                    .field("id", Schema.INT32_SCHEMA)
-                    .field("name", Schema.STRING_SCHEMA)
-                    .build();
-            Struct value = new Struct(oldSchema).put("id", -1).put("name", "XXXXXXXX");
-            SinkRecord sr = new SinkRecord(topic, 0, null, null, oldSchema, value, 0,
-                    System.currentTimeMillis(), TimestampType.CREATE_TIME);
-            Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
-
-            // Verify the server actually returns code 131
-            Exception thrown = assertThrows(Exception.class, () ->
-                    writer.doInsertRawBinary(List.of(record), cachedBefore,
-                            new QueryIdentifier(topic, "code131-direct-" + System.nanoTime()),
-                            cachedBefore.hasDefaults(), false));
-            assertTrue(exceptionChainContains(thrown, "Code: 131"),
-                    "Expected ClickHouse error Code: 131 in exception chain, got: " + thrown);
-
-            Assertions.assertDoesNotThrow(() -> writer.doInsert(List.of(record), new QueryIdentifier(topic, "code131-" + System.nanoTime())));
-
-            Table cachedAfter = writer.getMapping().get(fullyQualifiedTableName);
-            assertNotNull(cachedAfter);
-            assertEquals(3, cachedAfter.getRootColumnsList().size());
-            assertTrue(cachedAfter.getRootColumnsMap().containsKey("extra"));
-
-            assertEquals(1, ClickHouseTestHelpers.countRows(chc, topic));
-
-            // Verify the refreshed mapping by inserting record with the new schema
-            Schema newSchema = SchemaBuilder.struct()
-                    .field("id", Schema.INT32_SCHEMA)
-                    .field("name", Schema.STRING_SCHEMA)
-                    .field("extra", Schema.STRING_SCHEMA)
-                    .build();
-            Struct newValue = new Struct(newSchema).put("id", -1).put("name", "XXXXXXXX").put("extra", "XXXXXXXX");
-            SinkRecord sr2 = new SinkRecord(topic, 0, null, null, newSchema, newValue, 1,
-                    System.currentTimeMillis(), TimestampType.CREATE_TIME);
-            Record record2 = Record.convert(sr2, false, ".", chc.getDatabase(), false);
-            writer.doInsert(List.of(record2), new QueryIdentifier(topic, "code131-new-schema-" + System.nanoTime()));
-
-            assertEquals(2, ClickHouseTestHelpers.countRows(chc, topic));
-            assertEquals(3, writer.getMapping().get(fullyQualifiedTableName).getRootColumnsList().size());
-        } finally {
-            writer.stop();
-            ClickHouseTestHelpers.dropTable(chc, topic);
-        }
-    }
-
-    /**
-     * {@code ClickHouseHelperClient.extractTablesMapping} decides whether a table needs re-describing
-     * by comparing the cached column count against the count reported by {@code system.columns}, but
-     * it stamps the cached table with the count from that query instead of with what DESCRIBE TABLE
-     * actually returned. The two are separate round trips, so on a cluster or behind a Cloud endpoint
-     * they can observe different metadata versions: the count query can already see a newly added
-     * column while DESCRIBE still hits a replica that has not applied the DDL.
-     *
-     * <p>When that happens the stale description is cached as though it already contained the new
-     * column, every later refresh short-circuits on the now-equal count, and the schema is never
-     * re-read - not even through the code 33/131 recovery path, which routes back through the same
-     * cache. Only a connector restart recovers.
-     */
-    @ParameterizedTest
-    @ValueSource(strings = {"V1", "V2"})
-    public void staleDescribeTableIsNotCachedAsCurrentSchema(String clientVersion) throws Exception {
-        Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
-
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("stale_describe_" + clientVersion);
-        String fullyQualifiedTableName = Utils.escapeTableName(chc.getDatabase(), topic);
-
-        // Array and Tuple make DESCRIBE report subcolumns that system.columns does not count, so the
-        // cached column count cannot be derived from the full column list either
-        int columnsBeforeAlter = 4;
-        int columnsAfterAlter = columnsBeforeAlter + 1;
-
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .tableName(topic)
-                .column("id", "Int32")
-                .column("name", "String")
-                .column("arr", "Array(Int32)")
-                .column("tup", "Tuple(s String, i Int32)")
-                .engine("MergeTree")
-                .orderByColumn("id")
-                .execute(chc);
-
-        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0));
-        assertTrue(writer.start(new ClickHouseSinkConfig(props)));
-
-        try {
-            Table cachedBefore = writer.getMapping().get(fullyQualifiedTableName);
-            assertNotNull(cachedBefore);
-            assertEquals(columnsBeforeAlter, cachedBefore.getRootColumnsList().size());
-            assertTrue(cachedBefore.getAllColumnsList().size() > columnsBeforeAlter,
-                    "Expected Array and Tuple to contribute subcolumns beyond the counted top level columns");
-
-            // A genuine pre-ALTER DESCRIBE result, replayed below to stand in for a lagging replica
-            Table staleDescription = chc.describeTable(chc.getDatabase(), topic);
-            assertNotNull(staleDescription);
-            assertEquals(columnsBeforeAlter, staleDescription.getRootColumnsList().size());
-
-            AtomicInteger describeCallsForTopic = new AtomicInteger();
-            ClickHouseHelperClient staleReplicaClient = Mockito.spy(getHelperClient(writer));
-            Mockito.doAnswer(invocation -> {
-                if (topic.equals(invocation.getArgument(1)) && describeCallsForTopic.incrementAndGet() == 1) {
-                    return staleDescription;
+      AtomicInteger describeCallsForTopic = new AtomicInteger();
+      ClickHouseHelperClient staleReplicaClient = Mockito.spy(getHelperClient(writer));
+      Mockito.doAnswer(
+              invocation -> {
+                if (topic.equals(invocation.getArgument(1))
+                    && describeCallsForTopic.incrementAndGet() == 1) {
+                  return staleDescription;
                 }
                 return invocation.callRealMethod();
-            }).when(staleReplicaClient).describeTable(Mockito.anyString(), Mockito.anyString());
-            setHelperClient(writer, staleReplicaClient);
+              })
+          .when(staleReplicaClient)
+          .describeTable(Mockito.anyString(), Mockito.anyString());
+      setHelperClient(writer, staleReplicaClient);
 
-            // Adding the column FIRST means an insert built from the stale schema cannot silently write
-            // misaligned data: the server rejects the misread bytes (see testSchemaRefreshedAfterCode131).
-            ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN extra String DEFAULT '' FIRST",
-                    topic, ClickHouseTestHelpers.getClusterClauseOrEmpty()));
+      // Adding the column FIRST means an insert built from the stale schema cannot silently write
+      // misaligned data: the server rejects the misread bytes (see
+      // testSchemaRefreshedAfterCode131).
+      ClickHouseTestHelpers.executeQueryIgnoreResult(
+          chc,
+          String.format(
+              "ALTER TABLE `%s`%s ADD COLUMN extra String DEFAULT '' FIRST",
+              topic, ClickHouseTestHelpers.getClusterClauseOrEmpty()));
 
-            // system.columns already reports the new column while DESCRIBE replays the pre-ALTER schema
-            assertTrue(writer.updateMapping(chc.getDatabase()));
-            assertEquals(1, describeCallsForTopic.get(), "The column count change should have triggered exactly one re-describe");
+      // system.columns already reports the new column while DESCRIBE replays the pre-ALTER schema
+      assertTrue(writer.updateMapping(chc.getDatabase()));
+      assertEquals(
+          1,
+          describeCallsForTopic.get(),
+          "The column count change should have triggered exactly one re-describe");
 
-            Table cachedStale = writer.getMapping().get(fullyQualifiedTableName);
-            assertNotNull(cachedStale);
-            assertEquals(columnsBeforeAlter, cachedStale.getRootColumnsList().size(), "The replayed stale description is the one that got cached");
-            assertEquals(cachedStale.getRootColumnsList().size(), cachedStale.getNumColumns(), String.format(
-                    "Cached entry for %s is self-inconsistent: it records %d columns but holds a description of only %d. "
-                            + "The recorded count comes from the system.columns query rather than from the DESCRIBE response "
-                            + "that was cached, so every later refresh sees an equal count and skips re-describing the table",
-                    topic, cachedStale.getNumColumns(), cachedStale.getRootColumnsList().size()));
+      Table cachedStale = writer.getMapping().get(fullyQualifiedTableName);
+      assertNotNull(cachedStale);
+      assertEquals(
+          columnsBeforeAlter,
+          cachedStale.getRootColumnsList().size(),
+          "The replayed stale description is the one that got cached");
+      assertEquals(
+          cachedStale.getRootColumnsList().size(),
+          cachedStale.getNumColumns(),
+          String.format(
+              "Cached entry for %s is self-inconsistent: it records %d columns but holds a description of only %d. "
+                  + "The recorded count comes from the system.columns query rather than from the DESCRIBE response "
+                  + "that was cached, so every later refresh sees an equal count and skips re-describing the table",
+              topic, cachedStale.getNumColumns(), cachedStale.getRootColumnsList().size()));
 
-            // DESCRIBE returns the new column from here on, so an ordinary refresh has to pick it up
-            assertTrue(writer.updateMapping(chc.getDatabase()));
-            assertEquals(2, describeCallsForTopic.get(), String.format("Refreshing the mapping should have re-described %s", topic));
+      // DESCRIBE returns the new column from here on, so an ordinary refresh has to pick it up
+      assertTrue(writer.updateMapping(chc.getDatabase()));
+      assertEquals(
+          2,
+          describeCallsForTopic.get(),
+          String.format("Refreshing the mapping should have re-described %s", topic));
 
-            Table cachedAfter = writer.getMapping().get(fullyQualifiedTableName);
-            assertNotNull(cachedAfter);
-            assertEquals(columnsAfterAlter, cachedAfter.getRootColumnsList().size());
-            assertTrue(cachedAfter.getRootColumnsMap().containsKey("extra"), "Cached schema is missing the column added by the ALTER");
+      Table cachedAfter = writer.getMapping().get(fullyQualifiedTableName);
+      assertNotNull(cachedAfter);
+      assertEquals(columnsAfterAlter, cachedAfter.getRootColumnsList().size());
+      assertTrue(
+          cachedAfter.getRootColumnsMap().containsKey("extra"),
+          "Cached schema is missing the column added by the ALTER");
 
-            // The recovered mapping has to be usable: `extra` is written from its DEFAULT
-            Schema tupleSchema = SchemaBuilder.struct()
-                    .field("s", Schema.STRING_SCHEMA)
-                    .field("i", Schema.INT32_SCHEMA)
-                    .build();
-            Schema oldSchema = SchemaBuilder.struct()
-                    .field("id", Schema.INT32_SCHEMA)
-                    .field("name", Schema.STRING_SCHEMA)
-                    .field("arr", SchemaBuilder.array(Schema.INT32_SCHEMA).build())
-                    .field("tup", tupleSchema)
-                    .build();
-            Struct value = new Struct(oldSchema)
-                    .put("id", -1)
-                    .put("name", "XXXXXXXX")
-                    .put("arr", List.of(7, 8, 9))
-                    .put("tup", new Struct(tupleSchema).put("s", "alpha").put("i", 42));
-            SinkRecord sr = new SinkRecord(topic, 0, null, null, oldSchema, value, 0,
-                    System.currentTimeMillis(), TimestampType.CREATE_TIME);
-            Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
-            Assertions.assertDoesNotThrow(() -> writer.doInsert(List.of(record),
-                    new QueryIdentifier(topic, "stale-describe-" + System.nanoTime())));
+      // The recovered mapping has to be usable: `extra` is written from its DEFAULT
+      Schema tupleSchema =
+          SchemaBuilder.struct()
+              .field("s", Schema.STRING_SCHEMA)
+              .field("i", Schema.INT32_SCHEMA)
+              .build();
+      Schema oldSchema =
+          SchemaBuilder.struct()
+              .field("id", Schema.INT32_SCHEMA)
+              .field("name", Schema.STRING_SCHEMA)
+              .field("arr", SchemaBuilder.array(Schema.INT32_SCHEMA).build())
+              .field("tup", tupleSchema)
+              .build();
+      Struct value =
+          new Struct(oldSchema)
+              .put("id", -1)
+              .put("name", "XXXXXXXX")
+              .put("arr", List.of(7, 8, 9))
+              .put("tup", new Struct(tupleSchema).put("s", "alpha").put("i", 42));
+      SinkRecord sr =
+          new SinkRecord(
+              topic,
+              0,
+              null,
+              null,
+              oldSchema,
+              value,
+              0,
+              System.currentTimeMillis(),
+              TimestampType.CREATE_TIME);
+      Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+      Assertions.assertDoesNotThrow(
+          () ->
+              writer.doInsert(
+                  List.of(record),
+                  new QueryIdentifier(topic, "stale-describe-" + System.nanoTime())));
 
-            List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-            assertEquals(1, rows.size());
-            JSONObject row = rows.get(0);
-            assertEquals(-1, row.getInt("id"));
-            assertEquals("XXXXXXXX", row.getString("name"));
-            assertEquals("", row.getString("extra"));
-            assertEquals(List.of(7, 8, 9), row.getJSONArray("arr").toList());
-            JSONObject tuple = row.getJSONObject("tup");
-            assertEquals("alpha", tuple.getString("s"));
-            assertEquals(42, tuple.getInt("i"));
-        } finally {
-            writer.stop();
-            ClickHouseTestHelpers.dropTable(chc, topic);
-        }
+      List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+      assertEquals(1, rows.size());
+      JSONObject row = rows.get(0);
+      assertEquals(-1, row.getInt("id"));
+      assertEquals("XXXXXXXX", row.getString("name"));
+      assertEquals("", row.getString("extra"));
+      assertEquals(List.of(7, 8, 9), row.getJSONArray("arr").toList());
+      JSONObject tuple = row.getJSONObject("tup");
+      assertEquals("alpha", tuple.getString("s"));
+      assertEquals(42, tuple.getInt("i"));
+    } finally {
+      writer.stop();
+      ClickHouseTestHelpers.dropTable(chc, topic);
     }
+  }
 
-    /**
-     * Client V2 transmits the INSERT statement as an HTTP query parameter (unlike V1, which sends
-     * it in the request body), so table names must survive both SQL backtick quoting and URL
-     * encoding. Covers characters that are special in URLs (space, +, &, =, %, ?, #), SQL quotes,
-     * and non-ASCII characters.
-     */
-    @ParameterizedTest
-    @ValueSource(strings = {"V1", "V2"})
-    public void doInsertSupportsSpecialCharactersInTableNames(String clientVersion) {
-        Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+  /**
+   * Client V2 transmits the INSERT statement as an HTTP query parameter (unlike V1, which sends it
+   * in the request body), so table names must survive both SQL backtick quoting and URL encoding.
+   * Covers characters that are special in URLs (space, +, &, =, %, ?, #), SQL quotes, and non-ASCII
+   * characters.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"V1", "V2"})
+  public void doInsertSupportsSpecialCharactersInTableNames(String clientVersion) {
+    Map<String, String> props = getBaseProps();
+    props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        List<String> tableNames = List.of(
-                createTopicName("dots.in.name"),
-                createTopicName("dashes-in-name"),
-                createTopicName("spaces in name"),
-                createTopicName("plus+in+name"),
-                createTopicName("ampersand&in&name"),
-                createTopicName("equals=in=name"),
-                createTopicName("percent%in%name"),
-                createTopicName("question?in?name"),
-                createTopicName("hash#in#name"),
-                createTopicName("quote'in'name"),
-                createTopicName("двойное_слово_unicode"));
+    List<String> tableNames =
+        List.of(
+            createTopicName("dots.in.name"),
+            createTopicName("dashes-in-name"),
+            createTopicName("spaces in name"),
+            createTopicName("plus+in+name"),
+            createTopicName("ampersand&in&name"),
+            createTopicName("equals=in=name"),
+            createTopicName("percent%in%name"),
+            createTopicName("question?in?name"),
+            createTopicName("hash#in#name"),
+            createTopicName("quote'in'name"),
+            createTopicName("двойное_слово_unicode"));
 
-        Schema schema = SchemaBuilder.struct().field("off16", Schema.INT16_SCHEMA).build();
+    Schema schema = SchemaBuilder.struct().field("off16", Schema.INT16_SCHEMA).build();
 
-        try {
+    try {
+      for (String tableName : tableNames) {
+        ClickHouseTestHelpers.dropTable(chc, tableName);
+        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(tableName).execute(chc);
+      }
+
+      runWithWriter(
+          props,
+          (chw) -> {
+            short off16Value = 16;
             for (String tableName : tableNames) {
-                ClickHouseTestHelpers.dropTable(chc, tableName);
-                new CreateTableStatement(SINGLE_INT16_TABLE).tableName(tableName).execute(chc);
+              Struct value = new Struct(schema).put("off16", off16Value);
+              SinkRecord sr =
+                  new SinkRecord(
+                      tableName,
+                      0,
+                      null,
+                      null,
+                      schema,
+                      value,
+                      0,
+                      System.currentTimeMillis(),
+                      TimestampType.CREATE_TIME);
+              Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+              try {
+                chw.doInsert(
+                    List.of(record),
+                    new QueryIdentifier(tableName, "special-table-name-" + System.nanoTime()));
+              } catch (Exception e) {
+                fail("Failed to insert into table [" + tableName + "]", e);
+              }
+
+              List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, tableName);
+              assertEquals(1, rows.size(), "Expected exactly one row in table [" + tableName + "]");
+              assertEquals(
+                  off16Value,
+                  rows.get(0).getInt("off16"),
+                  "Unexpected value read back from table [" + tableName + "]");
             }
+          });
+    } finally {
+      for (String tableName : tableNames) {
+        ClickHouseTestHelpers.dropTable(chc, tableName);
+      }
+    }
+  }
 
-            runWithWriter(props, (chw) -> {
-                short off16Value = 16;
-                for (String tableName : tableNames) {
-                    Struct value = new Struct(schema).put("off16", off16Value);
-                    SinkRecord sr = new SinkRecord(tableName, 0, null, null, schema, value, 0,
-                            System.currentTimeMillis(), TimestampType.CREATE_TIME);
-                    Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
-                    try {
-                        chw.doInsert(List.of(record), new QueryIdentifier(tableName, "special-table-name-" + System.nanoTime()));
-                    } catch (Exception e) {
-                        fail("Failed to insert into table [" + tableName + "]", e);
-                    }
+  @ParameterizedTest
+  @ValueSource(strings = {"json", "csv", "tsv"})
+  public void doInsertStringUsesEquivalentWirePathAcrossClients(String insertFormat) {
+    List<String> v1Rows = runStringInsertAndReadRows("V1", insertFormat);
+    List<String> v2Rows = runStringInsertAndReadRows("V2", insertFormat);
+    assertEquals(
+        v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for format " + insertFormat);
+  }
 
-                    List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, tableName);
-                    assertEquals(1, rows.size(), "Expected exactly one row in table [" + tableName + "]");
-                    assertEquals(off16Value, rows.get(0).getInt("off16"), "Unexpected value read back from table [" + tableName + "]");
-                }
-            });
-        } finally {
-            for (String tableName : tableNames) {
-                ClickHouseTestHelpers.dropTable(chc, tableName);
+  @Test
+  public void doInsertJsonUsesEquivalentWirePathAcrossClients() {
+    List<String> v1Rows = runJsonInsertAndReadRows("V1");
+    List<String> v2Rows = runJsonInsertAndReadRows("V2");
+    assertEquals(v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for JSON inserts");
+  }
+
+  private List<String> runStringInsertAndReadRows(String clientVersion, String insertFormat) {
+    Map<String, String> props = getBaseProps();
+    props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+    props.put(ClickHouseSinkConfig.INSERT_FORMAT, insertFormat);
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic =
+        createTopicName("string_parity_" + insertFormat + "_" + clientVersion.toLowerCase());
+
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .tableName(topic)
+        .column("off16", "Int16")
+        .column("str", "String")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .execute(chc);
+
+    List<String> payloads;
+    switch (insertFormat) {
+      case "csv":
+        payloads = List.of("1,alpha\n", "2,beta-no-newline");
+        break;
+      case "tsv":
+        payloads = List.of("1\talpha\n", "2\tbeta-no-newline");
+        break;
+      default:
+        payloads =
+            List.of(
+                "{\"off16\":1,\"str\":\"alpha\"}\n", "{\"off16\":2,\"str\":\"beta-no-newline\"}");
+        break;
+    }
+
+    try {
+      runWithWriter(
+          props,
+          (chw) -> {
+            for (int i = 0; i < payloads.size(); i++) {
+              SinkRecord sr =
+                  new SinkRecord(
+                      topic,
+                      0,
+                      null,
+                      null,
+                      null,
+                      payloads.get(i),
+                      i,
+                      System.currentTimeMillis(),
+                      TimestampType.CREATE_TIME);
+              Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+              try {
+                chw.doInsert(
+                    List.of(record),
+                    new QueryIdentifier(
+                        topic, "string-parity-" + clientVersion + "-" + insertFormat + "-" + i));
+              } catch (Exception e) {
+                fail(
+                    "Failed to insert string record for client="
+                        + clientVersion
+                        + ", format="
+                        + insertFormat,
+                    e);
+              }
             }
-        }
+          });
+
+      List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+      List<String> normalizedRows = new ArrayList<>(rows.size());
+      for (JSONObject row : rows) {
+        normalizedRows.add(row.getInt("off16") + "|" + row.getString("str"));
+      }
+      normalizedRows.sort(String::compareTo);
+      return normalizedRows;
+    } finally {
+      ClickHouseTestHelpers.dropTable(chc, topic);
     }
+  }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"json", "csv", "tsv"})
-    public void doInsertStringUsesEquivalentWirePathAcrossClients(String insertFormat) {
-        List<String> v1Rows = runStringInsertAndReadRows("V1", insertFormat);
-        List<String> v2Rows = runStringInsertAndReadRows("V2", insertFormat);
-        assertEquals(v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for format " + insertFormat);
-    }
+  private List<String> runJsonInsertAndReadRows(String clientVersion) {
+    Map<String, String> props = getBaseProps();
+    props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("json_parity_" + clientVersion.toLowerCase());
 
-    @Test
-    public void doInsertJsonUsesEquivalentWirePathAcrossClients() {
-        List<String> v1Rows = runJsonInsertAndReadRows("V1");
-        List<String> v2Rows = runJsonInsertAndReadRows("V2");
-        assertEquals(v1Rows, v2Rows, "Expected V1 and V2 to persist identical rows for JSON inserts");
-    }
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .tableName(topic)
+        .column("off16", "Int16")
+        .column("str", "String")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .execute(chc);
 
-    private List<String> runStringInsertAndReadRows(String clientVersion, String insertFormat) {
-        Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
-        props.put(ClickHouseSinkConfig.INSERT_FORMAT, insertFormat);
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("string_parity_" + insertFormat + "_" + clientVersion.toLowerCase());
-
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .tableName(topic)
-                .column("off16", "Int16")
-                .column("str", "String")
-                .engine("MergeTree")
-                .orderByColumn("off16")
-                .execute(chc);
-
-        List<String> payloads;
-        switch (insertFormat) {
-            case "csv":
-                payloads = List.of("1,alpha\n", "2,beta-no-newline");
-                break;
-            case "tsv":
-                payloads = List.of("1\talpha\n", "2\tbeta-no-newline");
-                break;
-            default:
-                payloads = List.of("{\"off16\":1,\"str\":\"alpha\"}\n", "{\"off16\":2,\"str\":\"beta-no-newline\"}");
-                break;
-        }
-
-        try {
-            runWithWriter(props, (chw) -> {
-                for (int i = 0; i < payloads.size(); i++) {
-                    SinkRecord sr = new SinkRecord(topic, 0, null, null, null, payloads.get(i), i,
-                            System.currentTimeMillis(), TimestampType.CREATE_TIME);
-                    Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
-                    try {
-                        chw.doInsert(List.of(record), new QueryIdentifier(topic, "string-parity-" + clientVersion + "-" + insertFormat + "-" + i));
-                    } catch (Exception e) {
-                        fail("Failed to insert string record for client=" + clientVersion + ", format=" + insertFormat, e);
-                    }
-                }
-            });
-
-            List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-            List<String> normalizedRows = new ArrayList<>(rows.size());
-            for (JSONObject row : rows) {
-                normalizedRows.add(row.getInt("off16") + "|" + row.getString("str"));
+    try {
+      runWithWriter(
+          props,
+          (chw) -> {
+            List<Map<String, Object>> payloads =
+                List.of(
+                    Map.of("off16", (short) 1, "str", "alpha"),
+                    Map.of("off16", (short) 2, "str", "beta"),
+                    Map.of("off16", (short) 3, "str", "gamma"));
+            for (int i = 0; i < payloads.size(); i++) {
+              SinkRecord sr =
+                  new SinkRecord(
+                      topic,
+                      0,
+                      null,
+                      null,
+                      null,
+                      payloads.get(i),
+                      i,
+                      System.currentTimeMillis(),
+                      TimestampType.CREATE_TIME);
+              Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
+              try {
+                chw.doInsert(
+                    List.of(record),
+                    new QueryIdentifier(topic, "json-parity-" + clientVersion + "-" + i));
+              } catch (Exception e) {
+                fail("Failed to insert JSON record for client=" + clientVersion, e);
+              }
             }
-            normalizedRows.sort(String::compareTo);
-            return normalizedRows;
-        } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
-        }
+          });
+
+      List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
+      List<String> normalizedRows = new ArrayList<>(rows.size());
+      for (JSONObject row : rows) {
+        normalizedRows.add(row.getInt("off16") + "|" + row.getString("str"));
+      }
+      normalizedRows.sort(String::compareTo);
+      return normalizedRows;
+    } finally {
+      ClickHouseTestHelpers.dropTable(chc, topic);
     }
+  }
 
-    private List<String> runJsonInsertAndReadRows(String clientVersion) {
-        Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, clientVersion);
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("json_parity_" + clientVersion.toLowerCase());
+  private static final String WRITER_HELPER_CLIENT_FIELD = "chc";
 
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .tableName(topic)
-                .column("off16", "Int16")
-                .column("str", "String")
-                .engine("MergeTree")
-                .orderByColumn("off16")
-                .execute(chc);
+  private static Field writerHelperClientField() throws NoSuchFieldException {
+    Field field = ClickHouseWriter.class.getDeclaredField(WRITER_HELPER_CLIENT_FIELD);
+    field.setAccessible(true);
+    return field;
+  }
 
-        try {
-            runWithWriter(props, (chw) -> {
-                List<Map<String, Object>> payloads = List.of(
-                        Map.of("off16", (short) 1, "str", "alpha"),
-                        Map.of("off16", (short) 2, "str", "beta"),
-                        Map.of("off16", (short) 3, "str", "gamma")
-                );
-                for (int i = 0; i < payloads.size(); i++) {
-                    SinkRecord sr = new SinkRecord(topic, 0, null, null, null, payloads.get(i), i,
-                            System.currentTimeMillis(), TimestampType.CREATE_TIME);
-                    Record record = Record.convert(sr, false, ".", chc.getDatabase(), false);
-                    try {
-                        chw.doInsert(List.of(record), new QueryIdentifier(topic, "json-parity-" + clientVersion + "-" + i));
-                    } catch (Exception e) {
-                        fail("Failed to insert JSON record for client=" + clientVersion, e);
-                    }
-                }
-            });
+  private static ClickHouseHelperClient getHelperClient(ClickHouseWriter writer) throws Exception {
+    return (ClickHouseHelperClient) writerHelperClientField().get(writer);
+  }
 
-            List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-            List<String> normalizedRows = new ArrayList<>(rows.size());
-            for (JSONObject row : rows) {
-                normalizedRows.add(row.getInt("off16") + "|" + row.getString("str"));
-            }
-            normalizedRows.sort(String::compareTo);
-            return normalizedRows;
-        } finally {
-            ClickHouseTestHelpers.dropTable(chc, topic);
-        }
+  private static void setHelperClient(ClickHouseWriter writer, ClickHouseHelperClient client)
+      throws Exception {
+    writerHelperClientField().set(writer, client);
+  }
+
+  private static boolean exceptionChainContains(Throwable t, String target) {
+    while (t != null) {
+      if (t.getMessage() != null && t.getMessage().contains(target)) {
+        return true;
+      }
+      t = t.getCause();
     }
-
-    private static final String WRITER_HELPER_CLIENT_FIELD = "chc";
-
-    private static Field writerHelperClientField() throws NoSuchFieldException {
-        Field field = ClickHouseWriter.class.getDeclaredField(WRITER_HELPER_CLIENT_FIELD);
-        field.setAccessible(true);
-        return field;
-    }
-
-    private static ClickHouseHelperClient getHelperClient(ClickHouseWriter writer) throws Exception {
-        return (ClickHouseHelperClient) writerHelperClientField().get(writer);
-    }
-
-    private static void setHelperClient(ClickHouseWriter writer, ClickHouseHelperClient client) throws Exception {
-        writerHelperClientField().set(writer, client);
-    }
-
-    private static boolean exceptionChainContains(Throwable t, String target) {
-        while (t != null) {
-            if (t.getMessage() != null && t.getMessage().contains(target)) {
-                return true;
-            }
-            t = t.getCause();
-        }
-        return false;
-    }
+    return false;
+  }
 }

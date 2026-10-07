@@ -1,223 +1,255 @@
 package com.clickhouse.kafka.connect.sink.util;
 
+import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
+import static com.clickhouse.kafka.connect.util.Utils.computeColumnDiff;
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.clickhouse.client.ClickHouseException;
 import com.clickhouse.client.api.DataTransferException;
 import com.clickhouse.client.api.ServerException;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.util.Utils;
-import org.apache.kafka.connect.errors.RetriableException;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.List;
-
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
-import static com.clickhouse.kafka.connect.util.Utils.computeColumnDiff;
-import static org.junit.jupiter.api.Assertions.*;
+import org.apache.kafka.connect.errors.RetriableException;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 public class UtilsTest {
 
-    @Test
-    @DisplayName("Test Exception Root Cause")
-    public void TestRootCause() {
-        Exception e1 = new Exception("The Actual Root Cause");
-        Exception e2 = new Exception(e1);
-        Exception e3 = new Exception(e2);
-        Exception e4 = new Exception(e3);
-        assertEquals(e1, Utils.getRootCause(e4));
-    }
+  @Test
+  @DisplayName("Test Exception Root Cause")
+  public void TestRootCause() {
+    Exception e1 = new Exception("The Actual Root Cause");
+    Exception e2 = new Exception(e1);
+    Exception e3 = new Exception(e2);
+    Exception e4 = new Exception(e3);
+    assertEquals(e1, Utils.getRootCause(e4));
+  }
 
+  @Test
+  @DisplayName("Test ClickHouseException Root Cause")
+  public void TestClickHouseRootCause() {
+    Exception e1 = new Exception();
+    Exception e2 = new Exception(e1);
+    Exception e3 = new ClickHouseException(123, e2, null);
+    Exception e4 = new RuntimeException(e3);
+    Exception e5 = new Exception(e4);
 
-    @Test
-    @DisplayName("Test ClickHouseException Root Cause")
-    public void TestClickHouseRootCause() {
-        Exception e1 = new Exception();
-        Exception e2 = new Exception(e1);
-        Exception e3 = new ClickHouseException(123, e2, null);
-        Exception e4 = new RuntimeException(e3);
-        Exception e5 = new Exception(e4);
+    Exception clickHouseException = Utils.getRootCause(e5, true);
+    assertEquals(e3, clickHouseException);
+    assertTrue(clickHouseException instanceof ClickHouseException);
+    assertEquals(123, ((ClickHouseException) clickHouseException).getErrorCode());
+  }
 
-        Exception clickHouseException = Utils.getRootCause(e5, true);
-        assertEquals(e3, clickHouseException);
-        assertTrue(clickHouseException instanceof ClickHouseException);
-        assertEquals(123, ((ClickHouseException) clickHouseException).getErrorCode());
-    }
-
-    @Test
-    @DisplayName("Test ClickHouseClient Timeout Throw Cause")
-    public void TestClickHouseClientTimeoutCause(){
-        assertThrows(RetriableException.class, () -> {
-            Exception timeout = new IOException("Write timed out after 30000 ms");
-            Utils.handleException(timeout, false, false, new ArrayList<>());
+  @Test
+  @DisplayName("Test ClickHouseClient Timeout Throw Cause")
+  public void TestClickHouseClientTimeoutCause() {
+    assertThrows(
+        RetriableException.class,
+        () -> {
+          Exception timeout = new IOException("Write timed out after 30000 ms");
+          Utils.handleException(timeout, false, false, new ArrayList<>());
         });
-    }
+  }
 
-    @Test
-    @DisplayName("Test SocketException retried when enabled")
-    public void TestSocketExceptionRetriedWhenEnabled() {
-        assertThrows(RetriableException.class, () -> {
-            Exception brokenPipe = new RuntimeException(new DataTransferException("Insert failed", new SocketException("Broken pipe")));
-            Utils.handleException(brokenPipe, false, true, new ArrayList<>());
+  @Test
+  @DisplayName("Test SocketException retried when enabled")
+  public void TestSocketExceptionRetriedWhenEnabled() {
+    assertThrows(
+        RetriableException.class,
+        () -> {
+          Exception brokenPipe =
+              new RuntimeException(
+                  new DataTransferException("Insert failed", new SocketException("Broken pipe")));
+          Utils.handleException(brokenPipe, false, true, new ArrayList<>());
         });
-    }
+  }
 
-    @Test
-    @DisplayName("Test SocketException not retried by default")
-    public void TestSocketExceptionNotRetriedByDefault() {
-        RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
-            Exception brokenPipe = new RuntimeException(new DataTransferException("Insert failed", new SocketException("Broken pipe")));
-            Utils.handleException(brokenPipe, false, false, new ArrayList<>());
+  @Test
+  @DisplayName("Test SocketException not retried by default")
+  public void TestSocketExceptionNotRetriedByDefault() {
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () -> {
+              Exception brokenPipe =
+                  new RuntimeException(
+                      new DataTransferException(
+                          "Insert failed", new SocketException("Broken pipe")));
+              Utils.handleException(brokenPipe, false, false, new ArrayList<>());
+            });
+    assertFalse(thrown instanceof RetriableException);
+  }
+
+  @DisplayName("Test client V2 ServerException Root Cause")
+  public void TestServerExceptionRootCause() {
+    Exception e1 = new ServerException(252, "Too many parts", 500);
+    Exception e2 = new RuntimeException(new RuntimeException(e1));
+    assertEquals(e1, Utils.getRootCause(e2, true));
+  }
+
+  @Test
+  @DisplayName("Test client V2 ServerException retriable code")
+  public void TestServerExceptionRetriableCode() {
+    assertThrows(
+        RetriableException.class,
+        () -> {
+          Exception e = new RuntimeException(new ServerException(252, "Too many parts", 500));
+          Utils.handleException(e, false, false, new ArrayList<>());
         });
-        assertFalse(thrown instanceof RetriableException);
+  }
+
+  @Test
+  @DisplayName("Test client V2 ServerException non-retriable code")
+  public void TestServerExceptionNonRetriableCode() {
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () -> {
+              Exception e =
+                  new RuntimeException(new ServerException(60, "Table does not exist", 404));
+              Utils.handleException(e, false, false, new ArrayList<>());
+            });
+    assertFalse(thrown instanceof RetriableException);
+  }
+
+  private static Table tableWith(String tableName, String[]... colSpecs) {
+    List<Column> columns = new ArrayList<>();
+    for (String[] spec : colSpecs) {
+      columns.add(Column.extractColumn(newDescriptor(spec[0], spec[1])));
     }
+    return new Table("default", tableName, false, columns, colSpecs.length);
+  }
 
-    @DisplayName("Test client V2 ServerException Root Cause")
-    public void TestServerExceptionRootCause() {
-        Exception e1 = new ServerException(252, "Too many parts", 500);
-        Exception e2 = new RuntimeException(new RuntimeException(e1));
-        assertEquals(e1, Utils.getRootCause(e2, true));
-    }
+  @Test
+  public void identicalTablesProduceNoDiffTest() {
+    Table oldTable = tableWith("t", new String[] {"a", "Int32"}, new String[] {"b", "String"});
+    Table newTable = tableWith("t", new String[] {"a", "Int32"}, new String[] {"b", "String"});
 
-    @Test
-    @DisplayName("Test client V2 ServerException retriable code")
-    public void TestServerExceptionRetriableCode() {
-        assertThrows(RetriableException.class, () -> {
-            Exception e = new RuntimeException(new ServerException(252, "Too many parts", 500));
-            Utils.handleException(e, false, false, new ArrayList<>());
-        });
-    }
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
 
-    @Test
-    @DisplayName("Test client V2 ServerException non-retriable code")
-    public void TestServerExceptionNonRetriableCode() {
-        RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
-            Exception e = new RuntimeException(new ServerException(60, "Table does not exist", 404));
-            Utils.handleException(e, false, false, new ArrayList<>());
-        });
-        assertFalse(thrown instanceof RetriableException);
-    }
+    assertTrue(diffs.isEmpty(), "Expected no diffs, got: " + diffs);
+  }
 
-    private static Table tableWith(String tableName, String[]... colSpecs) {
-        List<Column> columns = new ArrayList<>();
-        for (String[] spec : colSpecs) {
-            columns.add(Column.extractColumn(newDescriptor(spec[0], spec[1])));
-        }
-        return new Table("default", tableName, false, columns, colSpecs.length);
-    }
+  @Test
+  public void detectTypeChangeAtPositionTest() {
+    Table oldTable = tableWith("t", new String[] {"a", "Int32"}, new String[] {"b", "String"});
+    Table newTable = tableWith("t", new String[] {"a", "Int32"}, new String[] {"b", "Int64"});
 
-    @Test
-    public void identicalTablesProduceNoDiffTest() {
-        Table oldTable = tableWith("t", new String[]{"a", "Int32"}, new String[]{"b", "String"});
-        Table newTable = tableWith("t", new String[]{"a", "Int32"}, new String[]{"b", "String"});
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
 
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
+    assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
+    String diff = diffs.get(0);
+    assertTrue(diff.contains("position 1"), "Diff should mention position 1: " + diff);
+    assertTrue(diff.contains("STRING"), "Diff should mention old STRING type: " + diff);
+    assertTrue(diff.contains("INT64"), "Diff should mention new INT64 type: " + diff);
+  }
 
-        assertTrue(diffs.isEmpty(), "Expected no diffs, got: " + diffs);
-    }
+  @Test
+  public void detectColumnAddedAtEndTest() {
+    Table oldTable = tableWith("t", new String[] {"a", "Int32"});
+    Table newTable =
+        tableWith("t", new String[] {"a", "Int32"}, new String[] {"new_col", "String"});
 
-    @Test
-    public void detectTypeChangeAtPositionTest() {
-        Table oldTable = tableWith("t", new String[]{"a", "Int32"}, new String[]{"b", "String"});
-        Table newTable = tableWith("t", new String[]{"a", "Int32"}, new String[]{"b", "Int64"});
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
 
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
+    assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
+    String diff = diffs.get(0);
+    assertTrue(
+        diff.contains("Column added at position 1"), "Diff should describe addition: " + diff);
+    assertTrue(diff.contains("new_col"), "Diff should mention the new column name: " + diff);
+  }
 
-        assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
-        String diff = diffs.get(0);
-        assertTrue(diff.contains("position 1"), "Diff should mention position 1: " + diff);
-        assertTrue(diff.contains("STRING"), "Diff should mention old STRING type: " + diff);
-        assertTrue(diff.contains("INT64"), "Diff should mention new INT64 type: " + diff);
-    }
+  @Test
+  public void detectColumnRemovedFromEndTest() {
+    Table oldTable = tableWith("t", new String[] {"a", "Int32"}, new String[] {"gone", "String"});
+    Table newTable = tableWith("t", new String[] {"a", "Int32"});
 
-    @Test
-    public void detectColumnAddedAtEndTest() {
-        Table oldTable = tableWith("t", new String[]{"a", "Int32"});
-        Table newTable = tableWith("t", new String[]{"a", "Int32"}, new String[]{"new_col", "String"});
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
 
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
+    assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
+    String diff = diffs.get(0);
+    assertTrue(
+        diff.contains("Column removed at position 1"), "Diff should describe removal: " + diff);
+    assertTrue(diff.contains("gone"), "Diff should mention the removed column name: " + diff);
+  }
 
-        assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
-        String diff = diffs.get(0);
-        assertTrue(diff.contains("Column added at position 1"), "Diff should describe addition: " + diff);
-        assertTrue(diff.contains("new_col"), "Diff should mention the new column name: " + diff);
-    }
+  @Test
+  public void detectNullableChangeTest() {
+    Table oldTable = tableWith("t", new String[] {"a", "Int32"});
+    Table newTable = tableWith("t", new String[] {"a", "Nullable(Int32)"});
 
-    @Test
-    public void detectColumnRemovedFromEndTest() {
-        Table oldTable = tableWith("t", new String[]{"a", "Int32"}, new String[]{"gone", "String"});
-        Table newTable = tableWith("t", new String[]{"a", "Int32"});
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
 
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
+    assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
+    String diff = diffs.get(0);
+    assertTrue(diff.contains("position 0"), "Diff should mention position 0: " + diff);
+    assertTrue(
+        diff.contains("nullable=false") && diff.contains("nullable=true"),
+        "Diff should mention nullable transition: " + diff);
+  }
 
-        assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
-        String diff = diffs.get(0);
-        assertTrue(diff.contains("Column removed at position 1"), "Diff should describe removal: " + diff);
-        assertTrue(diff.contains("gone"), "Diff should mention the removed column name: " + diff);
-    }
+  @Test
+  public void detectPrecisionAndScaleChangeTest() {
+    Table oldTable = tableWith("t", new String[] {"d", "Decimal(5, 2)"});
+    Table newTable = tableWith("t", new String[] {"d", "Decimal(7, 3)"});
 
-    @Test
-    public void detectNullableChangeTest() {
-        Table oldTable = tableWith("t", new String[]{"a", "Int32"});
-        Table newTable = tableWith("t", new String[]{"a", "Nullable(Int32)"});
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
 
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
+    assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
+    String diff = diffs.get(0);
+    assertTrue(
+        diff.contains("precision=5") && diff.contains("precision=7"),
+        "Diff should mention precision transition: " + diff);
+    assertTrue(
+        diff.contains("scale=2") && diff.contains("scale=3"),
+        "Diff should mention scale transition: " + diff);
+  }
 
-        assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
-        String diff = diffs.get(0);
-        assertTrue(diff.contains("position 0"), "Diff should mention position 0: " + diff);
-        assertTrue(diff.contains("nullable=false") && diff.contains("nullable=true"),
-                "Diff should mention nullable transition: " + diff);
-    }
+  @Test
+  public void detectMultipleChangesAcrossPositionsTest() {
+    Table oldTable =
+        tableWith(
+            "t",
+            new String[] {"a", "Int32"},
+            new String[] {"b", "String"},
+            new String[] {"c", "Float64"});
+    Table newTable =
+        tableWith(
+            "t",
+            new String[] {"a", "Int64"}, // pos 0: type change Int32 -> Int64
+            new String[] {"renamed_b", "String"}, // pos 1: name change b -> renamed_b
+            new String[] {"c", "Float64"}, // pos 2: unchanged
+            new String[] {"new_col", "UInt8"}); // pos 3: addition
 
-    @Test
-    public void detectPrecisionAndScaleChangeTest() {
-        Table oldTable = tableWith("t", new String[]{"d", "Decimal(5, 2)"});
-        Table newTable = tableWith("t", new String[]{"d", "Decimal(7, 3)"});
+    List<String> diffs = computeColumnDiff(oldTable, newTable);
 
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
+    assertEquals(3, diffs.size(), "Expected exactly three diffs, got: " + diffs);
 
-        assertEquals(1, diffs.size(), "Expected exactly one diff, got: " + diffs);
-        String diff = diffs.get(0);
-        assertTrue(diff.contains("precision=5") && diff.contains("precision=7"),
-                "Diff should mention precision transition: " + diff);
-        assertTrue(diff.contains("scale=2") && diff.contains("scale=3"),
-                "Diff should mention scale transition: " + diff);
-    }
+    String posZeroDiff = diffs.get(0);
+    assertTrue(
+        posZeroDiff.contains("position 0"), "First diff should mention position 0: " + posZeroDiff);
+    assertTrue(
+        posZeroDiff.contains("INT32") && posZeroDiff.contains("INT64"),
+        "First diff should mention INT32->INT64: " + posZeroDiff);
 
-    @Test
-    public void detectMultipleChangesAcrossPositionsTest() {
-        Table oldTable = tableWith("t",
-                new String[]{"a", "Int32"},
-                new String[]{"b", "String"},
-                new String[]{"c", "Float64"});
-        Table newTable = tableWith("t",
-                new String[]{"a", "Int64"},               // pos 0: type change Int32 -> Int64
-                new String[]{"renamed_b", "String"},      // pos 1: name change b -> renamed_b
-                new String[]{"c", "Float64"},             // pos 2: unchanged
-                new String[]{"new_col", "UInt8"});        // pos 3: addition
+    String posOneDiff = diffs.get(1);
+    assertTrue(
+        posOneDiff.contains("position 1"), "Second diff should mention position 1: " + posOneDiff);
+    assertTrue(
+        posOneDiff.contains("name=b") && posOneDiff.contains("name=renamed_b"),
+        "Second diff should mention name transition: " + posOneDiff);
 
-        List<String> diffs = computeColumnDiff(oldTable, newTable);
-
-        assertEquals(3, diffs.size(), "Expected exactly three diffs, got: " + diffs);
-
-        String posZeroDiff = diffs.get(0);
-        assertTrue(posZeroDiff.contains("position 0"), "First diff should mention position 0: " + posZeroDiff);
-        assertTrue(posZeroDiff.contains("INT32") && posZeroDiff.contains("INT64"),
-                "First diff should mention INT32->INT64: " + posZeroDiff);
-
-        String posOneDiff = diffs.get(1);
-        assertTrue(posOneDiff.contains("position 1"), "Second diff should mention position 1: " + posOneDiff);
-        assertTrue(posOneDiff.contains("name=b") && posOneDiff.contains("name=renamed_b"),
-                "Second diff should mention name transition: " + posOneDiff);
-
-        String posThreeDiff = diffs.get(2);
-        assertTrue(posThreeDiff.contains("Column added at position 3"),
-                "Third diff should describe addition: " + posThreeDiff);
-        assertTrue(posThreeDiff.contains("new_col"),
-                "Third diff should mention the new column name: " + posThreeDiff);
-    }
+    String posThreeDiff = diffs.get(2);
+    assertTrue(
+        posThreeDiff.contains("Column added at position 3"),
+        "Third diff should describe addition: " + posThreeDiff);
+    assertTrue(
+        posThreeDiff.contains("new_col"),
+        "Third diff should mention the new column name: " + posThreeDiff);
+  }
 }

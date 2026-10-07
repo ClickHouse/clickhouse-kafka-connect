@@ -16,52 +16,51 @@
 
 package com.clickhouse.kafka.connect.transforms;
 
+import java.util.Map;
+import java.util.Optional;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 
-import java.util.Map;
-import java.util.Optional;
-
 class ExtractTopicConfig extends AbstractConfig {
-    public static final String FIELD_NAME_CONFIG = "field.name";
-    private static final String FIELD_NAME_DOC =
-        "The name of the field which should be used as the topic name. "
-        + "If null or empty, the entire key or value is used (and assumed to be a string).";
+  public static final String FIELD_NAME_CONFIG = "field.name";
+  private static final String FIELD_NAME_DOC =
+      "The name of the field which should be used as the topic name. "
+          + "If null or empty, the entire key or value is used (and assumed to be a string).";
 
-    public static final String SKIP_MISSING_OR_NULL_CONFIG = "skip.missing.or.null";
-    private static final String SKIP_MISSING_OR_NULL_DOC =
-        "In case the source of the new topic name is null or missing, "
-        + "should a record be silently passed without transformation.";
+  public static final String SKIP_MISSING_OR_NULL_CONFIG = "skip.missing.or.null";
+  private static final String SKIP_MISSING_OR_NULL_DOC =
+      "In case the source of the new topic name is null or missing, "
+          + "should a record be silently passed without transformation.";
 
-    ExtractTopicConfig(final Map<?, ?> originals) {
-        super(config(), originals);
+  ExtractTopicConfig(final Map<?, ?> originals) {
+    super(config(), originals);
+  }
+
+  static ConfigDef config() {
+    return new ConfigDef()
+        .define(
+            FIELD_NAME_CONFIG,
+            ConfigDef.Type.STRING,
+            null,
+            ConfigDef.Importance.HIGH,
+            FIELD_NAME_DOC)
+        .define(
+            SKIP_MISSING_OR_NULL_CONFIG,
+            ConfigDef.Type.BOOLEAN,
+            false,
+            ConfigDef.Importance.LOW,
+            SKIP_MISSING_OR_NULL_DOC);
+  }
+
+  Optional<String> fieldName() {
+    final String rawFieldName = getString(FIELD_NAME_CONFIG);
+    if (null == rawFieldName || "".equals(rawFieldName)) {
+      return Optional.empty();
     }
+    return Optional.of(rawFieldName);
+  }
 
-    static ConfigDef config() {
-        return new ConfigDef()
-            .define(
-                FIELD_NAME_CONFIG,
-                ConfigDef.Type.STRING,
-                null,
-                ConfigDef.Importance.HIGH,
-                FIELD_NAME_DOC)
-            .define(
-                SKIP_MISSING_OR_NULL_CONFIG,
-                ConfigDef.Type.BOOLEAN,
-                false,
-                ConfigDef.Importance.LOW,
-                SKIP_MISSING_OR_NULL_DOC);
-    }
-
-    Optional<String> fieldName() {
-        final String rawFieldName = getString(FIELD_NAME_CONFIG);
-        if (null == rawFieldName || "".equals(rawFieldName)) {
-            return Optional.empty();
-        }
-        return Optional.of(rawFieldName);
-    }
-
-    boolean skipMissingOrNull() {
-        return getBoolean(SKIP_MISSING_OR_NULL_CONFIG);
-    }
+  boolean skipMissingOrNull() {
+    return getBoolean(SKIP_MISSING_OR_NULL_CONFIG);
+  }
 }

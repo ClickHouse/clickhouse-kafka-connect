@@ -5,6 +5,9 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -15,115 +18,127 @@ import org.testcontainers.clickhouse.ClickHouseContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.utility.MountableFile;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ClickHouseBase {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
-    protected ClickHouseContainer db;
-    protected ClickHouseCluster cluster;
-    protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
-    protected static boolean isCluster = ClickHouseTestHelpers.isCluster();
-    protected String database = ClickHouseTestHelpers.DATABASE_DEFAULT;
+  private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseBase.class);
+  protected ClickHouseContainer db;
+  protected ClickHouseCluster cluster;
+  protected static boolean isCloud = ClickHouseTestHelpers.isCloud();
+  protected static boolean isCluster = ClickHouseTestHelpers.isCluster();
+  protected String database = ClickHouseTestHelpers.DATABASE_DEFAULT;
 
-    @BeforeAll
-    public void setup() throws IOException {
-        Assertions.assertFalse(isCluster && isCloud, String.format("Invalid configuration: both %s=<> and %s=cloud are set. Please set only one or the other.", ClickHouseTestHelpers.CLICKHOUSE_CLUSTER_NAME, ClickHouseTestHelpers.CLICKHOUSE_VERSION));
-        if (isCluster) {
-            cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
-            cluster.start();
-        } else if (!isCloud) {
-            setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
-        }
-
-        try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
-            setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
-            ClickHouseTestHelpers.createDatabase(database, tmpClient);
-            tmpClient.ping();
-        }
+  @BeforeAll
+  public void setup() throws IOException {
+    Assertions.assertFalse(
+        isCluster && isCloud,
+        String.format(
+            "Invalid configuration: both %s=<> and %s=cloud are set. Please set only one or the other.",
+            ClickHouseTestHelpers.CLICKHOUSE_CLUSTER_NAME,
+            ClickHouseTestHelpers.CLICKHOUSE_VERSION));
+    if (isCluster) {
+      cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
+      cluster.start();
+    } else if (!isCloud) {
+      setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
     }
 
-    public void setupContainer(String clickhouseDockerImage) {
-        Network network = Network.newNetwork();
+    try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
+      setDatabase(
+          String.format(
+              "kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
+      ClickHouseTestHelpers.createDatabase(database, tmpClient);
+      tmpClient.ping();
+    }
+  }
 
-        this.db = new ClickHouseContainer(clickhouseDockerImage)
-                .withNetwork(network)
-                .withNetworkAliases(ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS)
-                .withPassword("test_password")
-                .withCreateContainerCmdModifier(cmd -> {
-                    cmd.getHostConfig().withMemory(1024 * 1024 * 1024 * 2L);
+  public void setupContainer(String clickhouseDockerImage) {
+    Network network = Network.newNetwork();
+
+    this.db =
+        new ClickHouseContainer(clickhouseDockerImage)
+            .withNetwork(network)
+            .withNetworkAliases(ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS)
+            .withPassword("test_password")
+            .withCreateContainerCmdModifier(
+                cmd -> {
+                  cmd.getHostConfig().withMemory(1024 * 1024 * 1024 * 2L);
                 })
-                .withExposedPorts(8123)
-                .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
-                // Enable embedded clickhouse-keeper + keeper_map_path_prefix so EO tests
-                // can use the KeeperMap-backed connect_state table on standalone CH.
-                .withCopyFileToContainer(
-                        MountableFile.forClasspathResource("clickhouse_keeper_map.xml"),
-                        "/etc/clickhouse-server/config.d/keeper_map.xml");
-        db.start();
-    }
+            .withExposedPorts(8123)
+            .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
+            // Enable embedded clickhouse-keeper + keeper_map_path_prefix so EO tests
+            // can use the KeeperMap-backed connect_state table on standalone CH.
+            .withCopyFileToContainer(
+                MountableFile.forClasspathResource("clickhouse_keeper_map.xml"),
+                "/etc/clickhouse-server/config.d/keeper_map.xml");
+    db.start();
+  }
 
-    @AfterAll
-    protected void tearDown() {
-        if (isCluster) {
-            cluster.stop();
-        } else if (!isCloud) {
-            ClickHouseContainer ch = getDb();
-            if (ch != null) {
-                LOGGER.info("Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
-                ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.log",
-                        "./build/reports/tests/server_" + +db.getMappedPort(8123) + ".log");
-                ch.copyFileFromContainer("/var/log/clickhouse-server/clickhouse-server.err.log",
-                        "./build/reports/tests/server-err_" + db.getMappedPort(8123) + ".log");
-                ch.stop();
-            }
-        }
+  @AfterAll
+  protected void tearDown() {
+    if (isCluster) {
+      cluster.stop();
+    } else if (!isCloud) {
+      ClickHouseContainer ch = getDb();
+      if (ch != null) {
+        LOGGER.info(
+            "Stopping db container: id={}, port={}", ch.getContainerId(), ch.getMappedPort(8123));
+        ch.copyFileFromContainer(
+            "/var/log/clickhouse-server/clickhouse-server.log",
+            "./build/reports/tests/server_" + +db.getMappedPort(8123) + ".log");
+        ch.copyFileFromContainer(
+            "/var/log/clickhouse-server/clickhouse-server.err.log",
+            "./build/reports/tests/server-err_" + db.getMappedPort(8123) + ".log");
+        ch.stop();
+      }
     }
+  }
 
-    public  ClickHouseContainer getDb() {
-        return db;
-    }
+  public ClickHouseContainer getDb() {
+    return db;
+  }
 
-    public  void setDb(ClickHouseContainer db) {
-        this.db = db;
-    }
+  public void setDb(ClickHouseContainer db) {
+    this.db = db;
+  }
 
-    public void setDatabase(String database) {
-        this.database = database;
-    }
+  public void setDatabase(String database) {
+    this.database = database;
+  }
 
-    protected Map<String, String> getBaseProps() {
-        Map<String, String> props = new HashMap<>();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, ClickHouseTestHelpers.extractClientVersion());
-        if (isCloud) {
-            props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST));
-            props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);
-            props.put(ClickHouseSinkConnector.DATABASE, database);
-            props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
-            props.put(ClickHouseSinkConnector.PASSWORD, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD));
-            props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
-            props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
-            props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "insert_quorum=3");
-        } else if (isCluster) {
-            props.putAll(cluster.getClusterProps(database));
-        } else {
-            props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
-            props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());
-            props.put(ClickHouseSinkConnector.DATABASE, database);
-            props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
-            props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
-            props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
-        }
-        return props;
+  protected Map<String, String> getBaseProps() {
+    Map<String, String> props = new HashMap<>();
+    props.put(ClickHouseSinkConnector.CLIENT_VERSION, ClickHouseTestHelpers.extractClientVersion());
+    if (isCloud) {
+      props.put(
+          ClickHouseSinkConnector.HOSTNAME,
+          System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST));
+      props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);
+      props.put(ClickHouseSinkConnector.DATABASE, database);
+      props.put(ClickHouseSinkConnector.USERNAME, ClickHouseTestHelpers.USERNAME_DEFAULT);
+      props.put(
+          ClickHouseSinkConnector.PASSWORD,
+          System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD));
+      props.put(ClickHouseSinkConnector.SSL_ENABLED, "true");
+      props.put(String.valueOf(ClickHouseClientOption.CONNECTION_TIMEOUT), "60000");
+      props.put(ClickHouseSinkConfig.CLICKHOUSE_SETTINGS, "insert_quorum=3");
+    } else if (isCluster) {
+      props.putAll(cluster.getClusterProps(database));
+    } else {
+      props.put(ClickHouseSinkConnector.HOSTNAME, getDb().getHost());
+      props.put(ClickHouseSinkConnector.PORT, getDb().getMappedPort(8123).toString());
+      props.put(ClickHouseSinkConnector.DATABASE, database);
+      props.put(ClickHouseSinkConnector.USERNAME, getDb().getUsername());
+      props.put(ClickHouseSinkConnector.PASSWORD, getDb().getPassword());
+      props.put(ClickHouseSinkConnector.SSL_ENABLED, "false");
     }
+    return props;
+  }
 
-    protected String createTopicName(String name) {
-        return String.format("%s_%d", name, System.currentTimeMillis());
-    }
+  protected String createTopicName(String name) {
+    return String.format("%s_%d", name, System.currentTimeMillis());
+  }
 
-    protected String createTestUsername(String baseName) {
-        return String.format("%s_%d", baseName, System.currentTimeMillis());
-    }
+  protected String createTestUsername(String baseName) {
+    return String.format("%s_%d", baseName, System.currentTimeMillis());
+  }
 }

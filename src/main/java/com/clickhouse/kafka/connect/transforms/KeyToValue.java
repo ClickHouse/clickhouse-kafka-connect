@@ -1,5 +1,8 @@
 package com.clickhouse.kafka.connect.transforms;
 
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
@@ -13,143 +16,175 @@ import org.apache.kafka.connect.transforms.Transformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
-
 public class KeyToValue<R extends ConnectRecord<R>> implements Transformation<R> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(KeyToValue.class.getName());
+  private static final Logger LOGGER = LoggerFactory.getLogger(KeyToValue.class.getName());
 
-    private static final String FIELD_NAME_CONF = "field";
-    private static final String SCHEMA_MAX_SIZE_CONF = "shema_cache_max_size";
-    private static final int CACHE_MAX_SIZE_LOWER_BOUND = 16;
-    private static final int CACHE_MAX_SIZE_HIGH_BOUND = 1000;
-    private static final String CACHE_SIZE_RANGE = "[" + CACHE_MAX_SIZE_LOWER_BOUND + " , " + CACHE_MAX_SIZE_HIGH_BOUND + "]";
+  private static final String FIELD_NAME_CONF = "field";
+  private static final String SCHEMA_MAX_SIZE_CONF = "shema_cache_max_size";
+  private static final int CACHE_MAX_SIZE_LOWER_BOUND = 16;
+  private static final int CACHE_MAX_SIZE_HIGH_BOUND = 1000;
+  private static final String CACHE_SIZE_RANGE =
+      "[" + CACHE_MAX_SIZE_LOWER_BOUND + " , " + CACHE_MAX_SIZE_HIGH_BOUND + "]";
 
-    public static final ConfigDef CONFIG_DEF = new ConfigDef()
-            .define(FIELD_NAME_CONF, ConfigDef.Type.STRING, "_key", ConfigDef.Importance.LOW,
-                    "Field name on the record value to extract the record key into.")
-            .define(SCHEMA_MAX_SIZE_CONF, ConfigDef.Type.INT, 32, ConfigDef.Importance.MEDIUM,
-                    "Maximum number of key schemas to cache. Older values will be discarded. Value range is " + CACHE_SIZE_RANGE);
+  public static final ConfigDef CONFIG_DEF =
+      new ConfigDef()
+          .define(
+              FIELD_NAME_CONF,
+              ConfigDef.Type.STRING,
+              "_key",
+              ConfigDef.Importance.LOW,
+              "Field name on the record value to extract the record key into.")
+          .define(
+              SCHEMA_MAX_SIZE_CONF,
+              ConfigDef.Type.INT,
+              32,
+              ConfigDef.Importance.MEDIUM,
+              "Maximum number of key schemas to cache. Older values will be discarded. Value range is "
+                  + CACHE_SIZE_RANGE);
 
-    private String keyFieldName;
-    private Cache<CacheKey, Schema> schemaUpdateCache;
+  private String keyFieldName;
+  private Cache<CacheKey, Schema> schemaUpdateCache;
 
-    protected AtomicInteger cacheMisses = new AtomicInteger(0);
+  protected AtomicInteger cacheMisses = new AtomicInteger(0);
 
-    private static class CacheKey {
-        private final Schema valueSchema;
-        private final Schema keySchema;
+  private static class CacheKey {
+    private final Schema valueSchema;
+    private final Schema keySchema;
 
-        public CacheKey(Schema valueSchema, Schema keySchema) {
-            this.valueSchema = valueSchema;
-            this.keySchema = keySchema;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            CacheKey cacheKey = (CacheKey) o;
-            return Objects.equals(valueSchema, cacheKey.valueSchema) &&
-                    Objects.equals(keySchema, cacheKey.keySchema);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(valueSchema, keySchema);
-        }
+    public CacheKey(Schema valueSchema, Schema keySchema) {
+      this.valueSchema = valueSchema;
+      this.keySchema = keySchema;
     }
 
     @Override
-    public void configure(Map<String, ?> configs) {
-        final SimpleConfig config = new SimpleConfig(CONFIG_DEF, configs);
-        keyFieldName = config.getString("field");
-        final int cacheMaxSize = config.getInt(SCHEMA_MAX_SIZE_CONF);
-        if (cacheMaxSize < CACHE_MAX_SIZE_LOWER_BOUND || cacheMaxSize > CACHE_MAX_SIZE_HIGH_BOUND) {
-            throw new IllegalArgumentException(SCHEMA_MAX_SIZE_CONF + " should be in range " + CACHE_SIZE_RANGE);
-        }
-        schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(cacheMaxSize));
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      CacheKey cacheKey = (CacheKey) o;
+      return Objects.equals(valueSchema, cacheKey.valueSchema)
+          && Objects.equals(keySchema, cacheKey.keySchema);
     }
 
     @Override
-    public R apply(R record) {
-        LOGGER.debug("Old Key: {}, Old Value: {}", record.key(), record.value());
-        if (record.valueSchema() == null) {
-            return applySchemaless(record);
-        } else {
-            return applyWithSchema(record);
-        }
+    public int hashCode() {
+      return Objects.hash(valueSchema, keySchema);
+    }
+  }
+
+  @Override
+  public void configure(Map<String, ?> configs) {
+    final SimpleConfig config = new SimpleConfig(CONFIG_DEF, configs);
+    keyFieldName = config.getString("field");
+    final int cacheMaxSize = config.getInt(SCHEMA_MAX_SIZE_CONF);
+    if (cacheMaxSize < CACHE_MAX_SIZE_LOWER_BOUND || cacheMaxSize > CACHE_MAX_SIZE_HIGH_BOUND) {
+      throw new IllegalArgumentException(
+          SCHEMA_MAX_SIZE_CONF + " should be in range " + CACHE_SIZE_RANGE);
+    }
+    schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(cacheMaxSize));
+  }
+
+  @Override
+  public R apply(R record) {
+    LOGGER.debug("Old Key: {}, Old Value: {}", record.key(), record.value());
+    if (record.valueSchema() == null) {
+      return applySchemaless(record);
+    } else {
+      return applyWithSchema(record);
+    }
+  }
+
+  private R applySchemaless(R record) {
+    if (!(record.value() instanceof Map)) {
+      throw new IllegalArgumentException(
+          "Schemaless record value must be a Map - make sure you're using the JSON Converter for value.");
     }
 
-    private R applySchemaless(R record) {
-        if (!(record.value() instanceof Map)) {
-            throw new IllegalArgumentException("Schemaless record value must be a Map - make sure you're using the JSON Converter for value.");
-        }
+    final Map<String, Object> value = (Map<String, Object>) record.value();
+    value.put(keyFieldName, record.key());
+    LOGGER.debug("New schemaless value: {}", value);
+    return record.newRecord(
+        record.topic(),
+        record.kafkaPartition(),
+        record.keySchema(),
+        record.key(),
+        record.valueSchema(),
+        value,
+        record.timestamp());
+  }
 
-        final Map<String, Object> value = (Map<String, Object>) record.value();
-        value.put(keyFieldName, record.key());
-        LOGGER.debug("New schemaless value: {}", value);
-        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), record.valueSchema(), value, record.timestamp());
-    }
+  private R applyWithSchema(R record) {
+    final Struct oldValue = (Struct) record.value();
 
-    private R applyWithSchema(R record) {
-        final Struct oldValue = (Struct) record.value();
+    CacheKey cacheKey = new CacheKey(oldValue.schema(), record.keySchema());
+    Schema newValueSchema = schemaUpdateCache.get(cacheKey);
 
-        CacheKey cacheKey = new CacheKey(oldValue.schema(), record.keySchema());
-        Schema newValueSchema = schemaUpdateCache.get(cacheKey);
+    if (newValueSchema == null) {
+      final SchemaBuilder builder = SchemaBuilder.struct();
 
-        if (newValueSchema == null) {
-            final SchemaBuilder builder = SchemaBuilder.struct();
-
-            if (oldValue.schema().name() != null) {
-                builder.name(oldValue.schema().name());
-            }
-            if (oldValue.schema().version() != null) {
-                builder.version(oldValue.schema().version());
-            }
-            if (oldValue.schema().doc() != null) {
-                builder.doc(oldValue.schema().doc());
-            }
-            oldValue.schema().fields().forEach(f -> {
+      if (oldValue.schema().name() != null) {
+        builder.name(oldValue.schema().name());
+      }
+      if (oldValue.schema().version() != null) {
+        builder.version(oldValue.schema().version());
+      }
+      if (oldValue.schema().doc() != null) {
+        builder.doc(oldValue.schema().doc());
+      }
+      oldValue
+          .schema()
+          .fields()
+          .forEach(
+              f -> {
                 builder.field(f.name(), f.schema());
-            });
-            builder.field(keyFieldName, record.keySchema() == null ? Schema.OPTIONAL_STRING_SCHEMA : record.keySchema());
-            newValueSchema = builder.build();
+              });
+      builder.field(
+          keyFieldName,
+          record.keySchema() == null ? Schema.OPTIONAL_STRING_SCHEMA : record.keySchema());
+      newValueSchema = builder.build();
 
-            if (LOGGER.isDebugEnabled()) {
-                newValueSchema.fields().forEach(f -> LOGGER.debug("Field: {}", f));
-            }
+      if (LOGGER.isDebugEnabled()) {
+        newValueSchema.fields().forEach(f -> LOGGER.debug("Field: {}", f));
+      }
 
-            schemaUpdateCache.put(cacheKey, newValueSchema);
-            cacheMisses.incrementAndGet();
-        }
+      schemaUpdateCache.put(cacheKey, newValueSchema);
+      cacheMisses.incrementAndGet();
+    }
 
-        Struct newValue = new Struct(newValueSchema);
-        newValueSchema.fields().forEach(f -> {
-            if (f.name().equals(keyFieldName)) {
+    Struct newValue = new Struct(newValueSchema);
+    newValueSchema
+        .fields()
+        .forEach(
+            f -> {
+              if (f.name().equals(keyFieldName)) {
                 newValue.put(f, record.key());
-            } else {
+              } else {
                 newValue.put(f, oldValue.get(f));
-            }
-        });
-        LOGGER.debug("New schema value: {}", newValue);
-        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(), newValueSchema, newValue, record.timestamp());
-    }
+              }
+            });
+    LOGGER.debug("New schema value: {}", newValue);
+    return record.newRecord(
+        record.topic(),
+        record.kafkaPartition(),
+        record.keySchema(),
+        record.key(),
+        newValueSchema,
+        newValue,
+        record.timestamp());
+  }
 
-    @Override
-    public ConfigDef config() {
-        return CONFIG_DEF;
-    }
+  @Override
+  public ConfigDef config() {
+    return CONFIG_DEF;
+  }
 
-    @Override
-    public void close() {
-        schemaUpdateCache = null;
-    }
+  @Override
+  public void close() {
+    schemaUpdateCache = null;
+  }
 
-    public static class SimpleConfig extends AbstractConfig {
-        public SimpleConfig(ConfigDef configDef, Map<?, ?> originals) {
-            super(configDef, originals, false);
-        }
+  public static class SimpleConfig extends AbstractConfig {
+    public SimpleConfig(ConfigDef configDef, Map<?, ?> originals) {
+      super(configDef, originals, false);
     }
+  }
 }

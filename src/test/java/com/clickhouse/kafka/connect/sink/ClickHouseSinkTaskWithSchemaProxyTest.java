@@ -1,5 +1,9 @@
 package com.clickhouse.kafka.connect.sink;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -9,6 +13,11 @@ import com.clickhouse.kafka.connect.test.junit.extension.SinceClickHouseVersion;
 import com.clickhouse.kafka.connect.util.Utils;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
+import java.io.IOException;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.LongStream;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.json.JSONObject;
@@ -22,445 +31,504 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
-import java.io.IOException;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.LongStream;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
- * NOTE: this test explicitly connects to the proxy endpoint and avoids setting PROXY_HOST/PROXY_PORT because the client makes requests with absolute URI's to the server when the proxy config is set.
- * TODO: Once <a href="https://github.com/ClickHouse/ClickHouse/issues/58828">this issue</a> is fixed, we can revert this test to use the client proxy config.
+ * NOTE: this test explicitly connects to the proxy endpoint and avoids setting
+ * PROXY_HOST/PROXY_PORT because the client makes requests with absolute URI's to the server when
+ * the proxy config is set. TODO: Once <a
+ * href="https://github.com/ClickHouse/ClickHouse/issues/58828">this issue</a> is fixed, we can
+ * revert this test to use the client proxy config.
  */
-
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseSinkTaskWithSchemaProxyTest extends ClickHouseBase {
-    private static final Logger log = LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaProxyTest.class);
+  private static final Logger log =
+      LoggerFactory.getLogger(ClickHouseSinkTaskWithSchemaProxyTest.class);
 
-    private static ToxiproxyContainer toxiproxy = null;
-    private static Proxy proxy = null;
+  private static ToxiproxyContainer toxiproxy = null;
+  private static Proxy proxy = null;
 
-    private static final int PROXY_PORT = 8667;
+  private static final int PROXY_PORT = 8667;
 
-    private static final CreateTableStatement SINGLE_INT16_TABLE = new CreateTableStatement()
-            .column("off16", "Int16")
-            .engine("MergeTree").orderByColumn("off16");
+  private static final CreateTableStatement SINGLE_INT16_TABLE =
+      new CreateTableStatement()
+          .column("off16", "Int16")
+          .engine("MergeTree")
+          .orderByColumn("off16");
 
-    private static final CreateTableStatement MAP_TYPES_TABLE = new CreateTableStatement()
-            .column("off16", "Int16")
-            .column("map_string_string", "Map(String, String)")
-            .column("map_string_int64", "Map(String, Int64)")
-            .column("map_int64_string", "Map(Int64, String)")
-            .column("map_string_map", "Map(String, Map(String, Int64))")
-            .column("map_string_array", "Map(String, Array(String))")
-            .column("map_map_map", "Map(String, Map(String, Map(String, String)))")
-            .engine("MergeTree").orderByColumn("off16");
+  private static final CreateTableStatement MAP_TYPES_TABLE =
+      new CreateTableStatement()
+          .column("off16", "Int16")
+          .column("map_string_string", "Map(String, String)")
+          .column("map_string_int64", "Map(String, Int64)")
+          .column("map_int64_string", "Map(Int64, String)")
+          .column("map_string_map", "Map(String, Map(String, Int64))")
+          .column("map_string_array", "Map(String, Array(String))")
+          .column("map_map_map", "Map(String, Map(String, Map(String, String)))")
+          .engine("MergeTree")
+          .orderByColumn("off16");
 
-    private static final CreateTableStatement ARRAY_TYPES_TABLE = new CreateTableStatement()
-            .column("off16", "Int16")
-            .column("arr", "Array(String)")
-            .column("arr_empty", "Array(String)")
-            .column("arr_int8", "Array(Int8)")
-            .column("arr_int16", "Array(Int16)")
-            .column("arr_int32", "Array(Int32)")
-            .column("arr_int64", "Array(Int64)")
-            .column("arr_float32", "Array(Float32)")
-            .column("arr_float64", "Array(Float64)")
-            .column("arr_bool", "Array(Bool)")
-            .engine("MergeTree").orderByColumn("off16");
+  private static final CreateTableStatement ARRAY_TYPES_TABLE =
+      new CreateTableStatement()
+          .column("off16", "Int16")
+          .column("arr", "Array(String)")
+          .column("arr_empty", "Array(String)")
+          .column("arr_int8", "Array(Int8)")
+          .column("arr_int16", "Array(Int16)")
+          .column("arr_int32", "Array(Int32)")
+          .column("arr_int64", "Array(Int64)")
+          .column("arr_float32", "Array(Float32)")
+          .column("arr_float64", "Array(Float64)")
+          .column("arr_bool", "Array(Bool)")
+          .engine("MergeTree")
+          .orderByColumn("off16");
 
-    @BeforeAll
-    public void setup() throws IOException {
-        super.setup();
+  @BeforeAll
+  public void setup() throws IOException {
+    super.setup();
 
-        toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME)
-                .withNetwork(isCluster || isCloud ? Network.newNetwork() : db.getNetwork())
-                .withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
-        if (isCluster) {
-            toxiproxy = toxiproxy.withExtraHost("host.docker.internal", "host-gateway");
-        }
-        toxiproxy.start();
-
-        log.info("Started proxy container: {}", toxiproxy.getControlPort());
-        ToxiproxyClient toxiproxyClient = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
-
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
-        String upstream;
-        if (isCloud) {
-            upstream = String.format("%s:%d", csc.getHostname(), csc.getPort());
-        } else if (isCluster) {
-            upstream = String.format("host.docker.internal:%d", cluster.getPort());
-        } else {
-            upstream = String.format("%s:%d", ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS, ClickHouseProtocol.HTTP.getDefaultPort());
-        }
-        proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
-        log.info("Proxy configured {}", proxy.getListen());
+    toxiproxy =
+        new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME)
+            .withNetwork(isCluster || isCloud ? Network.newNetwork() : db.getNetwork())
+            .withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS);
+    if (isCluster) {
+      toxiproxy = toxiproxy.withExtraHost("host.docker.internal", "host-gateway");
     }
+    toxiproxy.start();
 
-    @AfterAll
-    public void tearDown() {
-        super.tearDown();
+    log.info("Started proxy container: {}", toxiproxy.getControlPort());
+    ToxiproxyClient toxiproxyClient =
+        new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
 
-        try {
-            toxiproxy.stop();
-        } catch (Exception e) {
-            // ignore
-        }
+    ClickHouseSinkConfig csc = new ClickHouseSinkConfig(getBaseProps());
+    String upstream;
+    if (isCloud) {
+      upstream = String.format("%s:%d", csc.getHostname(), csc.getPort());
+    } else if (isCluster) {
+      upstream = String.format("host.docker.internal:%d", cluster.getPort());
+    } else {
+      upstream =
+          String.format(
+              "%s:%d",
+              ClickHouseTestHelpers.CLICKHOUSE_DB_NETWORK_ALIAS,
+              ClickHouseProtocol.HTTP.getDefaultPort());
     }
+    proxy = toxiproxyClient.createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, upstream);
+    log.info("Proxy configured {}", proxy.getListen());
+  }
 
-    private Map<String, String> getTestProperties() {
-        Map<String, String> props = getBaseProps();
-        if (isCloud) {
-            // Set the actual cloud hostname as SNI before overriding with ToxiProxy host.
-            // When SSL=true (cloud), ToxiProxy acts as a transparent TCP relay; the TLS
-            // ClientHello must carry the real cloud hostname as SNI so the server presents
-            // its certificate - otherwise server will reject the client handshake because
-            // the proxy hostname and server hostname are different.
-            // In client v2, setting sslSocketSNI also disables client-side hostname
-            // verification (see HttpAPIClientHelper.createHttpClient in client-v2), allowing the cert to
-            // be accepted even though the TCP connection target is the proxy.
-            props.put(ClickHouseSinkConfig.SSL_SOCKET_SNI, props.get(ClickHouseSinkConfig.HOSTNAME));
-        }
-        props.put(ClickHouseSinkConfig.HOSTNAME, toxiproxy.getHost());
-        props.put(ClickHouseSinkConfig.PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
-        return props;
+  @AfterAll
+  public void tearDown() {
+    super.tearDown();
+
+    try {
+      toxiproxy.stop();
+    } catch (Exception e) {
+      // ignore
     }
+  }
 
-
-    @Test
-    public void proxyPingTest() throws IOException {
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(getTestProperties());
-        assertTrue(chc.ping());
-        proxy.disable();
-        assertFalse(chc.ping());
-        proxy.enable();
-        assertTrue(chc.ping());
+  private Map<String, String> getTestProperties() {
+    Map<String, String> props = getBaseProps();
+    if (isCloud) {
+      // Set the actual cloud hostname as SNI before overriding with ToxiProxy host.
+      // When SSL=true (cloud), ToxiProxy acts as a transparent TCP relay; the TLS
+      // ClientHello must carry the real cloud hostname as SNI so the server presents
+      // its certificate - otherwise server will reject the client handshake because
+      // the proxy hostname and server hostname are different.
+      // In client v2, setting sslSocketSNI also disables client-side hostname
+      // verification (see HttpAPIClientHelper.createHttpClient in client-v2), allowing the cert to
+      // be accepted even though the TCP connection target is the proxy.
+      props.put(ClickHouseSinkConfig.SSL_SOCKET_SNI, props.get(ClickHouseSinkConfig.HOSTNAME));
     }
+    props.put(ClickHouseSinkConfig.HOSTNAME, toxiproxy.getHost());
+    props.put(ClickHouseSinkConfig.PORT, String.valueOf(toxiproxy.getMappedPort(PROXY_PORT)));
+    return props;
+  }
 
-    @Test
-    public void arrayTypesTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+  @Test
+  public void proxyPingTest() throws IOException {
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(getTestProperties());
+    assertTrue(chc.ping());
+    proxy.disable();
+    assertFalse(chc.ping());
+    proxy.enable();
+    assertTrue(chc.ping());
+  }
 
-        String topic = createTopicName("array_string_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).execute(chc);
-        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
+  @Test
+  public void arrayTypesTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
+    String topic = createTopicName("array_string_table_test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).execute(chc);
+    // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+    Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
+
+  @Test
+  public void mapTypesTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+    String topic = createTopicName("map_table_test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
+    // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+    Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
+
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
+
+  @Test
+  // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
+  public void materializedViewsBug() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String clusterClause = ClickHouseTestHelpers.getClusterClauseOrEmpty();
+
+    String topic = createTopicName("m_array_string_table_test");
+    // Drop the MV and its target table before the source table to avoid orphaned dependencies
+    ClickHouseTestHelpers.executeQueryIgnoreResult(
+        chc, String.format("DROP VIEW IF EXISTS `%s_mv`%s", topic, clusterClause));
+    ClickHouseTestHelpers.dropTable(chc, topic + "_mate");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).execute(chc);
+    new CreateTableStatement()
+        .tableName(topic + "_mate")
+        .column("off16", "Int16")
+        .engine("Null")
+        .execute(chc);
+    ClickHouseTestHelpers.executeQueryIgnoreResult(
+        chc,
+        String.format(
+            "CREATE MATERIALIZED VIEW `%s_mv`%s TO `%s_mate` AS SELECT off16 FROM `%s`",
+            topic, clusterClause, topic, topic));
+    Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
+
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
+
+  @Test
+  // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
+  public void specialCharTableNameTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+    String topic = createTopicName("special-char-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
+    // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+    Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
+
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
+
+  @Test
+  // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
+  public void nullValueDataTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+    String topic = createTopicName("null-value-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
+    // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+    Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
+
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
+
+  @Test
+  // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
+  public void supportDatesTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+    String topic = createTopicName("support-dates-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("date_number", "Nullable(Date)")
+        .column("date32_number", "Nullable(Date32)")
+        .column("datetime_number", "DateTime")
+        .column("datetime64_number", "DateTime64")
+        .column("timestamp_int64", "Int64")
+        .column("timestamp_date", "DateTime64")
+        .column("time_int32", "Int32")
+        .column("time_date32", "Date32")
+        .column("date_date", "Date")
+        .column("datetime_date", "DateTime")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
+    // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+    Collection<SinkRecord> sr = SchemaTestData.createDateType(topic, 1);
+
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
+
+  @Test
+  public void detectUnsupportedDataConversions() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+
+    String topic = createTopicName("support-unsupported-dates-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("date_number", "Date")
+        .column("date32_number", "Date32")
+        .column("datetime_number", "DateTime")
+        .column("datetime64_number", "DateTime64")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
+
+    Collection<SinkRecord> sr = SchemaTestData.createUnsupportedDataConversions(topic, 1);
+
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    try {
+      chst.put(sr);
+    } catch (RuntimeException e) {
+      assertTrue(
+          Utils.getRootCause(e) instanceof DataException, "Did not detect wrong date conversion ");
     }
+    chst.stop();
+  }
 
-    @Test
-    public void mapTypesTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+  @Test
+  public void withEmptyDataRecordsTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String topic = createTopicName("map_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
-        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
+    String topic = createTopicName("schema_empty_records_table_test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("p_int64", "Int64")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
+    Collection<SinkRecord> sr = SchemaTestData.createWithEmptyDataRecords(topic, 1);
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+    assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
+  }
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
+  @Test
+  public void withLowCardinalityTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-    @Test
-    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/33
-    public void materializedViewsBug() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String clusterClause = ClickHouseTestHelpers.getClusterClauseOrEmpty();
+    String topic = createTopicName("schema_empty_records_lc_table_test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("p_int64", "Int64")
+        .column("lc_string", "LowCardinality(String)")
+        .column("nullable_lc_string", "LowCardinality(Nullable(String))")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
+    Collection<SinkRecord> sr = SchemaTestData.createWithLowCardinality(topic, 1);
 
-        String topic = createTopicName("m_array_string_table_test");
-        // Drop the MV and its target table before the source table to avoid orphaned dependencies
-        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("DROP VIEW IF EXISTS `%s_mv`%s", topic, clusterClause));
-        ClickHouseTestHelpers.dropTable(chc, topic + "_mate");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(ARRAY_TYPES_TABLE).tableName(topic).execute(chc);
-        new CreateTableStatement()
-                .tableName(topic + "_mate")
-                .column("off16", "Int16")
-                .engine("Null")
-                .execute(chc);
-        ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("CREATE MATERIALIZED VIEW `%s_mv`%s TO `%s_mate` AS SELECT off16 FROM `%s`", topic, clusterClause, topic, topic));
-        Collection<SinkRecord> sr = SchemaTestData.createArrayType(topic, 1);
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
+  @Test
+  public void withUUIDTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
+    String topic = createTopicName("schema_empty_records_lc_uuid_test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("uuid", "UUID")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
+    Collection<SinkRecord> sr = SchemaTestData.createWithUUID(topic, 1);
 
-    @Test
-    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/38
-    public void specialCharTableNameTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
 
-        String topic = createTopicName("special-char-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(MAP_TYPES_TABLE).tableName(topic).execute(chc);
-        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = SchemaTestData.createMapType(topic, 1);
+  @Test
+  public void schemaWithDefaultsTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
+    String topic = createTopicName("default-value-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("default_value_data", "DateTime DEFAULT now()")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
+    // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+    Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
 
-    @Test
-    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/62
-    public void nullValueDataTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
 
-        String topic = createTopicName("null-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
-        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
+  @Test
+  public void schemaWithDecimalTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
+    String topic = createTopicName("decimal-value-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column("decimal_14_2", "Decimal(14, 2)")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .tableName(topic)
+        .execute(chc);
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    Collection<SinkRecord> sr = SchemaTestData.createDecimalValueData(topic, 1);
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
 
-    }
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
+  }
 
-    @Test
-    // https://github.com/ClickHouse/clickhouse-kafka-connect/issues/57
-    public void supportDatesTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+  @Test
+  public void schemaWithBytesTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("bytes-value-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("string", "String")
+        .engine("MergeTree")
+        .orderByColumn("string")
+        .tableName(topic)
+        .execute(chc);
+    // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
+    Collection<SinkRecord> sr = SchemaTestData.createBytesValueData(topic, 1);
 
-        String topic = createTopicName("support-dates-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("date_number", "Nullable(Date)").column("date32_number", "Nullable(Date32)")
-                .column("datetime_number", "DateTime").column("datetime64_number", "DateTime64")
-                .column("timestamp_int64", "Int64").column("timestamp_date", "DateTime64")
-                .column("time_int32", "Int32").column("time_date32", "Date32")
-                .column("date_date", "Date").column("datetime_date", "DateTime")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
-        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = SchemaTestData.createDateType(topic, 1);
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+  }
 
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
+  @Test
+  @SinceClickHouseVersion("24.1")
+  public void schemaWithTupleLikeInfluxTest() {
+    Map<String, String> props = getTestProperties();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-    @Test
-    public void detectUnsupportedDataConversions() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+    String topic = createTopicName("tuple-like-influx-value-table-test");
+    ClickHouseTestHelpers.dropTable(chc, topic);
+    new CreateTableStatement()
+        .column("off16", "Int16")
+        .column(
+            "payload",
+            "Tuple(fields Map(String, Variant(Float64, Int64, String)), tags Map(String, String))")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .settings(
+            Map.of(ClientConfigProperties.serverSetting("allow_experimental_variant_type"), 1))
+        .tableName(topic)
+        .execute(chc);
 
-        String topic = createTopicName("support-unsupported-dates-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("date_number", "Date").column("date32_number", "Date32")
-                .column("datetime_number", "DateTime").column("datetime64_number", "DateTime64")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
+    Collection<SinkRecord> sr = SchemaTestData.createTupleLikeInfluxValueData(topic, 1);
+    ClickHouseSinkTask chst = new ClickHouseSinkTask();
+    chst.start(props);
+    chst.put(sr);
+    chst.stop();
 
-        Collection<SinkRecord> sr = SchemaTestData.createUnsupportedDataConversions(topic, 1);
+    assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
+    List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        try {
-            chst.put(sr);
-        } catch (RuntimeException e) {
-            assertTrue(Utils.getRootCause(e) instanceof DataException, "Did not detect wrong date conversion ");
-        }
-        chst.stop();
-    }
+    LongStream.range(0, sr.size())
+        .forEachOrdered(
+            n -> {
+              JSONObject row = rows.get((int) n);
 
-    @Test
-    public void withEmptyDataRecordsTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+              assertEquals(n, row.getInt("off16"));
 
-        String topic = createTopicName("schema_empty_records_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("p_int64", "Int64")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
-        Collection<SinkRecord> sr = SchemaTestData.createWithEmptyDataRecords(topic, 1);
+              JSONObject payload = row.getJSONObject("payload");
+              JSONObject fields = payload.getJSONObject("fields");
 
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-        assertEquals(sr.size() / 2, ClickHouseTestHelpers.countRows(chc, topic));
-    }
+              assertEquals(1 / (float) (n + 1), fields.getFloat("field1"));
+              assertEquals(n, fields.getBigInteger("field2").longValue());
+              assertEquals(String.format("Value '%d'", n), fields.getString("field3"));
 
-    @Test
-    public void withLowCardinalityTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-
-        String topic = createTopicName("schema_empty_records_lc_table_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("p_int64", "Int64")
-                .column("lc_string", "LowCardinality(String)").column("nullable_lc_string", "LowCardinality(Nullable(String))")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
-        Collection<SinkRecord> sr = SchemaTestData.createWithLowCardinality(topic, 1);
-
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
-
-    @Test
-    public void withUUIDTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-
-        String topic = createTopicName("schema_empty_records_lc_uuid_test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("uuid", "UUID")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
-        Collection<SinkRecord> sr = SchemaTestData.createWithUUID(topic, 1);
-
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
-
-    @Test
-    public void schemaWithDefaultsTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-
-        String topic = createTopicName("default-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("default_value_data", "DateTime DEFAULT now()")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
-        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
-
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
-
-    @Test
-    public void schemaWithDecimalTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-
-        String topic = createTopicName("decimal-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16").column("decimal_14_2", "Decimal(14, 2)")
-                .engine("MergeTree").orderByColumn("off16").tableName(topic).execute(chc);
-
-        Collection<SinkRecord> sr = SchemaTestData.createDecimalValueData(topic, 1);
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        assertEquals(499700, ClickHouseTestHelpers.sumRows(chc, topic, "decimal_14_2"));
-    }
-
-    @Test
-    public void schemaWithBytesTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-        String topic = createTopicName("bytes-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("string", "String")
-                .engine("MergeTree").orderByColumn("string").tableName(topic).execute(chc);
-        // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
-        Collection<SinkRecord> sr = SchemaTestData.createBytesValueData(topic, 1);
-
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-    }
-
-    @Test
-    @SinceClickHouseVersion("24.1")
-    public void schemaWithTupleLikeInfluxTest() {
-        Map<String, String> props = getTestProperties();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
-
-        String topic = createTopicName("tuple-like-influx-value-table-test");
-        ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
-                .column("off16", "Int16")
-                .column("payload", "Tuple(fields Map(String, Variant(Float64, Int64, String)), tags Map(String, String))")
-                .engine("MergeTree").orderByColumn("off16")
-                .settings(Map.of(ClientConfigProperties.serverSetting("allow_experimental_variant_type"), 1))
-                .tableName(topic).execute(chc);
-
-        Collection<SinkRecord> sr = SchemaTestData.createTupleLikeInfluxValueData(topic, 1);
-        ClickHouseSinkTask chst = new ClickHouseSinkTask();
-        chst.start(props);
-        chst.put(sr);
-        chst.stop();
-
-        assertEquals(sr.size(), ClickHouseTestHelpers.countRows(chc, topic));
-        List<JSONObject> rows = ClickHouseTestHelpers.getAllRowsAsJson(chc, topic);
-
-        LongStream.range(0, sr.size()).forEachOrdered(n -> {
-            JSONObject row = rows.get((int) n);
-
-            assertEquals(n, row.getInt("off16"));
-
-            JSONObject payload = row.getJSONObject("payload");
-            JSONObject fields = payload.getJSONObject("fields");
-
-            assertEquals(1 / (float) (n + 1), fields.getFloat("field1"));
-            assertEquals(n, fields.getBigInteger("field2").longValue());
-            assertEquals(String.format("Value '%d'", n), fields.getString("field3"));
-
-            JSONObject tags = payload.getJSONObject("tags");
-            assertEquals("tag1", tags.getString("tag1"));
-            assertEquals("tag2", tags.getString("tag2"));
-        });
-    }
+              JSONObject tags = payload.getJSONObject("tags");
+              assertEquals("tag1", tags.getString("tag1"));
+              assertEquals("tag2", tags.getString("tag2"));
+            });
+  }
 }
