@@ -38,6 +38,14 @@ repositories {
     maven("https://jitpack.io")
 }
 
+spotless {
+    java {
+        // Only hand-written sources; protobuf-generated code under build/ is excluded.
+        target("src/*/java/**/*.java")
+        googleJavaFormat()
+    }
+}
+
 val clickhouseDependencies: Configuration by configurations.creating
 
 // The ClickHouse client-v2 depends on the maintained `at.yawk.lz4:lz4-java` fork, while

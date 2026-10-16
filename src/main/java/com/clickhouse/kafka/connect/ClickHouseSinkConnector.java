@@ -3,6 +3,10 @@ package com.clickhouse.kafka.connect;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkTask;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.kafka.common.config.Config;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
@@ -11,95 +15,90 @@ import org.apache.kafka.connect.sink.SinkConnectorContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
 public class ClickHouseSinkConnector extends SinkConnector {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnector.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseSinkConnector.class);
 
-    private String hostname;
-    private String port;
-    private String database;
+  private String hostname;
+  private String port;
+  private String database;
 
-    private String username;
+  private String username;
 
-    private String password;
+  private String password;
 
-    private String sslEnabled;
+  private String sslEnabled;
 
-    private int timeout;
-    public static final String HOSTNAME = "hostname";
-    public static final String PORT = "port";
-    public static final String DATABASE = "database";
-    public static final String USERNAME = "username";
-    public static final String PASSWORD = "password";
-    public static final String SSL_ENABLED = "ssl";
-    public static final String CLIENT_VERSION = "client_version";
-    private static final ConfigDef CONFIG_DEF = ClickHouseSinkConfig.CONFIG;
+  private int timeout;
+  public static final String HOSTNAME = "hostname";
+  public static final String PORT = "port";
+  public static final String DATABASE = "database";
+  public static final String USERNAME = "username";
+  public static final String PASSWORD = "password";
+  public static final String SSL_ENABLED = "ssl";
+  public static final String CLIENT_VERSION = "client_version";
+  private static final ConfigDef CONFIG_DEF = ClickHouseSinkConfig.CONFIG;
 
+  private Map<String, String> settings;
 
-    private Map<String, String> settings;
+  private String convertWithStream(Map<String, String> map) {
+    String mapAsString =
+        map.keySet().stream()
+            .map(key -> key + "=" + map.get(key))
+            .collect(Collectors.joining(", ", "{", "}"));
+    return mapAsString;
+  }
 
-    private String convertWithStream(Map<String, String> map) {
-        String mapAsString = map.keySet().stream()
-                .map(key -> key + "=" + map.get(key))
-                .collect(Collectors.joining(", ", "{", "}"));
-        return mapAsString;
+  @Override
+  public void start(Map<String, String> props) {
+    LOGGER.info("Starting SinkConnect...");
+    LOGGER.info("Version: " + ClickHouseClientOption.class.getPackage().getImplementationVersion());
+    settings = props;
+  }
+
+  @Override
+  public Class<? extends Task> taskClass() {
+    return ClickHouseSinkTask.class;
+  }
+
+  @Override
+  public List<Map<String, String>> taskConfigs(int maxTasks) {
+    ArrayList<Map<String, String>> configs = new ArrayList<>();
+    for (int i = 0; i < maxTasks; i++) {
+      configs.add(settings);
     }
+    return configs;
+  }
 
-    @Override
-    public void start(Map<String, String> props) {
-        LOGGER.info("Starting SinkConnect...");
-        LOGGER.info("Version: " + ClickHouseClientOption.class.getPackage().getImplementationVersion());
-        settings = props;
-    }
+  @Override
+  public void stop() {
+    LOGGER.info("stop SinkConnect");
+  }
 
-    @Override
-    public Class<? extends Task> taskClass() {
-        return ClickHouseSinkTask.class;
-    }
+  @Override
+  protected SinkConnectorContext context() {
+    return super.context();
+  }
 
-    @Override
-    public List<Map<String, String>> taskConfigs(int maxTasks) {
-        ArrayList<Map<String, String>> configs = new ArrayList<>();
-        for (int i = 0; i < maxTasks; i++) {
-            configs.add(settings);
-        }
-        return configs;
-    }
+  @Override
+  public ConfigDef config() {
+    return CONFIG_DEF;
+  }
 
-    @Override
-    public void stop() {
-        LOGGER.info("stop SinkConnect");
-    }
+  @Override
+  public String version() {
+    return ClickHouseClientOption.class.getPackage().getImplementationVersion();
+  }
 
-    @Override
-    protected SinkConnectorContext context() {
-        return super.context();
+  @Override
+  public Config validate(Map<String, String> connectorConfigs) {
+    Config config = super.validate(connectorConfigs);
+    ClickHouseSinkConfig sinkConfig;
+    try {
+      sinkConfig = new ClickHouseSinkConfig(connectorConfigs);
+    } catch (Exception e) {
+      return config;
     }
-
-    @Override
-    public ConfigDef config() {
-        return CONFIG_DEF;
-    }
-
-    @Override
-    public String version() {
-        return ClickHouseClientOption.class.getPackage().getImplementationVersion();
-    }
-
-    @Override
-    public Config validate(Map<String, String> connectorConfigs) {
-        Config config = super.validate(connectorConfigs);
-        ClickHouseSinkConfig sinkConfig;
-        try {
-            sinkConfig = new ClickHouseSinkConfig(connectorConfigs);
-        } catch (Exception e) {
-            return config;
-        }
-        return config;
-    }
+    return config;
+  }
 }

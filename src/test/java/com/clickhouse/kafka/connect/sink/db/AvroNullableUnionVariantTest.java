@@ -21,22 +21,24 @@ import org.junit.jupiter.api.Test;
  * Reproduction/verification for Avro nullable multi-type unions mapping to a ClickHouse {@code
  * Variant} (issue #799, from #726). Confluent's Avro converter turns the non-null branches of a
  * multi-branch union into a Connect struct named {@code io.confluent.connect.avro.Union} with one
- * optional field per branch, and the {@code null} branch makes the whole field optional. These tests
- * drive that Connect representation through the convert path ({@link StructToJsonMap}) and the
- * RowBinary Variant write path, without a live ClickHouse.
+ * optional field per branch, and the {@code null} branch makes the whole field optional. These
+ * tests drive that Connect representation through the convert path ({@link StructToJsonMap}) and
+ * the RowBinary Variant write path, without a live ClickHouse.
  *
  * <p>Coverage per review feedback — not all unions fit a {@code Variant}:
  *
  * <ul>
- *   <li>{@code [null, string, int]} → {@code Variant(String, Int32)} (string / int / all-null values)
+ *   <li>{@code [null, string, int]} → {@code Variant(String, Int32)} (string / int / all-null
+ *       values)
  *   <li>{@code [null, string, int, boolean]} → {@code Variant(String, Int32, Bool)} (bool value)
  *   <li>{@code [null, int, long]} → falls back to {@code Nullable(String)} (suspicious same-group
  *       numeric types ClickHouse rejects inside a Variant), not a {@code Variant}
  * </ul>
  *
  * <p>ClickHouse assigns Variant global discriminators in sorted type order, so for {@code
- * Variant(String, Int32)} the order is {@code [Int32, String]} (Int32 = 0, String = 1) and for {@code
- * Variant(String, Int32, Bool)} it is {@code [Bool, Int32, String]} (Bool = 0, Int32 = 1, String = 2).
+ * Variant(String, Int32)} the order is {@code [Int32, String]} (Int32 = 0, String = 1) and for
+ * {@code Variant(String, Int32, Bool)} it is {@code [Bool, Int32, String]} (Bool = 0, Int32 = 1,
+ * String = 2).
  */
 public class AvroNullableUnionVariantTest {
 
@@ -81,7 +83,9 @@ public class AvroNullableUnionVariantTest {
   public void stringBranch_writesStringDiscriminatorAndValue() throws Exception {
     byte[] actual =
         writeMixed(
-            STRING_INT_UNION, "Variant(String, Int32)", new Struct(STRING_INT_UNION).put("string", "hello"));
+            STRING_INT_UNION,
+            "Variant(String, Int32)",
+            new Struct(STRING_INT_UNION).put("string", "hello"));
 
     ByteArrayOutputStream expected = new ByteArrayOutputStream();
     BinaryStreamUtils.writeUnsignedInt8(expected, 1); // String discriminator
@@ -92,7 +96,10 @@ public class AvroNullableUnionVariantTest {
   @Test
   public void intBranch_writesIntDiscriminatorAndValue() throws Exception {
     byte[] actual =
-        writeMixed(STRING_INT_UNION, "Variant(String, Int32)", new Struct(STRING_INT_UNION).put("int", 42));
+        writeMixed(
+            STRING_INT_UNION,
+            "Variant(String, Int32)",
+            new Struct(STRING_INT_UNION).put("int", 42));
 
     ByteArrayOutputStream expected = new ByteArrayOutputStream();
     BinaryStreamUtils.writeUnsignedInt8(expected, 0); // Int32 discriminator
@@ -102,7 +109,8 @@ public class AvroNullableUnionVariantTest {
 
   @Test
   public void allBranchesNull_writesNullDiscriminator() throws Exception {
-    // A union struct present but with every branch null → the ClickHouse "null" discriminator (255).
+    // A union struct present but with every branch null → the ClickHouse "null" discriminator
+    // (255).
     byte[] actual =
         writeMixed(STRING_INT_UNION, "Variant(String, Int32)", new Struct(STRING_INT_UNION));
 
@@ -128,7 +136,8 @@ public class AvroNullableUnionVariantTest {
   @Test
   public void suspiciousNumericUnion_fallsBackToNullableString_notVariant() {
     // ClickHouse rejects Variant(Int32, Int64) unless allow_suspicious_variant_types is set, so the
-    // connector maps such unions to Nullable(String) rather than a Variant — not everything is a Variant.
+    // connector maps such unions to Nullable(String) rather than a Variant — not everything is a
+    // Variant.
     Schema union =
         unionSchema(
             SchemaBuilder.struct()

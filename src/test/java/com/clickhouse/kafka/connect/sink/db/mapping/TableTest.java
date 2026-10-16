@@ -1,160 +1,197 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
+import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
-import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
 class TableTest extends ClickHouseBase {
 
-    @Test
-    public void extractMapOfPrimitives() {
-        Column map = Column.extractColumn(newDescriptor("map", "Map(String, Decimal(5))"));
-        Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Decimal(5))"));
+  @Test
+  public void extractMapOfPrimitives() {
+    Column map = Column.extractColumn(newDescriptor("map", "Map(String, Decimal(5))"));
+    Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Decimal(5))"));
 
-        assertEquals(Type.MAP, map.getType());
-        assertNull(map.getMapValueType());
+    assertEquals(Type.MAP, map.getType());
+    assertNull(map.getMapValueType());
 
-        Table table = new Table("default", "t", false, List.of(map, mapValues), 1);
-        assertEquals(1, table.getRootColumnsList().size());
+    Table table = new Table("default", "t", false, List.of(map, mapValues), 1);
+    assertEquals(1, table.getRootColumnsList().size());
 
-        Column mapValueType = map.getMapValueType();
-        assertEquals(Type.Decimal, mapValueType.getType());
-        assertEquals(5, mapValueType.getPrecision());
-    }
+    Column mapValueType = map.getMapValueType();
+    assertEquals(Type.Decimal, mapValueType.getType());
+    assertEquals(5, mapValueType.getPrecision());
+  }
 
-    @Test
-    public void extractNullables() {
-        Map<String, String> props = getBaseProps();
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+  @Test
+  public void extractNullables() {
+    Map<String, String> props = getBaseProps();
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement()
-                .tableName(tableName)
-                .column("off16", "Int16")
-                .column("date_number", "Nullable(Date)")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+    String tableName = createTopicName("extract-table-test");
+    ClickHouseTestHelpers.dropTable(chc, tableName);
+    new CreateTableStatement()
+        .tableName(tableName)
+        .column("off16", "Int16")
+        .column("date_number", "Nullable(Date)")
+        .engine("MergeTree")
+        .orderByColumn("off16")
+        .execute(chc);
 
-        Table table = chc.describeTable(chc.getDatabase(), tableName);
-        assertNotNull(table);
-        assertEquals(2, table.getRootColumnsList().size());
-        assertEquals(3, table.getAllColumnsList().size());
-        ClickHouseTestHelpers.dropTable(chc, tableName);
-    }
+    Table table = chc.describeTable(chc.getDatabase(), tableName);
+    assertNotNull(table);
+    assertEquals(2, table.getRootColumnsList().size());
+    assertEquals(3, table.getAllColumnsList().size());
+    ClickHouseTestHelpers.dropTable(chc, tableName);
+  }
 
-    @Test
-    public void extractCommentV1() {
-        Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
-        ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
+  @Test
+  public void extractCommentV1() {
+    Map<String, String> props = getBaseProps();
+    props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
+    ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
-        String tableName = createTopicName("extract-table-test");
-        ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement()
-                .tableName(tableName)
-                .column("c", "String COMMENT '\\\\'")
-                .column("d", "String COMMENT '\\n'")
-                .engine("MergeTree").orderByColumn("tuple()").execute(chc);
+    String tableName = createTopicName("extract-table-test");
+    ClickHouseTestHelpers.dropTable(chc, tableName);
+    new CreateTableStatement()
+        .tableName(tableName)
+        .column("c", "String COMMENT '\\\\'")
+        .column("d", "String COMMENT '\\n'")
+        .engine("MergeTree")
+        .orderByColumn("tuple()")
+        .execute(chc);
 
-        Table table = chc.describeTable(chc.getDatabase(), tableName);
-        assertNotNull(table);
-        assertEquals(2, table.getRootColumnsList().size());
-        ClickHouseTestHelpers.dropTable(chc, tableName);
-    }
+    Table table = chc.describeTable(chc.getDatabase(), tableName);
+    assertNotNull(table);
+    assertEquals(2, table.getRootColumnsList().size());
+    ClickHouseTestHelpers.dropTable(chc, tableName);
+  }
 
-    @Test
-    public void extractMapWithComplexValue() {
-        Column map = Column.extractColumn(newDescriptor("map", "Map(String, Map(String, Decimal(5)))"));
-        Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Map(String, Decimal(5)))"));
-        Column mapValuesValues = Column.extractColumn(newDescriptor("map.values.values", "Array(Array(Decimal(5)))"));
+  @Test
+  public void extractMapWithComplexValue() {
+    Column map = Column.extractColumn(newDescriptor("map", "Map(String, Map(String, Decimal(5)))"));
+    Column mapValues =
+        Column.extractColumn(newDescriptor("map.values", "Array(Map(String, Decimal(5)))"));
+    Column mapValuesValues =
+        Column.extractColumn(newDescriptor("map.values.values", "Array(Array(Decimal(5)))"));
 
-        assertEquals(Type.MAP, map.getType());
-        assertNull(map.getMapValueType());
+    assertEquals(Type.MAP, map.getType());
+    assertNull(map.getMapValueType());
 
-        Table table = new Table("default", "t", false, List.of(map, mapValues, mapValuesValues), 1);
-        assertEquals(1, table.getRootColumnsList().size());
+    Table table = new Table("default", "t", false, List.of(map, mapValues, mapValuesValues), 1);
+    assertEquals(1, table.getRootColumnsList().size());
 
-        Column mapValueType = map.getMapValueType();
-        assertEquals(Type.MAP, mapValueType.getType());
-        assertEquals(Type.STRING, mapValueType.getMapKeyType());
+    Column mapValueType = map.getMapValueType();
+    assertEquals(Type.MAP, mapValueType.getType());
+    assertEquals(Type.STRING, mapValueType.getMapKeyType());
 
-        Column nestedMapValue = mapValueType.getMapValueType();
-        assertEquals(Type.Decimal, nestedMapValue.getType());
-        assertEquals(5, nestedMapValue.getPrecision());
-    }
+    Column nestedMapValue = mapValueType.getMapValueType();
+    assertEquals(Type.Decimal, nestedMapValue.getType());
+    assertEquals(5, nestedMapValue.getPrecision());
+  }
 
-    @Test
-    public void extractMapOfMapOfMapOfString() {
-        Column map = Column.extractColumn(newDescriptor("map", "Map(String, Map(String, Map(String, String)))"));
-        Column mapValues = Column.extractColumn(newDescriptor("map.values", "Array(Map(String, Map(String, String)))"));
-        Column mapValuesValues = Column.extractColumn(newDescriptor("map.values.values", "Array(Array(Map(String, String)))"));
-        Column mapValuesValuesValues = Column.extractColumn(newDescriptor("map.values.values.values", "Array(Array(Array(String)))"));
+  @Test
+  public void extractMapOfMapOfMapOfString() {
+    Column map =
+        Column.extractColumn(newDescriptor("map", "Map(String, Map(String, Map(String, String)))"));
+    Column mapValues =
+        Column.extractColumn(
+            newDescriptor("map.values", "Array(Map(String, Map(String, String)))"));
+    Column mapValuesValues =
+        Column.extractColumn(
+            newDescriptor("map.values.values", "Array(Array(Map(String, String)))"));
+    Column mapValuesValuesValues =
+        Column.extractColumn(
+            newDescriptor("map.values.values.values", "Array(Array(Array(String)))"));
 
-        assertEquals(Type.MAP, map.getType());
-        assertNull(map.getMapValueType());
+    assertEquals(Type.MAP, map.getType());
+    assertNull(map.getMapValueType());
 
-        Table table = new Table("default", "t", false, List.of(map, mapValues, mapValuesValues, mapValuesValuesValues), 1);
-        assertEquals(1, table.getRootColumnsList().size());
+    Table table =
+        new Table(
+            "default",
+            "t",
+            false,
+            List.of(map, mapValues, mapValuesValues, mapValuesValuesValues),
+            1);
+    assertEquals(1, table.getRootColumnsList().size());
 
-        Column mapValueType = map.getMapValueType();
-        assertEquals(Type.MAP, mapValueType.getType());
-        assertEquals(Type.STRING, mapValueType.getMapKeyType());
+    Column mapValueType = map.getMapValueType();
+    assertEquals(Type.MAP, mapValueType.getType());
+    assertEquals(Type.STRING, mapValueType.getMapKeyType());
 
-        Column nestedMapValue = mapValueType.getMapValueType();
-        assertEquals(Type.MAP, nestedMapValue.getType());
-        assertEquals(Type.STRING, nestedMapValue.getMapKeyType());
+    Column nestedMapValue = mapValueType.getMapValueType();
+    assertEquals(Type.MAP, nestedMapValue.getType());
+    assertEquals(Type.STRING, nestedMapValue.getMapKeyType());
 
-        Column againNestedMapValue = nestedMapValue.getMapValueType();
-        assertEquals(Type.STRING, againNestedMapValue.getType());
-    }
+    Column againNestedMapValue = nestedMapValue.getMapValueType();
+    assertEquals(Type.STRING, againNestedMapValue.getType());
+  }
 
-    @Test
-    public void extractTupleOfPrimitives() {
-        Column tuple = Column.extractColumn(newDescriptor("tuple", "Tuple(first String, second Decimal(5))"));
-        Column tupleFirst = Column.extractColumn(newDescriptor("tuple.first", "String"));
-        Column tupleSecond = Column.extractColumn(newDescriptor("tuple.second", "Decimal(5)"));
+  @Test
+  public void extractTupleOfPrimitives() {
+    Column tuple =
+        Column.extractColumn(newDescriptor("tuple", "Tuple(first String, second Decimal(5))"));
+    Column tupleFirst = Column.extractColumn(newDescriptor("tuple.first", "String"));
+    Column tupleSecond = Column.extractColumn(newDescriptor("tuple.second", "Decimal(5)"));
 
-        assertEquals(Type.TUPLE, tuple.getType());
-        assertEquals(List.of(), tuple.getTupleFields());
+    assertEquals(Type.TUPLE, tuple.getType());
+    assertEquals(List.of(), tuple.getTupleFields());
 
-        Table table = new Table("default", "t", false, List.of(tuple, tupleFirst, tupleSecond), 1);
-        assertEquals(1, table.getRootColumnsList().size());
+    Table table = new Table("default", "t", false, List.of(tuple, tupleFirst, tupleSecond), 1);
+    assertEquals(1, table.getRootColumnsList().size());
 
-        assertEquals(2, tuple.getTupleFields().size());
-        assertEquals(List.of("tuple.first", "tuple.second"), tuple.getTupleFields().stream().map(Column::getName).collect(Collectors.toList()));
-        assertEquals(List.of(Type.STRING, Type.Decimal), tuple.getTupleFields().stream().map(Column::getType).collect(Collectors.toList()));
-        assertEquals(List.of(0, 5), tuple.getTupleFields().stream().map(Column::getPrecision).collect(Collectors.toList()));
-    }
+    assertEquals(2, tuple.getTupleFields().size());
+    assertEquals(
+        List.of("tuple.first", "tuple.second"),
+        tuple.getTupleFields().stream().map(Column::getName).collect(Collectors.toList()));
+    assertEquals(
+        List.of(Type.STRING, Type.Decimal),
+        tuple.getTupleFields().stream().map(Column::getType).collect(Collectors.toList()));
+    assertEquals(
+        List.of(0, 5),
+        tuple.getTupleFields().stream().map(Column::getPrecision).collect(Collectors.toList()));
+  }
 
-    @Test
-    public void extractTupleOfTupleOfTuple() {
-        Column tuple = Column.extractColumn(newDescriptor("tuple", "Tuple(tuple Tuple(tuple Tuple(string String)))"));
-        Column tupleTuple = Column.extractColumn(newDescriptor("tuple.tuple", "Tuple(tuple Tuple(string String))"));
-        Column tupleTupleTuple = Column.extractColumn(newDescriptor("tuple.tuple.tuple", "Tuple(string String)"));
-        Column tupleTupleTupleString = Column.extractColumn(newDescriptor("tuple.tuple.tuple.string", "String"));
+  @Test
+  public void extractTupleOfTupleOfTuple() {
+    Column tuple =
+        Column.extractColumn(
+            newDescriptor("tuple", "Tuple(tuple Tuple(tuple Tuple(string String)))"));
+    Column tupleTuple =
+        Column.extractColumn(newDescriptor("tuple.tuple", "Tuple(tuple Tuple(string String))"));
+    Column tupleTupleTuple =
+        Column.extractColumn(newDescriptor("tuple.tuple.tuple", "Tuple(string String)"));
+    Column tupleTupleTupleString =
+        Column.extractColumn(newDescriptor("tuple.tuple.tuple.string", "String"));
 
-        assertEquals(Type.TUPLE, tuple.getType());
-        assertEquals(List.of(), tuple.getTupleFields());
+    assertEquals(Type.TUPLE, tuple.getType());
+    assertEquals(List.of(), tuple.getTupleFields());
 
-        Table table = new Table("default", "t", false, List.of(tuple, tupleTuple, tupleTupleTuple, tupleTupleTupleString), 1);
-        assertEquals(1, table.getRootColumnsList().size());
+    Table table =
+        new Table(
+            "default",
+            "t",
+            false,
+            List.of(tuple, tupleTuple, tupleTupleTuple, tupleTupleTupleString),
+            1);
+    assertEquals(1, table.getRootColumnsList().size());
 
-        assertEquals(1, tuple.getTupleFields().size());
-        assertEquals(1, tuple.getTupleFields().get(0).getTupleFields().size());
-        assertEquals(1, tuple.getTupleFields().get(0).getTupleFields().get(0).getTupleFields().size());
+    assertEquals(1, tuple.getTupleFields().size());
+    assertEquals(1, tuple.getTupleFields().get(0).getTupleFields().size());
+    assertEquals(1, tuple.getTupleFields().get(0).getTupleFields().get(0).getTupleFields().size());
 
-        Column stringColumn = tuple.getTupleFields().get(0).getTupleFields().get(0).getTupleFields().get(0);
-        assertEquals("tuple.tuple.tuple.string", stringColumn.getName());
-        assertEquals(Type.STRING, stringColumn.getType());
-    }
+    Column stringColumn =
+        tuple.getTupleFields().get(0).getTupleFields().get(0).getTupleFields().get(0);
+    assertEquals("tuple.tuple.tuple.string", stringColumn.getName());
+    assertEquals(Type.STRING, stringColumn.getType());
+  }
 }

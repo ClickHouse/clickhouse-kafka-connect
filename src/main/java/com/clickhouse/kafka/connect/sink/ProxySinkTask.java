@@ -11,12 +11,6 @@ import com.clickhouse.kafka.connect.sink.state.provider.KeeperStateProvider;
 import com.clickhouse.kafka.connect.util.Utils;
 import com.clickhouse.kafka.connect.util.jmx.ExecutionTimer;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.connect.sink.SinkRecord;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,116 +20,134 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ProxySinkTask {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ProxySinkTask.class);
-    private static final AtomicInteger NEXT_ID = new AtomicInteger();
-    private final Processing processing;
-    private final StateProvider stateProvider;
-    private final DBWriter dbWriter;
-    private final ClickHouseSinkConfig clickHouseSinkConfig;
+  private static final Logger LOGGER = LoggerFactory.getLogger(ProxySinkTask.class);
+  private static final AtomicInteger NEXT_ID = new AtomicInteger();
+  private final Processing processing;
+  private final StateProvider stateProvider;
+  private final DBWriter dbWriter;
+  private final ClickHouseSinkConfig clickHouseSinkConfig;
 
-    private final SinkTaskStatistics statistics;
-    private final int id = NEXT_ID.getAndAdd(1);
-    private final ErrorReporter errorReporter;
+  private final SinkTaskStatistics statistics;
+  private final int id = NEXT_ID.getAndAdd(1);
+  private final ErrorReporter errorReporter;
 
-    public ProxySinkTask(final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
-        this.clickHouseSinkConfig = clickHouseSinkConfig;
-        this.errorReporter = errorReporter;
-        LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.isExactlyOnce());
-        if ( clickHouseSinkConfig.isExactlyOnce() ) {
-            this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
-        } else {
-            this.stateProvider = new InMemoryState();
-        }
-        this.statistics = new SinkTaskStatistics(id);
-        this.dbWriter = new ClickHouseWriter(this.statistics);
-        processing = new Processing(stateProvider, dbWriter, errorReporter, clickHouseSinkConfig, statistics);
+  public ProxySinkTask(
+      final ClickHouseSinkConfig clickHouseSinkConfig, final ErrorReporter errorReporter) {
+    this.clickHouseSinkConfig = clickHouseSinkConfig;
+    this.errorReporter = errorReporter;
+    LOGGER.info("Enable ExactlyOnce? {}", clickHouseSinkConfig.isExactlyOnce());
+    if (clickHouseSinkConfig.isExactlyOnce()) {
+      this.stateProvider = new KeeperStateProvider(clickHouseSinkConfig);
+    } else {
+      this.stateProvider = new InMemoryState();
     }
+    this.statistics = new SinkTaskStatistics(id);
+    this.dbWriter = new ClickHouseWriter(this.statistics);
+    processing =
+        new Processing(stateProvider, dbWriter, errorReporter, clickHouseSinkConfig, statistics);
+  }
 
-    public void start() {
-        this.statistics.registerMBean();
+  public void start() {
+    this.statistics.registerMBean();
 
-        // Add dead letter queue
-        boolean isStarted = dbWriter.start(clickHouseSinkConfig);
-        if (!isStarted) {
-            throw new RuntimeException("Connection to ClickHouse is not active.");
-        }
+    // Add dead letter queue
+    boolean isStarted = dbWriter.start(clickHouseSinkConfig);
+    if (!isStarted) {
+      throw new RuntimeException("Connection to ClickHouse is not active.");
     }
+  }
 
-    public void stop() {
-        dbWriter.stop();
-        statistics.unregisterMBean();
+  public void stop() {
+    dbWriter.stop();
+    statistics.unregisterMBean();
+  }
+
+  public void put(final Collection<SinkRecord> records)
+      throws IOException, ExecutionException, InterruptedException {
+    if (records.isEmpty()) {
+      LOGGER.trace("No records sent to SinkTask");
+      return;
     }
+    // Group by topic & partition
+    statistics.receivedRecords(records);
+    ExecutionTimer taskTime = ExecutionTimer.start();
+    LOGGER.trace(String.format("Got %d records from put API.", records.size()));
+    ExecutionTimer processingTime = ExecutionTimer.start();
 
-    public void put(final Collection<SinkRecord> records) throws IOException, ExecutionException, InterruptedException {
-        if (records.isEmpty()) {
-            LOGGER.trace("No records sent to SinkTask");
-            return;
-        }
-        // Group by topic & partition
-        statistics.receivedRecords(records);
-        ExecutionTimer taskTime = ExecutionTimer.start();
-        LOGGER.trace(String.format("Got %d records from put API.", records.size()));
-        ExecutionTimer processingTime = ExecutionTimer.start();
-
-        Map<String, List<Record>> dataRecords = records.stream()
-                .map(v -> Record.convert(v,
+    Map<String, List<Record>> dataRecords =
+        records.stream()
+            .map(
+                v ->
+                    Record.convert(
+                        v,
                         clickHouseSinkConfig.isEnableDbTopicSplit(),
                         clickHouseSinkConfig.getDbTopicSplitChar(),
                         clickHouseSinkConfig.getDatabase(),
                         clickHouseSinkConfig.isDebeziumCDCEnabled()))
-                .collect(Collectors.groupingBy(batchKey()));
+            .collect(Collectors.groupingBy(batchKey()));
 
-        statistics.recordProcessingTime(processingTime);
-        // TODO - Multi process???
-        List<Utils.FailedRecords> failedMessages = new ArrayList<>(dataRecords.size());
-        for (String topicAndPartition : dataRecords.keySet()) {
-            // Running on each topic & partition
-            List<Record> rec = dataRecords.get(topicAndPartition);
-            try {
-                processing.doLogic(rec);
-            } catch (Exception e) {
-                boolean errorTolerance = clickHouseSinkConfig.isErrorsTolerance();
-                Utils.handleException(e, errorTolerance, clickHouseSinkConfig.isRetryOnSocketException(), records); // This will throw RetriableException and failed records will be retried. No need to continue with the next topic & partition
-                if (errorTolerance) {
-                    failedMessages.add(new Utils.FailedRecords(rec, e));
-                    statistics.sentToDLQ(rec.size());
-                }
-            }
+    statistics.recordProcessingTime(processingTime);
+    // TODO - Multi process???
+    List<Utils.FailedRecords> failedMessages = new ArrayList<>(dataRecords.size());
+    for (String topicAndPartition : dataRecords.keySet()) {
+      // Running on each topic & partition
+      List<Record> rec = dataRecords.get(topicAndPartition);
+      try {
+        processing.doLogic(rec);
+      } catch (Exception e) {
+        boolean errorTolerance = clickHouseSinkConfig.isErrorsTolerance();
+        Utils.handleException(
+            e,
+            errorTolerance,
+            clickHouseSinkConfig.isRetryOnSocketException(),
+            records); // This will throw RetriableException and failed records will be retried. No
+        // need to continue with the next topic & partition
+        if (errorTolerance) {
+          failedMessages.add(new Utils.FailedRecords(rec, e));
+          statistics.sentToDLQ(rec.size());
         }
-        statistics.taskProcessingTime(taskTime);
-        Utils.sendTODLQ(failedMessages, errorReporter);
+      }
     }
+    statistics.taskProcessingTime(taskTime);
+    Utils.sendTODLQ(failedMessages, errorReporter);
+  }
 
-    /**
-     * A batch is inserted into the database of its first record, so records bound for different
-     * databases must never share a batch. Conversion strips the database prefix off the topic when
-     * db-topic split is on, which would otherwise leave records from {@code dbA.t} and {@code dbB.t}
-     * with the same key.
-     */
-    private Function<Record, String> batchKey() {
-        Function<Record, String> tableKey =
-                !clickHouseSinkConfig.isExactlyOnce() && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()
-                        ? Record::getTopic : Record::getTopicAndPartition;
-        if (!clickHouseSinkConfig.isEnableDbTopicSplit()) {
-            return tableKey;
-        }
-        final String splitChar = clickHouseSinkConfig.getDbTopicSplitChar();
-        return record -> record.getDatabase() + splitChar + tableKey.apply(record);
+  /**
+   * A batch is inserted into the database of its first record, so records bound for different
+   * databases must never share a batch. Conversion strips the database prefix off the topic when
+   * db-topic split is on, which would otherwise leave records from {@code dbA.t} and {@code dbB.t}
+   * with the same key.
+   */
+  private Function<Record, String> batchKey() {
+    Function<Record, String> tableKey =
+        !clickHouseSinkConfig.isExactlyOnce()
+                && clickHouseSinkConfig.isIgnorePartitionsWhenBatching()
+            ? Record::getTopic
+            : Record::getTopicAndPartition;
+    if (!clickHouseSinkConfig.isEnableDbTopicSplit()) {
+      return tableKey;
     }
+    final String splitChar = clickHouseSinkConfig.getDbTopicSplitChar();
+    return record -> record.getDatabase() + splitChar + tableKey.apply(record);
+  }
 
-    public int getId() {
-        return id;
-    }
+  public int getId() {
+    return id;
+  }
 
+  public void onPartitionRemoved(Collection<TopicPartition> partitions) {
+    stateProvider.onPartitionRemoved(partitions);
+  }
 
-    public void onPartitionRemoved(Collection<TopicPartition> partitions) {
-        stateProvider.onPartitionRemoved(partitions);
-    }
-
-    public Map<TopicPartition, OffsetAndMetadata> getInsertedOffsetsSnapshot() {
-        return stateProvider.getLastInsertedOffsetsSnapshot();
-    }
+  public Map<TopicPartition, OffsetAndMetadata> getInsertedOffsetsSnapshot() {
+    return stateProvider.getLastInsertedOffsetsSnapshot();
+  }
 }
