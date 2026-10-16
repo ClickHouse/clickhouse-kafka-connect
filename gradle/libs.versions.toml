@@ -4,10 +4,10 @@ kafka = "2.7.0"
 gson = "2.13.1"
 jackson = "2.22.3"
 jacksonAnnotations = "2.22"
-httpclient = "5.6.2"
-httpclientTest = "5.6.2"
+httpclient = "5.6.5"
 lombok = "1.18.46"
-lz4Java = "1.10.4"
+lz4Java = "1.11.4"
+guava = "33.7.2-jre"
 
 # Testing
 junitJupiter = "5.14.4"
@@ -42,7 +42,7 @@ clickhouse-client-v2 = { module = "com.clickhouse:client-v2", version.ref = "cli
 
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5", version.ref = "httpclient" }
-httpclient5-test = { module = "org.apache.httpcomponents.client5:httpclient5", version.ref = "httpclientTest" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
 
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 lz4-java = { module = "at.yawk.lz4:lz4-java", version.ref = "lz4Java" }
