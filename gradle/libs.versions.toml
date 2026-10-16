@@ -6,7 +6,7 @@ jackson = "2.22.3"
 jacksonAnnotations = "2.22"
 httpclient = "5.6.5"
 lombok = "1.18.46"
-lz4Java = "1.10.4"
+lz4Java = "1.11.4"
 guava = "33.7.2-jre"
 
 # Testing
