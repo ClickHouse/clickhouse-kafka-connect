@@ -1123,13 +1123,17 @@ public class ClickHouseWriter implements DBWriter {
                     Data value = record.getJsonMap().get(name);
                     try {
                         doWriteCol(value, fieldExists, col, stream, supportDefaults);
+                    } catch (RetriableException e) {
+                        // Not a serialization problem: let the framework retry the batch instead of failing the task.
+                        throw e;
                     } catch (Exception e) {
                         SinkRecord sinkRecord = record.getSinkRecord();
+                        String recordContext = sinkRecord == null
+                                ? "an unknown record"
+                                : String.format("topic `%s`, partition `%s`, offset `%d`", sinkRecord.topic(), sinkRecord.kafkaPartition(), sinkRecord.kafkaOffset());
                         String message = String.format(
-                                "Failed to serialize record for topic `%s`, partition `%s`, offset `%d`, column `%s`: %s",
-                                sinkRecord.topic(),
-                                sinkRecord.kafkaPartition(),
-                                sinkRecord.kafkaOffset(),
+                                "Failed to serialize record for %s, column `%s`: %s",
+                                recordContext,
                                 name,
                                 e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
                         LOGGER.error(message, e);
