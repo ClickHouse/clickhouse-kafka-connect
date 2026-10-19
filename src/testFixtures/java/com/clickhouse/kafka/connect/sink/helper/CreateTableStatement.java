@@ -37,6 +37,22 @@ public class CreateTableStatement {
         this.clusterClauseOpt = template.clusterClauseOpt;
     }
 
+    /** Fluent entry point for new tests;
+     * the setters already chain, so a separate Builder class would only duplicate them.
+     *
+     * <pre>{@code
+     * CreateTableStatement.create()
+     *         .tableName("table_test")
+     *         .column("id", "Int16")
+     *         .engine(ClickHouseTableEngine.MERGE_TREE)
+     *         .orderByColumn("id")
+     *         .execute(chc);
+     * }</pre>
+     * */
+    public static CreateTableStatement create() {
+        return new CreateTableStatement();
+    }
+
     public CreateTableStatement tableName(String tableName) {
         this.tableName = tableName;
         return this;
@@ -53,11 +69,16 @@ public class CreateTableStatement {
     }
 
     public CreateTableStatement engine(String engine) {
-        if (ClickHouseTestHelpers.isCluster() && "MergeTree".equals(engine)) {
+        if (ClickHouseTestHelpers.isCluster()
+                && ClickHouseTableEngine.MERGE_TREE.getSqlName().equals(engine)) {
             engine = ClickHouseCluster.getClusterFromEnvVarOrThrow().getMergeTreeEngine();
         }
         this.engine = engine;
         return this;
+    }
+
+    public CreateTableStatement engine(ClickHouseTableEngine engine) {
+        return engine(engine.getSqlName());
     }
 
     public CreateTableStatement orderByColumn(String orderByColumn) {
