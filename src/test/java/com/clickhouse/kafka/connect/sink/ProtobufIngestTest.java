@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.google.protobuf.Descriptors.Descriptor;
@@ -111,7 +112,7 @@ public class ProtobufIngestTest extends ClickHouseBase {
         CreateTableStatement tableStmt =
                 CreateTableStatement.create()
                         .tableName(topic)
-                        .engine("MergeTree")
+                        .engine(ClickHouseTableEngine.MERGE_TREE)
                         .orderByColumn(fixture.getString(CLICKHOUSE_ORDER_BY_KEY));
         JSONObject clickhouseColumns = fixture.getJSONObject(CLICKHOUSE_COLUMNS_KEY);
         for (String colName : clickhouseColumns.keySet()) {

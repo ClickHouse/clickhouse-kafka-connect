@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.dlq.InMemoryDLQ;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.google.gson.Gson;
@@ -33,7 +34,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
-            .engine("MergeTree")
+            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     private static final Supplier<CreateTableStatement> ARRAY_TYPES_TABLE = () -> CreateTableStatement.create()
@@ -47,7 +48,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("arr_float32", "Array(Float32)")
             .column("arr_float64", "Array(Float64)")
             .column("arr_bool", "Array(Bool)")
-            .engine("MergeTree")
+            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     private static final Supplier<CreateTableStatement> MAP_TYPES_TABLE = () -> CreateTableStatement.create()
@@ -55,7 +56,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
             .column("map_string_string", "Map(String, String)")
             .column("map_string_int64", "Map(String, Int64)")
             .column("map_int64_string", "Map(Int64, String)")
-            .engine("MergeTree")
+            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
@@ -428,7 +429,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .column("p_float32", "Float32")
                 .column("p_float64", "Float64")
                 .column("p_bool", "Bool")
-                .engine("MergeTree")
+                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = createPrimitiveTypesWithNulls(topic, 1);
@@ -512,7 +513,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine("MergeTree")
+                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = createDataWithEmojis(topic, 1);
@@ -600,7 +601,7 @@ public class ClickHouseSinkTaskStringTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine("MergeTree")
+                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = createCode25(topic, 1);

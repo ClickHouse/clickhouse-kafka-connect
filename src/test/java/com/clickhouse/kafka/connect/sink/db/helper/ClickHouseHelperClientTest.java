@@ -14,6 +14,7 @@ import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
@@ -38,7 +39,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     private static final Supplier<CreateTableStatement> SINGLE_NUM_TABLE = () -> CreateTableStatement.create()
             .column("num", "String")
-            .engine("MergeTree")
+            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("num");
 
     ClickHouseHelperClient chc = null;
@@ -75,7 +76,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -92,7 +93,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Array(Nested (innerInt Int32, innerString String))")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("num").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);
@@ -132,7 +133,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(nestedTopic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
-                .engine("MergeTree").orderByColumn("num").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("num").execute(chc);
         SINGLE_NUM_TABLE.get().tableName(normalTopic).execute(chc);
 
         try {
@@ -165,21 +166,21 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .tableName(plainTopic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
         CreateTableStatement.create()
                 .tableName(skippedColsTopic)
                 .column("off16", "Int16")
                 .column("null_str_alias", "Nullable(String) ALIAS formatReadableSize(`off16`)")
                 .column("null_str_eph", "Nullable(String) EPHEMERAL")
                 .column("null_str_mat", "Nullable(String) MATERIALIZED formatReadableSize(`off16`)")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
         CreateTableStatement.create()
                 .tableName(subColsTopic)
                 .column("off16", "Int16")
                 .column("null_str", "Nullable(String)")
                 .column("map", "Map(String, UInt64)")
                 .column("tuple", "Tuple(s String, i Int64)")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
 
         try {
             Map<String, Integer> listedNumColumns = chc.showTables(chc.getDatabase()).stream()
@@ -223,7 +224,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .column("tuple_eph", "Tuple(s String, i Int64) EPHEMERAL")
                 .column("map_eph", "Map(String, UInt64) EPHEMERAL")
                 .column("nested_eph", "Nested(ID UInt32, Serial UInt32, InnerNested Nested(InnerId UInt32)) EPHEMERAL")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
 
         try {
             Table table = chc.describeTable(chc.getDatabase(), topic);

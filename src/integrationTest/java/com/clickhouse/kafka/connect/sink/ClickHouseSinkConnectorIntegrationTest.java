@@ -4,6 +4,7 @@ import com.clickhouse.client.ClickHouseProtocol;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
@@ -60,7 +61,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .column("account", "String")
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
-            .engine("MergeTree")
+            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("symbol");
     private static final Path RESOURCES_ROOT = Path.of("src", "integrationTest", "resources");
 
@@ -330,7 +331,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         CreateTableStatement tableStmt = CreateTableStatement.create()
                 .tableName(topicName)
-                .engine("MergeTree")
+                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         boolean hasJsonColumn = false;
@@ -494,7 +495,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
         CreateTableStatement tableStmt = CreateTableStatement.create()
                 .tableName(topicName)
-                .engine("MergeTree")
+                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         for (String colName : clickhouseColumns.keySet()) {

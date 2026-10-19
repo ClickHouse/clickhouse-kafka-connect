@@ -3,6 +3,7 @@ package com.clickhouse.kafka.connect.sink.db.mapping;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,7 @@ class TableTest extends ClickHouseBase {
                 .tableName(tableName)
                 .column("off16", "Int16")
                 .column("date_number", "Nullable(Date)")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
@@ -64,7 +65,7 @@ class TableTest extends ClickHouseBase {
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")
-                .engine("MergeTree").orderByColumn("tuple()").execute(chc);
+                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("tuple()").execute(chc);
 
         Table table = chc.describeTable(chc.getDatabase(), tableName);
         assertNotNull(table);
