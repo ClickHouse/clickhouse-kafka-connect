@@ -39,7 +39,7 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(tableName)
                 .column("off16", "Int16")
                 .column("date_number", "Nullable(Date)")
@@ -60,7 +60,7 @@ class TableTest extends ClickHouseBase {
 
         String tableName = createTopicName("extract-table-test");
         ClickHouseTestHelpers.dropTable(chc, tableName);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(tableName)
                 .column("c", "String COMMENT '\\\\'")
                 .column("d", "String COMMENT '\\n'")

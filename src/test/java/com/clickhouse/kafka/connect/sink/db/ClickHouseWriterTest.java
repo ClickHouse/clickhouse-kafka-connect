@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -57,7 +58,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 public class ClickHouseWriterTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseWriterTest.class);
 
-    private static final CreateTableStatement SINGLE_INT16_TABLE = new CreateTableStatement()
+    private static final Supplier<CreateTableStatement> SINGLE_INT16_TABLE = () -> CreateTableStatement.create()
             .column("off16", "Int16")
             .engine("MergeTree")
             .orderByColumn("off16");
@@ -150,7 +151,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                     assertNull(tables.get(Utils.escapeTableName(chc.getDatabase(), topic)));
 
 
-                    new CreateTableStatement(SINGLE_INT16_TABLE).tableName(topic).execute(chc);
+                    SINGLE_INT16_TABLE.get().tableName(topic).execute(chc);
 
                     Table table = chw.getTable(chc.getDatabase(), topic);
                     assertNotNull(table);
@@ -180,8 +181,8 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         ClickHouseTestHelpers.dropTable(chc, topicWithBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithoutBackticks);
         ClickHouseTestHelpers.dropTable(chc, mappedTableWithBackticksRaw);
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithoutBackticks).execute(chc);
-        new CreateTableStatement(SINGLE_INT16_TABLE).tableName(mappedTableWithBackticksRaw).execute(chc);
+        SINGLE_INT16_TABLE.get().tableName(mappedTableWithoutBackticks).execute(chc);
+        SINGLE_INT16_TABLE.get().tableName(mappedTableWithBackticksRaw).execute(chc);
 
         runWithWriter(props, (chw) -> {
             Table plainMappingTable = chw.getTable(chc.getDatabase(), topicWithoutBackticks);
@@ -234,7 +235,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("do_insert_tuple_order_mismatch_test");
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("_id", "String")
                 .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
@@ -307,7 +308,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String fullyQualifiedTableName = Utils.escapeTableName(chc.getDatabase(), topic);
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("id", "Int32")
                 .column("name", "String")
@@ -417,7 +418,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         int columnsAfterAlter = columnsBeforeAlter + 1;
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("id", "Int32")
                 .column("name", "String")
@@ -548,7 +549,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         try {
             for (String tableName : tableNames) {
                 ClickHouseTestHelpers.dropTable(chc, tableName);
-                new CreateTableStatement(SINGLE_INT16_TABLE).tableName(tableName).execute(chc);
+                SINGLE_INT16_TABLE.get().tableName(tableName).execute(chc);
             }
 
             runWithWriter(props, (chw) -> {
@@ -599,7 +600,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("string_parity_" + insertFormat + "_" + clientVersion.toLowerCase());
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
@@ -653,7 +654,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
         String topic = createTopicName("json_parity_" + clientVersion.toLowerCase());
 
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")

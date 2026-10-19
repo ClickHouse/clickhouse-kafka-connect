@@ -29,13 +29,14 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @ExtendWith(FromVersionConditionExtension.class)
 public class ClickHouseHelperClientTest extends ClickHouseBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClickHouseHelperClientTest.class);
 
-    private static final CreateTableStatement SINGLE_NUM_TABLE = new CreateTableStatement()
+    private static final Supplier<CreateTableStatement> SINGLE_NUM_TABLE = () -> CreateTableStatement.create()
             .column("num", "String")
             .engine("MergeTree")
             .orderByColumn("num");
@@ -57,7 +58,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void showTables() {
         String topic = createTopicName("simple_table_test");
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(topic).execute(chc);
+        SINGLE_NUM_TABLE.get().tableName(topic).execute(chc);
         try {
             List<Table.TableDesc> tableDescs = chc.showTables(chc.getDatabase());
             List<String> tableNames = tableDescs.stream().map(Table.TableDesc::getCleanName).collect(Collectors.toList());
@@ -70,7 +71,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void describeNestedFlattenedTable() {
         String topic = createTopicName("nested_flattened_table_test");
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
@@ -87,7 +88,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void ignoreArrayWithNestedTable() {
         String topic = createTopicName("nested_table_test");
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("num", "String")
                 .column("nested", "Array(Nested (innerInt Int32, innerString String))")
@@ -127,12 +128,12 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         props.put("password", testPassword);
         chc = ClickHouseTestHelpers.createClient(props);
 
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(nestedTopic)
                 .column("num", "String")
                 .column("nested", "Nested (innerInt Int32, innerString String)")
                 .engine("MergeTree").orderByColumn("num").execute(chc);
-        new CreateTableStatement(SINGLE_NUM_TABLE).tableName(normalTopic).execute(chc);
+        SINGLE_NUM_TABLE.get().tableName(normalTopic).execute(chc);
 
         try {
             Table nestedTable = chc.describeTable(chc.getDatabase(), nestedTopic);
@@ -160,19 +161,19 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         String skippedColsTopic = createTopicName("described_count_skipped_cols_test");
         String subColsTopic = createTopicName("described_count_subcols_test");
 
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(plainTopic)
                 .column("off16", "Int16")
                 .column("str", "String")
                 .engine("MergeTree").orderByColumn("off16").execute(chc);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(skippedColsTopic)
                 .column("off16", "Int16")
                 .column("null_str_alias", "Nullable(String) ALIAS formatReadableSize(`off16`)")
                 .column("null_str_eph", "Nullable(String) EPHEMERAL")
                 .column("null_str_mat", "Nullable(String) MATERIALIZED formatReadableSize(`off16`)")
                 .engine("MergeTree").orderByColumn("off16").execute(chc);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(subColsTopic)
                 .column("off16", "Int16")
                 .column("null_str", "Nullable(String)")
@@ -212,7 +213,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     public void ignoreSubColumnsOfAliasEphemeralAndMaterialized() {
         String topic = createTopicName("alias_ephemeral_subcol_test");
 
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("null_str_alias", "Nullable(String) ALIAS formatReadableSize(`off16`)")

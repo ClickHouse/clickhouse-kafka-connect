@@ -41,7 +41,7 @@ public class FailureTest extends ClickHouseBase {
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = createTopicName("test_schema_validation_failure");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("off16", "Int16").column("uint8", "UInt8").column("uint16", "UInt16")
                 .column("uint32", "UInt32").column("uint64", "UInt64")

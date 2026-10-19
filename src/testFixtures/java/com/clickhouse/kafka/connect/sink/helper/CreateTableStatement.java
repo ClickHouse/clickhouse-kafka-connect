@@ -26,6 +26,11 @@ public class CreateTableStatement {
         }
     }
 
+    /**
+     * @deprecated Copying a shared mutable template is easy to get wrong. Declare the template as a
+     * {@code Supplier<CreateTableStatement>} and call {@code get()} instead, see {@link #create()}.
+     */
+    @Deprecated
     public CreateTableStatement(CreateTableStatement template) {
         this.tableName = template.tableName;
         this.databaseOpt = template.databaseOpt;
@@ -47,6 +52,15 @@ public class CreateTableStatement {
      *         .engine(ClickHouseTableEngine.MERGE_TREE)
      *         .orderByColumn("id")
      *         .execute(chc);
+     * }</pre>
+     * <p>For reusable templates, declare a {@code Supplier} so every {@code get()} builds a fresh statement:
+     * <pre>{@code
+     * private static final Supplier<CreateTableStatement> STOCK_TABLE = () -> CreateTableStatement.create()
+     *         .column("symbol", "String")
+     *         .engine(ClickHouseTableEngine.MERGE_TREE)
+     *         .orderByColumn("symbol");
+     *
+     * STOCK_TABLE.get().tableName(topic).execute(chc);
      * }</pre>
      * */
     public static CreateTableStatement create() {
