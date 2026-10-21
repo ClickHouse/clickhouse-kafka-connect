@@ -9,9 +9,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Shared insert path for the buffered delivery strategies. Pushes a chunk to
@@ -69,7 +71,8 @@ final class ChunkFlusher {
             LOGGER.trace("Passing the exception to the exception handler.");
             boolean errorTolerance = clickHouseSinkConfig != null && clickHouseSinkConfig.isErrorsTolerance();
             boolean retryOnSocketException = clickHouseSinkConfig != null && clickHouseSinkConfig.isRetryOnSocketException();
-            Utils.handleException(e, errorTolerance, retryOnSocketException, records);
+            Set<Integer> additionalRetriableErrorCodes = clickHouseSinkConfig != null ? clickHouseSinkConfig.getAdditionalRetriableErrorCodes() : Collections.emptySet();
+            Utils.handleException(e, errorTolerance, retryOnSocketException, additionalRetriableErrorCodes, records);
             if (errorTolerance && errorReporter != null) {
                 LOGGER.warn("Sending [{}] records to DLQ for exception: {}", records.size(), e.getLocalizedMessage());
                 records.forEach(r -> Utils.sendTODlq(errorReporter, r, e));
