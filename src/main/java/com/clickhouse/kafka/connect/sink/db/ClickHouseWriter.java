@@ -29,6 +29,7 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
+import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1120,7 +1121,24 @@ public class ClickHouseWriter implements DBWriter {
                     String name = col.getName();
                     boolean fieldExists = record.getJsonMap().containsKey(name);
                     Data value = record.getJsonMap().get(name);
-                    doWriteCol(value, fieldExists, col, stream, supportDefaults);
+                    try {
+                        doWriteCol(value, fieldExists, col, stream, supportDefaults);
+                    } catch (RetriableException e) {
+                        // Not a serialization problem: let the framework retry the batch instead of failing the task.
+                        throw e;
+                    } catch (Exception e) {
+                        SinkRecord sinkRecord = record.getSinkRecord();
+                        String recordContext = sinkRecord == null
+                                ? "an unknown record"
+                                : String.format("topic `%s`, partition `%s`, offset `%d`", sinkRecord.topic(), sinkRecord.kafkaPartition(), sinkRecord.kafkaOffset());
+                        String message = String.format(
+                                "Failed to serialize record for %s, column `%s`: %s",
+                                recordContext,
+                                name,
+                                e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                        LOGGER.error(message, e);
+                        throw new DataException(message, e);
+                    }
                     pushStreamTime += System.currentTimeMillis() - beforePushStream;
                 }
             }
