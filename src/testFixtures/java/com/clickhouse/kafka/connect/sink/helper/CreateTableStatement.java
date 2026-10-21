@@ -11,6 +11,22 @@ import java.util.Optional;
 
 @SuppressWarnings({"OptionalUsedAsFieldOrParameterType"})
 public class CreateTableStatement {
+    public enum TableEngine {
+        MERGETREE("MergeTree"),
+        REPLICATED_MERGETREE("ReplicatedMergeTree"),
+        SHARED_MERGETREE("SharedMergeTree");
+
+        private final String sqlName;
+
+        TableEngine(String sqlName) {
+            this.sqlName = sqlName;
+        }
+
+        public String sqlName() {
+            return sqlName;
+        }
+    }
+
     private String tableName;
     private Optional<String> databaseOpt = Optional.empty();
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
@@ -24,6 +40,11 @@ public class CreateTableStatement {
         if (ClickHouseTestHelpers.isCluster()) {
             this.clusterClauseOpt = Optional.of("ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'");
         }
+    }
+
+    /** Preferred entry point for new call sites. */
+    public static CreateTableStatement create() {
+        return new CreateTableStatement();
     }
 
     public CreateTableStatement(CreateTableStatement template) {
@@ -52,8 +73,12 @@ public class CreateTableStatement {
         return this;
     }
 
+    public CreateTableStatement engine(TableEngine engine) {
+        return engine(engine.sqlName());
+    }
+
     public CreateTableStatement engine(String engine) {
-        if (ClickHouseTestHelpers.isCluster() && "MergeTree".equals(engine)) {
+        if (ClickHouseTestHelpers.isCluster() && TableEngine.MERGETREE.sqlName().equals(engine)) {
             engine = ClickHouseCluster.getClusterFromEnvVarOrThrow().getMergeTreeEngine();
         }
         this.engine = engine;
