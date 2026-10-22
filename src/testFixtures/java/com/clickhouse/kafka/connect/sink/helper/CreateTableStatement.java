@@ -11,6 +11,8 @@ import java.util.Optional;
 
 @SuppressWarnings({"OptionalUsedAsFieldOrParameterType"})
 public class CreateTableStatement {
+    private static final ClickHouseTableEngine DEFAULT_ENGINE = ClickHouseTableEngine.MERGE_TREE;
+
     private String tableName;
     private Optional<String> databaseOpt = Optional.empty();
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
@@ -20,10 +22,14 @@ public class CreateTableStatement {
     private boolean ifNotExists = false;
     private Optional<String> clusterClauseOpt = Optional.empty();
 
+    /** @deprecated Use {@link #create()}, the single entry point for new tests; this constructor will become private. */
+    @Deprecated
     public CreateTableStatement() {
         if (ClickHouseTestHelpers.isCluster()) {
             this.clusterClauseOpt = Optional.of("ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'");
         }
+        // Default engine; engine(String) maps MergeTree to the cluster's replicated engine on a cluster.
+        engine(DEFAULT_ENGINE);
     }
 
     /**
@@ -44,12 +50,13 @@ public class CreateTableStatement {
 
     /** Fluent entry point for new tests;
      * the setters already chain, so a separate Builder class would only duplicate them.
+     * The engine defaults to MergeTree (the replicated engine on a cluster); call {@code engine(...)} only to override it,
+     * e.g. {@code ClickHouseTableEngine.NULL_ENGINE}.
      *
      * <pre>{@code
      * CreateTableStatement.create()
      *         .tableName("table_test")
      *         .column("id", "Int16")
-     *         .engine(ClickHouseTableEngine.MERGE_TREE)
      *         .orderByColumn("id")
      *         .execute(chc);
      * }</pre>
@@ -57,7 +64,6 @@ public class CreateTableStatement {
      * <pre>{@code
      * private static final Supplier<CreateTableStatement> STOCK_TABLE = () -> CreateTableStatement.create()
      *         .column("symbol", "String")
-     *         .engine(ClickHouseTableEngine.MERGE_TREE)
      *         .orderByColumn("symbol");
      *
      * STOCK_TABLE.get().tableName(topic).execute(chc);

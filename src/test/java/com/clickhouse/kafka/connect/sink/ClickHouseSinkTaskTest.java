@@ -3,7 +3,6 @@ package com.clickhouse.kafka.connect.sink;
 import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
@@ -49,7 +48,6 @@ public class ClickHouseSinkTaskTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     public Collection<SinkRecord> createDBTopicSplit(int dbRange, String databasePrefix, String topic, int partition, String splitChar) {

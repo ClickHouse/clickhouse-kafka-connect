@@ -12,7 +12,6 @@ import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.db.mapping.Type;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.test.junit.extension.FromVersionConditionExtension;
@@ -61,7 +60,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     private static final Supplier<CreateTableStatement> SINGLE_INT16_TABLE = () -> CreateTableStatement.create()
             .column("off16", "Int16")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     ClickHouseHelperClient chc = null;
@@ -240,7 +238,7 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("_id", "String")
                 .column("result", "Tuple(`id` String, `isanswered` Int32, `relevancescore` Float64, `subject` String, `istextanswered` Int32)")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("_id").execute(chc);
+                .orderByColumn("_id").execute(chc);
 
         Schema tupleSchema = SchemaBuilder.struct()
                 .field("isanswered", Schema.INT32_SCHEMA)
@@ -313,7 +311,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("id", "Int32")
                 .column("name", "String")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("id")
                 .execute(chc);
 
@@ -425,7 +422,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .column("name", "String")
                 .column("arr", "Array(Int32)")
                 .column("tup", "Tuple(s String, i Int32)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("id")
                 .execute(chc);
 
@@ -605,7 +601,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 
@@ -659,7 +654,6 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 

@@ -94,7 +94,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .column("arr_str_arr", "Array(Array(String))")
             .column("arr_arr_str_arr", "Array(Array(Array(String)))")
             .column("arr_map", "Array(Map(String, String))")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     private static final Supplier<CreateTableStatement> MAP_TYPES_TABLE = () -> CreateTableStatement.create()
@@ -105,19 +104,16 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
             .column("map_string_map", "Map(String, Map(String, Int64))")
             .column("map_string_array", "Map(String, Array(String))")
             .column("map_map_map", "Map(String, Map(String, Map(String, String)))")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     private static final Supplier<CreateTableStatement> CHANGE_SCHEMA_TABLE = () -> CreateTableStatement.create()
             .column("off16", "Int16")
             .column("string", "String")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("`off16`");
 
     private static final Supplier<CreateTableStatement> AUTO_EVOLVE_BASE_TABLE = () -> CreateTableStatement.create()
             .column("off16", "Int16")
             .column("p_int64", "Int64")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
@@ -163,7 +159,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("arr_nullable_float32", "Array(Nullable(Float32))")
                 .column("arr_nullable_float64", "Array(Nullable(Float64))")
                 .column("arr_nullable_bool", "Array(Nullable(Bool))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createArrayNullableSubtypes(topic, 1);
@@ -210,7 +205,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("map_string_string", "Map(String, String)")
                 .column("map_string_int64", "Map(String, Int64)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullableMapType(topic, 1);
@@ -237,7 +231,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("map_string_string", "Map(String, String)")
                 .column("map_string_int64", "Map(String, Int64)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullableMapType(topic, 1);
@@ -276,7 +269,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("arr", "Array(String)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
@@ -300,7 +292,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("arr", "Array(Nullable(String))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullableArrayType(topic, 1);
@@ -334,7 +325,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("arr_float32", "Array(Float32)")
                 .column("arr_float64", "Array(Float64)")
                 .column("arr_bool", "Array(Bool)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         CreateTableStatement.create()
@@ -387,7 +377,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("null_value_data", "Nullable(DateTime64(6, 'UTC'))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -426,7 +415,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("time_date32", "Date32")
                 .column("date_date", "Date")
                 .column("datetime_date", "DateTime")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -462,7 +450,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("arr_datetime64_number", "Array(DateTime64)")
                 .column("arr_timestamp_date", "Array(DateTime64)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createArrayDateTime64Type(topic, 1);
@@ -489,7 +476,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("date32_number", "Date32")
                 .column("datetime_number", "DateTime")
                 .column("datetime64_number", "DateTime64")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 
@@ -518,7 +504,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("zoned_date", "DateTime64")
                 .column("offset_date", "DateTime64")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createZonedTimestampConversions(topic, 1);
@@ -544,7 +529,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("format_date", "DateTime64(9)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createFormattedTimestampConversions(topic, 1);
@@ -583,7 +567,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("p_int64", "Int64")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithEmptyDataRecords(topic, 1);
@@ -608,7 +591,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("p_int64", "Int64")
                 .column("lc_string", "LowCardinality(String)")
                 .column("nullable_lc_string", "LowCardinality(Nullable(String))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithLowCardinality(topic, 1);
@@ -631,7 +613,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("uuid", "UUID")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createWithUUID(topic, 1);
@@ -654,7 +635,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("default_value_data", "DateTime DEFAULT now()")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -681,7 +661,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("default_value_data", "DateTime DEFAULT now()")
                 .column("ephemeral_data", "String EPHEMERAL")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createNullValueData(topic, 1);
@@ -707,7 +686,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("null_value_data", "Nullable(DateTime)")
                 .column("default_value_data", "DateTime DEFAULT now()")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -732,7 +710,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("decimal_14_2", "Decimal(14, 2)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 
@@ -761,7 +738,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("fixed_string_string", "FixedString(" + fss + ")")
                 .column("fixed_string_bytes", "FixedString(" + fss + ")")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 
@@ -797,7 +773,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("b3", "Boolean")
                 .column("b4", "Boolean")
                 .column("ii", "UInt8")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 
@@ -900,7 +875,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("fixed_string_string", "FixedString(" + (fss - 1) + ")")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 
@@ -926,7 +900,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("decimal_14_2", "Nullable(Decimal(14, 2))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
 
@@ -949,7 +922,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         CreateTableStatement.create()
                 .tableName(topic)
                 .column("string", "String")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`string`")
                 .execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
@@ -974,7 +946,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("enum8_type", "Enum8('A' = 1, 'B' = 2, 'C' = 3)")
                 .column("enum16_type", "Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createEnumValueData(topic, 1);
@@ -1023,7 +994,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("tuple", tupleType)
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .settings(Map.of("allow_experimental_variant_type", 1))
                 .execute(chc);
@@ -1070,7 +1040,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "    `map` Map(String, String)," +
                         "    `variant` Variant(Boolean, String)" +
                         "))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .settings(Map.of("allow_experimental_variant_type", 1))
                 .execute(chc);
@@ -1136,7 +1105,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("uint16", "UInt16")
                 .column("uint32", "UInt32")
                 .column("uint64", "UInt64")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .execute(chc);
         Collection<SinkRecord> sr = SchemaTestData.createUnsignedIntegers(topic, 1);
@@ -1278,7 +1246,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("string", "String")
                 .column("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .execute(chc);
 
@@ -1305,7 +1272,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("string", "String")
                 .column("insert_datetime", "DateTime default now()")
                 .column("t", "Tuple(`off16` Nullable(Int16), `string` Nullable(String))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .execute(chc);
 
@@ -1335,7 +1301,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "`off16` Nullable(Int16), " +
                         "`string` Nullable(String), " +
                         "`n` Tuple(`off16` Nullable(Int16), `string` Nullable(String)))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .execute(chc);
 
@@ -1372,7 +1337,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                         "`off16` Nullable(Int16), " +
                         "`label` Nullable(String), " +
                         "`n` Tuple(`value` Nullable(Int32), `tag` Nullable(String)))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .execute(chc);
 
@@ -1468,7 +1432,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("name", "Nullable(String)")
                 .column("t", "Tuple(`off16` Nullable(Int16), `label` Nullable(String))")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`off16`")
                 .execute(chc);
 
@@ -1553,7 +1516,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("desc", "Nullable(String)")
                 .column("tag", "Nullable(String)")
                 .column("va", "Nullable(Float64)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("`processing_time`")
                 .execute(chc);
 
@@ -1584,7 +1546,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("struct_content", "JSON")
                 .column("json_as_str", "JSON")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .settings(clientSettings)
                 .execute(chc);
@@ -1614,7 +1575,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("struct_content", "JSON")
                 .column("json_as_str", "Nullable(JSON)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("off16")
                 .settings(clientSettings)
                 .execute(chc);
@@ -1689,7 +1649,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("score", "Float64")
                 .column("tags", "Array(String)")
                 .column("content", "JSON")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("()")
                 .settings(clientSettings)
                 .execute(chc);
@@ -1865,7 +1824,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("name", "String")
                 .column("content", "String")
                 .column("description", "Nullable(String)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("()")
                 .execute(chc);
 
@@ -1921,7 +1879,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("id", "Int64")
                 .column("time1", "DateTime64(3)")
                 .column("time2", "DateTime64(3)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("()")
                 .execute(chc);
 
@@ -1970,7 +1927,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("id", targetType)
                 .column("val_int32", targetType)
                 .column("arr_int32", "Array(" + targetType + ")")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("id")
                 .execute(chc);
 
@@ -2033,7 +1989,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("id", "Int64")
                 .column("val_int32", "Int64")
                 .column("arr_int32", "Array(Int64)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("id")
                 .execute(chc);
 
@@ -2107,7 +2062,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
                 .column("id", "Int64")
                 .column("val_int32", "Int64")
                 .column("arr_int32", "Array(Int64)")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("id")
                 .execute(chc);
 
@@ -3124,7 +3078,6 @@ public class ClickHouseSinkTaskWithSchemaTest extends ClickHouseBase {
         CreateTableStatement.create()
                 .tableName(topic)
                 .column("name", "String")
-                .engine(ClickHouseTableEngine.MERGE_TREE)
                 .orderByColumn("name")
                 .execute(chc);
 

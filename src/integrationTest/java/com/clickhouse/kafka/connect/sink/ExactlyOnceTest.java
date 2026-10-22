@@ -6,7 +6,6 @@ import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCloudAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
@@ -54,7 +53,6 @@ public class ExactlyOnceTest {
             .column("account", "String")
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("symbol");
     private static final String SCHEMALESS_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json";
     private static final String SCHEMALESS_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless_cluster.json";

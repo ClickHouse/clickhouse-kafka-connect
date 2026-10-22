@@ -2,7 +2,6 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.api.ClientConfigProperties;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
-import com.clickhouse.kafka.connect.sink.helper.ClickHouseTableEngine;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
@@ -34,7 +33,6 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
-            .engine(ClickHouseTableEngine.MERGE_TREE)
             .orderByColumn("off16");
 
     @Test
@@ -67,7 +65,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("str", "String")
                 .column("p_int8", "Int8")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -114,7 +112,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .column("p_float32", "Float32")
                 .column("p_float64", "Float64")
                 .column("p_bool", "Bool")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypesWithNulls(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -143,7 +141,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .column("arr_float32", "Array(Float32)")
                 .column("arr_float64", "Array(Float64)")
                 .column("arr_bool", "Array(Bool)")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createArrayType(topic, 1);
 
@@ -167,7 +165,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .column("map_string_string", "Map(String, String)")
                 .column("map_string_int64", "Map(String, Int64)")
                 .column("map_int64_string", "Map(Int64, String)")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createMapType(topic, 1);
 
@@ -190,7 +188,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("map_string_string", "Map(String, String)")
                 .column("map_string_int64", "Map(String, Int64)")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createNullableMapType(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -221,7 +219,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .column("map_string_string", "Map(String, String)")
                 .column("map_string_int64", "Map(String, Int64)")
                 .column("map_int64_string", "Map(Int64, String)")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         // https://github.com/apache/kafka/blob/trunk/connect/api/src/test/java/org/apache/kafka/connect/data/StructTest.java#L95-L98
         Collection<SinkRecord> sr = SchemalessTestData.createMapType(topic, 1);
 
@@ -243,7 +241,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("off16", "Int16")
                 .column("str", "String")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDataWithEmojis(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -264,7 +262,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("decimal_14_2", "Decimal(14, 2)")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("num").execute(chc);
+                .orderByColumn("num").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createDecimalTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -287,7 +285,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .tableName(topic)
                 .column("num", "String")
                 .column("decimal_14_2", "Nullable(Decimal(14, 2))")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("num").execute(chc);
+                .orderByColumn("num").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createNullableDecimalTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -333,7 +331,7 @@ public class ClickHouseSinkTaskSchemalessTest extends ClickHouseBase {
                 .column("off16", "Int16")
                 .column("content", "JSON")
                 .column("struct", "JSON")
-                .engine(ClickHouseTableEngine.MERGE_TREE).orderByColumn("off16").settings(clientSettings).execute(chc);
+                .orderByColumn("off16").settings(clientSettings).execute(chc);
 
         Collection<SinkRecord> sr = SchemalessTestData.createJSONType(topic, 1, 10);
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
