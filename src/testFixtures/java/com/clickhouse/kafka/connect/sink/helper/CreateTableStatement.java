@@ -11,6 +11,8 @@ import java.util.Optional;
 
 @SuppressWarnings({"OptionalUsedAsFieldOrParameterType"})
 public class CreateTableStatement {
+    private static final ClickHouseTableEngine DEFAULT_ENGINE = ClickHouseTableEngine.MERGE_TREE;
+
     private String tableName;
     private Optional<String> databaseOpt = Optional.empty();
     private LinkedHashMap<String, String> schema = new LinkedHashMap<>();
@@ -20,12 +22,21 @@ public class CreateTableStatement {
     private boolean ifNotExists = false;
     private Optional<String> clusterClauseOpt = Optional.empty();
 
+    /** @deprecated Use {@link #create()}, the single entry point for new tests; this constructor will become private. */
+    @Deprecated
     public CreateTableStatement() {
         if (ClickHouseTestHelpers.isCluster()) {
             this.clusterClauseOpt = Optional.of("ON CLUSTER '" + ClickHouseCluster.getClusterFromEnvVarOrThrow().getName() + "'");
         }
+        // Default engine; engine(String) maps MergeTree to the cluster's replicated engine on a cluster.
+        engine(DEFAULT_ENGINE);
     }
 
+    /**
+     * @deprecated Copying a shared mutable template is easy to get wrong. Declare the template as a
+     * {@code Supplier<CreateTableStatement>} and call {@code get()} instead, see {@link #create()}.
+     */
+    @Deprecated
     public CreateTableStatement(CreateTableStatement template) {
         this.tableName = template.tableName;
         this.databaseOpt = template.databaseOpt;
@@ -35,6 +46,31 @@ public class CreateTableStatement {
         this.settings = template.settings;
         this.ifNotExists = template.ifNotExists;
         this.clusterClauseOpt = template.clusterClauseOpt;
+    }
+
+    /** Fluent entry point for new tests;
+     * the setters already chain, so a separate Builder class would only duplicate them.
+     * The engine defaults to MergeTree (the replicated engine on a cluster); call {@code engine(...)} only to override it,
+     * e.g. {@code ClickHouseTableEngine.NULL_ENGINE}.
+     *
+     * <pre>{@code
+     * CreateTableStatement.create()
+     *         .tableName("table_test")
+     *         .column("id", "Int16")
+     *         .orderByColumn("id")
+     *         .execute(chc);
+     * }</pre>
+     * <p>For reusable templates, declare a {@code Supplier} so every {@code get()} builds a fresh statement:
+     * <pre>{@code
+     * private static final Supplier<CreateTableStatement> STOCK_TABLE = () -> CreateTableStatement.create()
+     *         .column("symbol", "String")
+     *         .orderByColumn("symbol");
+     *
+     * STOCK_TABLE.get().tableName(topic).execute(chc);
+     * }</pre>
+     * */
+    public static CreateTableStatement create() {
+        return new CreateTableStatement();
     }
 
     public CreateTableStatement tableName(String tableName) {
@@ -53,11 +89,16 @@ public class CreateTableStatement {
     }
 
     public CreateTableStatement engine(String engine) {
-        if (ClickHouseTestHelpers.isCluster() && "MergeTree".equals(engine)) {
+        if (ClickHouseTestHelpers.isCluster()
+                && ClickHouseTableEngine.MERGE_TREE.getSqlName().equals(engine)) {
             engine = ClickHouseCluster.getClusterFromEnvVarOrThrow().getMergeTreeEngine();
         }
         this.engine = engine;
         return this;
+    }
+
+    public CreateTableStatement engine(ClickHouseTableEngine engine) {
+        return engine(engine.getSqlName());
     }
 
     public CreateTableStatement orderByColumn(String orderByColumn) {

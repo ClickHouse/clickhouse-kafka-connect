@@ -109,9 +109,8 @@ public class ProtobufIngestTest extends ClickHouseBase {
         // 1. Create the ClickHouse table from the fixture column definitions.
         ClickHouseTestHelpers.dropTable(chc, topic);
         CreateTableStatement tableStmt =
-                new CreateTableStatement()
+                CreateTableStatement.create()
                         .tableName(topic)
-                        .engine("MergeTree")
                         .orderByColumn(fixture.getString(CLICKHOUSE_ORDER_BY_KEY));
         JSONObject clickhouseColumns = fixture.getJSONObject(CLICKHOUSE_COLUMNS_KEY);
         for (String colName : clickhouseColumns.keySet()) {

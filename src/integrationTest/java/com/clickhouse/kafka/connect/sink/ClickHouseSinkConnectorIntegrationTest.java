@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,7 +52,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
     private static final boolean isCloud = ClickHouseTestHelpers.isCloud();
-    private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
+    private static final Supplier<CreateTableStatement> STOCK_TABLE = () -> CreateTableStatement.create()
             .column("side", "String")
             .column("quantity", "Int32")
             .column("symbol", "String")
@@ -59,7 +60,6 @@ public class ClickHouseSinkConnectorIntegrationTest {
             .column("account", "String")
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
-            .engine("MergeTree")
             .orderByColumn("symbol");
     private static final Path RESOURCES_ROOT = Path.of("src", "integrationTest", "resources");
 
@@ -214,14 +214,14 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
+        STOCK_TABLE.get().tableName(topicName).execute(chcNoProxy);
         confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.BASE.getJsonPayload(taskCount, topicName));
     }
 
     private void setupSchemalessConnector(String topicName, int taskCount) throws IOException, InterruptedException {
         LOGGER.info("Setting up schemaless connector...");
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
+        STOCK_TABLE.get().tableName(topicName).execute(chcNoProxy);
         confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.BASE_SCHEMALESS.getJsonPayload(taskCount, topicName));
     }
 
@@ -249,7 +249,7 @@ public class ClickHouseSinkConnectorIntegrationTest {
         LOGGER.info("Setting up connector with jdbc properties...");
         confluentPlatform.deleteConnectors(SINK_CONNECTOR_NAME);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(STOCK_TABLE).tableName(topicName).execute(chcNoProxy);
+        STOCK_TABLE.get().tableName(topicName).execute(chcNoProxy);
         confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, SinkConfigs.JDBC_PROP.getJsonPayload(taskCount, topicName));
     }
 
@@ -327,9 +327,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
         // 2. Create ClickHouse table
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        CreateTableStatement tableStmt = new CreateTableStatement()
+        CreateTableStatement tableStmt = CreateTableStatement.create()
                 .tableName(topicName)
-                .engine("MergeTree")
                 .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         boolean hasJsonColumn = false;
@@ -491,9 +490,8 @@ public class ClickHouseSinkConnectorIntegrationTest {
 
         // 2. Create ClickHouse table
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        CreateTableStatement tableStmt = new CreateTableStatement()
+        CreateTableStatement tableStmt = CreateTableStatement.create()
                 .tableName(topicName)
-                .engine("MergeTree")
                 .orderByColumn(fixture.getString(clickhouseOrderByKey));
         JSONObject clickhouseColumns = fixture.getJSONObject(clickhouseColumnsKey);
         for (String colName : clickhouseColumns.keySet()) {
