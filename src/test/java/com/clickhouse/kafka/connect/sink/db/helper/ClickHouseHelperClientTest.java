@@ -412,4 +412,28 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         Assertions.assertTrue(ClickHouseSinkConfig.CONFIG.configKeys().containsKey(ClickHouseSinkConfig.SET_COMPRESSION_METHOD));
         Assertions.assertEquals(true, ClickHouseSinkConfig.CONFIG.configKeys().get(ClickHouseSinkConfig.SET_COMPRESSION_METHOD).defaultValue);
     }
+
+    @Test
+    public void testJdbcConnectionPropertiesMappedOnClientV2() {
+        // sslkey must map to client-v2 ssl_key (setClientKey); sslrootcert/sslcert keys match;
+        // sslcert also enables useSSLAuthentication. Generic options pass through setOption.
+        String jdbc = "sslmode=STRICT&sslrootcert=/certs/ca.crt&sslcert=/certs/client.crt&sslkey=/certs/client-key.pem&custom_opt=1";
+        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("clickhouse.example.com", 8443, null, null, -1)
+                .sslEnable(true)
+                .setJdbcConnectionProperties(jdbc)
+                .setDatabase("analytics")
+                .build();
+
+        Map<String, String> cfg = client.getClient().getConfiguration();
+        Assertions.assertEquals("/certs/ca.crt", cfg.get(ClientConfigProperties.CA_CERTIFICATE.getKey()));
+        Assertions.assertEquals("/certs/client.crt", cfg.get(ClientConfigProperties.SSL_CERTIFICATE.getKey()));
+        Assertions.assertEquals("/certs/client-key.pem", cfg.get(ClientConfigProperties.SSL_KEY.getKey()));
+        Assertions.assertEquals("true", cfg.get(ClientConfigProperties.SSL_AUTH.getKey()));
+        Assertions.assertEquals("STRICT", cfg.get("sslmode"));
+        Assertions.assertEquals("1", cfg.get("custom_opt"));
+        // Database is set via Builder, not the ignored URL path
+        Assertions.assertEquals("analytics", cfg.get(ClientConfigProperties.DATABASE.getKey()));
+    }
+
+
 }

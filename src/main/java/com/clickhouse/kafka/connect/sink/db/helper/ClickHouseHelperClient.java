@@ -160,21 +160,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
         if (this.sslEnabled)
             protocol += "s";
 
-        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
-        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
-            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
-        }
-
-        String url = String.format("%s://%s:%d/%s%s",
-                protocol,
-                hostname,
-                port,
-                database,
-                tmpJdbcConnectionProperties
-        );
-
+        // addEndpoint(String) accepts only protocol/host/port — query strings and
+        // path (including jdbcConnectionProperties) are ignored. Pass an address-only
+        // URL and apply jdbc options via Client.Builder APIs instead.
+        String url = String.format("%s://%s:%d", protocol, hostname, port);
         LOGGER.info("ClickHouse URL: {}", url);
-
 
         Client.Builder clientBuilder = new Client.Builder()
                 .addEndpoint(url)
@@ -188,15 +178,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             clientBuilder.serverSetting(NETWORK_COMPRESSION_METHOD, LZ4);
         }
 
-        if (jdbcConnectionProperties != null && !jdbcConnectionProperties.isEmpty()) {
-            String props = jdbcConnectionProperties.startsWith("?") ? jdbcConnectionProperties.substring(1) : jdbcConnectionProperties;
-            for (String pair : props.split("&")) {
-                String[] kv = pair.split("=", 2);
-                if (kv.length == 2 && !kv[0].isEmpty()) {
-                    clientBuilder.setOption(kv[0], kv[1]);
-                }
-            }
-        }
+        applyJdbcConnectionPropertiesV2(clientBuilder);
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
@@ -206,6 +188,47 @@ public class ClickHouseHelperClient implements AutoCloseable {
         }
         client = clientBuilder.build();
         return client;
+    }
+
+    /**
+     * Maps {@code jdbcConnectionProperties} onto Client V2 Builder APIs.
+     * TLS keys ({@code sslrootcert}, {@code sslcert}, {@code sslkey}) use dedicated
+     * setters so mTLS works; everything else is passed through {@link Client.Builder#setOption}.
+     */
+    void applyJdbcConnectionPropertiesV2(Client.Builder clientBuilder) {
+        if (jdbcConnectionProperties == null || jdbcConnectionProperties.isEmpty()) {
+            return;
+        }
+        String props = jdbcConnectionProperties.startsWith("?")
+                ? jdbcConnectionProperties.substring(1)
+                : jdbcConnectionProperties;
+        for (String pair : props.split("&")) {
+            if (pair.isEmpty()) {
+                continue;
+            }
+            String[] kv = pair.split("=", 2);
+            if (kv.length != 2 || kv[0].isEmpty()) {
+                continue;
+            }
+            String key = kv[0];
+            String value = kv[1];
+            switch (key) {
+                case "sslrootcert":
+                    clientBuilder.setRootCertificate(value);
+                    break;
+                case "sslcert":
+                    clientBuilder.setClientCertificate(value);
+                    clientBuilder.useSSLAuthentication(true);
+                    break;
+                case "sslkey":
+                case "ssl_key":
+                    clientBuilder.setClientKey(value);
+                    break;
+                default:
+                    clientBuilder.setOption(key, value);
+                    break;
+            }
+        }
     }
 
     public boolean ping() {
