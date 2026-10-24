@@ -169,16 +169,26 @@ public class ClickHouseHelperClient implements AutoCloseable {
         Client.Builder clientBuilder = new Client.Builder()
                 .addEndpoint(url)
                 .setUsername(this.username)
-                .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
                 .compressServerResponse(false)
                 .setDefaultDatabase(this.database);
+
+        // ClickHouseClientBuilder defaults password to "" (not null) when unset.
+        // Client.Builder.setPassword(...) marks "password" as configured in the
+        // underlying config map for any non-null value, including "". That then
+        // conflicts with SSL authentication ("Only one of password, access token
+        // or SSL authentication can be used per client.") once sslcert enables
+        // useSSLAuthentication below. Only set a password when one was actually
+        // provided, so cert-only (mTLS) configs without a password still work.
+        if (this.password != null && !this.password.isEmpty()) {
+            clientBuilder.setPassword(this.password);
+        }
 
         if (setCompressionMethod) {
             clientBuilder.serverSetting(NETWORK_COMPRESSION_METHOD, LZ4);
         }
 
-        applyJdbcConnectionPropertiesV2(clientBuilder);
+        applyJdbcConnectionPropertiesV2(jdbcConnectionProperties, clientBuilder);
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
@@ -194,8 +204,12 @@ public class ClickHouseHelperClient implements AutoCloseable {
      * Maps {@code jdbcConnectionProperties} onto Client V2 Builder APIs.
      * TLS keys ({@code sslrootcert}, {@code sslcert}, {@code sslkey}) use dedicated
      * setters so mTLS works; everything else is passed through {@link Client.Builder#setOption}.
+     * Static (and parameterized rather than reading the instance field directly) so the
+     * mapping logic can be unit tested against a bare {@link Client.Builder} without
+     * going through {@link Client.Builder#build()}, which eagerly loads TLS material
+     * from disk and would require real certificate files to exist.
      */
-    void applyJdbcConnectionPropertiesV2(Client.Builder clientBuilder) {
+    static void applyJdbcConnectionPropertiesV2(String jdbcConnectionProperties, Client.Builder clientBuilder) {
         if (jdbcConnectionProperties == null || jdbcConnectionProperties.isEmpty()) {
             return;
         }

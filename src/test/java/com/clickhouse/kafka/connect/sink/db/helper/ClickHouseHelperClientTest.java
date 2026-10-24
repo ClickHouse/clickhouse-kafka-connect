@@ -414,10 +414,13 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     }
 
     @Test
-    public void testJdbcConnectionPropertiesMappedOnClientV2() {
-        // sslkey must map to client-v2 ssl_key (setClientKey); sslrootcert/sslcert keys match;
-        // sslcert also enables useSSLAuthentication. Generic options pass through setOption.
-        String jdbc = "sslmode=STRICT&sslrootcert=/certs/ca.crt&sslcert=/certs/client.crt&sslkey=/certs/client-key.pem&custom_opt=1";
+    public void testJdbcConnectionPropertiesPassthroughAndDatabaseOnClientV2() {
+        // Covers the core V2 URL fix: addEndpoint(String) only accepts protocol/host/port,
+        // so the connector must pass an address-only URL and apply database + jdbc options
+        // via dedicated Builder APIs instead of appending them to the (ignored) URL.
+        // No TLS client-cert properties here so Client.Builder.build() does not need to
+        // load any certificate material from disk.
+        String jdbc = "sslmode=STRICT&custom_opt=1";
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("clickhouse.example.com", 8443, null, null, -1)
                 .sslEnable(true)
                 .setJdbcConnectionProperties(jdbc)
@@ -425,15 +428,41 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
                 .build();
 
         Map<String, String> cfg = client.getClient().getConfiguration();
-        Assertions.assertEquals("/certs/ca.crt", cfg.get(ClientConfigProperties.CA_CERTIFICATE.getKey()));
-        Assertions.assertEquals("/certs/client.crt", cfg.get(ClientConfigProperties.SSL_CERTIFICATE.getKey()));
-        Assertions.assertEquals("/certs/client-key.pem", cfg.get(ClientConfigProperties.SSL_KEY.getKey()));
-        Assertions.assertEquals("true", cfg.get(ClientConfigProperties.SSL_AUTH.getKey()));
         Assertions.assertEquals("STRICT", cfg.get("sslmode"));
         Assertions.assertEquals("1", cfg.get("custom_opt"));
         // Database is set via Builder, not the ignored URL path
         Assertions.assertEquals("analytics", cfg.get(ClientConfigProperties.DATABASE.getKey()));
     }
 
+    @Test
+    public void testApplyJdbcConnectionPropertiesV2_MapsTlsCertificatesAndSslAuth() {
+        // sslkey must map to client-v2 ssl_key (setClientKey); sslrootcert/sslcert keys match;
+        // sslcert also enables useSSLAuthentication. Generic options pass through setOption.
+        //
+        // Exercises ClickHouseHelperClient.applyJdbcConnectionPropertiesV2 directly against a
+        // bare Client.Builder rather than going through ClickHouseHelperClient.build(): the real
+        // Client.Builder.build() eagerly loads certificate files from disk when SSL auth /
+        // root certificates are configured, which would require real certificate files to exist
+        // on the filesystem just to unit-test the string-to-Builder-API mapping.
+        String jdbc = "sslrootcert=/certs/ca.crt&sslcert=/certs/client.crt&sslkey=/certs/client-key.pem";
+        Client.Builder clientBuilder = new Client.Builder();
 
+        ClickHouseHelperClient.applyJdbcConnectionPropertiesV2(jdbc, clientBuilder);
+
+        // Client.Builder does not expose a public getter for its configuration map, so
+        // read the private field directly to verify the mapping without calling build().
+        Map<String, String> cfg;
+        try {
+            java.lang.reflect.Field configurationField = Client.Builder.class.getDeclaredField("configuration");
+            configurationField.setAccessible(true);
+            //noinspection unchecked
+            cfg = (Map<String, String>) configurationField.get(clientBuilder);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("Unable to read Client.Builder configuration via reflection", e);
+        }
+        Assertions.assertEquals("/certs/ca.crt", cfg.get(ClientConfigProperties.CA_CERTIFICATE.getKey()));
+        Assertions.assertEquals("/certs/client.crt", cfg.get(ClientConfigProperties.SSL_CERTIFICATE.getKey()));
+        Assertions.assertEquals("/certs/client-key.pem", cfg.get(ClientConfigProperties.SSL_KEY.getKey()));
+        Assertions.assertEquals("true", cfg.get(ClientConfigProperties.SSL_AUTH.getKey()));
+    }
 }
