@@ -414,7 +414,12 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    public static ClickHouseHelperClient createClient(Map<String, String> props) {
+    /**
+     * Creates the V2 client used by test setup, cleanup, and assertions.
+     *
+     * <p>These properties must not be reused as connector or task properties.
+     */
+    public static ClickHouseHelperClient createV2TestClient(Map<String, String> props) {
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
         return new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
                 .setDatabase(csc.getDatabase())
@@ -423,11 +428,21 @@ public class ClickHouseTestHelpers {
                 .sslEnable(csc.isSslEnabled())
                 .setTimeout(csc.getTimeout())
                 .setRetry(csc.getRetry())
-                .useClientV2("V2".equals(csc.getClientVersion()))
+                // Test setup, cleanup, and assertions use V2 independently of the client
+                // version configured for the connector or writer under test.
+                .useClientV2(true)
                 .setSslSocketSni(csc.getSslSocketSni())
                 .enableReplicaPinning(csc.isEnableReplicaPinning())
                 .setCompressionMethod(csc.isSetCompressionMethod())
                 .build();
+    }
+
+    /**
+     * @deprecated Use {@link #createV2TestClient(Map)} with test-client properties.
+     */
+    @Deprecated
+    public static ClickHouseHelperClient createClient(Map<String, String> props) {
+        return createV2TestClient(props);
     }
 
     public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds) throws InterruptedException {

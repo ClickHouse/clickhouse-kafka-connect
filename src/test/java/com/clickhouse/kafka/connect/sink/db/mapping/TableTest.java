@@ -1,6 +1,5 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
-import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
@@ -53,9 +52,8 @@ class TableTest extends ClickHouseBase {
     }
 
     @Test
-    public void extractCommentV1() {
+    public void extractCommentV2() {
         Map<String, String> props = getBaseProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
 
         String tableName = createTopicName("extract-table-test");

@@ -2,6 +2,7 @@ package com.clickhouse.kafka.connect.sink;
 
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.google.crypto.tink.internal.Random;
@@ -38,7 +39,7 @@ public class ClickHouseBase {
             setupContainer(ClickHouseTestHelpers.CLICKHOUSE_DOCKER_IMAGE);
         }
 
-        try (var tmpClient = ClickHouseTestHelpers.createClient(getBaseProps())) {
+        try (var tmpClient = createTestClient()) {
             setDatabase(String.format("kafka_connect_test_%d_%s", Math.abs(Random.randInt()), System.currentTimeMillis()));
             ClickHouseTestHelpers.createDatabase(database, tmpClient);
             tmpClient.ping();
@@ -94,9 +95,39 @@ public class ClickHouseBase {
         this.database = database;
     }
 
-    protected Map<String, String> getBaseProps() {
-        Map<String, String> props = new HashMap<>();
+    /**
+     * Properties passed to production connector, task, writer, or configuration code under test.
+     */
+    protected Map<String, String> getConnectorProps() {
+        Map<String, String> props = getConnectionProps();
         props.put(ClickHouseSinkConnector.CLIENT_VERSION, ClickHouseTestHelpers.extractClientVersion());
+        return props;
+    }
+
+    /**
+     * Properties used only to construct the V2 client for test setup, cleanup, and assertions.
+     */
+    protected Map<String, String> getTestClientProps() {
+        Map<String, String> props = getConnectionProps();
+        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
+        return props;
+    }
+
+    protected ClickHouseHelperClient createTestClient() {
+        return ClickHouseTestHelpers.createV2TestClient(getTestClientProps());
+    }
+
+    /**
+     * @deprecated Use {@link #getConnectorProps()} for production code under test or
+     *     {@link #getTestClientProps()} for test infrastructure.
+     */
+    @Deprecated
+    protected Map<String, String> getBaseProps() {
+        return getConnectorProps();
+    }
+
+    private Map<String, String> getConnectionProps() {
+        Map<String, String> props = new HashMap<>();
         if (isCloud) {
             props.put(ClickHouseSinkConnector.HOSTNAME, System.getenv(ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST));
             props.put(ClickHouseSinkConnector.PORT, ClickHouseTestHelpers.HTTPS_PORT);

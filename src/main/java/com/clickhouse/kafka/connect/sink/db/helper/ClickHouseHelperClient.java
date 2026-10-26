@@ -55,10 +55,8 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private final boolean sslEnabled;
     private final String jdbcConnectionProperties;
     private final int timeout;
-    @Getter
-    private ClickHouseNode server = null;
-    @Getter
-    private Client client = null;
+    private final ClickHouseNode server;
+    private final Client client;
     private final int retry;
     private ClickHouseProxyType proxyType = null;
     private String proxyHost = null;
@@ -95,14 +93,19 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.clusterClause = builder.clusterClause;
         this.enableReplicaPinning = builder.enableReplicaPinning;
         this.setCompressionMethod = builder.setCompressionMethod;
-        // We are creating two clients, one for V1 and one for V2
-        this.client = createClientV2();
-        this.server = createClientV1();
+        if (useClientV2) {
+            this.client = createClientV2();
+            this.server = null;
+        } else {
+            this.server = createClientV1();
+            this.client = null;
+        }
     }
 
     public static final String CONNECT_CLIENT_NAME = "clickhouse-kafka-connect/" + Version.ARTIFACT_VERSION;
 
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
+        requireClientV1();
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
         options.put(ClickHouseClientOption.CLIENT_NAME, CONNECT_CLIENT_NAME);
         if (setCompressionMethod) {
@@ -151,8 +154,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             options.put(ClickHouseClientOption.SSL_SOCKET_SNI.getKey(), sslSocketSni);
             options.put(ClickHouseClientOption.SSL_MODE.getKey(), ClickHouseSslMode.NONE.name().toLowerCase()); // disable hostname/cert validation (matches client v2 behavior - see HttpAPIClientHelper.createHttpClient)
         }
-        server = ClickHouseNode.of(url, options);
-        return server;
+        return ClickHouseNode.of(url, options);
     }
 
     private Client createClientV2() {
@@ -204,8 +206,29 @@ public class ClickHouseHelperClient implements AutoCloseable {
         if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
             clientBuilder.sslSocketSNI(sslSocketSni);
         }
-        client = clientBuilder.build();
+        return clientBuilder.build();
+    }
+
+    public ClickHouseNode getServer() {
+        requireClientV1();
+        return server;
+    }
+
+    public Client getClient() {
+        requireClientV2();
         return client;
+    }
+
+    private void requireClientV1() {
+        if (useClientV2) {
+            throw new IllegalStateException("ClickHouse client V1 is not configured");
+        }
+    }
+
+    private void requireClientV2() {
+        if (!useClientV2) {
+            throw new IllegalStateException("ClickHouse client V2 is not configured");
+        }
     }
 
     public boolean ping() {
@@ -241,7 +264,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private boolean pingV2() {
         int retryCount = 0;
         while (retryCount < retry) {
-            if (client.ping(timeout)) {
+            if (getClient().ping(timeout)) {
                 LOGGER.info("Ping was successful.");
                 return true;
             }
@@ -277,7 +300,8 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
     public String versionV2() {
         QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.RowBinaryWithNamesAndTypes);
-        CompletableFuture<Records> futureRecords = client.queryRecords("SELECT VERSION()", settings);
+        CompletableFuture<Records> futureRecords =
+                getClient().queryRecords("SELECT VERSION()", settings);
         try (Records records = futureRecords.get()) {
 
             for (GenericRecord record : records) {
@@ -331,7 +355,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         Exception ce = null;
         while (retryCount < retry) {
             System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
-            CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
+            CompletableFuture<Records> futureRecords = getClient().queryRecords(query, settings);
             try {
                 Records records = futureRecords.get();
                 return records;
@@ -480,7 +504,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             boolean hasDefaults = false;
             int numColumns = 0;
             List<Column> columns = new ArrayList<>();
-            try (QueryResponse queryResponse = client.query(describeQuery, settings).get();
+            try (QueryResponse queryResponse = getClient().query(describeQuery, settings).get();
                  BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream()))) {
                 String line = null;
                 Set<String> skippedCols = new HashSet<>();
@@ -560,7 +584,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         for (Map.Entry<String, String> entry : clickhouseSettings.entrySet()) {
             settings.serverSetting(entry.getKey(), entry.getValue());
         }
-        try (QueryResponse response = client.query(sql, settings).get()) {
+        try (QueryResponse response = getClient().query(sql, settings).get()) {
             // DDL executed; alter_sync=1 waits for the local replica to apply
         } catch (Exception e) {
             throw new RuntimeException("Failed to execute ALTER TABLE: " + sql, e);
@@ -629,6 +653,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public ClickHouseRequest setReplicaTagHeaderV1(ClickHouseRequest request) {
+        requireClientV1();
         String tag = replicaTag.get();
         if (tag != null && request != null) {
             try {
@@ -650,6 +675,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public void setReplicaTagHeaderV2(QuerySettings settings) {
+        requireClientV2();
         String tag = replicaTag.get();
         if (tag != null && settings != null) {
             settings.httpHeader(REPLICA_TAG_HEADER, tag);
@@ -657,6 +683,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public void setReplicaTagHeaderV2(InsertSettings settings) {
+        requireClientV2();
         String tag = replicaTag.get();
         if (tag != null && settings != null) {
             settings.httpHeader(REPLICA_TAG_HEADER, tag);

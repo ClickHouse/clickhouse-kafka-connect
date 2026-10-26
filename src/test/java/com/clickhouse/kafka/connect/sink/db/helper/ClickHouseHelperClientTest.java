@@ -248,6 +248,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_DisabledFeatureFlag() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .enableReplicaPinning(false)
                 .build();
         client.pinReplica();
@@ -259,6 +260,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_NoPriorCustomHeaders() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -272,6 +274,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_EmptyCustomHeaders() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -285,6 +288,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_PreExistingCustomHeadersWithoutTrailingComma() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -298,6 +302,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_PreExistingCustomHeadersWithTrailingComma() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -311,6 +316,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_AppendsToExistingReplicaTag() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -324,6 +330,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_UnpinReset() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -355,43 +362,68 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     @Test
     public void testSetCompressionMethod_DefaultIsTrue() {
-        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+        ClickHouseHelperClient clientV1 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .build();
-        Assertions.assertTrue(client.isSetCompressionMethod());
+        ClickHouseHelperClient clientV2 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .build();
+        Assertions.assertTrue(clientV1.isSetCompressionMethod());
+        Assertions.assertTrue(clientV2.isSetCompressionMethod());
 
         // V1 client options
-        Map<com.clickhouse.config.ClickHouseOption, java.io.Serializable> defaultOptions = client.getDefaultClientOptions();
+        Map<com.clickhouse.config.ClickHouseOption, java.io.Serializable> defaultOptions = clientV1.getDefaultClientOptions();
         Assertions.assertEquals(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD + "=" + ClickHouseHelperClient.LZ4,
                 defaultOptions.get(ClickHouseClientOption.CUSTOM_SETTINGS));
 
         // V1 node options
         Assertions.assertEquals(ClickHouseHelperClient.LZ4,
-                client.getServer().getOptions().get(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD));
+                clientV1.getServer().getOptions().get(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD));
 
         // V2 client configuration
-        Map<String, String> v2Config = client.getClient().getConfiguration();
+        Map<String, String> v2Config = clientV2.getClient().getConfiguration();
         Assertions.assertTrue(v2Config.entrySet().stream()
                 .anyMatch(e -> e.getKey().contains(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD) && ClickHouseHelperClient.LZ4.equals(e.getValue())));
     }
 
     @Test
     public void testSetCompressionMethod_Disabled() {
-        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+        ClickHouseHelperClient clientV1 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
                 .setCompressionMethod(false)
                 .build();
-        Assertions.assertFalse(client.isSetCompressionMethod());
+        ClickHouseHelperClient clientV2 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .setCompressionMethod(false)
+                .build();
+        Assertions.assertFalse(clientV1.isSetCompressionMethod());
+        Assertions.assertFalse(clientV2.isSetCompressionMethod());
 
         // V1 client options
-        Map<com.clickhouse.config.ClickHouseOption, java.io.Serializable> defaultOptions = client.getDefaultClientOptions();
+        Map<com.clickhouse.config.ClickHouseOption, java.io.Serializable> defaultOptions = clientV1.getDefaultClientOptions();
         Assertions.assertNull(defaultOptions.get(ClickHouseClientOption.CUSTOM_SETTINGS));
 
         // V1 node options
-        Assertions.assertNull(client.getServer().getOptions().get(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD));
+        Assertions.assertNull(clientV1.getServer().getOptions().get(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD));
 
         // V2 client configuration
-        Map<String, String> v2Config = client.getClient().getConfiguration();
+        Map<String, String> v2Config = clientV2.getClient().getConfiguration();
         Assertions.assertFalse(v2Config.entrySet().stream()
                 .anyMatch(e -> e.getKey().contains(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD)));
+    }
+
+    @Test
+    public void initializesOnlyConfiguredClient() {
+        ClickHouseHelperClient clientV1 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(false)
+                .build();
+        ClickHouseHelperClient clientV2 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(true)
+                .build();
+
+        Assertions.assertNotNull(clientV1.getServer());
+        Assertions.assertThrows(IllegalStateException.class, clientV1::getClient);
+        Assertions.assertNotNull(clientV2.getClient());
+        Assertions.assertThrows(IllegalStateException.class, clientV2::getServer);
+        Assertions.assertThrows(IllegalStateException.class, clientV2::getDefaultClientOptions);
     }
 
     @Test
