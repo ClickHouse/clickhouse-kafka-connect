@@ -104,17 +104,13 @@ public class ClickHouseBase {
         return props;
     }
 
-    /**
-     * Properties used only to construct the V2 client for test setup, cleanup, and assertions.
-     */
+    /** Properties used only by test setup, cleanup, and assertions. */
     protected Map<String, String> getTestClientProps() {
-        Map<String, String> props = getConnectionProps();
-        props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
-        return props;
+        return getConnectionProps();
     }
 
     protected ClickHouseHelperClient createTestClient() {
-        return ClickHouseTestHelpers.createV2TestClient(getTestClientProps());
+        return ClickHouseTestHelpers.createClient(getTestClientProps());
     }
 
     /**

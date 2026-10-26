@@ -93,13 +93,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.clusterClause = builder.clusterClause;
         this.enableReplicaPinning = builder.enableReplicaPinning;
         this.setCompressionMethod = builder.setCompressionMethod;
-        if (useClientV2) {
-            this.client = createClientV2();
-            this.server = null;
-        } else {
-            this.server = createClientV1();
-            this.client = null;
-        }
+        // Production helpers initialize both independent client stacks. Tests can isolate one stack
+        // explicitly so setup and verification cannot accidentally fall back to V1.
+        this.server = builder.initializeClientV1 ? createClientV1() : null;
+        this.client = builder.initializeClientV2 ? createClientV2() : null;
     }
 
     public static final String CONNECT_CLIENT_NAME = "clickhouse-kafka-connect/" + Version.ARTIFACT_VERSION;
@@ -111,6 +108,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         if (setCompressionMethod) {
             options.put(ClickHouseClientOption.CUSTOM_SETTINGS, NETWORK_COMPRESSION_METHOD + "=" + LZ4);
         }
+        // V1 defaults to compressed responses while V2 does not; disable it explicitly for parity.
         options.put(ClickHouseClientOption.COMPRESS, false);
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             options.put(ClickHouseClientOption.PROXY_TYPE, proxyType);
@@ -183,6 +181,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
                 .setUsername(this.username)
                 .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
+                // Keep the response format aligned with the explicit V1 COMPRESS=false setting.
                 .compressServerResponse(false)
                 .setDefaultDatabase(this.database);
 
@@ -200,8 +199,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
             }
         }
 
-        if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
+        if (ClickHouseProxyType.HTTP.equals(proxyType)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
+        } else if (ClickHouseProxyType.SOCKS.equals(proxyType)) {
+            // V2 does not consume the V1 proxy enum; translate the shared connector setting.
+            clientBuilder.addProxy(ProxyType.SOCKS, proxyHost, proxyPort);
         }
         if (sslSocketSni != null && !sslSocketSni.isEmpty()) {
             clientBuilder.sslSocketSNI(sslSocketSni);
@@ -220,14 +222,14 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     private void requireClientV1() {
-        if (useClientV2) {
-            throw new IllegalStateException("ClickHouse client V1 is not configured");
+        if (server == null) {
+            throw new IllegalStateException("ClickHouse client V1 was not initialized");
         }
     }
 
     private void requireClientV2() {
-        if (!useClientV2) {
-            throw new IllegalStateException("ClickHouse client V2 is not configured");
+        if (client == null) {
+            throw new IllegalStateException("ClickHouse client V2 was not initialized");
         }
     }
 
@@ -706,7 +708,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public static class ClickHouseClientBuilder {
-        private ClickHouseSinkConfig config = null;
         private String hostname = null;
         private int port = -1;
         private String username = "default";
@@ -720,11 +721,13 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private ClickHouseProxyType proxyType = null;
         private String proxyHost = null;
         private int proxyPort = -1;
-        private boolean useClientV2 = true;
+        private boolean useClientV2 = false;
         private String sslSocketSni = "";
         private String clusterClause = "";
         private boolean enableReplicaPinning = false;
         private boolean setCompressionMethod = ClickHouseSinkConfig.setCompressionMethodDefault;
+        private boolean initializeClientV1 = true;
+        private boolean initializeClientV2 = true;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -732,6 +735,25 @@ public class ClickHouseHelperClient implements AutoCloseable {
             this.proxyType = proxyType;
             this.proxyHost = proxyHost;
             this.proxyPort = proxyPort;
+        }
+
+        /**
+         * Copies the connector's already-parsed connection settings for both client builders.
+         */
+        public ClickHouseClientBuilder(ClickHouseSinkConfig config) {
+            this(config.getHostname(), config.getPort(), config.getProxyType(), config.getProxyHost(), config.getProxyPort());
+            this.username = config.getUsername();
+            this.password = config.getPassword();
+            this.database = config.getDatabase();
+            this.sslEnabled = config.isSslEnabled();
+            this.jdbcConnectionProperties = config.getJdbcConnectionProperties();
+            this.timeout = config.getTimeout();
+            this.retry = config.getRetry();
+            this.useClientV2 = !"V1".equals(config.getClientVersion());
+            this.sslSocketSni = config.getSslSocketSni();
+            setClusterClause(config.getClusterName());
+            this.enableReplicaPinning = config.isEnableReplicaPinning();
+            this.setCompressionMethod = config.isSetCompressionMethod();
         }
 
 
@@ -772,6 +794,12 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder useClientV2(boolean useClientV2) {
             this.useClientV2 = useClientV2;
+            return this;
+        }
+
+        public ClickHouseClientBuilder initializeOnlyClient() {
+            this.initializeClientV1 = !useClientV2;
+            this.initializeClientV2 = useClientV2;
             return this;
         }
 

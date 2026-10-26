@@ -5,6 +5,7 @@ import com.clickhouse.client.api.query.QueryResponse;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.data.ClickHouseFormat;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
@@ -414,35 +415,16 @@ public class ClickHouseTestHelpers {
         }
     }
 
-    /**
-     * Creates the V2 client used by test setup, cleanup, and assertions.
-     *
-     * <p>These properties must not be reused as connector or task properties.
-     */
-    public static ClickHouseHelperClient createV2TestClient(Map<String, String> props) {
-        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(props);
-        return new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(csc.getDatabase())
-                .setUsername(csc.getUsername())
-                .setPassword(csc.getPassword())
-                .sslEnable(csc.isSslEnabled())
-                .setTimeout(csc.getTimeout())
-                .setRetry(csc.getRetry())
-                // Test setup, cleanup, and assertions use V2 independently of the client
-                // version configured for the connector or writer under test.
+    /** Creates the client used by test setup, cleanup, and assertions. */
+    public static ClickHouseHelperClient createClient(Map<String, String> connectionProps) {
+        Map<String, String> testClientProps = new HashMap<>(connectionProps);
+        testClientProps.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
+        ClickHouseSinkConfig csc = new ClickHouseSinkConfig(testClientProps);
+        return new ClickHouseHelperClient.ClickHouseClientBuilder(csc)
+                // Test infrastructure uses V2 without mutating or sharing connector properties.
                 .useClientV2(true)
-                .setSslSocketSni(csc.getSslSocketSni())
-                .enableReplicaPinning(csc.isEnableReplicaPinning())
-                .setCompressionMethod(csc.isSetCompressionMethod())
+                .initializeOnlyClient()
                 .build();
-    }
-
-    /**
-     * @deprecated Use {@link #createV2TestClient(Map)} with test-client properties.
-     */
-    @Deprecated
-    public static ClickHouseHelperClient createClient(Map<String, String> props) {
-        return createV2TestClient(props);
     }
 
     public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds) throws InterruptedException {
