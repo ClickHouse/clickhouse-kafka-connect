@@ -1111,7 +1111,7 @@ public class ClickHouseWriter implements DBWriter {
      *
      * @return total time spent serializing, in milliseconds
      */
-    private long writeRecordsRowBinary(List<Record> records, Table table, OutputStream stream, boolean supportDefaults) throws IOException {
+    long writeRecordsRowBinary(List<Record> records, Table table, OutputStream stream, boolean supportDefaults) throws IOException {
         long pushStreamTime = 0;
         for (Record record : records) {
             if (record.getSinkRecord().value() != null) {
