@@ -10,6 +10,7 @@ import com.clickhouse.client.api.insert.InsertSettings;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.http.config.ClickHouseHttpOption;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
@@ -248,6 +249,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_DisabledFeatureFlag() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
                 .enableReplicaPinning(false)
                 .build();
         client.pinReplica();
@@ -259,6 +261,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_NoPriorCustomHeaders() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -272,6 +275,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_EmptyCustomHeaders() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -285,6 +289,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_PreExistingCustomHeadersWithoutTrailingComma() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -298,6 +303,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_PreExistingCustomHeadersWithTrailingComma() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -311,6 +317,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_AppendsToExistingReplicaTag() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -324,6 +331,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV1_UnpinReset() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -336,6 +344,8 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV2() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(true)
+                .initializeOnlyClient()
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -355,8 +365,9 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     @Test
     public void testSetCompressionMethod_DefaultIsTrue() {
-        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
-                .build();
+        ClickHouseHelperClient client =
+                new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                        .build();
         Assertions.assertTrue(client.isSetCompressionMethod());
 
         // V1 client options
@@ -392,6 +403,40 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         Map<String, String> v2Config = client.getClient().getConfiguration();
         Assertions.assertFalse(v2Config.entrySet().stream()
                 .anyMatch(e -> e.getKey().contains(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD)));
+    }
+
+    @Test
+    public void initializesBothClientsByDefaultAndAllowsTestIsolation() {
+        ClickHouseHelperClient productionClient =
+                new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                        .build();
+        ClickHouseHelperClient clientV1 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .initializeOnlyClient()
+                .build();
+        ClickHouseHelperClient clientV2 = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(true)
+                .initializeOnlyClient()
+                .build();
+
+        Assertions.assertNotNull(productionClient.getServer());
+        Assertions.assertNotNull(productionClient.getClient());
+        Assertions.assertNotNull(clientV1.getServer());
+        Assertions.assertThrows(IllegalStateException.class, clientV1::getClient);
+        Assertions.assertNotNull(clientV2.getClient());
+        Assertions.assertThrows(IllegalStateException.class, clientV2::getServer);
+        Assertions.assertThrows(IllegalStateException.class, clientV2::getDefaultClientOptions);
+    }
+
+    @Test
+    public void testClientUsesCopiedPropertiesWithoutMutatingConnectorProperties() {
+        Map<String, String> connectorProps = getConnectorProps();
+        connectorProps.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
+
+        try (ClickHouseHelperClient testClient = ClickHouseTestHelpers.createClient(connectorProps)) {
+            Assertions.assertEquals("V1", connectorProps.get(ClickHouseSinkConnector.CLIENT_VERSION));
+            Assertions.assertTrue(testClient.isUseClientV2());
+            Assertions.assertThrows(IllegalStateException.class, testClient::getServer);
+        }
     }
 
     @Test
