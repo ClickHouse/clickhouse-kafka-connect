@@ -8,6 +8,14 @@
   `errors.tolerance` and the DLQ). Motivating case: `216 QUERY_WITH_SAME_ID_IS_ALREADY_RUNNING` from the client's
   same-query-id retry. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/847, https://github.com/ClickHouse/clickhouse-kafka-connect/issues/455)
 
+## Bug Fixes
+
+* Serialization failures now report which record failed — topic, partition and offset — and which column could not be
+  written, instead of only naming the Java types involved. This makes the offending record identifiable from the task
+  log for errors such as a `Date` before 1970 being rejected by the negative-number check.
+  `RetriableException` is still rethrown untouched, so a transient server condition keeps redelivering the batch rather
+  than failing the record. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/640)
+
 # 1.7.0, 2026-09-30
 
 ## Important Changes
