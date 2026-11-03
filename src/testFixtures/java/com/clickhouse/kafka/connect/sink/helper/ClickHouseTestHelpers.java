@@ -418,13 +418,10 @@ public class ClickHouseTestHelpers {
     /** Creates the client used by test setup, cleanup, and assertions. */
     public static ClickHouseHelperClient createClient(Map<String, String> connectionProps) {
         Map<String, String> testClientProps = new HashMap<>(connectionProps);
+        // Test infrastructure uses V2 without mutating or sharing connector properties.
         testClientProps.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
         ClickHouseSinkConfig csc = new ClickHouseSinkConfig(testClientProps);
-        return new ClickHouseHelperClient.ClickHouseClientBuilder(csc)
-                // Test infrastructure uses V2 without mutating or sharing connector properties.
-                .useClientV2(true)
-                .initializeOnlyClient()
-                .build();
+        return new ClickHouseHelperClient.ClickHouseClientBuilder(csc).build();
     }
 
     public static void waitWhileCounting(ClickHouseHelperClient chc, String tableName, int sleepInSeconds) throws InterruptedException {

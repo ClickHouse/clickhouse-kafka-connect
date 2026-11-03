@@ -115,7 +115,7 @@ public class ClickHouseReplicaPinningMockServerTest {
     public void testReplicaTaggingFlowClientV1() {
         ClickHouseHelperClient chc = new ClickHouseHelperClient.ClickHouseClientBuilder("127.0.0.1", port, ClickHouseProxyType.IGNORE, null, -1)
                 .setDatabase("default")
-                .initializeOnlyClient()
+                .useClientV2(false)
                 .setJdbcConnectionProperties("compress=0&decompress=0")
                 .enableReplicaPinning(true)
                 .build();
@@ -165,7 +165,6 @@ public class ClickHouseReplicaPinningMockServerTest {
         ClickHouseHelperClient chc = new ClickHouseHelperClient.ClickHouseClientBuilder("127.0.0.1", port, ClickHouseProxyType.IGNORE, null, -1)
                 .setDatabase("default")
                 .useClientV2(true)
-                .initializeOnlyClient()
                 .setJdbcConnectionProperties("compress=false&decompress=false")
                 .enableReplicaPinning(true)
                 .build();
@@ -206,7 +205,7 @@ public class ClickHouseReplicaPinningMockServerTest {
     public void testReplicaTaggingDisabledFeatureFlag() {
         ClickHouseHelperClient chc = new ClickHouseHelperClient.ClickHouseClientBuilder("127.0.0.1", port, ClickHouseProxyType.IGNORE, null, -1)
                 .setDatabase("default")
-                .initializeOnlyClient()
+                .useClientV2(false)
                 .setJdbcConnectionProperties("compress=0&decompress=0")
                 .enableReplicaPinning(false)
                 .build();

@@ -93,16 +93,14 @@ public class ClickHouseHelperClient implements AutoCloseable {
         this.clusterClause = builder.clusterClause;
         this.enableReplicaPinning = builder.enableReplicaPinning;
         this.setCompressionMethod = builder.setCompressionMethod;
-        // Production helpers initialize both independent client stacks. Tests can isolate one stack
-        // explicitly so setup and verification cannot accidentally fall back to V1.
-        this.server = builder.initializeClientV1 ? createClientV1() : null;
-        this.client = builder.initializeClientV2 ? createClientV2() : null;
+        // Keep initialization independent: neither client is built from the other client's objects.
+        this.server = createClientV1();
+        this.client = createClientV2();
     }
 
     public static final String CONNECT_CLIENT_NAME = "clickhouse-kafka-connect/" + Version.ARTIFACT_VERSION;
 
     public Map<ClickHouseOption, Serializable> getDefaultClientOptions() {
-        requireClientV1();
         Map<ClickHouseOption, Serializable> options = new HashMap<>();
         options.put(ClickHouseClientOption.CLIENT_NAME, CONNECT_CLIENT_NAME);
         if (setCompressionMethod) {
@@ -212,25 +210,11 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public ClickHouseNode getServer() {
-        requireClientV1();
         return server;
     }
 
     public Client getClient() {
-        requireClientV2();
         return client;
-    }
-
-    private void requireClientV1() {
-        if (server == null) {
-            throw new IllegalStateException("ClickHouse client V1 was not initialized");
-        }
-    }
-
-    private void requireClientV2() {
-        if (client == null) {
-            throw new IllegalStateException("ClickHouse client V2 was not initialized");
-        }
     }
 
     public boolean ping() {
@@ -655,7 +639,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public ClickHouseRequest setReplicaTagHeaderV1(ClickHouseRequest request) {
-        requireClientV1();
         String tag = replicaTag.get();
         if (tag != null && request != null) {
             try {
@@ -677,7 +660,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public void setReplicaTagHeaderV2(QuerySettings settings) {
-        requireClientV2();
         String tag = replicaTag.get();
         if (tag != null && settings != null) {
             settings.httpHeader(REPLICA_TAG_HEADER, tag);
@@ -685,7 +667,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
     }
 
     public void setReplicaTagHeaderV2(InsertSettings settings) {
-        requireClientV2();
         String tag = replicaTag.get();
         if (tag != null && settings != null) {
             settings.httpHeader(REPLICA_TAG_HEADER, tag);
@@ -702,9 +683,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
     @Override
     public void close() {
-        if (client != null) {
-            client.close();
-        }
+        client.close();
     }
 
     public static class ClickHouseClientBuilder {
@@ -726,8 +705,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
         private String clusterClause = "";
         private boolean enableReplicaPinning = false;
         private boolean setCompressionMethod = ClickHouseSinkConfig.setCompressionMethodDefault;
-        private boolean initializeClientV1 = true;
-        private boolean initializeClientV2 = true;
 
         public ClickHouseClientBuilder(String hostname, int port, ClickHouseProxyType proxyType, String proxyHost, int proxyPort) {
             this.hostname = hostname;
@@ -794,12 +771,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
         public ClickHouseClientBuilder useClientV2(boolean useClientV2) {
             this.useClientV2 = useClientV2;
-            return this;
-        }
-
-        public ClickHouseClientBuilder initializeOnlyClient() {
-            this.initializeClientV1 = !useClientV2;
-            this.initializeClientV2 = useClientV2;
             return this;
         }
 

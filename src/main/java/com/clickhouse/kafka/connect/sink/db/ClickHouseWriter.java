@@ -1512,18 +1512,17 @@ public class ClickHouseWriter implements DBWriter {
     }
     private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String database, QueryIdentifier queryId) {
 
-        ClickHouseHelperClient chcTmp = new ClickHouseHelperClient.ClickHouseClientBuilder(csc)
-                .setDatabase(database)
-                // This temporary helper only creates the database-specific V1 node used below.
-                .useClientV2(false)
-                .initializeOnlyClient()
-                .build();
-
-        ClickHouseNode server = chcTmp.getServer();
-        ClickHouseRequest.Mutation request = client.read(server)
-                .write()
-                .table(tableName, queryId.getQueryId())
-                .format(format);
+        ClickHouseRequest.Mutation request;
+        try (ClickHouseHelperClient databaseClient =
+                new ClickHouseHelperClient.ClickHouseClientBuilder(csc)
+                        .setDatabase(database)
+                        .build()) {
+            ClickHouseNode server = databaseClient.getServer();
+            request = client.read(server)
+                    .write()
+                    .table(tableName, queryId.getQueryId())
+                    .format(format);
+        }
 
         String deduplicationToken = queryId.getDeduplicationToken();
         if (deduplicationToken != null) {
