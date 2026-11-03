@@ -26,6 +26,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -44,7 +45,7 @@ public class ExactlyOnceTest {
     private static final String SINK_CONNECTOR_NAME = "ClickHouseSinkConnector";
     private static final boolean isCluster = ClickHouseTestHelpers.isCluster();
     private static final boolean isCloud = ClickHouseTestHelpers.isCloud();
-    private static final CreateTableStatement STOCK_TABLE = new CreateTableStatement()
+    private static final Supplier<CreateTableStatement> STOCK_TABLE = () -> CreateTableStatement.create()
             .column("side", "String")
             .column("quantity", "Int32")
             .column("symbol", "String")
@@ -52,7 +53,6 @@ public class ExactlyOnceTest {
             .column("account", "String")
             .column("userid", "String")
             .column("insertTime", "DateTime DEFAULT now()")
-            .engine("MergeTree")
             .orderByColumn("symbol");
     private static final String SCHEMALESS_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json";
     private static final String SCHEMALESS_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless_cluster.json";
@@ -214,7 +214,7 @@ public class ExactlyOnceTest {
     private static void setupConnector(String topicName, int taskCount, boolean schemaless, String configOverride) throws IOException {
         System.out.println("Setting up connector...");
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        new CreateTableStatement(STOCK_TABLE)
+        STOCK_TABLE.get()
                 .tableName(topicName).execute(chcNoProxy);
 
         String fileName;
@@ -270,7 +270,7 @@ public class ExactlyOnceTest {
 
     private boolean compareCounts(String topicName, int partitions, String configPath, boolean schema)
             throws InterruptedException, IOException {
-        new CreateTableStatement(STOCK_TABLE) // implicitly SharedMergeTree in CH Cloud
+        STOCK_TABLE.get() // implicitly SharedMergeTree in CH Cloud
                 .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
         ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);

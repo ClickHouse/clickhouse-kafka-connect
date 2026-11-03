@@ -15,13 +15,14 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
 
-    private static final CreateTableStatement SMALL_INT_TABLE = new CreateTableStatement()
+    private static final Supplier<CreateTableStatement> SMALL_INT_TABLE = () -> CreateTableStatement.create()
             .column("off16", "Int16")
             .column("str", "String")
             .column("p_int8", "Int8")
@@ -31,7 +32,6 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
             .column("p_float32", "Float32")
             .column("p_float64", "Float64")
             .column("p_bool", "Bool")
-            .engine("MergeTree")
             .orderByColumn("off16");
 
     public Collection<SinkRecord> createPrimitiveTypes(String topic, int partition) {
@@ -174,7 +174,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_primitive_types_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(SMALL_INT_TABLE).tableName(topic).execute(chc);
+        SMALL_INT_TABLE.get().tableName(topic).execute(chc);
         Collection<SinkRecord> sr = createPrimitiveTypes(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();
@@ -196,7 +196,7 @@ public class ClickHouseSinkJdbcPropertiesTest extends ClickHouseBase {
         // `arr_int8` Array(Int8), `arr_int16` Array(Int16), `arr_int32` Array(Int32), `arr_int64` Array(Int64), `arr_float32` Array(Float32), `arr_float64` Array(Float64), `arr_bool` Array(Bool)
         String topic = createTopicName("schemaless_empty_records_table_test");
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement(SMALL_INT_TABLE).tableName(topic).execute(chc);
+        SMALL_INT_TABLE.get().tableName(topic).execute(chc);
         Collection<SinkRecord> sr = createWithEmptyDataRecords(topic, 1);
 
         ClickHouseSinkTask chst = new ClickHouseSinkTask();

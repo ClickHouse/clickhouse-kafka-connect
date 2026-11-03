@@ -36,3 +36,8 @@ build
 
 # AI
 memory
+
+# ecliose
+.classpath
+.project
+.settings/

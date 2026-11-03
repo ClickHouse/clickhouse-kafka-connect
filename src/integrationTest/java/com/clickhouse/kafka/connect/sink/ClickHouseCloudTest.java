@@ -73,13 +73,13 @@ public class ClickHouseCloudTest {
         ClickHouseHelperClient chc = ClickHouseTestHelpers.createClient(props);
         String topic = "schemaless_overlap_table_test";
         ClickHouseTestHelpers.dropTable(chc, topic);
-        new CreateTableStatement()
+        CreateTableStatement.create()
                 .tableName(topic)
                 .column("off16", "Int16").column("str", "String")
                 .column("p_int8", "Int8").column("p_int16", "Int16").column("p_int32", "Int32")
                 .column("p_int64", "Int64").column("p_float32", "Float32")
                 .column("p_float64", "Float64").column("p_bool", "Bool")
-                .engine("MergeTree").orderByColumn("off16").execute(chc);
+                .orderByColumn("off16").execute(chc);
         Collection<SinkRecord> sr = SchemalessTestData.createPrimitiveTypes(topic, 1);
         Collection<SinkRecord> firstBatch = new ArrayList<>();
         Collection<SinkRecord> secondBatch = new ArrayList<>();
