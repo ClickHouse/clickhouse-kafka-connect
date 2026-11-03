@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class Utils {
 
@@ -62,14 +63,30 @@ public class Utils {
         return t instanceof ClickHouseException || t instanceof ServerException;
     }
 
+    public static final Set<Integer> DEFAULT_RETRIABLE_ERROR_CODES = Set.of(
+            3,   // UNEXPECTED_END_OF_FILE
+            107, // FILE_DOESNT_EXIST
+            159, // TIMEOUT_EXCEEDED
+            164, // READONLY
+            202, // TOO_MANY_SIMULTANEOUS_QUERIES
+            203, // NO_FREE_CONNECTION
+            209, // SOCKET_TIMEOUT
+            210, // NETWORK_ERROR
+            241, // MEMORY_LIMIT_EXCEEDED
+            242, // TABLE_IS_READ_ONLY
+            252, // TOO_MANY_PARTS
+            285, // TOO_FEW_LIVE_REPLICAS
+            319, // UNKNOWN_STATUS_OF_INSERT
+            425, // SYSTEM_ERROR
+            999  // KEEPER_EXCEPTION
+    );
 
     /**
      * This method checks to see if we should retry, otherwise it just throws the exception again
      *
      * @param e Exception to check
      */
-
-    public static void handleException(Exception e, boolean errorsTolerance, boolean retryOnSocketException, Collection<SinkRecord> records) {
+    public static void handleException(Exception e, boolean errorsTolerance, boolean retryOnSocketException, Set<Integer> additionalRetriableErrorCodes, Collection<SinkRecord> records) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
 
         //Let's check if we have a ClickHouseException to reference the error code
@@ -80,27 +97,10 @@ public class Utils {
                     ? ((ServerException) rootCause).getCode()
                     : ((ClickHouseException) rootCause).getErrorCode();
             LOGGER.warn("ClickHouse server error code: {}", errorCode);
-            switch (errorCode) {
-                case 3: // UNEXPECTED_END_OF_FILE
-                case 107: // FILE_DOESNT_EXIST
-                case 159: // TIMEOUT_EXCEEDED
-                case 164: // READONLY
-                case 202: // TOO_MANY_SIMULTANEOUS_QUERIES
-                case 203: // NO_FREE_CONNECTION
-                case 209: // SOCKET_TIMEOUT
-                case 210: // NETWORK_ERROR
-                case 241: // MEMORY_LIMIT_EXCEEDED
-                case 242: // TABLE_IS_READ_ONLY
-                case 252: // TOO_MANY_PARTS
-                case 285: // TOO_FEW_LIVE_REPLICAS
-                case 319: // UNKNOWN_STATUS_OF_INSERT
-                case 425: // SYSTEM_ERROR
-                case 999: // KEEPER_EXCEPTION
-                    throw new RetriableException(e);
-                default:
-                    LOGGER.error("Error code [{}] wasn't in the acceptable list.", errorCode);
-                    break;
+            if (DEFAULT_RETRIABLE_ERROR_CODES.contains(errorCode) || additionalRetriableErrorCodes.contains(errorCode)) {
+                throw new RetriableException(e);
             }
+            LOGGER.error("Error code [{}] wasn't in the acceptable list.", errorCode);
         }
 
         //High-Level Explicit Exception Checking

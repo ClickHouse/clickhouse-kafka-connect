@@ -69,6 +69,7 @@ dependencies {
     implementation(libs.lz4.java)
     implementation(libs.gson)
     implementation(libs.httpclient5)
+    implementation(libs.guava)
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
@@ -85,6 +86,7 @@ dependencies {
     clickhouseDependencies(libs.clickhouse.client.v2)
     clickhouseDependencies(libs.lz4.java)
     clickhouseDependencies(libs.clickhouse.http.client)
+    clickhouseDependencies(libs.guava) // temp to override client's with CVE
     clickhouseDependencies(libs.gson)
     clickhouseDependencies(libs.jackson.core)
     clickhouseDependencies(libs.jackson.databind)
@@ -97,6 +99,7 @@ dependencies {
     testImplementation(libs.apiguardian.api)
     testImplementation(libs.hamcrest)
     testImplementation(libs.mockito.junit.jupiter)
+    testImplementation(libs.kafka.connect.json)
     testImplementation(libs.testcontainers)
     testImplementation(libs.testcontainers.clickhouse)
     testImplementation(libs.testcontainers.toxiproxy)
@@ -148,7 +151,7 @@ testing {
                 implementation(libs.testcontainers.toxiproxy)
                 implementation(libs.okhttp)
                 implementation(libs.json)
-                implementation(libs.httpclient5.test)
+                implementation(libs.httpclient5)
                 implementation(libs.clickhouse.client)
                 implementation(libs.clickhouse.client.v2)
                 implementation(libs.clickhouse.http.client)

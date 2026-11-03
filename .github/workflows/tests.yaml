@@ -165,7 +165,7 @@ jobs:
       - name: Check for Cloud Credentials
         id: check-cloud-credentials
         run: |
-          if [[ (-z "${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}" || -z "${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}") ]]; then
+          if [[ (-z "${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_HOST }}" || -z "${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_PASSWORD }}") ]]; then
             echo "SKIP_STEP=true" >> $GITHUB_ENV
           else
             echo "SKIP_STEP=false" >> $GITHUB_ENV
@@ -192,8 +192,8 @@ jobs:
         if: env.SKIP_STEP != 'true'
         env:
           CLICKHOUSE_VERSION: cloud
-          CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
-          CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
+          CLICKHOUSE_CLOUD_HOST: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_HOST }}
+          CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_PASSWORD }}
           CLIENT_VERSION: ${{ matrix.client }}
         run: ./gradlew test
       - name: Upload test results

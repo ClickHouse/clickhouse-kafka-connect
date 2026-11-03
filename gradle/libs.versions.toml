@@ -4,10 +4,10 @@ kafka = "2.7.0"
 gson = "2.13.1"
 jackson = "2.22.3"
 jacksonAnnotations = "2.22"
-httpclient = "5.6.2"
-httpclientTest = "5.6.2"
+httpclient = "5.6.5"
 lombok = "1.18.46"
-lz4Java = "1.10.4"
+lz4Java = "1.11.4"
+guava = "33.7.2-jre"
 
 # Testing
 junitJupiter = "5.14.4"
@@ -24,17 +24,18 @@ kafkaPlatformProtobuf = "7.9.1"
 testcontainers = "2.0.5"
 orgJson = "20260814"
 libprotobuf = "3.25.9"
-commonsLang3 = "3.20.0"
-slf4j = "2.0.18"
+commonsLang3 = "3.21.0"
+slf4j = "2.0.20"
 
 # Plugins
-spotless = "8.10.1"
+spotless = "8.10.4"
 shadow = "8.3.5"
 protobufPlugin = "0.10.0"
 
 [libraries]
 # Core dependencies
 kafka-connect-api = { module = "org.apache.kafka:connect-api", version.ref = "kafka" }
+kafka-connect-json = { module = "org.apache.kafka:connect-json", version.ref = "kafka" }
 clickhouse-client = { module = "com.clickhouse:clickhouse-client", version.ref = "clickHouseDriver" }
 clickhouse-http-client = { module = "com.clickhouse:clickhouse-http-client", version.ref = "clickHouseDriver" }
 clickhouse-data = { module = "com.clickhouse:clickhouse-data", version.ref = "clickHouseDriver" }
@@ -42,7 +43,7 @@ clickhouse-client-v2 = { module = "com.clickhouse:client-v2", version.ref = "cli
 
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5", version.ref = "httpclient" }
-httpclient5-test = { module = "org.apache.httpcomponents.client5:httpclient5", version.ref = "httpclientTest" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
 
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 lz4-java = { module = "at.yawk.lz4:lz4-java", version.ref = "lz4Java" }
