@@ -55,7 +55,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private final boolean sslEnabled;
     private final String jdbcConnectionProperties;
     private final int timeout;
+    @Getter
+    @Deprecated
     private final ClickHouseNode server;
+    @Getter
     private final Client client;
     private final int retry;
     private ClickHouseProxyType proxyType = null;
@@ -209,14 +212,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
         return clientBuilder.build();
     }
 
-    public ClickHouseNode getServer() {
-        return server;
-    }
-
-    public Client getClient() {
-        return client;
-    }
-
     public boolean ping() {
         if (useClientV2) {
             return pingV2();
@@ -250,7 +245,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     private boolean pingV2() {
         int retryCount = 0;
         while (retryCount < retry) {
-            if (getClient().ping(timeout)) {
+            if (client.ping(timeout)) {
                 LOGGER.info("Ping was successful.");
                 return true;
             }
@@ -287,7 +282,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
     public String versionV2() {
         QuerySettings settings = new QuerySettings().setFormat(ClickHouseFormat.RowBinaryWithNamesAndTypes);
         CompletableFuture<Records> futureRecords =
-                getClient().queryRecords("SELECT VERSION()", settings);
+                client.queryRecords("SELECT VERSION()", settings);
         try (Records records = futureRecords.get()) {
 
             for (GenericRecord record : records) {
@@ -341,7 +336,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         Exception ce = null;
         while (retryCount < retry) {
             System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
-            CompletableFuture<Records> futureRecords = getClient().queryRecords(query, settings);
+            CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
             try {
                 Records records = futureRecords.get();
                 return records;
@@ -490,7 +485,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
             boolean hasDefaults = false;
             int numColumns = 0;
             List<Column> columns = new ArrayList<>();
-            try (QueryResponse queryResponse = getClient().query(describeQuery, settings).get();
+            try (QueryResponse queryResponse = client.query(describeQuery, settings).get();
                  BufferedReader br = new BufferedReader(new InputStreamReader(queryResponse.getInputStream(), StandardCharsets.UTF_8))) {
                 String line = null;
                 Set<String> skippedCols = new HashSet<>();
@@ -570,7 +565,7 @@ public class ClickHouseHelperClient implements AutoCloseable {
         for (Map.Entry<String, String> entry : clickhouseSettings.entrySet()) {
             settings.serverSetting(entry.getKey(), entry.getValue());
         }
-        try (QueryResponse response = getClient().query(sql, settings).get()) {
+        try (QueryResponse response = client.query(sql, settings).get()) {
             // DDL executed; alter_sync=1 waits for the local replica to apply
         } catch (Exception e) {
             throw new RuntimeException("Failed to execute ALTER TABLE: " + sql, e);
@@ -683,7 +678,9 @@ public class ClickHouseHelperClient implements AutoCloseable {
 
     @Override
     public void close() {
-        client.close();
+        if (client != null) {
+            client.close();
+        }
     }
 
     public static class ClickHouseClientBuilder {
