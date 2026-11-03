@@ -25,7 +25,7 @@ testcontainers = "2.0.5"
 orgJson = "20260814"
 libprotobuf = "3.25.9"
 commonsLang3 = "3.21.0"
-slf4j = "2.0.18"
+slf4j = "2.0.20"
 
 # Plugins
 spotless = "8.10.4"
