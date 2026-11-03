@@ -1,3 +1,10 @@
+# 1.7.1, Unreleased
+
+## Bug Fixes
+
+* Fixed silent loss of fields whose ClickHouse column names contain `/` by preserving JSON escaping in
+  DESCRIBE responses with both client V1 and V2. Existing support for escaped column comments is preserved.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/838)
 # Unreleased
 
 ## Improvements
