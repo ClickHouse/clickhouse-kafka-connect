@@ -4,6 +4,9 @@
 clickhouse-kafka-connect is the official Kafka Connect sink connector for [ClickHouse](https://clickhouse.com/).
 
 The Kafka connector delivers data from a Kafka topic to a ClickHouse table.
+
+The connector works with both ClickHouse Cloud and self-hosted ClickHouse. You can [start a free Cloud trial](https://console.clickhouse.cloud/signUp?utm_medium=referral&utm_source=github&utm_campaign=readme&utm_content=clickhouse-kafka-connect) or [install ClickHouse](https://clickhouse.com/docs/get-started/setup/install) locally.
+
 ## Documentation
 
 See the [ClickHouse website](https://clickhouse.com/docs/en/integrations/kafka/clickhouse-kafka-connect-sink) for the full documentation entry.
