@@ -8,6 +8,8 @@ The Kafka connector delivers data from a Kafka topic to a ClickHouse table.
 
 See the [ClickHouse website](https://clickhouse.com/docs/en/integrations/kafka/clickhouse-kafka-connect-sink) for the full documentation entry.
 
+For a decision guide on `JsonConverter` vs `StringConverter` (schema flags, `customInsertFormat` / `insertFormat`, failure modes, and performance tradeoffs), see [Choosing a Kafka Connect converter](./docs/CONVERTERS.md).
+
 ## Design
 For a full overview of the design and how exactly-once delivery semantics are achieved, see the [design document](./docs/DESIGN.md).
 
