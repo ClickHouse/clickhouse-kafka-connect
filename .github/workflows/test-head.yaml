@@ -13,6 +13,10 @@ jobs:
   # Run the CI test suite against the head (nightly) build of the ClickHouse server.
   clickhouse-head:
     name: ClickHouse head
+    # tests.yaml's standalone job asks for id-token: write (Codecov OIDC); a called workflow can't get more than its caller grants.
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/tests.yaml
     with:
       clickhouse_version: head
@@ -21,6 +25,10 @@ jobs:
   # Build the head of clickhouse-java from source and run the CI test suite against it.
   clickhouse-java-head:
     name: clickhouse-java head
+    # tests.yaml's standalone job asks for id-token: write (Codecov OIDC); a called workflow can't get more than its caller grants.
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/tests.yaml
     with:
       clickhouse_version: latest
