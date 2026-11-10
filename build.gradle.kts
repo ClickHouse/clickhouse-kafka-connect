@@ -21,6 +21,7 @@ plugins {
     `java-library`
     `jvm-test-suite`
     `maven-publish`
+    jacoco
     alias(libs.plugins.spotless)
     alias(libs.plugins.shadow)
     alias(libs.plugins.protobuf)
@@ -197,6 +198,21 @@ tasks.withType<Test> {
     logger.info("Running tests using JDK$javaVersion")
 
     systemProperties(mapOf("com.clickhouse.test.uri" to System.getProperty("com.clickhouse.test.uri", "")))
+
+    // Only the connector's own classes get probes: the report covers nothing else, and instrumenting
+    // third-party classes can break libraries that inspect their own methods by reflection.
+    extensions.configure<JacocoTaskExtension> {
+        includes = listOf("com.clickhouse.kafka.connect.*")
+    }
+}
+
+// Coverage for Codecov: jacocoTestReport -> build/reports/jacoco/test/jacocoTestReport.xml
+jacoco {
+    toolVersion = "0.8.16"
+}
+
+tasks.jacocoTestReport {
+    reports.xml.required.set(true)
 }
 
 /*

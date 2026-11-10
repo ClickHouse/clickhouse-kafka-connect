@@ -1,0 +1,35 @@
+# Codecov configuration: https://docs.codecov.com/docs/codecovyml-reference
+#
+# Coverage is uploaded by two cells of the standalone job in .github/workflows/tests.yaml, both on
+# ClickHouse 26.3 and JDK 17, one per client version:
+#   client-V1  the JaCoCo report from `./gradlew test` with CLIENT_VERSION=V1
+#   client-V2  the JaCoCo report from `./gradlew test` with CLIENT_VERSION=V2
+#
+# Coverage is reported on PRs but never blocks them: both statuses are informational.
+
+codecov:
+  # Report even when unrelated CI jobs fail (e.g. a Cloud cell); by default Codecov posts no PR
+  # comment while any job is failing.
+  require_ci_to_pass: false
+
+coverage:
+  precision: 2
+  round: down
+  status:
+    patch:
+      default:
+        # Shows how much of a PR's changed lines are covered against this target, but always passes.
+        target: 80%
+        informational: true
+        only_pulls: true
+    project:
+      default:
+        informational: true
+
+flag_management:
+  default_rules:
+    # Keep a flag's last coverage when its job didn't upload for a commit.
+    carryforward: true
+
+comment:
+  layout: "condensed_header, diff, flags, condensed_files"

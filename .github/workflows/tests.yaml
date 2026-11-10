@@ -115,6 +115,9 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write # Codecov upload via OIDC, no token secret needed
     strategy:
       fail-fast: false
       matrix:
@@ -141,7 +144,21 @@ jobs:
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
           CLIENT_VERSION: ${{ matrix.client }}
-        run: ./gradlew test
+        run: ./gradlew test jacocoTestReport
+      - name: Upload coverage to Codecov
+        # One cell per client version uploads, so each flag gets one upload per commit (see codecov.yml).
+        # Manual and test-head runs don't upload: they may use a non-default ClickHouse or Java client.
+        if: >-
+          (github.event_name == 'pull_request' || github.event_name == 'push')
+          && matrix.clickhouse == '26.3' && matrix.java == '17'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          disable_search: true
+          files: build/reports/jacoco/test/jacocoTestReport.xml
+          flags: client-${{ matrix.client }}
+          # A Codecov outage must not fail the tests.
+          fail_ci_if_error: false
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: failure()
