@@ -10,6 +10,7 @@ import com.clickhouse.client.api.insert.InsertSettings;
 import com.clickhouse.client.api.query.QuerySettings;
 import com.clickhouse.client.config.ClickHouseClientOption;
 import com.clickhouse.client.http.config.ClickHouseHttpOption;
+import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.ClickHouseBase;
 import com.clickhouse.kafka.connect.sink.ClickHouseSinkConfig;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
@@ -336,6 +337,7 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
     @Test
     public void testSetReplicaTagHeaderV2() {
         ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                .useClientV2(true)
                 .enableReplicaPinning(true)
                 .build();
         client.pinReplica();
@@ -355,8 +357,9 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
 
     @Test
     public void testSetCompressionMethod_DefaultIsTrue() {
-        ClickHouseHelperClient client = new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
-                .build();
+        ClickHouseHelperClient client =
+                new ClickHouseHelperClient.ClickHouseClientBuilder("localhost", 8123, null, null, -1)
+                        .build();
         Assertions.assertTrue(client.isSetCompressionMethod());
 
         // V1 client options
@@ -392,6 +395,37 @@ public class ClickHouseHelperClientTest extends ClickHouseBase {
         Map<String, String> v2Config = client.getClient().getConfiguration();
         Assertions.assertFalse(v2Config.entrySet().stream()
                 .anyMatch(e -> e.getKey().contains(ClickHouseHelperClient.NETWORK_COMPRESSION_METHOD)));
+    }
+
+    @Test
+    public void initializesBothClientsRegardlessOfConfiguredVersion() {
+        Map<String, String> v1Props = getConnectorProps();
+        v1Props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
+        Map<String, String> v2Props = getConnectorProps();
+        v2Props.put(ClickHouseSinkConnector.CLIENT_VERSION, "V2");
+
+        try (ClickHouseHelperClient clientV1 =
+                        new ClickHouseHelperClient.ClickHouseClientBuilder(new ClickHouseSinkConfig(v1Props))
+                                .build();
+                ClickHouseHelperClient clientV2 =
+                        new ClickHouseHelperClient.ClickHouseClientBuilder(new ClickHouseSinkConfig(v2Props))
+                                .build()) {
+            Assertions.assertNotNull(clientV1.getServer());
+            Assertions.assertNotNull(clientV1.getClient());
+            Assertions.assertNotNull(clientV2.getServer());
+            Assertions.assertNotNull(clientV2.getClient());
+        }
+    }
+
+    @Test
+    public void testClientUsesCopiedPropertiesWithoutMutatingConnectorProperties() {
+        Map<String, String> connectorProps = getConnectorProps();
+        connectorProps.put(ClickHouseSinkConnector.CLIENT_VERSION, "V1");
+
+        try (ClickHouseHelperClient testClient = ClickHouseTestHelpers.createClient(connectorProps)) {
+            Assertions.assertEquals("V1", connectorProps.get(ClickHouseSinkConnector.CLIENT_VERSION));
+            Assertions.assertTrue(testClient.isUseClientV2());
+        }
     }
 
     @Test
