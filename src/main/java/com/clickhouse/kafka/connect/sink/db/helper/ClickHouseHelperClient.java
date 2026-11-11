@@ -160,43 +160,35 @@ public class ClickHouseHelperClient implements AutoCloseable {
         if (this.sslEnabled)
             protocol += "s";
 
-        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
-        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
-            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
-        }
-
-        String url = String.format("%s://%s:%d/%s%s",
-                protocol,
-                hostname,
-                port,
-                database,
-                tmpJdbcConnectionProperties
-        );
-
+        // addEndpoint(String) accepts only protocol/host/port — query strings and
+        // path (including jdbcConnectionProperties) are ignored. Pass an address-only
+        // URL and apply jdbc options via Client.Builder APIs instead.
+        String url = String.format("%s://%s:%d", protocol, hostname, port);
         LOGGER.info("ClickHouse URL: {}", url);
-
 
         Client.Builder clientBuilder = new Client.Builder()
                 .addEndpoint(url)
                 .setUsername(this.username)
-                .setPassword(this.password)
                 .setClientName(CONNECT_CLIENT_NAME)
                 .compressServerResponse(false)
                 .setDefaultDatabase(this.database);
+
+        // ClickHouseClientBuilder defaults password to "" (not null) when unset.
+        // Client.Builder.setPassword(...) marks "password" as configured in the
+        // underlying config map for any non-null value, including "". That then
+        // conflicts with SSL authentication ("Only one of password, access token
+        // or SSL authentication can be used per client.") once sslcert enables
+        // useSSLAuthentication below. Only set a password when one was actually
+        // provided, so cert-only (mTLS) configs without a password still work.
+        if (this.password != null && !this.password.isEmpty()) {
+            clientBuilder.setPassword(this.password);
+        }
 
         if (setCompressionMethod) {
             clientBuilder.serverSetting(NETWORK_COMPRESSION_METHOD, LZ4);
         }
 
-        if (jdbcConnectionProperties != null && !jdbcConnectionProperties.isEmpty()) {
-            String props = jdbcConnectionProperties.startsWith("?") ? jdbcConnectionProperties.substring(1) : jdbcConnectionProperties;
-            for (String pair : props.split("&")) {
-                String[] kv = pair.split("=", 2);
-                if (kv.length == 2 && !kv[0].isEmpty()) {
-                    clientBuilder.setOption(kv[0], kv[1]);
-                }
-            }
-        }
+        applyJdbcConnectionPropertiesV2(jdbcConnectionProperties, clientBuilder);
 
         if (proxyType != null && !proxyType.equals(ClickHouseProxyType.IGNORE)) {
             clientBuilder.addProxy(ProxyType.HTTP, proxyHost, proxyPort);
@@ -206,6 +198,51 @@ public class ClickHouseHelperClient implements AutoCloseable {
         }
         client = clientBuilder.build();
         return client;
+    }
+
+    /**
+     * Maps {@code jdbcConnectionProperties} onto Client V2 Builder APIs.
+     * TLS keys ({@code sslrootcert}, {@code sslcert}, {@code sslkey}) use dedicated
+     * setters so mTLS works; everything else is passed through {@link Client.Builder#setOption}.
+     * Static (and parameterized rather than reading the instance field directly) so the
+     * mapping logic can be unit tested against a bare {@link Client.Builder} without
+     * going through {@link Client.Builder#build()}, which eagerly loads TLS material
+     * from disk and would require real certificate files to exist.
+     */
+    static void applyJdbcConnectionPropertiesV2(String jdbcConnectionProperties, Client.Builder clientBuilder) {
+        if (jdbcConnectionProperties == null || jdbcConnectionProperties.isEmpty()) {
+            return;
+        }
+        String props = jdbcConnectionProperties.startsWith("?")
+                ? jdbcConnectionProperties.substring(1)
+                : jdbcConnectionProperties;
+        for (String pair : props.split("&")) {
+            if (pair.isEmpty()) {
+                continue;
+            }
+            String[] kv = pair.split("=", 2);
+            if (kv.length != 2 || kv[0].isEmpty()) {
+                continue;
+            }
+            String key = kv[0];
+            String value = kv[1];
+            switch (key) {
+                case "sslrootcert":
+                    clientBuilder.setRootCertificate(value);
+                    break;
+                case "sslcert":
+                    clientBuilder.setClientCertificate(value);
+                    clientBuilder.useSSLAuthentication(true);
+                    break;
+                case "sslkey":
+                case "ssl_key":
+                    clientBuilder.setClientKey(value);
+                    break;
+                default:
+                    clientBuilder.setOption(key, value);
+                    break;
+            }
+        }
     }
 
     public boolean ping() {
