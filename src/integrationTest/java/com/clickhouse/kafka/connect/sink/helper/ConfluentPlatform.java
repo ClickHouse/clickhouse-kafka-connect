@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionTimeoutException;
 import org.testcontainers.shaded.org.awaitility.pollinterval.FixedPollInterval;
@@ -30,8 +31,9 @@ import java.util.stream.StreamSupport;
 public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
 
-    private static final String CONFLUENT_VERSION = "7.9.6";
-    private static final String DATAGEN_VERSION = "0.6.4-7.6.0";
+    // Versions come from gradle/libs.versions.toml so the images match the Confluent test libraries.
+    private static final String CONFLUENT_VERSION = requiredSystemProperty("confluent.platform.version");
+    private static final String DATAGEN_VERSION = requiredSystemProperty("kafka.connect.datagen.version");
 
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
             "confluentinc/cp-kafka-rest:" + CONFLUENT_VERSION
@@ -49,9 +51,14 @@ public class ConfluentPlatform {
             "confluentinc/cp-schema-registry:" + CONFLUENT_VERSION
     );
 
-    private static final DockerImageName CP_DATA_GEN = DockerImageName.parse(
-            "cnfldemos/cp-server-connect-datagen:" + DATAGEN_VERSION
-    );
+    // Confluent publishes the cnfldemos Connect + datagen image only for affected converter versions, so build the same
+    // combination locally under the same name and tag scheme (<datagen>-<confluent>). This tag is built here, not pulled.
+    private static final ImageFromDockerfile CP_DATA_GEN = new ImageFromDockerfile(
+            "cnfldemos/cp-server-connect-datagen:" + DATAGEN_VERSION + "-" + CONFLUENT_VERSION, false)
+            .withDockerfileFromBuilder(builder -> builder
+                    .from("confluentinc/cp-server-connect:" + CONFLUENT_VERSION)
+                    .run("confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:" + DATAGEN_VERSION)
+                    .build());
 
     private static final DockerImageName CP_CONTROL_CENTER = DockerImageName.parse(
             "confluentinc/cp-enterprise-control-center:" + CONFLUENT_VERSION
@@ -361,6 +368,15 @@ public class ConfluentPlatform {
             LOGGER.debug("Create connectors response body: {}", responseBodyString);
             Assertions.assertTrue(code >= 200 && code < 300);
         }
+    }
+
+    private static String requiredSystemProperty(String name) {
+        String value = System.getProperty(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(String.format(
+                    "System property '%s' is not set; run the integration tests through Gradle (it is set from gradle/libs.versions.toml)", name));
+        }
+        return value;
     }
 
     public void createConnectorAndWaitUntilRunning(String connectorName, String payload) throws IOException {
