@@ -268,8 +268,18 @@ public class ExactlyOnceTest {
         return compareCounts(topicName, partitions, configPath, /* schema */ true);
     }
 
-    private boolean compareCounts(String topicName, int partitions, String configPath, boolean schema)
+    /**
+     * Each config parameter needs its own topic: the expected count is the topic's end offset, while the
+     * connector (same name, so same consumer group and exactly-once Keeper state) resumes after the previous
+     * parameter's records. A shared topic made every second parameter expect twice the rows it could write.
+     */
+    private static String topicForConfig(String topicName, String configPath) {
+        return topicName + "_" + Paths.get(configPath).getFileName().toString().replace(".json", "");
+    }
+
+    private boolean compareCounts(String baseTopicName, int partitions, String configPath, boolean schema)
             throws InterruptedException, IOException {
+        String topicName = topicForConfig(baseTopicName, configPath);
         STOCK_TABLE.get() // implicitly SharedMergeTree in CH Cloud
                 .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
         ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
@@ -299,8 +309,9 @@ public class ExactlyOnceTest {
         runSpottyNetwork(topicName, numberOfPartitions, configPath, /* schema */ true);
     }
 
-    private void runSpottyNetwork(String topicName, int numberOfPartitions, String configPath, boolean schema)
+    private void runSpottyNetwork(String baseTopicName, int numberOfPartitions, String configPath, boolean schema)
             throws InterruptedException, IOException, URISyntaxException {
+        String topicName = topicForConfig(baseTopicName, configPath);
         boolean allSuccess = true;
         int runCount = 1;
         do {
