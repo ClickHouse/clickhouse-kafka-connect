@@ -10,6 +10,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
+import org.testcontainers.shaded.org.awaitility.core.ConditionTimeoutException;
 import org.testcontainers.shaded.org.awaitility.pollinterval.FixedPollInterval;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
@@ -22,6 +23,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.StreamSupport;
 
@@ -359,14 +361,26 @@ public class ConfluentPlatform {
             LOGGER.debug("Create connectors response body: {}", responseBodyString);
             Assertions.assertTrue(code >= 200 && code < 300);
         }
-        Awaitility.await("connector running")
-                .atMost(Duration.ofMinutes(CONNECTOR_RUNNING_TIMEOUT_MINS))
-                .pollDelay(Duration.ofSeconds(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS))
-                .pollInterval(FixedPollInterval.fixed(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
-                .until(() -> {
-                    Optional<Object> taskObj = StreamSupport.stream(getConnectorTasksStatus(connectorName).spliterator(), false).findFirst();
-                    return taskObj.filter(o -> "RUNNING".equals(String.valueOf(((JSONObject) o).get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY)))).isPresent();
-                });
+        AtomicReference<JSONArray> lastTasks = new AtomicReference<>();
+        try {
+            Awaitility.await("connector running")
+                    .atMost(Duration.ofMinutes(CONNECTOR_RUNNING_TIMEOUT_MINS))
+                    .pollDelay(Duration.ofSeconds(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS))
+                    .pollInterval(FixedPollInterval.fixed(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
+                    .until(() -> {
+                        JSONArray tasks = getConnectorTasksStatus(connectorName);
+                        lastTasks.set(tasks);
+                        // A FAILED task never becomes RUNNING without a restart, so waiting out the timeout only hides its trace.
+                        Optional<String> failure = getFirstTaskFailureOpt(tasks);
+                        if (failure.isPresent()) {
+                            throw new IllegalStateException(String.format("Connector '%s' task FAILED:%n%s", connectorName, failure.get()));
+                        }
+                        Optional<Object> taskObj = StreamSupport.stream(tasks.spliterator(), false).findFirst();
+                        return taskObj.filter(o -> "RUNNING".equals(String.valueOf(((JSONObject) o).get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY)))).isPresent();
+                    });
+        } catch (ConditionTimeoutException e) {
+            throw new IllegalStateException(String.format("Connector '%s' not RUNNING within %d minutes; last task status: %s", connectorName, CONNECTOR_RUNNING_TIMEOUT_MINS, lastTasks.get()), e);
+        }
     }
 
 
@@ -490,8 +504,9 @@ public class ConfluentPlatform {
         } while (Pattern.compile("Stopping connector: generated the configured").matcher(currentState).results().count() != totalWorkers && loopCount < 120);//We have to track multiple
 
         if (loopCount >= 120) {
-            LOGGER.error("Data generation failed");
-            throw new RuntimeException("Data generation failed");
+            String tasksStatus = String.valueOf(getConnectorTasksStatus(connectorName));
+            LOGGER.error("Data generation failed; connector '{}' task status: {}", connectorName, tasksStatus);
+            throw new RuntimeException(String.format("Data generation failed; connector '%s' task status: %s", connectorName, tasksStatus));
         }
 
         deleteConnectors(connectorName);
@@ -598,7 +613,10 @@ public class ConfluentPlatform {
      * Returns the FIRST error trace encountered if any task has failed, or empty optional if all tasks are running.
      */
     public Optional<String> getFirstTaskFailureOpt(String connectorName) throws IOException {
-        JSONArray tasks = getConnectorTasksStatus(connectorName);
+        return getFirstTaskFailureOpt(getConnectorTasksStatus(connectorName));
+    }
+
+    private static Optional<String> getFirstTaskFailureOpt(JSONArray tasks) {
         if (tasks == null || tasks.isEmpty()) {
             return Optional.empty();
         }
