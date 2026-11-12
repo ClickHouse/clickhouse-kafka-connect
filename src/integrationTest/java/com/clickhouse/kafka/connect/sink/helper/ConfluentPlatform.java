@@ -24,7 +24,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 import java.util.stream.StreamSupport;
 
 
@@ -82,6 +81,7 @@ public class ConfluentPlatform {
     private static final String TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY = "error";
     private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY = "tasks";
     private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY = "state";
+    private static final String DATAGEN_DONE_TRACE = "Stopping connector: generated the configured";
 
     GenericContainer<?> zookeeper;
     GenericContainer<?> cp_server;
@@ -343,7 +343,7 @@ public class ConfluentPlatform {
         return false;
     }
 
-    public void createConnectorAndWaitUntilRunning(String connectorName, String payload) throws IOException {
+    private void createConnector(String payload) throws IOException {
         String connectRestEndpoint = getConnectRestEndPoint();
         OkHttpClient client = new OkHttpClient();
         String connectorsEndpoint = String.format("%s/connectors", connectRestEndpoint);
@@ -361,6 +361,10 @@ public class ConfluentPlatform {
             LOGGER.debug("Create connectors response body: {}", responseBodyString);
             Assertions.assertTrue(code >= 200 && code < 300);
         }
+    }
+
+    public void createConnectorAndWaitUntilRunning(String connectorName, String payload) throws IOException {
+        createConnector(payload);
         AtomicReference<JSONArray> lastTasks = new AtomicReference<>();
         try {
             Awaitility.await("connector running")
@@ -490,26 +494,46 @@ public class ConfluentPlatform {
         int totalWorkers = numberOfPartitions * 10;
 
         String payloadDataGen = String.join("", Files.readAllLines(Paths.get(templateFileName)));
-        createConnectorAndWaitUntilRunning(connectorName, String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
-        String currentState = "";
-        int loopCount = 0;
-        do {
-            Thread.sleep(2 * 1000);
-            if (loopCount % 4 == 0) {
-                LOGGER.info("Generating...");
+        try {
+            // Datagen tasks stop themselves once they reach "iterations" by FAILING with DATAGEN_DONE_TRACE, often before
+            // a status poll could see them RUNNING. So instead of waiting for RUNNING, wait until every task of this
+            // connector has finished that way; any other task failure is a real error.
+            createConnector(String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
+            JSONArray tasks = new JSONArray();
+            int loopCount = 0;
+            while (true) {
+                Thread.sleep(2 * 1000);
+                if (loopCount % 4 == 0) {
+                    LOGGER.info("Generating...");
+                }
+                try {
+                    tasks = getConnectorTasksStatus(connectorName);
+                } catch (IOException e) {
+                    LOGGER.debug("Datagen connector '{}' status not available yet: {}", connectorName, e.getMessage());
+                }
+                long done = 0;
+                for (Object task : tasks) {
+                    JSONObject jsonTask = (JSONObject) task;
+                    String trace = jsonTask.optString("trace", "");
+                    if ("FAILED".equalsIgnoreCase(jsonTask.optString(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY))) {
+                        if (!trace.contains(DATAGEN_DONE_TRACE)) {
+                            throw new IllegalStateException(String.format("Datagen connector '%s' task FAILED:%n%s", connectorName, trace));
+                        }
+                        done++;
+                    }
+                }
+                if (done == totalWorkers) {
+                    break;
+                }
+                if (++loopCount >= 120) {
+                    LOGGER.error("Data generation failed; connector '{}' task status: {}", connectorName, tasks);
+                    throw new RuntimeException(String.format("Data generation failed; connector '%s' task status: %s", connectorName, tasks));
+                }
             }
-            currentState = getConnectors();
-            LOGGER.debug(currentState);
-            loopCount++;
-        } while (Pattern.compile("Stopping connector: generated the configured").matcher(currentState).results().count() != totalWorkers && loopCount < 120);//We have to track multiple
-
-        if (loopCount >= 120) {
-            String tasksStatus = String.valueOf(getConnectorTasksStatus(connectorName));
-            LOGGER.error("Data generation failed; connector '{}' task status: {}", connectorName, tasksStatus);
-            throw new RuntimeException(String.format("Data generation failed; connector '%s' task status: %s", connectorName, tasksStatus));
+        } finally {
+            // A leftover datagen connector keeps polluting the Connect worker for every later test.
+            deleteConnectors(connectorName);
         }
-
-        deleteConnectors(connectorName);
         Thread.sleep(3 * 1000);//Wait for the connector to be deleted
         long offsetTotal = 0;
         for (int i=0; i < numberOfPartitions; i++) {
