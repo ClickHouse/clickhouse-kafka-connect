@@ -89,6 +89,11 @@ public class ExactlyOnceTest {
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
             ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, cloudProperties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
             clickhouseCloudAPI = new ClickHouseCloudAPI(cloudProperties);
+            if (clickhouseCloudAPI.isConfigured()) {
+                clickhouseCloudAPI.ensureServiceRunning();
+            } else {
+                LOGGER.warn("Cloud API properties are not set; not checking that the service is running (the spotty-network tests need them to restart the service)");
+            }
         } else {
             cluster = ClickHouseCluster.getClusterFromEnvVarOrThrow();
             cluster.start();
