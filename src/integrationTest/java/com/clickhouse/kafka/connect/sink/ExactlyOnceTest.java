@@ -58,6 +58,7 @@ public class ExactlyOnceTest {
     private static final String SCHEMALESS_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless_cluster.json";
     private static final String SCHEMA_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy.json";
     private static final String SCHEMA_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_cluster.json";
+    private static final String BUFFER_CONFIG_SUFFIX = "_buffer.json";
 
     private static Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
@@ -255,12 +256,12 @@ public class ExactlyOnceTest {
         confluentPlatform.createConnectorAndWaitUntilRunning(SINK_CONNECTOR_NAME, jsonString);
     }
 
-    private int generateData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
-        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen.json", topicName, numberOfPartitions, numberOfRecords);
+    private int generateData(String topicName, int numberOfPartitions, int numberOfRecords, boolean evenPartitions) throws IOException, InterruptedException {
+        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen.json", topicName, numberOfPartitions, numberOfRecords, evenPartitions);
     }
 
-    private int generateSchemalessData(String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
-        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords);
+    private int generateSchemalessData(String topicName, int numberOfPartitions, int numberOfRecords, boolean evenPartitions) throws IOException, InterruptedException {
+        return confluentPlatform.generateData("src/integrationTest/resources/stock_gen_json.json", topicName, numberOfPartitions, numberOfRecords, evenPartitions);
     }
 
     private boolean compareSchemalessCounts(String topicName, int partitions, String configPath)
@@ -282,6 +283,10 @@ public class ExactlyOnceTest {
         return topicName + "_" + Paths.get(configPath).getFileName().toString().replace(".json", "");
     }
 
+    private static boolean isBufferConfig(String configPath) {
+        return configPath.endsWith(BUFFER_CONFIG_SUFFIX);
+    }
+
     private boolean compareCounts(String baseTopicName, int partitions, String configPath, boolean schema)
             throws InterruptedException, IOException {
         String topicName = topicForConfig(baseTopicName, configPath);
@@ -289,8 +294,12 @@ public class ExactlyOnceTest {
                 .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
         ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
         confluentPlatform.createTopic(topicName, partitions);
-        int count = schema ? generateData(topicName, partitions, 250)
-                : generateSchemalessData(topicName, partitions, 250);
+        // Buffered exactly-once flushes each partition only in full bufferCount (100) chunks and keeps the rest.
+        // For buffered configs, spread records evenly over the partitions; 300 per datagen task splits evenly over
+        // 1 or 3 partitions, so every partition ends on a full chunk.
+        boolean buffered = isBufferConfig(configPath);
+        int count = schema ? generateData(topicName, partitions, 300, buffered)
+                : generateSchemalessData(topicName, partitions, 300, buffered);
         LOGGER.info("Expected Total: {}", count);
         if (schema) {
             setupSchemaConnector(topicName, partitions, configPath);
@@ -323,8 +332,8 @@ public class ExactlyOnceTest {
             LOGGER.info("Run: {}", runCount);
             confluentPlatform.createTopic(topicName, numberOfPartitions);
 
-            int count = schema ? generateData(topicName, numberOfPartitions, 1500)
-                    : generateSchemalessData(topicName, numberOfPartitions, 1500);
+            int count = schema ? generateData(topicName, numberOfPartitions, 1500, isBufferConfig(configPath))
+                    : generateSchemalessData(topicName, numberOfPartitions, 1500, isBufferConfig(configPath));
             if (schema) {
                 setupSchemaConnector(topicName, numberOfPartitions, configPath);
             } else {

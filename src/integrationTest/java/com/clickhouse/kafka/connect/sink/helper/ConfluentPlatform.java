@@ -89,6 +89,8 @@ public class ConfluentPlatform {
     private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY = "tasks";
     private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY = "state";
     private static final String DATAGEN_DONE_TRACE = "Stopping connector: generated the configured";
+    private static final String PRODUCER_PARTITIONER_OVERRIDE = "producer.override.partitioner.class";
+    private static final String ROUND_ROBIN_PARTITIONER = "org.apache.kafka.clients.producer.RoundRobinPartitioner";
 
     GenericContainer<?> zookeeper;
     GenericContainer<?> cp_server;
@@ -505,6 +507,16 @@ public class ConfluentPlatform {
 
 
     public int generateData(String templateFileName, String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
+        return generateData(templateFileName, topicName, numberOfPartitions, numberOfRecords, false);
+    }
+
+    /**
+     * @param evenPartitions send each datagen task's records to the partitions in turn (round-robin producer
+     *     partitioner) instead of datagen's default, uneven spread; with numberOfRecords divisible by the partition
+     *     count every partition gets the same number of records
+     */
+    public int generateData(String templateFileName, String topicName, int numberOfPartitions, int numberOfRecords, boolean evenPartitions)
+            throws IOException, InterruptedException {
         LOGGER.info("Generating data...");
         String connectorName = "DatagenConnector_" + topicName + UUID.randomUUID();
         int totalWorkers = numberOfPartitions * 10;
@@ -514,7 +526,13 @@ public class ConfluentPlatform {
             // Datagen tasks stop themselves once they reach "iterations" by FAILING with DATAGEN_DONE_TRACE, often before
             // a status poll could see them RUNNING. So instead of waiting for RUNNING, wait until every task of this
             // connector has finished that way; any other task failure is a real error.
-            createConnector(String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
+            String payload = String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords);
+            if (evenPartitions) {
+                JSONObject connector = new JSONObject(payload);
+                connector.getJSONObject("config").put(PRODUCER_PARTITIONER_OVERRIDE, ROUND_ROBIN_PARTITIONER);
+                payload = connector.toString();
+            }
+            createConnector(payload);
             JSONArray tasks = new JSONArray();
             int loopCount = 0;
             while (true) {
