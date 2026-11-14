@@ -88,6 +88,7 @@ public class ClickHouseCloudAPI {
         AtomicBoolean startRequested = new AtomicBoolean(false);
         Awaitility.await("service running")
                 .atMost(Duration.ofMinutes(serviceRestartTimeout))
+                .ignoreExceptionsInstanceOf(IOException.class)
                 .pollDelay(Duration.ZERO)
                 .pollInterval(FixedPollInterval.fixed(POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
                 .until(() -> {
@@ -111,6 +112,7 @@ public class ClickHouseCloudAPI {
             stopInstance(serviceId);
             Awaitility.await("service stopped")
                     .atMost(Duration.ofMinutes(serviceRestartTimeout))
+                    .ignoreExceptionsInstanceOf(IOException.class)
                     .pollDelay(Duration.ofSeconds(POLL_DELAY_SECONDS))
                     .pollInterval(FixedPollInterval.fixed(POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
                     .until(() -> STATE_STOPPED.equals(getServiceState(serviceId)));
@@ -119,6 +121,7 @@ public class ClickHouseCloudAPI {
             startInstance(serviceId);
             Awaitility.await("service started")
                     .atMost(Duration.ofMinutes(serviceRestartTimeout))
+                    .ignoreExceptionsInstanceOf(IOException.class)
                     .pollDelay(Duration.ofSeconds(POLL_DELAY_SECONDS))
                     .pollInterval(FixedPollInterval.fixed(POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
                     .until(() -> STATE_RUNNING.equals(getServiceState(serviceId)));
