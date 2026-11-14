@@ -310,7 +310,9 @@ public class ExactlyOnceTest {
 
         int[] databaseCounts = getCounts(chcNoProxy, topicName);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        return databaseCounts[2] == 0 && databaseCounts[1] == count;
+        assertTrue(databaseCounts[2] == 0 && databaseCounts[1] == count, String.format("%s: expected %d unique rows, "
+                + "ClickHouse has total=%d unique=%d duplicates=%d", topicName, count, databaseCounts[0], databaseCounts[1], databaseCounts[2]));
+        return true;
     }
 
     private void checkSpottyNetworkSchemaless(String topicName, int numberOfPartitions, String configPath)
