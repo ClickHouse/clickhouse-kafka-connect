@@ -6,6 +6,7 @@ import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
+import com.clickhouse.kafka.connect.sink.state.StateConflictException;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -88,6 +89,12 @@ public class Utils {
      */
     public static void handleException(Exception e, boolean errorsTolerance, boolean retryOnSocketException, Set<Integer> additionalRetriableErrorCodes, Collection<SinkRecord> records) {
         LOGGER.warn("Deciding how to handle exception: {}", e.getLocalizedMessage());
+
+        // The batch is not faulty, another task took over its partition: tolerating it would send
+        // rows that the other task inserts to the DLQ as well.
+        if (e instanceof StateConflictException) {
+            throw (StateConflictException) e;
+        }
 
         //Let's check if we have a ClickHouseException to reference the error code
         //https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp

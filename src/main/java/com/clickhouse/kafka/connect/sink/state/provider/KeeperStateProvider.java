@@ -25,6 +25,12 @@ import java.util.stream.Collectors;
 public class KeeperStateProvider extends BaseStateProviderImpl {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KeeperStateProvider.class);
+    private static final String INSERT_IF_ABSENT =
+            "INSERT INTO `%s` SETTINGS wait_for_async_insert=1, keeper_map_strict_mode=1 VALUES ('%s', %d, %d, '%s')";
+    private static final String UPDATE_IF_UNCHANGED =
+            "ALTER TABLE `%s` UPDATE minOffset = %d, maxOffset = %d, state = '%s'"
+                    + " WHERE `key` = '%s' AND minOffset = %d AND maxOffset = %d AND state = '%s'"
+                    + " SETTINGS keeper_map_strict_mode=1";
 
     private ClickHouseHelperClient chc = null;
     private ClickHouseSinkConfig csc = null;
@@ -143,20 +149,57 @@ public class KeeperStateProvider extends BaseStateProviderImpl {
         String state = stateRecord.getState().toString();
         String insertStr = String.format("INSERT INTO `%s` SETTINGS wait_for_async_insert=1 VALUES ('%s', %d, %d, '%s');", csc.getZkDatabase(), key, minOffset, maxOffset, state);
         LOGGER.info("Write state record: {}", stateRecord);
-        if (chc.isUseClientV2()) {
-            try (Records records = this.chc.queryV2(insertStr)) {
-                LOGGER.debug("Number of written rows (V2) [{}]", records.getWrittenRows());
-            } catch (Exception e) {
-                LOGGER.error("Failed to write state record: {}", stateRecord, e);
-                throw new RuntimeException(e);
-            }
-        } else {
-            ClickHouseResponse response = this.chc.queryV1(insertStr);
-            LOGGER.debug("Number of written rows (V1) [{}]", response.getSummary().getWrittenRows());
-            response.close();
+        try {
+            execute(insertStr);
+        } catch (RuntimeException e) {
+            LOGGER.error("Failed to write state record: {}", stateRecord, e);
+            throw e;
         }
 
         super.setStateRecord(stateRecord);
         stateMap.put(csc.getZkDatabase() + "-" + key, stateRecord);
+    }
+
+    private void execute(String sql) {
+        if (chc.isUseClientV2()) {
+            try (Records records = this.chc.queryV2(sql)) {
+                LOGGER.debug("Number of written rows (V2) [{}]", records.getWrittenRows());
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            try (ClickHouseResponse response = this.chc.queryV1(sql)) {
+                LOGGER.debug("Number of written rows (V1) [{}]", response.getSummary().getWrittenRows());
+            }
+        }
+    }
+
+    @Override
+    public boolean compareAndSetStateRecord(StateRecord expected, StateRecord update) {
+        String key = update.getTopicAndPartitionKey();
+        // keeper_map_strict_mode makes the insert fail if the key exists and the update fail if the
+        // key is modified concurrently; without it both silently overwrite the other writer.
+        String conditionalWrite = expected.getState() == State.NONE
+                ? String.format(INSERT_IF_ABSENT, csc.getZkDatabase(), key, update.getMinOffset(), update.getMaxOffset(), update.getState())
+                : String.format(UPDATE_IF_UNCHANGED, csc.getZkDatabase(), update.getMinOffset(), update.getMaxOffset(), update.getState(),
+                        key, expected.getMinOffset(), expected.getMaxOffset(), expected.getState());
+        LOGGER.info("Write state record: {} expecting: {}", update, expected);
+        try {
+            execute(conditionalWrite);
+        } catch (RuntimeException e) {
+            LOGGER.warn("Conditional write of state record {} failed, checking the stored state", update, e);
+        }
+        // An update whose condition matches no row succeeds without writing, and a failed write may
+        // still have been applied, so only the stored record tells whether the write took effect.
+        StateRecord stored = getStateRecord(update.getTopic(), update.getPartition());
+        if (!stored.equals(update)) {
+            LOGGER.warn("State record {} was not written, expected {} but found {}", update, expected, stored);
+            return false;
+        }
+        super.setStateRecord(update);
+        stateMap.put(csc.getZkDatabase() + "-" + key, update);
+        return true;
     }
 }

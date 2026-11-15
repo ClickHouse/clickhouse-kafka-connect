@@ -31,4 +31,13 @@ public class InMemoryState extends BaseStateProviderImpl {
         String key = genKey(stateRecord.getTopic(), stateRecord.getPartition());
         stateDB.put(key, stateRecord);
     }
+
+    @Override
+    public boolean compareAndSetStateRecord(StateRecord expected, StateRecord update) {
+        if (!getStateRecord(update.getTopic(), update.getPartition()).equals(expected)) {
+            return false;
+        }
+        setStateRecord(update);
+        return true;
+    }
 }

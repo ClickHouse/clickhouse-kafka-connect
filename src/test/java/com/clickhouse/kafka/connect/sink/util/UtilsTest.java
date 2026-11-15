@@ -5,12 +5,14 @@ import com.clickhouse.client.api.DataTransferException;
 import com.clickhouse.client.api.ServerException;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
+import com.clickhouse.kafka.connect.sink.state.StateConflictException;
 import com.clickhouse.kafka.connect.util.Utils;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.net.SocketException;
@@ -286,5 +288,17 @@ public class UtilsTest {
                 "Third diff should describe addition: " + posThreeDiff);
         assertTrue(posThreeDiff.contains("new_col"),
                 "Third diff should mention the new column name: " + posThreeDiff);
+    }
+
+    @ParameterizedTest(name = "errors.tolerance enabled: {0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("State conflict is retried and never tolerated, so a fenced batch does not reach the DLQ")
+    public void stateConflictIsRetriedRegardlessOfErrorsTolerance(boolean errorsTolerance) {
+        StateConflictException conflict = new StateConflictException("state changed");
+
+        RetriableException thrown = assertThrows(RetriableException.class, () ->
+                Utils.handleException(conflict, errorsTolerance, false, Collections.emptySet(), new ArrayList<>()));
+
+        assertSame(conflict, thrown);
     }
 }

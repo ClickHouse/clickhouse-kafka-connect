@@ -14,6 +14,16 @@ public interface StateProvider {
     void setStateRecord(StateRecord stateRecord);
 
     /**
+     * Writes {@code update} only if the stored state still equals {@code expected}, the record the
+     * caller based its decision on (a record in state {@code NONE} means "nothing stored yet").
+     * This fences a task that lost its partition while it was paused: its decision is stale, so it
+     * must not overwrite the state of the new owner nor insert its batch.
+     *
+     * @return false if the stored state differs from {@code expected}; nothing is written then.
+     */
+    boolean compareAndSetStateRecord(StateRecord expected, StateRecord update);
+
+    /**
      * Implementation should keep mapping of last inserted offset and keep track of removed partitions.
      *
      * @return mutable copy of internal map.
