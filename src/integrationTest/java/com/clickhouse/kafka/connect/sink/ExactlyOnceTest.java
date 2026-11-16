@@ -268,8 +268,19 @@ public class ExactlyOnceTest {
         return compareCounts(topicName, partitions, configPath, /* schema */ true);
     }
 
-    private boolean compareCounts(String topicName, int partitions, String configPath, boolean schema)
+    /**
+     * Gives each config variant its own topic and table. A second invocation on the same topic finds the
+     * records of the first one (generateData() returns the summed end offsets), the committed offsets of the
+     * sink's consumer group and its KeeperMap state, so it expects more rows than it can insert.
+     */
+    private static String topicForConfig(String baseTopicName, String configPath) {
+        String variant = Paths.get(configPath).getFileName().toString().replaceFirst("\\.json$", "");
+        return baseTopicName + "_" + variant;
+    }
+
+    private boolean compareCounts(String baseTopicName, int partitions, String configPath, boolean schema)
             throws InterruptedException, IOException {
+        String topicName = topicForConfig(baseTopicName, configPath);
         STOCK_TABLE.get() // implicitly SharedMergeTree in CH Cloud
                 .tableName(topicName).ifNotExists(true).execute(chcNoProxy);
         ClickHouseTestHelpers.clearTable(chcNoProxy, topicName);
@@ -299,8 +310,9 @@ public class ExactlyOnceTest {
         runSpottyNetwork(topicName, numberOfPartitions, configPath, /* schema */ true);
     }
 
-    private void runSpottyNetwork(String topicName, int numberOfPartitions, String configPath, boolean schema)
+    private void runSpottyNetwork(String baseTopicName, int numberOfPartitions, String configPath, boolean schema)
             throws InterruptedException, IOException, URISyntaxException {
+        String topicName = topicForConfig(baseTopicName, configPath);
         boolean allSuccess = true;
         int runCount = 1;
         do {
