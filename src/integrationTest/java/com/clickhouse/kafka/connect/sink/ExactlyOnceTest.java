@@ -52,6 +52,8 @@ public class ExactlyOnceTest {
             .column("price", "Int32")
             .column("account", "String")
             .column("userid", "String")
+            .column("kafka_partition", "Int32")
+            .column("kafka_offset", "Int64")
             .column("insertTime", "DateTime DEFAULT now()")
             .orderByColumn("symbol");
     private static final String SCHEMALESS_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy_schemaless.json";
@@ -310,8 +312,8 @@ public class ExactlyOnceTest {
 
         int[] databaseCounts = getCounts(chcNoProxy, topicName);
         ClickHouseTestHelpers.dropTable(chcNoProxy, topicName);
-        assertTrue(databaseCounts[2] == 0 && databaseCounts[1] == count, String.format("%s: expected %d unique rows, "
-                + "ClickHouse has total=%d unique=%d duplicates=%d", topicName, count, databaseCounts[0], databaseCounts[1], databaseCounts[2]));
+        assertTrue(databaseCounts[2] == 0 && databaseCounts[1] == count, String.format("%s: expected %d Kafka records exactly once, "
+                + "ClickHouse has total=%d distinct records=%d duplicates=%d", topicName, count, databaseCounts[0], databaseCounts[1], databaseCounts[2]));
         return true;
     }
 
@@ -369,14 +371,14 @@ public class ExactlyOnceTest {
     }
 
     private static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
-        String queryString = "SELECT `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime`, COUNT(*) FROM " + tableName +
-                " GROUP BY `side`, `quantity`, `symbol`, `price`, `account`, `userid`, `insertTime` HAVING COUNT(*) > 1";
+        String queryString = "SELECT `kafka_partition`, `kafka_offset`, COUNT(*) FROM " + tableName +
+                " GROUP BY `kafka_partition`, `kafka_offset` HAVING COUNT(*) > 1";
         return chc.queryV2(queryString);
     }
 
     private static int[] getCounts(ClickHouseHelperClient chc, String tableName) {
         String from = ClickHouseTestHelpers.buildFromClause(chc, tableName);
-        String queryCount = "SELECT count(*) as total, uniqExact(*) as uniqueTotal, total - uniqueTotal FROM " + from + " SETTINGS select_sequential_consistency = 1";
+        String queryCount = "SELECT count(*) as total, uniqExact(kafka_partition, kafka_offset) as uniqueTotal, total - uniqueTotal FROM " + from + " SETTINGS select_sequential_consistency = 1";
         try (Records records = chc.queryV2(queryCount)) {
             GenericRecord first = StreamSupport.stream(records.spliterator(), false).findFirst().orElseThrow();
             return Stream.of(first.getInteger(1), first.getInteger(2), first.getInteger(3)).mapToInt(Integer::intValue).toArray();
