@@ -8,12 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.clickhouse.kafka.connect.sink.data.Data;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.data.SchemaType;
+import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
 import com.clickhouse.kafka.connect.sink.db.mapping.Column;
 import com.clickhouse.kafka.connect.sink.db.mapping.Table;
+import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +26,7 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 /**
  * Unit tests for the per-record context that {@code ClickHouseWriter} attaches to serialization
@@ -75,6 +79,33 @@ public class ClickHouseWriterRecordContextTest {
         // A retriable failure is not a serialization problem: wrapping it into a DataException would
         // turn a transient server condition into a permanently failed record.
         assertSame(retriable, thrown, "the original RetriableException must propagate as-is");
+    }
+
+    @Test
+    public void insertFailureIsRethrownUntouchedWithOrWithoutAMessage() throws Exception {
+        assertInsertFailureRethrown(new IOException());
+        // Control with a message that names no table update error code.
+        assertInsertFailureRethrown(new IOException("Connection reset"));
+    }
+
+    private static void assertInsertFailureRethrown(IOException failure) throws Exception {
+        ClickHouseWriter writer = new ClickHouseWriter(new SinkTaskStatistics(0)) {
+            @Override
+            protected void doInsertRawBinaryV1(List<Record> records, Table table, QueryIdentifier queryId,
+                    boolean supportDefaults) throws IOException {
+                throw failure;
+            }
+        };
+        // A mocked client reports client V1, so the insert goes to the override above.
+        Field chc = ClickHouseWriter.class.getDeclaredField("chc");
+        chc.setAccessible(true);
+        chc.set(writer, Mockito.mock(ClickHouseHelperClient.class));
+
+        IOException thrown = assertThrows(IOException.class,
+                () -> writer.doInsertRawBinary(List.of(record(new Data(Schema.INT64_SCHEMA, 1L))), table(),
+                        new QueryIdentifier(TOPIC, "query-id"), false, true));
+
+        assertSame(failure, thrown, "the original exception must reach the caller unchanged");
     }
 
     private static Table table() {

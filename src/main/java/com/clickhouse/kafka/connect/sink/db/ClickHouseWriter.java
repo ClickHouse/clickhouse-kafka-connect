@@ -1014,8 +1014,8 @@ public class ClickHouseWriter implements DBWriter {
             }
         } catch (Exception e) {
             // Note: this part will be removed once V1 is deprecated
-            Optional<String> updateTableException = UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().filter(code -> e.getMessage().contains(code)).findFirst();
-            if (e.getMessage() != null && updateTableException.isPresent() && retry) {
+            Optional<String> updateTableException = UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.keySet().stream().filter(code -> e.getMessage() != null && e.getMessage().contains(code)).findFirst();
+            if (updateTableException.isPresent() && retry) {
                 LOGGER.warn("Error code {}. Trying to update table mapping because ClickHouse table schema may have evolved.", UPDATE_TABLE_EXCEPTION_STR_TO_ERROR_CODE.get(updateTableException.get()));
                 try {
                     chc.pinReplica();
