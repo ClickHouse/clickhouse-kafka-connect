@@ -466,7 +466,7 @@ public class ClickHouseSinkConfig {
                 "Clickhouse database name.");
         configDef.define(USERNAME,
                 ConfigDef.Type.STRING,
-                passwordDefault,
+                usernameDefault,
                 ConfigDef.Importance.LOW,
                 "username",
                 group,

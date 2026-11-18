@@ -23,6 +23,11 @@
   `RetriableException` is still rethrown untouched, so a transient server condition keeps redelivering the batch rather
   than failing the record. (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/640)
 
+* Fixed the `ConfigDef` default of `username`, which was the empty password default instead of `default`. Config
+  validation and docs built from the `ConfigDef` showed an empty default. The connector already connected as `default`
+  when `username` was not set, so running tasks are not affected.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/885)
+
 # 1.7.0, 2026-09-30
 
 ## Important Changes
