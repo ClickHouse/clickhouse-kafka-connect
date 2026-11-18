@@ -208,7 +208,7 @@ public class Column {
                     .enumValues(extractEnumValues(valueType))
                     .build();
         } else if (valueType.startsWith("Array")) {
-            Column arrayType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false, isSubColumn, hasDefaultValue, arrayDepth + 1);
+            Column arrayType = extractColumn(name, valueType.substring("Array".length() + 1, valueType.length() - 1), false, hasDefaultValue, isSubColumn, arrayDepth + 1);
             if (arrayType == null) {
                 return null;
             }

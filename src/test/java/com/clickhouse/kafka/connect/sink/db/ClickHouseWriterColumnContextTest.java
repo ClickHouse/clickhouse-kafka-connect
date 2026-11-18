@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -15,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
+import java.util.Map;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -30,6 +32,11 @@ import org.junit.jupiter.api.Test;
 public class ClickHouseWriterColumnContextTest {
 
     private static final String CONTEXT_PREFIX = "Failed to write column";
+    private static final Schema TUPLE_A = SchemaBuilder.struct().field("a", Schema.INT32_SCHEMA).build();
+    private static final Schema TUPLE_AB = SchemaBuilder.struct()
+            .field("a", Schema.INT32_SCHEMA)
+            .field("b", Schema.STRING_SCHEMA)
+            .build();
 
     private static ClickHouseWriter newWriter() {
         return new ClickHouseWriter(new SinkTaskStatistics(0));
@@ -75,6 +82,76 @@ public class ClickHouseWriterColumnContextTest {
         assertTrue(message.contains(CONTEXT_PREFIX), "should carry the column context: " + message);
         assertTrue(message.indexOf(CONTEXT_PREFIX) == message.lastIndexOf(CONTEXT_PREFIX),
                 "context prefix should not be duplicated on nested types: " + message);
+    }
+
+    @Test
+    public void missingTupleFieldInsideArrayFailsWithoutWritingADefaultMarker() throws Exception {
+        // The columns DESCRIBE lists for `arr Array(Tuple(a Int32, b String))` with describe_include_subcolumns
+        Table table = new Table("default", "t", false, List.of(
+                Column.extractColumn("id", "Int32", false, false, false),
+                Column.extractColumn("arr", "Array(Tuple(a Int32, b String))", false, false, false),
+                Column.extractColumn("arr.size0", "UInt64", false, false, true),
+                Column.extractColumn("arr.a", "Array(Int32)", false, false, true),
+                Column.extractColumn("arr.b", "Array(String)", false, false, true)), 2);
+        Schema withB = SchemaBuilder.array(TUPLE_AB).build();
+        Schema withoutB = SchemaBuilder.array(TUPLE_A).build();
+        List<Struct> full = List.of(new Struct(TUPLE_AB).put("a", 7).put("b", "y"));
+        List<Struct> missingB = List.of(new Struct(TUPLE_A).put("a", 7));
+
+        assertArrayEquals(new byte[] {1, 0, 0, 0, 1, 7, 0, 0, 0, 1, 'y'}, writeRow(table, "arr", withB, full, false));
+        assertArrayEquals(new byte[] {0, 1, 0, 0, 0, 0, 1, 7, 0, 0, 0, 1, 'y'}, writeRow(table, "arr", withB, full, true));
+        // No byte is written for the missing field `b`, so the row ends after the array size and `a`
+        assertWriteFails(table, "arr", withoutB, missingB, false, new byte[] {1, 0, 0, 0, 1, 7, 0, 0, 0});
+        assertWriteFails(table, "arr", withoutB, missingB, true, new byte[] {0, 1, 0, 0, 0, 0, 1, 7, 0, 0, 0});
+    }
+
+    @Test
+    public void missingTupleFieldInsideMapValueFailsWithoutWritingADefaultMarker() throws Exception {
+        // The columns DESCRIBE lists for `m Map(String, Tuple(a Int32, b String))` with describe_include_subcolumns
+        Table table = new Table("default", "t", false, List.of(
+                Column.extractColumn("id", "Int32", false, false, false),
+                Column.extractColumn("m", "Map(String, Tuple(a Int32, b String))", false, false, false),
+                Column.extractColumn("m.size0", "UInt64", false, false, true),
+                Column.extractColumn("m.keys", "Array(String)", false, false, true),
+                Column.extractColumn("m.values", "Array(Tuple(a Int32, b String))", false, false, true),
+                Column.extractColumn("m.values.a", "Array(Int32)", false, false, true),
+                Column.extractColumn("m.values.b", "Array(String)", false, false, true)), 2);
+        Schema withB = SchemaBuilder.map(Schema.STRING_SCHEMA, TUPLE_AB).build();
+        Schema withoutB = SchemaBuilder.map(Schema.STRING_SCHEMA, TUPLE_A).build();
+        Map<String, Struct> full = Map.of("k", new Struct(TUPLE_AB).put("a", 7).put("b", "y"));
+        Map<String, Struct> missingB = Map.of("k", new Struct(TUPLE_A).put("a", 7));
+
+        assertArrayEquals(new byte[] {1, 0, 0, 0, 1, 1, 'k', 7, 0, 0, 0, 1, 'y'}, writeRow(table, "m", withB, full, false));
+        assertArrayEquals(new byte[] {0, 1, 0, 0, 0, 0, 1, 1, 'k', 7, 0, 0, 0, 1, 'y'}, writeRow(table, "m", withB, full, true));
+        assertWriteFails(table, "m", withoutB, missingB, false, new byte[] {1, 0, 0, 0, 1, 1, 'k', 7, 0, 0, 0});
+        assertWriteFails(table, "m", withoutB, missingB, true, new byte[] {0, 1, 0, 0, 0, 0, 1, 1, 'k', 7, 0, 0, 0});
+    }
+
+    // Converts a Struct with `id = 1` and the given field the same way the sink task does, then writes it as one row
+    private static byte[] writeRow(Table table, String field, Schema fieldSchema, Object value, boolean supportDefaults)
+            throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        newWriter().writeRecordsRowBinary(List.of(recordWithId(field, fieldSchema, value)), table, out, supportDefaults);
+        return out.toByteArray();
+    }
+
+    private static void assertWriteFails(Table table, String field, Schema fieldSchema, Object value,
+            boolean supportDefaults, byte[] writtenBeforeFailure) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        com.clickhouse.kafka.connect.sink.data.Record record = recordWithId(field, fieldSchema, value);
+
+        DataException thrown = assertThrows(DataException.class,
+                () -> newWriter().writeRecordsRowBinary(List.of(record), table, out, supportDefaults));
+
+        assertTrue(thrown.getMessage().contains("column `" + field + "`"), thrown.getMessage());
+        assertArrayEquals(writtenBeforeFailure, out.toByteArray());
+    }
+
+    private static com.clickhouse.kafka.connect.sink.data.Record recordWithId(String field, Schema fieldSchema, Object value) {
+        Schema schema = SchemaBuilder.struct().field("id", Schema.INT32_SCHEMA).field(field, fieldSchema).build();
+        Struct struct = new Struct(schema).put("id", 1).put(field, value);
+        return com.clickhouse.kafka.connect.sink.data.Record.convert(
+                new SinkRecord("t", 0, null, null, schema, struct, 0), false, ".", "default", false);
     }
 
     @Test
