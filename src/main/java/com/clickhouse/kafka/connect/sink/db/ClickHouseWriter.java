@@ -79,23 +79,7 @@ public class ClickHouseWriter implements DBWriter {
     public boolean start(ClickHouseSinkConfig csc) {
         LOGGER.trace("Starting ClickHouseWriter");
         this.csc = csc;
-        String clientVersion = csc.getClientVersion();
-        boolean useClientV2 = clientVersion.equals("V1") ? false : true;
-
-        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(csc.getDatabase())
-                .setUsername(csc.getUsername())
-                .setPassword(csc.getPassword())
-                .sslEnable(csc.isSslEnabled())
-                .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
-                .setTimeout(csc.getTimeout())
-                .setRetry(csc.getRetry())
-                .useClientV2(useClientV2)
-                .setSslSocketSni(csc.getSslSocketSni())
-                .setClusterClause(csc.getClusterName())
-                .enableReplicaPinning(csc.isEnableReplicaPinning())
-                .setCompressionMethod(csc.isSetCompressionMethod())
-                .build();
+        chc = new ClickHouseHelperClient.ClickHouseClientBuilder(csc).build();
 
         if (!chc.ping()) {
             LOGGER.error("Unable to ping Clickhouse server.");
@@ -1528,25 +1512,17 @@ public class ClickHouseWriter implements DBWriter {
     }
     private ClickHouseRequest.Mutation getMutationRequest(ClickHouseClient client, ClickHouseFormat format, String tableName, String database, QueryIdentifier queryId) {
 
-        ClickHouseHelperClient chcTmp = new ClickHouseHelperClient.ClickHouseClientBuilder(csc.getHostname(), csc.getPort(), csc.getProxyType(), csc.getProxyHost(), csc.getProxyPort())
-                .setDatabase(database)
-                .setUsername(csc.getUsername())
-                .setPassword(csc.getPassword())
-                .sslEnable(csc.isSslEnabled())
-                .setJdbcConnectionProperties(csc.getJdbcConnectionProperties())
-                .setTimeout(csc.getTimeout())
-                .setRetry(csc.getRetry())
-                .setSslSocketSni(csc.getSslSocketSni())
-                .setClusterClause(csc.getClusterName())
-                .enableReplicaPinning(csc.isEnableReplicaPinning())
-                .setCompressionMethod(csc.isSetCompressionMethod())
-                .build();
-
-        ClickHouseNode server = chcTmp.getServer();
-        ClickHouseRequest.Mutation request = client.read(server)
-                .write()
-                .table(tableName, queryId.getQueryId())
-                .format(format);
+        ClickHouseRequest.Mutation request;
+        try (ClickHouseHelperClient databaseClient =
+                new ClickHouseHelperClient.ClickHouseClientBuilder(csc)
+                        .setDatabase(database)
+                        .build()) {
+            ClickHouseNode server = databaseClient.getServer();
+            request = client.read(server)
+                    .write()
+                    .table(tableName, queryId.getQueryId())
+                    .format(format);
+        }
 
         String deduplicationToken = queryId.getDeduplicationToken();
         if (deduplicationToken != null) {
