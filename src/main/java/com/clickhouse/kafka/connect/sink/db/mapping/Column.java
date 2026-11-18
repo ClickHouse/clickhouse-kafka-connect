@@ -205,6 +205,7 @@ public class Column {
                 type = Type.Enum8;
             }
             return builder.type(type)
+                    .isNullable(isNull)
                     .enumValues(extractEnumValues(valueType))
                     .build();
         } else if (valueType.startsWith("Array")) {
