@@ -42,6 +42,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -455,8 +456,9 @@ public class ClickHouseWriterTest extends ClickHouseBase {
             ClickHouseTestHelpers.executeQueryIgnoreResult(chc, String.format("ALTER TABLE `%s`%s ADD COLUMN extra String DEFAULT '' FIRST",
                     topic, ClickHouseTestHelpers.getClusterClauseOrEmpty()));
 
-            // system.columns already reports the new column while DESCRIBE replays the pre-ALTER schema
-            assertTrue(writer.updateMapping(chc.getDatabase()));
+            // system.columns already reports the new column while DESCRIBE replays the pre-ALTER schema.
+            // A refresh re-describes the table at most once, so this stops at the first re-describe.
+            refreshMappingUntilAlterSeen(writer, chc.getDatabase(), () -> describeCallsForTopic.get() >= 1);
             assertEquals(1, describeCallsForTopic.get(), "The column count change should have triggered exactly one re-describe");
 
             Table cachedStale = writer.getMapping().get(fullyQualifiedTableName);
@@ -469,8 +471,11 @@ public class ClickHouseWriterTest extends ClickHouseBase {
                     topic, cachedStale.getNumColumns(), cachedStale.getRootColumnsList().size()));
 
             // DESCRIBE returns the new column from here on, so an ordinary refresh has to pick it up
-            assertTrue(writer.updateMapping(chc.getDatabase()));
-            assertEquals(2, describeCallsForTopic.get(), String.format("Refreshing the mapping should have re-described %s", topic));
+            refreshMappingUntilAlterSeen(writer, chc.getDatabase(), () -> {
+                Table cached = writer.getMapping().get(fullyQualifiedTableName);
+                return cached != null && cached.getRootColumnsMap().containsKey("extra");
+            });
+            assertTrue(describeCallsForTopic.get() >= 2, String.format("Refreshing the mapping should have re-described %s", topic));
 
             Table cachedAfter = writer.getMapping().get(fullyQualifiedTableName);
             assertNotNull(cachedAfter);
@@ -702,6 +707,28 @@ public class ClickHouseWriterTest extends ClickHouseBase {
 
     private static void setHelperClient(ClickHouseWriter writer, ClickHouseHelperClient client) throws Exception {
         writerHelperClientField().set(writer, client);
+    }
+
+    private static final long ALTER_VISIBLE_TIMEOUT_MS = 30_000;
+
+    /**
+     * Refreshes the writer's mapping until {@code seen} holds, for at most {@link #ALTER_VISIBLE_TIMEOUT_MS}.
+     *
+     * <p>On a service with several replicas (ClickHouse Cloud) the ALTER can return before every replica has applied
+     * it, so the system.columns count query behind a refresh can be served by a replica that still reports the old
+     * column count. The connector picks the change up on its next refresh cycle; a test
+     * that refreshes once and expects the change to be visible fails whenever the query lands on such a replica.
+     */
+    private static void refreshMappingUntilAlterSeen(ClickHouseWriter writer, String database, BooleanSupplier seen)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + ALTER_VISIBLE_TIMEOUT_MS;
+        while (true) {
+            assertTrue(writer.updateMapping(database));
+            if (seen.getAsBoolean() || System.currentTimeMillis() >= deadline) {
+                return;
+            }
+            Thread.sleep(200);
+        }
     }
 
     private static boolean exceptionChainContains(Throwable t, String target) {
