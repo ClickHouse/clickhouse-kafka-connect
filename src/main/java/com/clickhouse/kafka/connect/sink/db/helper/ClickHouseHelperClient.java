@@ -335,7 +335,6 @@ public class ClickHouseHelperClient implements AutoCloseable {
         int retryCount = 0;
         Exception ce = null;
         while (retryCount < retry) {
-            System.out.println("query " + query + " retry " + retryCount + " out of " + retry);
             CompletableFuture<Records> futureRecords = client.queryRecords(query, settings);
             try {
                 Records records = futureRecords.get();

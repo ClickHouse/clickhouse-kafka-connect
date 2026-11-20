@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Unit tests get logback-classic transitively (kafka-schema-registry -> zookeeper). Without this file logback logs
+  everything at DEBUG, including the Apache HttpClient wire and header logs, which contain the ClickHouse
+  "Authorization: Basic" header. Test output ends up in the Gradle reports that CI uploads as public artifacts.
+-->
+<configuration>
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>[%d] %p %logger %m%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Never log HTTP wire data or headers: they carry credentials. -->
+    <logger name="org.apache.hc" level="WARN"/>
+
+    <!-- Keep OFF: test reports are uploaded as public CI artifacts, and KeeperStateProvider logs a
+         partially masked password at INFO (Mask.passwordMask). Raise this only after Mask.passwordMask is fixed. -->
+    <root level="OFF">
+        <appender-ref ref="console"/>
+    </root>
+</configuration>
