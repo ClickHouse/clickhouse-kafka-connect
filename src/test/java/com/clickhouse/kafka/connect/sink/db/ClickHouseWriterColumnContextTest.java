@@ -1,5 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -14,6 +15,7 @@ import com.clickhouse.kafka.connect.util.jmx.SinkTaskStatistics;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 import java.util.List;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -327,5 +329,38 @@ public class ClickHouseWriterColumnContextTest {
         out64 = new ByteArrayOutputStream();
         writer.doWriteColValue(colInt64, out64, dataLongMax, false);
         assertEquals(Long.MAX_VALUE, ByteBuffer.wrap(out64.toByteArray()).order(ByteOrder.LITTLE_ENDIAN).getLong());
+    }
+
+    @Test
+    public void nullableEnumWritesNullMarker() throws Exception {
+        String enum8 = "Nullable(Enum8('a' = 1, 'b' = 2))";
+        String enum16 = "Nullable(Enum16('a' = 1, 'b' = 1000))";
+
+        assertArrayEquals(new byte[] {0, 2}, writeEnumCol(enum8, "b", false));
+        assertArrayEquals(new byte[] {1}, writeEnumCol(enum8, null, false));
+        assertArrayEquals(new byte[] {0, (byte) 0xE8, 0x03}, writeEnumCol(enum16, "b", false));
+        assertArrayEquals(new byte[] {1}, writeEnumCol(enum16, null, false));
+        // With RowBinaryWithDefaults a 0 byte for no default comes before the null marker
+        assertArrayEquals(new byte[] {0, 0, 2}, writeEnumCol(enum8, "b", true));
+        assertArrayEquals(new byte[] {0, 1}, writeEnumCol(enum8, null, true));
+        assertArrayEquals(new byte[] {2}, writeEnumCol("Enum8('a' = 1, 'b' = 2)", "b", false));
+    }
+
+    @Test
+    public void arrayOfNullableEnumWritesNullMarkerPerElement() throws Exception {
+        Column column = Column.extractColumn("e", "Array(Nullable(Enum8('a' = 1, 'b' = 2)))", false, false, false);
+        Data value = new Data(SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).build(), Arrays.asList("a", null, "b"));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        newWriter().doWriteColValue(column, out, value, false);
+
+        assertArrayEquals(new byte[] {3, 0, 1, 1, 0, 2}, out.toByteArray());
+    }
+
+    private static byte[] writeEnumCol(String clickHouseType, String label, boolean defaultsSupport) throws Exception {
+        Column column = Column.extractColumn("e", clickHouseType, false, false, false);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        newWriter().doWriteCol(new Data(Schema.OPTIONAL_STRING_SCHEMA, label), true, column, out, defaultsSupport);
+        return out.toByteArray();
     }
 }
