@@ -170,6 +170,8 @@ testing {
                         
                         val systemProps = System.getProperties().entries.associate { it.key.toString() to it.value }
                         systemProperties(systemProps)
+                        systemProperty("confluent.platform.version", libs.versions.confluentPlatform.get())
+                        systemProperty("kafka.connect.datagen.version", libs.versions.kafkaConnectDatagen.get())
                     }
                 }
             }

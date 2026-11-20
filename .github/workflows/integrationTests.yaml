@@ -10,11 +10,11 @@ jobs:
   build-and-run-cloud:
     runs-on: ubuntu-latest
     name: Kafka Connect integration tests against ClickHouse cloud
+    # These tests stop and start one dedicated ClickHouse Cloud service: never let two runs touch it at once.
+    concurrency:
+      group: integration-tests-cloud-service
+      cancel-in-progress: false
     steps:
-      - name: Mask secure properties
-        run: |
-          echo "::add-mask::${{ secrets.CLICKHOUSE_PASSWORD }}"
-          echo "::add-mask::${{ secrets.CLICKHOUSE_CLOUD_SECRET }}"
       - uses: actions/checkout@v3
       - name: Set up JDK 17
         uses: actions/setup-java@v3
@@ -31,7 +31,7 @@ jobs:
           arguments: integrationTest
             --tests "com.clickhouse.kafka.connect.sink.ClickHouseCloudTest"
             --tests "com.clickhouse.kafka.connect.sink.ExactlyOnceTest"
-            -Dclickhouse.host=${{vars.CLICKHOUSE_HOST}}
+            -Dclickhouse.host=${{secrets.CLICKHOUSE_HOST}}
             -Dclickhouse.port=${{vars.CLICKHOUSE_PORT}}
             -Dclickhouse.password=${{secrets.CLICKHOUSE_PASSWORD}}
             -Dclickhouse.cloud.organization=${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}}
@@ -48,7 +48,7 @@ jobs:
           arguments: integrationTest
             --tests "com.clickhouse.kafka.connect.sink.ClickHouseCloudTest"
             --tests "com.clickhouse.kafka.connect.sink.ExactlyOnceTest"
-            -Dclickhouse.host=${{vars.CLICKHOUSE_HOST}}
+            -Dclickhouse.host=${{secrets.CLICKHOUSE_HOST}}
             -Dclickhouse.port=${{vars.CLICKHOUSE_PORT}}
             -Dclickhouse.password=${{secrets.CLICKHOUSE_PASSWORD}}
             -Dclickhouse.cloud.organization=${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}}

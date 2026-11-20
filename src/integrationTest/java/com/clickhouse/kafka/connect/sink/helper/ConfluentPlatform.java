@@ -9,7 +9,9 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
+import org.testcontainers.shaded.org.awaitility.core.ConditionTimeoutException;
 import org.testcontainers.shaded.org.awaitility.pollinterval.FixedPollInterval;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
@@ -22,15 +24,16 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.StreamSupport;
 
 
 public class ConfluentPlatform {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfluentPlatform.class);
 
-    private static final String CONFLUENT_VERSION = "7.9.6";
-    private static final String DATAGEN_VERSION = "0.6.4-7.6.0";
+    // Versions come from gradle/libs.versions.toml so the images match the Confluent test libraries.
+    private static final String CONFLUENT_VERSION = requiredSystemProperty("confluent.platform.version");
+    private static final String DATAGEN_VERSION = requiredSystemProperty("kafka.connect.datagen.version");
 
     private static final DockerImageName KAFKA_REST_IMAGE = DockerImageName.parse(
             "confluentinc/cp-kafka-rest:" + CONFLUENT_VERSION
@@ -48,9 +51,14 @@ public class ConfluentPlatform {
             "confluentinc/cp-schema-registry:" + CONFLUENT_VERSION
     );
 
-    private static final DockerImageName CP_DATA_GEN = DockerImageName.parse(
-            "cnfldemos/cp-server-connect-datagen:" + DATAGEN_VERSION
-    );
+    // Confluent publishes the cnfldemos Connect + datagen image only for affected converter versions, so build the same
+    // combination locally under the same name and tag scheme (<datagen>-<confluent>). This tag is built here, not pulled.
+    private static final ImageFromDockerfile CP_DATA_GEN = new ImageFromDockerfile(
+            "cnfldemos/cp-server-connect-datagen:" + DATAGEN_VERSION + "-" + CONFLUENT_VERSION, false)
+            .withDockerfileFromBuilder(builder -> builder
+                    .from("confluentinc/cp-server-connect:" + CONFLUENT_VERSION)
+                    .run("confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:" + DATAGEN_VERSION)
+                    .build());
 
     private static final DockerImageName CP_CONTROL_CENTER = DockerImageName.parse(
             "confluentinc/cp-enterprise-control-center:" + CONFLUENT_VERSION
@@ -80,6 +88,9 @@ public class ConfluentPlatform {
     private static final String TOPIC_ENDPOINT_RESPONSE_OFFSETS_ERROR_KEY = "error";
     private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_KEY = "tasks";
     private static final String CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY = "state";
+    private static final String DATAGEN_DONE_TRACE = "Stopping connector: generated the configured";
+    private static final String PRODUCER_PARTITIONER_OVERRIDE = "producer.override.partitioner.class";
+    private static final String ROUND_ROBIN_PARTITIONER = "org.apache.kafka.clients.producer.RoundRobinPartitioner";
 
     GenericContainer<?> zookeeper;
     GenericContainer<?> cp_server;
@@ -154,7 +165,7 @@ public class ConfluentPlatform {
                 .withEnv("CONNECT_PLUGIN_PATH", "/usr/share/java,/usr/share/confluent-hub-components")
                 .withEnv("CONNECT_LOG4J_LOGGERS", "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR,com.clickhouse=DEBUG")
                 .withExtraHost("host.docker.internal", "host-gateway")
-                .waitingFor(Wait.forHttp("/connectors").forStatusCode(200));
+                .waitingFor(Wait.forHttp("/connectors").forStatusCode(200).withStartupTimeout(Duration.ofMinutes(3)));
 
         if (connectorPathList != null) {
             for(String connectorPath : connectorPathList) {
@@ -341,7 +352,7 @@ public class ConfluentPlatform {
         return false;
     }
 
-    public void createConnectorAndWaitUntilRunning(String connectorName, String payload) throws IOException {
+    private void createConnector(String payload) throws IOException {
         String connectRestEndpoint = getConnectRestEndPoint();
         OkHttpClient client = new OkHttpClient();
         String connectorsEndpoint = String.format("%s/connectors", connectRestEndpoint);
@@ -359,14 +370,39 @@ public class ConfluentPlatform {
             LOGGER.debug("Create connectors response body: {}", responseBodyString);
             Assertions.assertTrue(code >= 200 && code < 300);
         }
-        Awaitility.await("connector running")
-                .atMost(Duration.ofMinutes(CONNECTOR_RUNNING_TIMEOUT_MINS))
-                .pollDelay(Duration.ofSeconds(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS))
-                .pollInterval(FixedPollInterval.fixed(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
-                .until(() -> {
-                    Optional<Object> taskObj = StreamSupport.stream(getConnectorTasksStatus(connectorName).spliterator(), false).findFirst();
-                    return taskObj.filter(o -> "RUNNING".equals(String.valueOf(((JSONObject) o).get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY)))).isPresent();
-                });
+    }
+
+    private static String requiredSystemProperty(String name) {
+        String value = System.getProperty(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(String.format(
+                    "System property '%s' is not set; run the integration tests through Gradle (it is set from gradle/libs.versions.toml)", name));
+        }
+        return value;
+    }
+
+    public void createConnectorAndWaitUntilRunning(String connectorName, String payload) throws IOException {
+        createConnector(payload);
+        AtomicReference<JSONArray> lastTasks = new AtomicReference<>();
+        try {
+            Awaitility.await("connector running")
+                    .atMost(Duration.ofMinutes(CONNECTOR_RUNNING_TIMEOUT_MINS))
+                    .pollDelay(Duration.ofSeconds(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS))
+                    .pollInterval(FixedPollInterval.fixed(CONNECTOR_STATUS_POLL_INTERVAL_SECONDS, TimeUnit.SECONDS))
+                    .until(() -> {
+                        JSONArray tasks = getConnectorTasksStatus(connectorName);
+                        lastTasks.set(tasks);
+                        // A FAILED task never becomes RUNNING without a restart, so waiting out the timeout only hides its trace.
+                        Optional<String> failure = getFirstTaskFailureOpt(tasks);
+                        if (failure.isPresent()) {
+                            throw new IllegalStateException(String.format("Connector '%s' task FAILED:%n%s", connectorName, failure.get()));
+                        }
+                        Optional<Object> taskObj = StreamSupport.stream(tasks.spliterator(), false).findFirst();
+                        return taskObj.filter(o -> "RUNNING".equals(String.valueOf(((JSONObject) o).get(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY)))).isPresent();
+                    });
+        } catch (ConditionTimeoutException e) {
+            throw new IllegalStateException(String.format("Connector '%s' not RUNNING within %d minutes; last task status: %s", connectorName, CONNECTOR_RUNNING_TIMEOUT_MINS, lastTasks.get()), e);
+        }
     }
 
 
@@ -471,30 +507,67 @@ public class ConfluentPlatform {
 
 
     public int generateData(String templateFileName, String topicName, int numberOfPartitions, int numberOfRecords) throws IOException, InterruptedException {
+        return generateData(templateFileName, topicName, numberOfPartitions, numberOfRecords, false);
+    }
+
+    /**
+     * @param evenPartitions send each datagen task's records to the partitions in turn (round-robin producer
+     *     partitioner) instead of datagen's default, uneven spread; with numberOfRecords divisible by the partition
+     *     count every partition gets the same number of records
+     */
+    public int generateData(String templateFileName, String topicName, int numberOfPartitions, int numberOfRecords, boolean evenPartitions)
+            throws IOException, InterruptedException {
         LOGGER.info("Generating data...");
         String connectorName = "DatagenConnector_" + topicName + UUID.randomUUID();
         int totalWorkers = numberOfPartitions * 10;
 
         String payloadDataGen = String.join("", Files.readAllLines(Paths.get(templateFileName)));
-        createConnectorAndWaitUntilRunning(connectorName, String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords));
-        String currentState = "";
-        int loopCount = 0;
-        do {
-            Thread.sleep(2 * 1000);
-            if (loopCount % 4 == 0) {
-                LOGGER.info("Generating...");
+        try {
+            // Datagen tasks stop themselves once they reach "iterations" by FAILING with DATAGEN_DONE_TRACE, often before
+            // a status poll could see them RUNNING. So instead of waiting for RUNNING, wait until every task of this
+            // connector has finished that way; any other task failure is a real error.
+            String payload = String.format(payloadDataGen, connectorName, connectorName, totalWorkers, topicName, numberOfRecords);
+            if (evenPartitions) {
+                JSONObject connector = new JSONObject(payload);
+                connector.getJSONObject("config").put(PRODUCER_PARTITIONER_OVERRIDE, ROUND_ROBIN_PARTITIONER);
+                payload = connector.toString();
             }
-            currentState = getConnectors();
-            LOGGER.debug(currentState);
-            loopCount++;
-        } while (Pattern.compile("Stopping connector: generated the configured").matcher(currentState).results().count() != totalWorkers && loopCount < 120);//We have to track multiple
-
-        if (loopCount >= 120) {
-            LOGGER.error("Data generation failed");
-            throw new RuntimeException("Data generation failed");
+            createConnector(payload);
+            JSONArray tasks = new JSONArray();
+            int loopCount = 0;
+            while (true) {
+                Thread.sleep(2 * 1000);
+                if (loopCount % 4 == 0) {
+                    LOGGER.info("Generating...");
+                }
+                try {
+                    tasks = getConnectorTasksStatus(connectorName);
+                } catch (IOException e) {
+                    LOGGER.debug("Datagen connector '{}' status not available yet: {}", connectorName, e.getMessage());
+                }
+                long done = 0;
+                for (Object task : tasks) {
+                    JSONObject jsonTask = (JSONObject) task;
+                    String trace = jsonTask.optString("trace", "");
+                    if ("FAILED".equalsIgnoreCase(jsonTask.optString(CONNECTORS_ENDPOINT_RESPONSE_TASKS_STATE_KEY))) {
+                        if (!trace.contains(DATAGEN_DONE_TRACE)) {
+                            throw new IllegalStateException(String.format("Datagen connector '%s' task FAILED:%n%s", connectorName, trace));
+                        }
+                        done++;
+                    }
+                }
+                if (done == totalWorkers) {
+                    break;
+                }
+                if (++loopCount >= 120) {
+                    LOGGER.error("Data generation failed; connector '{}' task status: {}", connectorName, tasks);
+                    throw new RuntimeException(String.format("Data generation failed; connector '%s' task status: %s", connectorName, tasks));
+                }
+            }
+        } finally {
+            // A leftover datagen connector keeps polluting the Connect worker for every later test.
+            deleteConnectors(connectorName);
         }
-
-        deleteConnectors(connectorName);
         Thread.sleep(3 * 1000);//Wait for the connector to be deleted
         long offsetTotal = 0;
         for (int i=0; i < numberOfPartitions; i++) {
@@ -598,7 +671,10 @@ public class ConfluentPlatform {
      * Returns the FIRST error trace encountered if any task has failed, or empty optional if all tasks are running.
      */
     public Optional<String> getFirstTaskFailureOpt(String connectorName) throws IOException {
-        JSONArray tasks = getConnectorTasksStatus(connectorName);
+        return getFirstTaskFailureOpt(getConnectorTasksStatus(connectorName));
+    }
+
+    private static Optional<String> getFirstTaskFailureOpt(JSONArray tasks) {
         if (tasks == null || tasks.isEmpty()) {
             return Optional.empty();
         }

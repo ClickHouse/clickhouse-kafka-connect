@@ -4,6 +4,7 @@ import com.clickhouse.client.api.query.GenericRecord;
 import com.clickhouse.client.api.query.Records;
 import com.clickhouse.kafka.connect.ClickHouseSinkConnector;
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseHelperClient;
+import com.clickhouse.kafka.connect.sink.helper.ClickHouseCloudAPI;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
@@ -65,6 +66,12 @@ public class ClickHouseCloudTest {
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_HOST_SYSTEM_PROP);
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PORT_SYSTEM_PROP);
         ClickHouseTestHelpers.logAndThrowIfCloudPropNotExists(LOGGER, properties, ClickHouseTestHelpers.CLICKHOUSE_CLOUD_PASSWORD_SYSTEM_PROP);
+        ClickHouseCloudAPI cloudAPI = new ClickHouseCloudAPI(properties);
+        if (cloudAPI.isConfigured()) {
+            cloudAPI.ensureServiceRunning();
+        } else {
+            LOGGER.warn("Cloud API properties are not set; not checking that the service is running");
+        }
     }
 
     @Test

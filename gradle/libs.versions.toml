@@ -19,8 +19,10 @@ mockito = "5.24.0"
 okhttp = "5.5.0"
 
 # Test fixtures and extra
-kafkaPlatformSchemaRegistry = "7.9.1"
-kafkaPlatformProtobuf = "7.9.1"
+# Confluent Platform: test libraries AND the integration-test docker images (passed to tests as a system property).
+confluentPlatform = "7.9.11"
+# Confluent Hub datagen plugin installed into the integration-test Connect worker.
+kafkaConnectDatagen = "0.6.7"
 testcontainers = "2.0.5"
 orgJson = "20260814"
 libprotobuf = "3.25.9"
@@ -71,16 +73,16 @@ json = { module = "org.json:json", version.ref = "orgJson" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 
 # Schema Registry
-kafka-schema-registry-client = { module = "io.confluent:kafka-schema-registry-client", version.ref = "kafkaPlatformSchemaRegistry" }
-kafka-schema-registry = { module = "io.confluent:kafka-schema-registry", version.ref = "kafkaPlatformSchemaRegistry" }
-kafka-schema-serializer = { module = "io.confluent:kafka-schema-serializer", version.ref = "kafkaPlatformSchemaRegistry" }
-kafka-connect-avro-converter = { module = "io.confluent:kafka-connect-avro-converter", version.ref = "kafkaPlatformSchemaRegistry" }
-kafka-avro-serializer = { module = "io.confluent:kafka-avro-serializer", version.ref = "kafkaPlatformSchemaRegistry" }
+kafka-schema-registry-client = { module = "io.confluent:kafka-schema-registry-client", version.ref = "confluentPlatform" }
+kafka-schema-registry = { module = "io.confluent:kafka-schema-registry", version.ref = "confluentPlatform" }
+kafka-schema-serializer = { module = "io.confluent:kafka-schema-serializer", version.ref = "confluentPlatform" }
+kafka-connect-avro-converter = { module = "io.confluent:kafka-connect-avro-converter", version.ref = "confluentPlatform" }
+kafka-avro-serializer = { module = "io.confluent:kafka-avro-serializer", version.ref = "confluentPlatform" }
 
 # Protobuf
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "libprotobuf" }
-kafka-protobuf-serializer = { module = "io.confluent:kafka-protobuf-serializer", version.ref = "kafkaPlatformProtobuf" }
-kafka-connect-protobuf-converter = { module = "io.confluent:kafka-connect-protobuf-converter", version.ref = "kafkaPlatformProtobuf" }
+kafka-protobuf-serializer = { module = "io.confluent:kafka-protobuf-serializer", version.ref = "confluentPlatform" }
+kafka-connect-protobuf-converter = { module = "io.confluent:kafka-connect-protobuf-converter", version.ref = "confluentPlatform" }
 
 commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commonsLang3" }
 
