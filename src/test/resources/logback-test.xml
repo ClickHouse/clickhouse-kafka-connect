@@ -14,7 +14,9 @@
     <!-- Never log HTTP wire data or headers: they carry credentials. -->
     <logger name="org.apache.hc" level="WARN"/>
 
-    <root level="INFO">
+    <!-- Keep OFF: test reports are uploaded as public CI artifacts, and KeeperStateProvider logs a
+         partially masked password at INFO (Mask.passwordMask). Raise this only after Mask.passwordMask is fixed. -->
+    <root level="OFF">
         <appender-ref ref="console"/>
     </root>
 </configuration>
