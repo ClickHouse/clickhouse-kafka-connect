@@ -5,6 +5,11 @@
 * Fixed silent loss of fields whose ClickHouse column names contain `/` by preserving JSON escaping in
   DESCRIBE responses with both client V1 and V2. Existing support for escaped column comments is preserved.
   (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/838)
+
+* Fixed table mapping for `Enum8` and `Enum16` columns whose labels contain `)`, `=`, `'` or a backslash. With client V2
+  such a table was left out of the mapping, and with client V1 the task failed to start for every table in the same
+  database. Labels with an escaped backslash or newline now map to the text the server stores.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/881)
 # Unreleased
 
 ## Improvements
