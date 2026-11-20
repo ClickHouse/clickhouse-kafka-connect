@@ -161,18 +161,10 @@ public class ClickHouseHelperClient implements AutoCloseable {
         if (this.sslEnabled)
             protocol += "s";
 
-        String tmpJdbcConnectionProperties = jdbcConnectionProperties;
-        if (tmpJdbcConnectionProperties != null && !tmpJdbcConnectionProperties.startsWith("?")) {
-            tmpJdbcConnectionProperties = "?" + tmpJdbcConnectionProperties;
-        }
-
-        String url = String.format("%s://%s:%d/%s%s",
-                protocol,
-                hostname,
-                port,
-                database,
-                tmpJdbcConnectionProperties
-        );
+        // No path: from clickhouse-java 0.10.0 on, client V2 sends every request to the endpoint's path
+        // (ClickHouse/clickhouse-java#2691), and the server rejects requests to "/<database>". The database is
+        // set with setDefaultDatabase and the JDBC connection properties with setOption, both below.
+        String url = String.format("%s://%s:%d", protocol, hostname, port);
 
         LOGGER.info("ClickHouse URL: {}", url);
 

@@ -1,10 +1,10 @@
 package com.clickhouse.kafka.connect.sink;
 
-import com.clickhouse.client.api.ServerException;
 import com.clickhouse.kafka.connect.sink.data.Record;
 import com.clickhouse.kafka.connect.sink.db.InMemoryDBWriter;
 import com.clickhouse.kafka.connect.sink.dlq.ErrorReporter;
 import com.clickhouse.kafka.connect.sink.helper.SchemalessTestData;
+import com.clickhouse.kafka.connect.sink.helper.ServerExceptions;
 import com.clickhouse.kafka.connect.util.QueryIdentifier;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -39,7 +39,7 @@ public class AdditionalRetriableErrorCodesTest {
         public void doInsert(List<Record> records, QueryIdentifier queryId, ErrorReporter errorReporter) {
             if (!failed) {
                 failed = true;
-                throw new ServerException(errorCode, "Query with id = " + queryId.getQueryId() + " is already running", 500);
+                throw ServerExceptions.of(errorCode, "Query with id = " + queryId.getQueryId() + " is already running", 500);
             }
             super.doInsert(records, queryId, errorReporter);
         }
