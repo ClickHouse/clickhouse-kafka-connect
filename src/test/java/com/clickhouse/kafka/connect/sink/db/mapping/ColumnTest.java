@@ -127,6 +127,19 @@ class ColumnTest {
     }
 
     @Test
+    public void extractArraySubcolumnElementHasNoDefault() {
+        // DESCRIBE lists the field `a` of `arr Array(Tuple(a Int32))` as the subcolumn `arr.a Array(Int32)`
+        Column col = Column.extractColumn(newDescriptor("arr.a", "Array(Int32)"));
+        assertFalse(col.hasDefault());
+        assertTrue(col.isSubColumn());
+
+        Column element = col.getArrayType();
+        assertEquals(Type.INT32, element.getType());
+        assertFalse(element.hasDefault());
+        assertTrue(element.isSubColumn());
+    }
+
+    @Test
     public void extractMapOfPrimitives() {
         Column col = Column.extractColumn(newDescriptor("Map(String, Decimal(5)"));
         assertEquals(Type.MAP, col.getType());

@@ -1,6 +1,12 @@
 # 1.7.1, Unreleased
 
 ## Bug Fixes
+* Fixed a stray byte in RowBinary rows when a record leaves out a field of a `Tuple` inside an `Array` or a `Map`
+  value. Array elements were mapped with the default and subcolumn flags swapped, so such a field looked like it had a
+  `DEFAULT` and the writer wrote the default marker where the format has none. The insert then failed on the server
+  with `CANNOT_READ_ALL_DATA` naming no column. Now the writer writes nothing for that field and fails with the same
+  `DataException` as for a top-level `Tuple`, naming the record and the column.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/878)
 
 * Fixed silent loss of fields whose ClickHouse column names contain `/` by preserving JSON escaping in
   DESCRIBE responses with both client V1 and V2. Existing support for escaped column comments is preserved.
