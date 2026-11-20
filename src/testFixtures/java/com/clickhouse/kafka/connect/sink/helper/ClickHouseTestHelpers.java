@@ -90,7 +90,6 @@ public class ClickHouseTestHelpers {
         try (Records ignored = chc.queryV2(query)) {
             // success
         } catch (Exception e) {
-            LOGGER.info(String.format("query failed: '%s'", query), e);
             throw new RuntimeException(e);
         }
     }
