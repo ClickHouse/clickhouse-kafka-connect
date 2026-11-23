@@ -17,6 +17,12 @@
 
 ## Bug Fixes
 
+* Fixed a `NullPointerException` that hid the original error when the connector got an exception without a message,
+  such as a plain `EOFException` or `ClosedChannelException`. In the exception handler the NPE also failed the task with
+  `errors.tolerance=all` instead of sending the batch to the DLQ. The RowBinary insert path read the message the same
+  way when it checked for a changed table schema. Both places now treat a missing message as no match.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/882)
+
 * Serialization failures now report which record failed — topic, partition and offset — and which column could not be
   written, instead of only naming the Java types involved. This makes the offending record identifiable from the task
   log for errors such as a `Date` before 1970 being rejected by the negative-number check.

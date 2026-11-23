@@ -61,6 +61,24 @@ public class UtilsTest {
     }
 
     @Test
+    @DisplayName("Test IOException without a message fails the task when errors tolerance is disabled")
+    public void TestIOExceptionWithoutMessageFailsWithoutTolerance() {
+        Exception e = new RuntimeException("query id", new IOException());
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> Utils.handleException(e, false, false, Collections.emptySet(), new ArrayList<>()));
+        assertEquals(RuntimeException.class, thrown.getClass());
+        assertEquals("Number of records: 0", thrown.getMessage());
+        assertSame(e, thrown.getCause());
+    }
+
+    @Test
+    @DisplayName("Test IOException without a message is ignored when errors tolerance is enabled")
+    public void TestIOExceptionWithoutMessageIgnoredWithTolerance() {
+        Exception e = new RuntimeException("query id", new IOException());
+        assertDoesNotThrow(() -> Utils.handleException(e, true, false, Collections.emptySet(), new ArrayList<>()));
+    }
+
+    @Test
     @DisplayName("Test SocketException retried when enabled")
     public void TestSocketExceptionRetriedWhenEnabled() {
         assertThrows(RetriableException.class, () -> {
