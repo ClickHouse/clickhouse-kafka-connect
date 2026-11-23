@@ -1,7 +1,6 @@
 package com.clickhouse.kafka.connect.sink.db.mapping;
 
 import com.clickhouse.kafka.connect.sink.db.helper.ClickHouseFieldDescriptor;
-import com.clickhouse.kafka.connect.util.Utils;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -365,13 +364,47 @@ public class Column {
 
     private static Map<String, Integer> extractEnumValues(String valueType) {
         Map <String, Integer> data = new HashMap<>();
-        List<String> values = Utils.splitIgnoringQuotes(valueType.substring(valueType.indexOf("(") + 1, valueType.indexOf(")")), ',');
-        for (String value : values) {
-            String[] val = value.split("=", 2);
-            String key = val[0].trim();
-            data.put(key.substring(1, key.length() - 1), Integer.parseInt(val[1].trim()));
+        int end = valueType.lastIndexOf(')');
+        int pos = valueType.indexOf('(') + 1;
+        while (pos < end) {
+            // A label can hold any character, so it is read up to its closing quote before looking for '=' and ','
+            pos = valueType.indexOf('\'', pos) + 1;
+            StringBuilder label = new StringBuilder();
+            char c;
+            while ((c = valueType.charAt(pos++)) != '\'') {
+                if (c == '\\') {
+                    c = unescapeEnumLabelChar(valueType.charAt(pos++));
+                }
+                label.append(c);
+            }
+            int next = valueType.indexOf(',', pos);
+            if (next < 0) {
+                next = end;
+            }
+            data.put(label.toString(), Integer.parseInt(valueType.substring(valueType.indexOf('=', pos) + 1, next).trim()));
+            pos = next + 1;
         }
         return data;
+    }
+
+    // When the server writes a type name it escapes only these control characters, the backslash and the quote
+    private static char unescapeEnumLabelChar(char c) {
+        switch (c) {
+            case 'b':
+                return '\b';
+            case 'f':
+                return '\f';
+            case 'n':
+                return '\n';
+            case 'r':
+                return '\r';
+            case 't':
+                return '\t';
+            case '0':
+                return '\0';
+            default:
+                return c;
+        }
     }
 
     public static String connectTypeToClickHouseType(Schema connectSchema) {

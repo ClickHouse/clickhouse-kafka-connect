@@ -3,8 +3,13 @@ package com.clickhouse.kafka.connect.sink.db.mapping;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.col;
 import static com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers.newDescriptor;
@@ -178,6 +183,35 @@ class ColumnTest {
         assertEquals(2, col.getEnumValues().size());
         assertTrue(col.getEnumValues().containsKey("a, valid"));
         assertTrue(col.getEnumValues().containsKey("b"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("enumTypesAsWrittenByServer")
+    public void extractEnumLabelsAsStoredByServer(String type, Map<String, Integer> expected) {
+        Column col = Column.extractColumn(newDescriptor(type));
+        assertEquals(expected, col.getEnumValues());
+    }
+
+    // Type names as DESCRIBE TABLE returns them, with the labels the server stores for them
+    private static Stream<Arguments> enumTypesAsWrittenByServer() {
+        return Stream.of(
+                enumWithLabel("'x)y'", "x)y"),
+                enumWithLabel("'x=y'", "x=y"),
+                enumWithLabel("'it\\'s'", "it's"),
+                enumWithLabel("'x\\\\y'", "x\\y"),
+                enumWithLabel("'a\\\\'", "a\\"),
+                enumWithLabel("'a\\' = 3, \\'b'", "a' = 3, 'b"),
+                enumWithLabel("'x,y'", "x,y"),
+                enumWithLabel("'a b'", "a b"),
+                enumWithLabel("'a\\nb'", "a\nb"),
+                enumWithLabel("'日本'", "日本"),
+                Arguments.of("Enum16('b)' = -5, 'a\\\\' = 1000)", Map.of("b)", -5, "a\\", 1000)),
+                Arguments.of("Enum8('A' = 1, 'B' = 2, 'C' = 3)", Map.of("A", 1, "B", 2, "C", 3)),
+                Arguments.of("Enum16('A' = 1, 'B' = 2, 'C' = 3, 'D' = 4)", Map.of("A", 1, "B", 2, "C", 3, "D", 4)));
+    }
+
+    private static Arguments enumWithLabel(String quotedLabel, String label) {
+        return Arguments.of("Enum8(" + quotedLabel + " = 1, 'plain' = 2)", Map.of(label, 1, "plain", 2));
     }
 
     // --- isUnionSchema detection tests ---
