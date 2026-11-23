@@ -56,4 +56,11 @@ public class ClickHouseSinkConfigTest {
         validator.ensureValid(ClickHouseSinkConfig.ADDITIONAL_RETRIABLE_ERROR_CODES, Arrays.asList("216", " 999"));
         validator.ensureValid(ClickHouseSinkConfig.ADDITIONAL_RETRIABLE_ERROR_CODES, Arrays.asList());
     }
+
+    @Test
+    @DisplayName("username defaults to default in the ConfigDef and in the parsed config")
+    public void usernameDefault() {
+        assertEquals("default", ClickHouseSinkConfig.CONFIG.configKeys().get(ClickHouseSinkConfig.USERNAME).defaultValue);
+        assertEquals("default", configWith(null).getUsername());
+    }
 }
