@@ -172,6 +172,28 @@ class ColumnTest {
     }
 
     @Test
+    public void extractNullableEnumColumn() {
+        Column enum8 = Column.extractColumn(newDescriptor("Nullable(Enum8('a' = 1, 'b' = 2))"));
+        assertEquals(Type.Enum8, enum8.getType());
+        assertTrue(enum8.isNullable());
+
+        Column enum16 = Column.extractColumn(newDescriptor("Nullable(Enum16('a' = 1, 'b' = 1000))"));
+        assertEquals(Type.Enum16, enum16.getType());
+        assertTrue(enum16.isNullable());
+
+        assertFalse(Column.extractColumn(newDescriptor("Enum8('a' = 1, 'b' = 2)")).isNullable());
+        assertFalse(Column.extractColumn(newDescriptor("Enum16('a' = 1, 'b' = 1000)")).isNullable());
+    }
+
+    @Test
+    public void extractArrayOfNullableEnumColumn() {
+        Column col = Column.extractColumn(newDescriptor("Array(Nullable(Enum8('a' = 1, 'b' = 2)))"));
+        assertEquals(Type.ARRAY, col.getType());
+        assertEquals(Type.Enum8, col.getArrayType().getType());
+        assertTrue(col.getArrayType().isNullable());
+    }
+
+    @Test
     public void extractEnumOfPrimitives() {
         Column col = Column.extractColumn(newDescriptor("Enum8('a, valid' = 1, 'b' = 2)"));
         assertEquals(Type.Enum8, col.getType());

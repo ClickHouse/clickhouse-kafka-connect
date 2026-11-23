@@ -2,6 +2,12 @@
 
 ## Bug Fixes
 
+* Fixed `Nullable(Enum8)` and `Nullable(Enum16)` columns being mapped as not nullable, so the RowBinary writer left out
+  the null marker. A `Nullable(Enum8)` label with a non-zero value was stored as NULL without an error, also as an
+  `Array` element or a `Map` value. A `Nullable(Enum16)` insert failed with `CANNOT_READ_ALL_DATA`, and writing a null
+  into either column failed with `An attempt to write null into not nullable column`.
+  (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/877)
+
 * Fixed silent loss of fields whose ClickHouse column names contain `/` by preserving JSON escaping in
   DESCRIBE responses with both client V1 and V2. Existing support for escaped column comments is preserved.
   (https://github.com/ClickHouse/clickhouse-kafka-connect/issues/838)
