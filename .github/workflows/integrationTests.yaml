@@ -2,7 +2,7 @@ name: Integration Tests
 
 on:
   schedule:
-    - cron: "00 05 * * *"
+    - cron: "00 03 * * *"
   workflow_dispatch:
 
 # note: LTS releases and latest stable builds can be found here: https://github.com/ClickHouse/ClickHouse/pulls?q=is%3Aopen+is%3Apr+label%3Arelease
