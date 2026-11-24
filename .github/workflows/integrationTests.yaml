@@ -22,40 +22,56 @@ jobs:
           java-version: '17'
           distribution: 'adopt'
 #      NOTE: since cloud integration tests restart the cloud service, run V1 and V2 tests sequentially
-      - name: Setup and execute Gradle 'integrationTest' task - Client version V1
-        uses: gradle/gradle-build-action@v2
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
+      - name: Execute Gradle 'integrationTest' task - Client version V1
         env:
           CLICKHOUSE_VERSION: cloud
           CLIENT_VERSION: V1
-        with:
-          arguments: integrationTest
-            --tests "com.clickhouse.kafka.connect.sink.ClickHouseCloudTest"
-            --tests "com.clickhouse.kafka.connect.sink.ExactlyOnceTest"
-            -Dclickhouse.host=${{secrets.CLICKHOUSE_HOST}}
-            -Dclickhouse.port=${{vars.CLICKHOUSE_PORT}}
-            -Dclickhouse.password=${{secrets.CLICKHOUSE_PASSWORD}}
-            -Dclickhouse.cloud.organization=${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}}
-            -Dclickhouse.cloud.apiKey=${{vars.CLICKHOUSE_CLOUD_API_KEY}}
-            -Dclickhouse.cloud.secret=${{secrets.CLICKHOUSE_CLOUD_SECRET}}
-            -Dclickhouse.cloud.serviceId=${{vars.CLICKHOUSE_CLOUD_SERVICE_ID}}
-            -Dclickhouse.cloud.host=${{vars.CLICKHOUSE_CLOUD_API_HOST}}
-      - name: Setup and execute Gradle 'integrationTest' task - Client version V2
-        uses: gradle/gradle-build-action@v2
+          IT_CLICKHOUSE_HOST: ${{ secrets.CLICKHOUSE_HOST }}
+          IT_CLICKHOUSE_PORT: ${{ vars.CLICKHOUSE_PORT }}
+          IT_CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+          IT_CLOUD_ORGANIZATION: ${{ vars.CLICKHOUSE_CLOUD_ORGANIZATION }}
+          IT_CLOUD_API_KEY: ${{ vars.CLICKHOUSE_CLOUD_API_KEY }}
+          IT_CLOUD_SECRET: ${{ secrets.CLICKHOUSE_CLOUD_SECRET }}
+          IT_CLOUD_SERVICE_ID: ${{ vars.CLICKHOUSE_CLOUD_SERVICE_ID }}
+          IT_CLOUD_API_HOST: ${{ vars.CLICKHOUSE_CLOUD_API_HOST }}
+        run: |
+          ./gradlew integrationTest \
+            --tests "com.clickhouse.kafka.connect.sink.ClickHouseCloudTest" \
+            --tests "com.clickhouse.kafka.connect.sink.ExactlyOnceTest" \
+            -Dclickhouse.host="$IT_CLICKHOUSE_HOST" \
+            -Dclickhouse.port="$IT_CLICKHOUSE_PORT" \
+            -Dclickhouse.password="$IT_CLICKHOUSE_PASSWORD" \
+            -Dclickhouse.cloud.organization="$IT_CLOUD_ORGANIZATION" \
+            -Dclickhouse.cloud.apiKey="$IT_CLOUD_API_KEY" \
+            -Dclickhouse.cloud.secret="$IT_CLOUD_SECRET" \
+            -Dclickhouse.cloud.serviceId="$IT_CLOUD_SERVICE_ID" \
+            -Dclickhouse.cloud.host="$IT_CLOUD_API_HOST"
+      - name: Execute Gradle 'integrationTest' task - Client version V2
         env:
           CLICKHOUSE_VERSION: cloud
           CLIENT_VERSION: V2
-        with:
-          arguments: integrationTest
-            --tests "com.clickhouse.kafka.connect.sink.ClickHouseCloudTest"
-            --tests "com.clickhouse.kafka.connect.sink.ExactlyOnceTest"
-            -Dclickhouse.host=${{secrets.CLICKHOUSE_HOST}}
-            -Dclickhouse.port=${{vars.CLICKHOUSE_PORT}}
-            -Dclickhouse.password=${{secrets.CLICKHOUSE_PASSWORD}}
-            -Dclickhouse.cloud.organization=${{vars.CLICKHOUSE_CLOUD_ORGANIZATION}}
-            -Dclickhouse.cloud.apiKey=${{vars.CLICKHOUSE_CLOUD_API_KEY}}
-            -Dclickhouse.cloud.secret=${{secrets.CLICKHOUSE_CLOUD_SECRET}}
-            -Dclickhouse.cloud.serviceId=${{vars.CLICKHOUSE_CLOUD_SERVICE_ID}}
-            -Dclickhouse.cloud.host=${{vars.CLICKHOUSE_CLOUD_API_HOST}}
+          IT_CLICKHOUSE_HOST: ${{ secrets.CLICKHOUSE_HOST }}
+          IT_CLICKHOUSE_PORT: ${{ vars.CLICKHOUSE_PORT }}
+          IT_CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+          IT_CLOUD_ORGANIZATION: ${{ vars.CLICKHOUSE_CLOUD_ORGANIZATION }}
+          IT_CLOUD_API_KEY: ${{ vars.CLICKHOUSE_CLOUD_API_KEY }}
+          IT_CLOUD_SECRET: ${{ secrets.CLICKHOUSE_CLOUD_SECRET }}
+          IT_CLOUD_SERVICE_ID: ${{ vars.CLICKHOUSE_CLOUD_SERVICE_ID }}
+          IT_CLOUD_API_HOST: ${{ vars.CLICKHOUSE_CLOUD_API_HOST }}
+        run: |
+          ./gradlew integrationTest \
+            --tests "com.clickhouse.kafka.connect.sink.ClickHouseCloudTest" \
+            --tests "com.clickhouse.kafka.connect.sink.ExactlyOnceTest" \
+            -Dclickhouse.host="$IT_CLICKHOUSE_HOST" \
+            -Dclickhouse.port="$IT_CLICKHOUSE_PORT" \
+            -Dclickhouse.password="$IT_CLICKHOUSE_PASSWORD" \
+            -Dclickhouse.cloud.organization="$IT_CLOUD_ORGANIZATION" \
+            -Dclickhouse.cloud.apiKey="$IT_CLOUD_API_KEY" \
+            -Dclickhouse.cloud.secret="$IT_CLOUD_SECRET" \
+            -Dclickhouse.cloud.serviceId="$IT_CLOUD_SERVICE_ID" \
+            -Dclickhouse.cloud.host="$IT_CLOUD_API_HOST"
   build-and-run-standalone:
     runs-on: ubuntu-latest
     strategy:
@@ -71,13 +87,14 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-      - name: Setup and execute Gradle 'integrationTest' task
-        uses: gradle/gradle-build-action@v2
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
+      - name: Execute Gradle 'integrationTest' task
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
           CLIENT_VERSION: ${{ matrix.client }}
-        with:
-          arguments: integrationTest
+        run: |
+          ./gradlew integrationTest \
             --tests "com.clickhouse.kafka.connect.sink.ClickHouseSinkConnectorIntegrationTest"
   build-and-run-cluster:
     runs-on: ubuntu-latest
@@ -95,13 +112,14 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-      - name: Setup and execute Gradle 'integrationTest' task
-        uses: gradle/gradle-build-action@v2
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
+      - name: Execute Gradle 'integrationTest' task
         env:
           CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
           CLIENT_VERSION: ${{ matrix.client }}
           CLICKHOUSE_CLUSTER_NAME: ${{ matrix.cluster_name }}
-        with:
-          arguments: integrationTest
-            --tests "com.clickhouse.kafka.connect.sink.ClickHouseSinkConnectorIntegrationTest"
+        run: |
+          ./gradlew integrationTest \
+            --tests "com.clickhouse.kafka.connect.sink.ClickHouseSinkConnectorIntegrationTest" \
             --tests "com.clickhouse.kafka.connect.sink.ExactlyOnceTest"
