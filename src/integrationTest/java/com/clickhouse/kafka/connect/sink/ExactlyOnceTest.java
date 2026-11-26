@@ -9,12 +9,16 @@ import com.clickhouse.kafka.connect.sink.helper.ClickHouseCluster;
 import com.clickhouse.kafka.connect.sink.helper.ClickHouseTestHelpers;
 import com.clickhouse.kafka.connect.sink.helper.ConfluentPlatform;
 import com.clickhouse.kafka.connect.sink.helper.CreateTableStatement;
+import eu.rekawek.toxiproxy.Proxy;
+import eu.rekawek.toxiproxy.ToxiproxyClient;
+import eu.rekawek.toxiproxy.model.ToxicDirection;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
 import java.io.File;
 import java.io.IOException;
@@ -61,6 +65,15 @@ public class ExactlyOnceTest {
     private static final String SCHEMA_SINK_CONFIG = "src/integrationTest/resources/clickhouse_sink_no_proxy.json";
     private static final String SCHEMA_SINK_CONFIG_CLUSTER = "src/integrationTest/resources/clickhouse_sink_no_proxy_cluster.json";
     private static final String BUFFER_CONFIG_SUFFIX = "_buffer.json";
+    // On a cluster the buffered configs connect through Toxiproxy so the spotty-network tests can cut the connection.
+    private static final String BUFFER_CLUSTER_CONFIG_SUFFIX = "_buffer_cluster.json";
+    private static final int PROXY_PORT = 8666;
+    // Slows each request so the connection is cut while the drain is still in progress.
+    private static final int SPOTTY_NETWORK_LATENCY_MS = 500;
+    private static final long SPOTTY_NETWORK_OUTAGE_MS = 20_000;
+    private static final long SPOTTY_NETWORK_RECOVERY_MS = 20_000;
+    private static ToxiproxyContainer toxiproxy;
+    private static Proxy clickhouseProxy;
 
     private static Map<String, String> getTestProperties() {
         Map<String, String> props = new HashMap<>();
@@ -83,7 +96,7 @@ public class ExactlyOnceTest {
     }
 
     @BeforeAll
-    public static void checkPropsExistAndSetUp() {
+    public static void checkPropsExistAndSetUp() throws IOException {
         Assumptions.assumeTrue(isCluster || isCloud, "ExactlyOnceTest in not supported against standalone");
         Assertions.assertFalse(isCluster && isCloud, String.format("Invalid configuration: both %s=<> and %s=cloud are set. Please set only one or the other.", ClickHouseTestHelpers.CLICKHOUSE_CLUSTER_NAME, ClickHouseTestHelpers.CLICKHOUSE_VERSION));
 
@@ -108,12 +121,25 @@ public class ExactlyOnceTest {
         String confluentArchive = new File(Paths.get("build/confluentArchive").toString()).getAbsolutePath();
         connectorPath.add(confluentArchive);
         confluentPlatform = new ConfluentPlatform(network, connectorPath);
+
+        if (isCluster) {
+            toxiproxy = new ToxiproxyContainer(ClickHouseTestHelpers.TOXIPROXY_DOCKER_IMAGE_NAME)
+                    .withNetwork(network)
+                    .withNetworkAliases(ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS)
+                    .withExtraHost("host.docker.internal", "host-gateway");
+            toxiproxy.start();
+            clickhouseProxy = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort())
+                    .createProxy("clickhouse-proxy", "0.0.0.0:" + PROXY_PORT, "host.docker.internal:" + cluster.getPort());
+        }
     }
 
     @AfterAll
     public static void tearDown() {
         if (confluentPlatform != null) {
             confluentPlatform.close();
+        }
+        if (toxiproxy != null) {
+            toxiproxy.stop();
         }
         if (cluster != null) {
             cluster.stop();
@@ -160,16 +186,14 @@ public class ExactlyOnceTest {
     @ParameterizedTest(name = "config={0}")
     @MethodSource("schemalessConfigs")
     public void checkSpottyNetwork(String configPath) throws InterruptedException, IOException, URISyntaxException {
-        Assumptions.assumeFalse(isCluster,
-                "checkSpottyNetwork requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
+        assumeSpottyNetworkSupported(configPath);
         checkSpottyNetworkSchemaless("checkSpottyNetworkSinglePartition", 1, configPath);
     }
 
     @ParameterizedTest(name = "config={0}")
     @MethodSource("schemalessConfigs")
     public void checkSpottyNetworkMulti(String configPath) throws InterruptedException, IOException, URISyntaxException {
-        Assumptions.assumeFalse(isCluster,
-                "checkSpottyNetworkMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
+        assumeSpottyNetworkSupported(configPath);
         checkSpottyNetworkSchemaless("checkSpottyNetworkMultiPartitions", 3, configPath);
     }
 
@@ -188,16 +212,14 @@ public class ExactlyOnceTest {
     @ParameterizedTest(name = "config={0}")
     @MethodSource("schemaConfigs")
     public void checkSpottyNetworkSchema(String configPath) throws InterruptedException, IOException, URISyntaxException {
-        Assumptions.assumeFalse(isCluster,
-                "checkSpottyNetworkSchema requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
+        assumeSpottyNetworkSupported(configPath);
         runSpottyNetworkSchema("checkSpottyNetworkSinglePartitionSchema", 1, configPath);
     }
 
     @ParameterizedTest(name = "config={0}")
     @MethodSource("schemaConfigs")
     public void checkSpottyNetworkSchemaMulti(String configPath) throws InterruptedException, IOException, URISyntaxException {
-        Assumptions.assumeFalse(isCluster,
-                "checkSpottyNetworkSchemaMulti requires ClickHouse Cloud API to stop/restart the service; not supported in cluster mode");
+        assumeSpottyNetworkSupported(configPath);
         runSpottyNetworkSchema("checkSpottyNetworkMultiPartitionsSchema", 3, configPath);
     }
 
@@ -225,8 +247,11 @@ public class ExactlyOnceTest {
         STOCK_TABLE.get()
                 .tableName(topicName).execute(chcNoProxy);
 
+        boolean bufferedOnCluster = isCluster && configOverride != null && isBufferConfig(configOverride);
         String fileName;
-        if (isCluster) {
+        if (bufferedOnCluster) {
+            fileName = configOverride.replace(BUFFER_CONFIG_SUFFIX, BUFFER_CLUSTER_CONFIG_SUFFIX);
+        } else if (isCluster) {
             fileName = schemaless ? SCHEMALESS_SINK_CONFIG_CLUSTER : SCHEMA_SINK_CONFIG_CLUSTER;
         } else if (configOverride != null) {
             fileName = configOverride;
@@ -238,7 +263,8 @@ public class ExactlyOnceTest {
         String jsonString;
         if (isCluster) {
             jsonString = String.format(payloadClickHouseSink, SINK_CONNECTOR_NAME, SINK_CONNECTOR_NAME, taskCount, topicName,
-                    "host.docker.internal", cluster.getPort().toString(),
+                    bufferedOnCluster ? ClickHouseTestHelpers.TOXIPROXY_NETWORK_ALIAS : "host.docker.internal",
+                    bufferedOnCluster ? String.valueOf(PROXY_PORT) : cluster.getPort().toString(),
                     chcNoProxy.getDatabase(),
                     chcNoProxy.getUsername(),
                     chcNoProxy.getPassword(),
@@ -289,6 +315,37 @@ public class ExactlyOnceTest {
         return configPath.endsWith(BUFFER_CONFIG_SUFFIX);
     }
 
+    /**
+     * Cloud restarts the service through the Cloud API. On a cluster only the buffered configs run: they connect
+     * through Toxiproxy, which cuts the connection instead.
+     */
+    private static void assumeSpottyNetworkSupported(String configPath) {
+        Assumptions.assumeFalse(isCluster && !isBufferConfig(configPath),
+                "On a cluster the spotty-network tests only run the buffered configs (through Toxiproxy)");
+    }
+
+    /**
+     * Makes ClickHouse unreachable for the connector mid-drain, then reachable again. With retryOnSocketException the
+     * failed flushes are retriable, so Kafka Connect keeps redelivering the same batch to the running task. The
+     * connector is restarted only after it had time to flush again, as after a Cloud service restart.
+     */
+    private static void interruptClusterConnection() throws IOException, InterruptedException {
+        clickhouseProxy.disable();
+        try {
+            Thread.sleep(SPOTTY_NETWORK_OUTAGE_MS);
+        } finally {
+            clickhouseProxy.enable();
+            removeToxics();
+        }
+        Thread.sleep(SPOTTY_NETWORK_RECOVERY_MS);
+    }
+
+    private static void removeToxics() throws IOException {
+        for (var toxic : clickhouseProxy.toxics().getAll()) {
+            toxic.remove();
+        }
+    }
+
     private boolean compareCounts(String baseTopicName, int partitions, String configPath, boolean schema)
             throws InterruptedException, IOException {
         String topicName = topicForConfig(baseTopicName, configPath);
@@ -329,10 +386,9 @@ public class ExactlyOnceTest {
 
     private void runSpottyNetwork(String baseTopicName, int numberOfPartitions, String configPath, boolean schema)
             throws InterruptedException, IOException, URISyntaxException {
-        Assumptions.assumeFalse(isBufferConfig(configPath),
-                "Buffered exactly-once can duplicate records when ClickHouse restarts; re-enable once ExactlyOnceBufferStrategy handles it");
         String topicName = topicForConfig(baseTopicName, configPath);
         boolean allSuccess = true;
+        String failure = null;
         int runCount = 1;
         do {
             LOGGER.info("Run: {}", runCount);
@@ -340,13 +396,21 @@ public class ExactlyOnceTest {
 
             int count = schema ? generateData(topicName, numberOfPartitions, 1500, isBufferConfig(configPath))
                     : generateSchemalessData(topicName, numberOfPartitions, 1500, isBufferConfig(configPath));
+            if (isCluster) {
+                removeToxics();
+                clickhouseProxy.toxics().latency("slow-drain", ToxicDirection.DOWNSTREAM, SPOTTY_NETWORK_LATENCY_MS);
+            }
             if (schema) {
                 setupSchemaConnector(topicName, numberOfPartitions, configPath);
             } else {
                 setupSchemalessConnector(topicName, numberOfPartitions, configPath);
             }
 
-            clickhouseCloudAPI.restartService();
+            if (isCluster) {
+                interruptClusterConnection();
+            } else {
+                clickhouseCloudAPI.restartService();
+            }
             confluentPlatform.restartConnector(SINK_CONNECTOR_NAME);
 
             LOGGER.info("Expected Total: {}", count);
@@ -355,9 +419,12 @@ public class ExactlyOnceTest {
             int[] databaseCounts = getCounts(chcNoProxy, topicName);
             if (databaseCounts[2] != 0 || databaseCounts[1] != count) {
                 allSuccess = false;
-                LOGGER.error("Duplicates: {}", databaseCounts[2]);
+                failure = String.format("%s run %d: expected %d Kafka records exactly once, ClickHouse has total=%d distinct records=%d duplicates=%d",
+                        topicName, runCount, count, databaseCounts[0], databaseCounts[1], databaseCounts[2]);
+                LOGGER.error(failure);
                 try (Records records = selectDuplicates(chcNoProxy, topicName)) {
-                    records.forEach(record -> LOGGER.error("Duplicate: {}", record));
+                    records.forEach(record -> LOGGER.error("Duplicate: partition={} offset={} copies={}",
+                            record.getString(1), record.getString(2), record.getString(3)));
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -369,7 +436,7 @@ public class ExactlyOnceTest {
             runCount++;
         } while (runCount < 3 && allSuccess);
 
-        assertTrue(allSuccess);
+        assertTrue(allSuccess, failure);
     }
 
     private static Records selectDuplicates(ClickHouseHelperClient chc, String tableName) {
